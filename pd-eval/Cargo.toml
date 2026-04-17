@@ -1,0 +1,8 @@
+[package]
+name = "pd-eval"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pd-control = { path = "../pd-control" }
+pd-core = { path = "../pd-core" }
