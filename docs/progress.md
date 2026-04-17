@@ -13,11 +13,13 @@
 - `fixtures/scenarios/` created for authored scenario inputs.
 - First `pd-core` contract slice is now implemented and compiling.
 - First single-run path is now implemented through `pd-cli`.
+- Early-termination mission evaluation now has a first concrete timed-checkpoint
+  goal shape.
 
 ### Active implementation focus
 
-1. Tighten the action/event-first replay contract before adding richer reports.
-2. Start separating mission termination/evaluation from pure touchdown logic.
+1. Add more authored scenarios around the new evaluation layer.
+2. Tighten result summaries and telemetry around non-landing mission outcomes.
 3. Keep artifacts simple and authoritative:
    - run manifest
    - action log
@@ -109,3 +111,11 @@
 - This does not add new mission types yet, but it makes the next step
   clearer: early-termination goals should plug into the evaluation side rather
   than into low-level contact code.
+
+#### Checkpoint 5: first early-termination goal
+
+- Added `timed_checkpoint` as the first concrete non-landing mission type.
+- The goal evaluates an in-flight state envelope at a configured end time,
+  relative to the designated target pad.
+- Added an authored scenario fixture:
+  - `fixtures/scenarios/timed_checkpoint_idle.json`

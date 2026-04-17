@@ -1,5 +1,8 @@
 use crate::{
-    eval::{ContactClassification, apply_contact_classification, apply_max_time},
+    eval::{
+        ContactClassification, apply_contact_classification, apply_max_time,
+        apply_progress_evaluation,
+    },
     math::Vec2,
     model::{
         ActionLogEntry, Command, EndReason, EventKind, EventRecord, MissionOutcome, Observation,
@@ -124,11 +127,16 @@ impl SimulationState {
             return contact_events;
         }
 
+        let progress_events = apply_progress_evaluation(ctx, self);
+        if self.is_terminal() {
+            return progress_events;
+        }
+
         if self.sim_time_s >= ctx.sim.max_time_s {
             return apply_max_time(self);
         }
 
-        contact_events
+        contact_events.into_iter().chain(progress_events).collect()
     }
 
     fn apply_attitude_command(&mut self, ctx: &RunContext, dt_s: f64) {

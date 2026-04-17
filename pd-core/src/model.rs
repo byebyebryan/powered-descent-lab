@@ -230,7 +230,18 @@ impl MissionSpec {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EvaluationGoal {
-    LandingOnPad { target_pad_id: String },
+    LandingOnPad {
+        target_pad_id: String,
+    },
+    TimedCheckpoint {
+        target_pad_id: String,
+        end_time_s: f64,
+        desired_position_offset_m: Vec2,
+        max_position_error_m: f64,
+        desired_velocity_mps: Vec2,
+        max_velocity_error_mps: f64,
+        max_attitude_error_rad: f64,
+    },
 }
 
 impl EvaluationGoal {
@@ -243,12 +254,52 @@ impl EvaluationGoal {
                     Ok(())
                 }
             }
+            Self::TimedCheckpoint {
+                target_pad_id,
+                end_time_s,
+                desired_position_offset_m,
+                max_position_error_m,
+                desired_velocity_mps,
+                max_velocity_error_mps,
+                max_attitude_error_rad,
+            } => {
+                if target_pad_id.trim().is_empty() {
+                    return Err("target_pad_id must not be empty".to_owned());
+                }
+                if !end_time_s.is_finite() || *end_time_s < 0.0 {
+                    return Err("end_time_s must be a finite value >= 0".to_owned());
+                }
+                for (label, value) in [
+                    ("desired_position_offset_m.x", desired_position_offset_m.x),
+                    ("desired_position_offset_m.y", desired_position_offset_m.y),
+                    ("desired_velocity_mps.x", desired_velocity_mps.x),
+                    ("desired_velocity_mps.y", desired_velocity_mps.y),
+                    ("max_position_error_m", *max_position_error_m),
+                    ("max_velocity_error_mps", *max_velocity_error_mps),
+                    ("max_attitude_error_rad", *max_attitude_error_rad),
+                ] {
+                    if !value.is_finite() {
+                        return Err(format!("{label} must be finite"));
+                    }
+                }
+                if *max_position_error_m <= 0.0 {
+                    return Err("max_position_error_m must be > 0".to_owned());
+                }
+                if *max_velocity_error_mps <= 0.0 {
+                    return Err("max_velocity_error_mps must be > 0".to_owned());
+                }
+                if *max_attitude_error_rad <= 0.0 {
+                    return Err("max_attitude_error_rad must be > 0".to_owned());
+                }
+                Ok(())
+            }
         }
     }
 
     pub fn target_pad_id(&self) -> &str {
         match self {
             Self::LandingOnPad { target_pad_id } => target_pad_id.as_str(),
+            Self::TimedCheckpoint { target_pad_id, .. } => target_pad_id.as_str(),
         }
     }
 }
@@ -283,6 +334,11 @@ impl ScenarioSpec {
             return Err(format!(
                 "mission target pad '{target_pad_id}' is not present in world.landing_pads"
             ));
+        }
+        if let EvaluationGoal::TimedCheckpoint { end_time_s, .. } = &self.mission.goal
+            && *end_time_s > self.sim.max_time_s
+        {
+            return Err("timed checkpoint end_time_s cannot exceed sim.max_time_s".to_owned());
         }
         Ok(())
     }
@@ -378,6 +434,7 @@ pub enum MissionOutcome {
     InProgress,
     Success,
     FailedOffTarget,
+    FailedCheckpoint,
     FailedCrash,
     FailedTimeout,
 }
@@ -386,6 +443,8 @@ pub enum MissionOutcome {
 #[serde(rename_all = "snake_case")]
 pub enum EndReason {
     Running,
+    CheckpointSatisfied,
+    CheckpointFailed,
     TouchdownOnTarget,
     TouchdownOffTarget,
     Crash,
@@ -396,6 +455,8 @@ pub enum EndReason {
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
     ControllerUpdated,
+    CheckpointSatisfied,
+    CheckpointFailed,
     TouchdownOnTarget,
     TouchdownOffTarget,
     Crash,
