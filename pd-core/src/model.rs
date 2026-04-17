@@ -4,7 +4,7 @@ use crate::{math::Vec2, terrain::TerrainDefinition};
 
 pub const RUN_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SimConfig {
     pub physics_hz: u32,
     pub controller_hz: u32,
@@ -57,7 +57,7 @@ impl SimConfig {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorldSpec {
     pub gravity_mps2: f64,
     pub terrain: TerrainDefinition,
@@ -84,7 +84,7 @@ impl WorldSpec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LandingPadSpec {
     pub id: String,
     pub center_x_m: f64,
@@ -111,7 +111,7 @@ impl LandingPadSpec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VehicleGeometry {
     pub hull_width_m: f64,
     pub hull_height_m: f64,
@@ -137,7 +137,7 @@ impl VehicleGeometry {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VehicleSpec {
     pub geometry: VehicleGeometry,
     pub dry_mass_kg: f64,
@@ -190,7 +190,7 @@ impl VehicleSpec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VehicleInitialState {
     pub position_m: Vec2,
     pub velocity_mps: Vec2,
@@ -216,7 +216,7 @@ impl VehicleInitialState {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MissionSpec {
     pub goal: EvaluationGoal,
 }
@@ -227,7 +227,7 @@ impl MissionSpec {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EvaluationGoal {
     LandingOnPad { target_pad_id: String },
@@ -253,7 +253,7 @@ impl EvaluationGoal {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScenarioSpec {
     pub id: String,
     pub name: String,
@@ -343,7 +343,7 @@ impl Command {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Observation {
     pub sim_time_s: f64,
     pub physics_step: u64,
@@ -362,7 +362,7 @@ pub struct Observation {
     pub min_hull_clearance_m: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PhysicalOutcome {
     Flying,
@@ -372,7 +372,7 @@ pub enum PhysicalOutcome {
     TimedOut,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MissionOutcome {
     InProgress,
@@ -382,7 +382,7 @@ pub enum MissionOutcome {
     FailedTimeout,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EndReason {
     Running,
@@ -392,7 +392,7 @@ pub enum EndReason {
     MaxTimeReached,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
     ControllerUpdated,
@@ -403,7 +403,7 @@ pub enum EventKind {
     MissionEnded,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EventRecord {
     pub sim_time_s: f64,
     pub physics_step: u64,
@@ -411,7 +411,7 @@ pub struct EventRecord {
     pub message: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ActionLogEntry {
     pub sim_time_s: f64,
     pub physics_step: u64,
@@ -419,7 +419,7 @@ pub struct ActionLogEntry {
     pub command: Command,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SampleRecord {
     pub sim_time_s: f64,
     pub physics_step: u64,
@@ -427,7 +427,7 @@ pub struct SampleRecord {
     pub held_command: Command,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunManifest {
     pub schema_version: u32,
     pub scenario_id: String,
@@ -443,7 +443,7 @@ pub struct RunManifest {
     pub end_reason: EndReason,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunArtifacts {
     pub manifest: RunManifest,
     pub actions: Vec<ActionLogEntry>,

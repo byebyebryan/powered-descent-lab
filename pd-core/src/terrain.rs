@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::math::Vec2;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TerrainDefinition {
     Heightfield { points_m: Vec<Vec2> },

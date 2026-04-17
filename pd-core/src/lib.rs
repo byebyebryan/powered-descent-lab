@@ -10,5 +10,5 @@ pub use model::{
     RunManifest, SampleRecord, ScenarioSpec, SimConfig, VehicleGeometry, VehicleInitialState,
     VehicleSpec, WorldSpec,
 };
-pub use sim::{SimulationError, SimulationState, run_simulation};
+pub use sim::{SimulationError, SimulationState, replay_simulation, run_simulation};
 pub use terrain::TerrainDefinition;

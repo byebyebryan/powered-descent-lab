@@ -114,8 +114,8 @@ impl SimulationState {
         let throttle_frac = self.consume_fuel(ctx, dt_s);
         self.integrate_translation(ctx, dt_s, throttle_frac);
 
-        self.sim_time_s += dt_s;
         self.physics_step += 1;
+        self.sim_time_s = self.physics_step as f64 / f64::from(ctx.sim.physics_hz);
 
         let contact_events = self.classify_contacts(ctx);
         if self.is_terminal() {
@@ -339,12 +339,12 @@ where
 
     maybe_push_sample(&mut samples, &state, ctx, sample_interval_steps);
     issue_controller_update(
-        ctx,
         &mut state,
         &mut controller,
         &mut controller_update_index,
         &mut actions,
         &mut events,
+        ctx,
     );
 
     while !state.is_terminal() {
@@ -357,44 +357,95 @@ where
 
         if state.physics_step % control_interval_steps == 0 {
             issue_controller_update(
-                ctx,
                 &mut state,
                 &mut controller,
                 &mut controller_update_index,
                 &mut actions,
                 &mut events,
+                ctx,
             );
         }
     }
 
     Ok(RunArtifacts {
-        manifest: RunManifest {
-            schema_version: RUN_SCHEMA_VERSION,
-            scenario_id: ctx.scenario_id.clone(),
-            scenario_name: ctx.scenario_name.clone(),
-            controller_id: controller_id.to_owned(),
-            physics_hz: ctx.sim.physics_hz,
-            controller_hz: ctx.sim.controller_hz,
-            sim_time_s: state.sim_time_s,
-            physics_steps: state.physics_step,
-            controller_updates: controller_update_index,
-            physical_outcome: state.physical_outcome,
-            mission_outcome: state.mission_outcome,
-            end_reason: state.end_reason,
-        },
+        manifest: build_manifest(ctx, controller_id, &state, controller_update_index),
         actions,
         events,
         samples,
     })
 }
 
-fn issue_controller_update<F>(
+pub fn replay_simulation(
     ctx: &RunContext,
+    controller_id: &str,
+    actions: &[ActionLogEntry],
+) -> Result<RunArtifacts, SimulationError> {
+    if actions.is_empty() {
+        return Err(SimulationError::InvalidContext(
+            "action log must contain at least one controller update".to_owned(),
+        ));
+    }
+
+    let mut state = SimulationState::new(ctx)?;
+    let mut replay_actions = Vec::with_capacity(actions.len());
+    let mut events = Vec::new();
+    let mut samples = Vec::new();
+    let control_interval_steps = ctx.sim.control_interval_steps();
+    let sample_interval_steps = ctx.sim.sample_interval_steps();
+    let mut next_action_index = 0_usize;
+
+    maybe_push_sample(&mut samples, &state, ctx, sample_interval_steps);
+    consume_replay_action(
+        ctx,
+        &mut state,
+        actions,
+        &mut next_action_index,
+        &mut replay_actions,
+        &mut events,
+    )?;
+
+    while !state.is_terminal() {
+        events.extend(state.step(ctx));
+        maybe_push_sample(&mut samples, &state, ctx, sample_interval_steps);
+
+        if state.is_terminal() {
+            break;
+        }
+
+        if state.physics_step % control_interval_steps == 0 {
+            consume_replay_action(
+                ctx,
+                &mut state,
+                actions,
+                &mut next_action_index,
+                &mut replay_actions,
+                &mut events,
+            )?;
+        }
+    }
+
+    if next_action_index != actions.len() {
+        return Err(SimulationError::InvalidContext(format!(
+            "action log contains {} extra controller updates after termination",
+            actions.len() - next_action_index
+        )));
+    }
+
+    Ok(RunArtifacts {
+        manifest: build_manifest(ctx, controller_id, &state, replay_actions.len() as u64),
+        actions: replay_actions,
+        events,
+        samples,
+    })
+}
+
+fn issue_controller_update<F>(
     state: &mut SimulationState,
     controller: &mut F,
     controller_update_index: &mut u64,
     actions: &mut Vec<ActionLogEntry>,
     events: &mut Vec<EventRecord>,
+    ctx: &RunContext,
 ) where
     F: FnMut(&RunContext, &Observation) -> Command,
 {
@@ -415,6 +466,85 @@ fn issue_controller_update<F>(
         message: "controller_updated".to_owned(),
     });
     *controller_update_index += 1;
+}
+
+fn consume_replay_action(
+    ctx: &RunContext,
+    state: &mut SimulationState,
+    actions: &[ActionLogEntry],
+    next_action_index: &mut usize,
+    replay_actions: &mut Vec<ActionLogEntry>,
+    events: &mut Vec<EventRecord>,
+) -> Result<(), SimulationError> {
+    let Some(action) = actions.get(*next_action_index) else {
+        return Err(SimulationError::InvalidContext(format!(
+            "action log ended before controller update {} at physics step {}",
+            *next_action_index, state.physics_step
+        )));
+    };
+
+    if action.physics_step != state.physics_step {
+        return Err(SimulationError::InvalidContext(format!(
+            "action {} expected physics_step {}, got {}",
+            *next_action_index, state.physics_step, action.physics_step
+        )));
+    }
+    if action.controller_update_index != *next_action_index as u64 {
+        return Err(SimulationError::InvalidContext(format!(
+            "action {} expected controller_update_index {}, got {}",
+            *next_action_index, *next_action_index, action.controller_update_index
+        )));
+    }
+    if (action.sim_time_s - state.sim_time_s).abs() > 1e-9 {
+        return Err(SimulationError::InvalidContext(format!(
+            "action {} expected sim_time_s {:.12}, got {:.12}",
+            *next_action_index, state.sim_time_s, action.sim_time_s
+        )));
+    }
+    if state.physics_step != 0 && state.physics_step % ctx.sim.control_interval_steps() != 0 {
+        return Err(SimulationError::InvalidContext(format!(
+            "action {} occurs on invalid control step {}",
+            *next_action_index, state.physics_step
+        )));
+    }
+
+    state.set_command(action.command);
+    replay_actions.push(ActionLogEntry {
+        sim_time_s: state.sim_time_s,
+        physics_step: state.physics_step,
+        controller_update_index: action.controller_update_index,
+        command: state.held_command,
+    });
+    events.push(EventRecord {
+        sim_time_s: state.sim_time_s,
+        physics_step: state.physics_step,
+        kind: EventKind::ControllerUpdated,
+        message: "controller_updated".to_owned(),
+    });
+    *next_action_index += 1;
+    Ok(())
+}
+
+fn build_manifest(
+    ctx: &RunContext,
+    controller_id: &str,
+    state: &SimulationState,
+    controller_updates: u64,
+) -> RunManifest {
+    RunManifest {
+        schema_version: RUN_SCHEMA_VERSION,
+        scenario_id: ctx.scenario_id.clone(),
+        scenario_name: ctx.scenario_name.clone(),
+        controller_id: controller_id.to_owned(),
+        physics_hz: ctx.sim.physics_hz,
+        controller_hz: ctx.sim.controller_hz,
+        sim_time_s: state.sim_time_s,
+        physics_steps: state.physics_step,
+        controller_updates,
+        physical_outcome: state.physical_outcome.clone(),
+        mission_outcome: state.mission_outcome.clone(),
+        end_reason: state.end_reason.clone(),
+    }
 }
 
 fn maybe_push_sample(
@@ -464,16 +594,15 @@ mod tests {
     };
     use crate::terrain::TerrainDefinition;
 
-    #[test]
-    fn run_simulation_emits_authoritative_logs() {
-        let scenario = ScenarioSpec {
+    fn smoke_scenario() -> ScenarioSpec {
+        ScenarioSpec {
             id: "smoke".to_owned(),
             name: "Smoke".to_owned(),
             description: "smoke test".to_owned(),
             sim: SimConfig {
                 physics_hz: 120,
                 controller_hz: 60,
-                max_time_s: 5.0,
+                max_time_s: 10.0,
                 sample_hz: Some(10),
             },
             world: WorldSpec {
@@ -517,9 +646,12 @@ mod tests {
                     target_pad_id: "pad_a".to_owned(),
                 },
             },
-        };
+        }
+    }
 
-        let ctx = RunContext::from_scenario(&scenario).unwrap();
+    #[test]
+    fn run_simulation_emits_authoritative_logs() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
         let artifacts = run_simulation(&ctx, "idle", |_, _| Command::idle()).unwrap();
 
         assert!(!artifacts.actions.is_empty());
@@ -528,5 +660,30 @@ mod tests {
             artifacts.manifest.end_reason,
             EndReason::Crash | EndReason::MaxTimeReached
         ));
+    }
+
+    #[test]
+    fn replay_simulation_reproduces_manifest_and_events() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        let original = run_simulation(&ctx, "scripted", |_, observation| {
+            if observation.height_above_target_m > 10.0 {
+                Command {
+                    throttle_frac: 0.2,
+                    target_attitude_rad: 0.0,
+                }
+            } else {
+                Command {
+                    throttle_frac: 0.5,
+                    target_attitude_rad: 0.0,
+                }
+            }
+        })
+        .unwrap();
+
+        let replayed = replay_simulation(&ctx, "scripted", &original.actions).unwrap();
+
+        assert_eq!(replayed.manifest, original.manifest);
+        assert_eq!(replayed.events, original.events);
+        assert_eq!(replayed.actions, original.actions);
     }
 }

@@ -16,8 +16,8 @@
 
 ### Active implementation focus
 
-1. Validate and refine the baseline controller against the authored fixture.
-2. Tighten the action/event-first replay contract before adding richer reports.
+1. Tighten the action/event-first replay contract before adding richer reports.
+2. Start separating mission termination/evaluation from pure touchdown logic.
 3. Keep artifacts simple and authoritative:
    - run manifest
    - action log
@@ -57,8 +57,8 @@
 - Mission goals are still limited to landing-on-pad scenarios.
 - Contact/landing logic is intentionally simple and will need refinement before
   richer terrain or transfer-style evaluations.
-- The replay path still depends on optional sampled traces for convenience;
-  action/event-only reconstruction is not implemented yet.
+- Replay verification is being added now, but mission/eval logic still lives
+  inside the simulation loop instead of a cleaner termination/evaluation layer.
 
 #### Checkpoint 2: baseline runner path
 
@@ -85,3 +85,15 @@
 - The landing gate uses a small touchdown settle band instead of requiring both
   points to hit in the exact same fixed step. That keeps the first discrete-time
   loop from misclassifying an otherwise safe touchdown as a crash.
+
+#### In progress: replay contract hardening
+
+- Add a replay path that consumes logged controller actions instead of a live
+  controller callback.
+- Write artifact bundles as separate files:
+  - `manifest.json`
+  - `actions.json`
+  - `events.json`
+  - `samples.json`
+- Verify replay by comparing the reproduced manifest and event stream against
+  the original bundle.
