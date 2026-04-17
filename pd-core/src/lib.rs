@@ -1,8 +1,10 @@
+pub mod eval;
 pub mod math;
 pub mod model;
 pub mod sim;
 pub mod terrain;
 
+pub use eval::ContactClassification;
 pub use math::Vec2;
 pub use model::{
     ActionLogEntry, Command, EndReason, EvaluationGoal, EventKind, EventRecord, LandingPadSpec,

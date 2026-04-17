@@ -86,14 +86,26 @@
   points to hit in the exact same fixed step. That keeps the first discrete-time
   loop from misclassifying an otherwise safe touchdown as a crash.
 
-#### In progress: replay contract hardening
+#### Checkpoint 3: replay contract hardening
 
-- Add a replay path that consumes logged controller actions instead of a live
+- Added a replay path that consumes logged controller actions instead of a live
   controller callback.
-- Write artifact bundles as separate files:
+- Added artifact bundle output as separate files:
   - `manifest.json`
   - `actions.json`
   - `events.json`
   - `samples.json`
-- Verify replay by comparing the reproduced manifest and event stream against
+- Verified replay by comparing the reproduced manifest and event stream against
   the original bundle.
+
+#### Checkpoint 4: mission evaluation split
+
+- Added a dedicated `pd-core` evaluation module so contact detection and mission
+  outcome mapping are no longer the same function.
+- The simulation loop now:
+  - detects contact classification from physics state
+  - routes that classification through mission evaluation
+  - keeps timeout handling in the same outcome layer
+- This does not add new mission types yet, but it makes the next step
+  clearer: early-termination goals should plug into the evaluation side rather
+  than into low-level contact code.

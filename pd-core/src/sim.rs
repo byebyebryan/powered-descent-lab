@@ -1,4 +1,5 @@
 use crate::{
+    eval::{ContactClassification, apply_contact_classification, apply_max_time},
     math::Vec2,
     model::{
         ActionLogEntry, Command, EndReason, EventKind, EventRecord, MissionOutcome, Observation,
@@ -117,29 +118,14 @@ impl SimulationState {
         self.physics_step += 1;
         self.sim_time_s = self.physics_step as f64 / f64::from(ctx.sim.physics_hz);
 
-        let contact_events = self.classify_contacts(ctx);
+        let contact_events =
+            apply_contact_classification(ctx, self, self.detect_contact_classification(ctx));
         if self.is_terminal() {
             return contact_events;
         }
 
         if self.sim_time_s >= ctx.sim.max_time_s {
-            self.physical_outcome = PhysicalOutcome::TimedOut;
-            self.mission_outcome = MissionOutcome::FailedTimeout;
-            self.end_reason = EndReason::MaxTimeReached;
-            return vec![
-                EventRecord {
-                    sim_time_s: self.sim_time_s,
-                    physics_step: self.physics_step,
-                    kind: EventKind::MaxTimeReached,
-                    message: "max_time_reached".to_owned(),
-                },
-                EventRecord {
-                    sim_time_s: self.sim_time_s,
-                    physics_step: self.physics_step,
-                    kind: EventKind::MissionEnded,
-                    message: "max_time_reached".to_owned(),
-                },
-            ];
+            return apply_max_time(self);
         }
 
         contact_events
@@ -179,7 +165,7 @@ impl SimulationState {
         self.position_m += self.velocity_mps * dt_s;
     }
 
-    fn classify_contacts(&mut self, ctx: &RunContext) -> Vec<EventRecord> {
+    fn detect_contact_classification(&self, ctx: &RunContext) -> ContactClassification {
         let touchdown_points = self.touchdown_points_world(ctx);
         let touchdown_clearances_m =
             touchdown_points.map(|point| point.y - ctx.world.terrain.sample_height(point.x));
@@ -194,7 +180,7 @@ impl SimulationState {
         let min_hull_clearance_m = self.min_hull_clearance_m(ctx);
 
         if min_touchdown_clearance_m > 0.0 && min_hull_clearance_m > 0.0 {
-            return Vec::new();
+            return ContactClassification::None;
         }
 
         let normal_speed_mps = (-self.velocity_mps.y).max(0.0);
@@ -222,65 +208,10 @@ impl SimulationState {
             && angular_rate_radps <= ctx.vehicle.safe_touchdown_angular_rate_radps;
 
         if stable_touchdown && safe_touchdown {
-            self.velocity_mps = Vec2::new(0.0, 0.0);
-            self.angular_rate_radps = 0.0;
-
-            if on_target {
-                self.physical_outcome = PhysicalOutcome::LandedOnTarget;
-                self.mission_outcome = MissionOutcome::Success;
-                self.end_reason = EndReason::TouchdownOnTarget;
-                return vec![
-                    EventRecord {
-                        sim_time_s: self.sim_time_s,
-                        physics_step: self.physics_step,
-                        kind: EventKind::TouchdownOnTarget,
-                        message: "touchdown_on_target".to_owned(),
-                    },
-                    EventRecord {
-                        sim_time_s: self.sim_time_s,
-                        physics_step: self.physics_step,
-                        kind: EventKind::MissionEnded,
-                        message: "touchdown_on_target".to_owned(),
-                    },
-                ];
-            }
-
-            self.physical_outcome = PhysicalOutcome::LandedOffTarget;
-            self.mission_outcome = MissionOutcome::FailedOffTarget;
-            self.end_reason = EndReason::TouchdownOffTarget;
-            return vec![
-                EventRecord {
-                    sim_time_s: self.sim_time_s,
-                    physics_step: self.physics_step,
-                    kind: EventKind::TouchdownOffTarget,
-                    message: "touchdown_off_target".to_owned(),
-                },
-                EventRecord {
-                    sim_time_s: self.sim_time_s,
-                    physics_step: self.physics_step,
-                    kind: EventKind::MissionEnded,
-                    message: "touchdown_off_target".to_owned(),
-                },
-            ];
+            return ContactClassification::StableTouchdown { on_target };
         }
 
-        self.physical_outcome = PhysicalOutcome::Crashed;
-        self.mission_outcome = MissionOutcome::FailedCrash;
-        self.end_reason = EndReason::Crash;
-        vec![
-            EventRecord {
-                sim_time_s: self.sim_time_s,
-                physics_step: self.physics_step,
-                kind: EventKind::Crash,
-                message: "crash".to_owned(),
-            },
-            EventRecord {
-                sim_time_s: self.sim_time_s,
-                physics_step: self.physics_step,
-                kind: EventKind::MissionEnded,
-                message: "crash".to_owned(),
-            },
-        ]
+        ContactClassification::Crash
     }
 
     fn touchdown_points_world(&self, ctx: &RunContext) -> [Vec2; 2] {
