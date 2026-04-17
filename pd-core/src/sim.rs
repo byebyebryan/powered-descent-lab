@@ -181,13 +181,19 @@ impl SimulationState {
 
     fn classify_contacts(&mut self, ctx: &RunContext) -> Vec<EventRecord> {
         let touchdown_points = self.touchdown_points_world(ctx);
-        let touchdown_contact_count = touchdown_points
+        let touchdown_clearances_m =
+            touchdown_points.map(|point| point.y - ctx.world.terrain.sample_height(point.x));
+        let min_touchdown_clearance_m = touchdown_clearances_m
             .iter()
-            .filter(|point| point.y <= ctx.world.terrain.sample_height(point.x))
-            .count();
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+        let max_touchdown_clearance_m = touchdown_clearances_m
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
         let min_hull_clearance_m = self.min_hull_clearance_m(ctx);
 
-        if touchdown_contact_count == 0 && min_hull_clearance_m > 0.0 {
+        if min_touchdown_clearance_m > 0.0 && min_hull_clearance_m > 0.0 {
             return Vec::new();
         }
 
@@ -207,7 +213,9 @@ impl SimulationState {
         let pad_x_min = ctx.target_pad.center_x_m - ctx.target_pad.half_width_m();
         let pad_x_max = ctx.target_pad.center_x_m + ctx.target_pad.half_width_m();
         let on_target = touchdown_x_min >= pad_x_min && touchdown_x_max <= pad_x_max;
-        let stable_touchdown = touchdown_contact_count == 2 && min_hull_clearance_m >= -0.05;
+        let stable_touchdown = min_touchdown_clearance_m <= 0.05
+            && max_touchdown_clearance_m <= 0.15
+            && min_hull_clearance_m >= 0.0;
         let safe_touchdown = normal_speed_mps <= ctx.vehicle.safe_touchdown_normal_speed_mps
             && tangential_speed_mps <= ctx.vehicle.safe_touchdown_tangential_speed_mps
             && attitude_error_rad <= ctx.vehicle.safe_touchdown_attitude_error_rad
@@ -484,8 +492,8 @@ mod tests {
                 geometry: VehicleGeometry {
                     hull_width_m: 4.0,
                     hull_height_m: 6.0,
-                    touchdown_half_span_m: 1.5,
-                    touchdown_base_offset_m: 2.5,
+                    touchdown_half_span_m: 2.0,
+                    touchdown_base_offset_m: 3.2,
                 },
                 dry_mass_kg: 700.0,
                 initial_fuel_kg: 200.0,

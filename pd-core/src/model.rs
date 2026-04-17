@@ -133,12 +133,6 @@ impl VehicleGeometry {
         if !self.touchdown_base_offset_m.is_finite() || self.touchdown_base_offset_m <= 0.0 {
             return Err("touchdown_base_offset_m must be positive".to_owned());
         }
-        if self.touchdown_half_span_m > self.hull_width_m * 0.5 {
-            return Err("touchdown_half_span_m cannot exceed half hull width".to_owned());
-        }
-        if self.touchdown_base_offset_m > self.hull_height_m * 0.5 {
-            return Err("touchdown_base_offset_m cannot exceed half hull height".to_owned());
-        }
         Ok(())
     }
 }
