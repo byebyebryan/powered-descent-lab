@@ -89,6 +89,8 @@ fn run(args: RunArgs) -> Result<()> {
     let ctx = RunContext::from_scenario(&scenario)
         .map_err(anyhow::Error::msg)
         .context("failed to build run context from scenario")?;
+    let default_output_dir = (args.output.is_none() && args.output_dir.is_none())
+        .then(|| default_run_output_dir(&args.scenario, &controller_spec));
 
     let artifacts = run_controller_spec(&ctx, &controller_spec)
         .map_err(anyhow::Error::msg)
@@ -96,7 +98,9 @@ fn run(args: RunArgs) -> Result<()> {
 
     write_outputs(
         args.output.as_deref(),
-        args.output_dir.as_deref(),
+        args.output_dir
+            .as_deref()
+            .or(default_output_dir.as_deref()),
         Some(&scenario),
         Some(&controller_spec),
         &artifacts.run,
@@ -112,6 +116,8 @@ fn replay(args: ReplayArgs) -> Result<()> {
         Some(path) => load_scenario(path)?,
         None => bundle.scenario.clone(),
     };
+    let default_output_dir =
+        (args.output.is_none() && args.output_dir.is_none()).then(|| default_replay_output_dir(&args.bundle_dir));
     let ctx = RunContext::from_scenario(&scenario)
         .map_err(anyhow::Error::msg)
         .context("failed to build run context from scenario")?;
@@ -129,7 +135,9 @@ fn replay(args: ReplayArgs) -> Result<()> {
 
     write_outputs(
         args.output.as_deref(),
-        args.output_dir.as_deref(),
+        args.output_dir
+            .as_deref()
+            .or(default_output_dir.as_deref()),
         Some(&scenario),
         bundle.controller_spec.as_ref(),
         &replayed,
@@ -336,4 +344,45 @@ fn event_streams_match(lhs: &[EventRecord], rhs: &[EventRecord]) -> bool {
 
 fn approx_eq(lhs: f64, rhs: f64) -> bool {
     (lhs - rhs).abs() <= 1e-9
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pd-cli crate should live under repo root")
+        .to_path_buf()
+}
+
+fn default_run_output_dir(scenario_path: &Path, controller_spec: &ControllerSpec) -> PathBuf {
+    repo_root()
+        .join("outputs")
+        .join("runs")
+        .join(format!(
+            "{}__{}",
+            file_stem_or_fallback(scenario_path, "run"),
+            controller_spec.id()
+        ))
+}
+
+fn default_replay_output_dir(bundle_dir: &Path) -> PathBuf {
+    repo_root()
+        .join("outputs")
+        .join("replays")
+        .join(file_name_or_fallback(bundle_dir, "replay"))
+}
+
+fn file_stem_or_fallback(path: &Path, fallback: &str) -> String {
+    path.file_stem()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(fallback)
+        .to_owned()
+}
+
+fn file_name_or_fallback(path: &Path, fallback: &str) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(fallback)
+        .to_owned()
 }

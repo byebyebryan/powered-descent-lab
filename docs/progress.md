@@ -29,6 +29,8 @@
   - report/debug markers
 - `pd-cli` now writes controller config and controller-update traces into
   artifact bundles and can generate a first static single-run inspection report.
+- CLI defaults now write repo-local artifacts under `outputs/` so generated
+  bundles and reports are easier to find during iteration.
 
 ### Active implementation focus
 
@@ -208,3 +210,12 @@
   - basic time-series charts for altitude, velocity, throttle, and attitude
 - Added `pd-cli report --bundle-dir ...` so report generation can be rerun over
   captured bundles.
+
+#### Checkpoint 10: repo-local output defaults
+
+- `pd-cli run` now defaults to `outputs/runs/<scenario>__<controller>/` when no
+  output path is specified.
+- `pd-cli replay` now defaults to `outputs/replays/<bundle>/` when no output
+  path is specified.
+- `pd-eval run-pack` now defaults to `outputs/eval/<pack>/`.
+- `/outputs` is ignored in git so generated artifacts stay local.

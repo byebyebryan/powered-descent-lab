@@ -31,10 +31,34 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::RunPack(args) => {
-            let report = run_pack_file(&args.pack, args.output_dir.as_deref())?;
+            let default_output_dir = args
+                .output_dir
+                .clone()
+                .unwrap_or_else(|| default_eval_output_dir(&args.pack));
+            let report = run_pack_file(&args.pack, Some(default_output_dir.as_path()))?;
             println!("{}", serde_json::to_string_pretty(&report.summary)?);
         }
     }
 
     Ok(())
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("pd-eval crate should live under repo root")
+        .to_path_buf()
+}
+
+fn default_eval_output_dir(pack_path: &std::path::Path) -> PathBuf {
+    repo_root()
+        .join("outputs")
+        .join("eval")
+        .join(
+            pack_path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .filter(|name| !name.is_empty())
+                .unwrap_or("pack"),
+        )
 }
