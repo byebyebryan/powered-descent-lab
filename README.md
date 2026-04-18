@@ -135,12 +135,27 @@ Example:
 cargo run -p pd-eval -- run-pack fixtures/packs/terminal_sweep_suite.json --workers 4
 ```
 
+Compare a candidate batch against a recorded baseline:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_sweep_suite.json --workers 4 --baseline-dir outputs/eval/terminal_sweep_suite
+```
+
 That writes:
 
 - `pack.json`
 - `resolved_runs.json`
 - `summary.json`
+- `report.html`
+- optional `compare.json`
 - per-run bundles under `outputs/eval/<pack>/runs/`
 
 Batch output keeps stable semantic run directories for inspection while also
 recording stable digests for the resolved pack and resolved run set.
+
+The batch report is intentionally compare-friendly:
+
+- candidate summary and grouped family/entry tables
+- direct links back to failed and representative run bundles
+- optional candidate-vs-baseline deltas over shared run IDs
+- regression, recovery, and outcome-change lists

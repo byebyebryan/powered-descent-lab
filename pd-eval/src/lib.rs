@@ -12,6 +12,8 @@ use pd_core::{MissionOutcome, RunContext, RunManifest, ScenarioSpec};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
+pub mod report;
+
 #[cfg(unix)]
 use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
@@ -204,6 +206,96 @@ pub struct BatchReport {
     pub summary: BatchSummary,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchCompareBasis {
+    pub mode: String,
+    pub shared_runs: usize,
+    pub candidate_only_runs: usize,
+    pub baseline_only_runs: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchSummaryDelta {
+    pub candidate_success_rate: f64,
+    pub baseline_success_rate: f64,
+    pub success_rate_delta: f64,
+    pub candidate_success_runs: usize,
+    pub baseline_success_runs: usize,
+    pub success_runs_delta: i64,
+    pub candidate_failure_runs: usize,
+    pub baseline_failure_runs: usize,
+    pub failure_runs_delta: i64,
+    pub candidate_mean_sim_time_s: f64,
+    pub baseline_mean_sim_time_s: f64,
+    pub mean_sim_time_delta_s: f64,
+    pub candidate_max_sim_time_s: f64,
+    pub baseline_max_sim_time_s: f64,
+    pub max_sim_time_delta_s: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchGroupComparison {
+    pub key: String,
+    pub candidate_total_runs: Option<usize>,
+    pub baseline_total_runs: Option<usize>,
+    pub candidate_success_rate: Option<f64>,
+    pub baseline_success_rate: Option<f64>,
+    pub success_rate_delta: Option<f64>,
+    pub candidate_failure_runs: Option<usize>,
+    pub baseline_failure_runs: Option<usize>,
+    pub failure_runs_delta: Option<i64>,
+    pub candidate_mean_sim_time_s: Option<f64>,
+    pub baseline_mean_sim_time_s: Option<f64>,
+    pub mean_sim_time_delta_s: Option<f64>,
+    pub candidate_failed_seeds: Vec<u64>,
+    pub baseline_failed_seeds: Vec<u64>,
+    pub sample_run_ids: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchRunChangeKind {
+    NewFailure,
+    Recovered,
+    OutcomeChanged,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchRunComparison {
+    pub run_id: String,
+    pub entry_id: String,
+    pub family_id: Option<String>,
+    pub change_kind: BatchRunChangeKind,
+    pub candidate_seed: u64,
+    pub baseline_seed: u64,
+    pub candidate_mission_outcome: String,
+    pub baseline_mission_outcome: String,
+    pub candidate_end_reason: String,
+    pub baseline_end_reason: String,
+    pub candidate_sim_time_s: f64,
+    pub baseline_sim_time_s: f64,
+    pub sim_time_delta_s: f64,
+    pub candidate_bundle_dir: Option<String>,
+    pub baseline_bundle_dir: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchComparison {
+    pub candidate_pack_id: String,
+    pub candidate_pack_name: String,
+    pub baseline_pack_id: String,
+    pub baseline_pack_name: String,
+    pub basis: BatchCompareBasis,
+    pub summary: BatchSummaryDelta,
+    pub by_entry: Vec<BatchGroupComparison>,
+    pub by_family: Vec<BatchGroupComparison>,
+    pub regressions: Vec<BatchRunComparison>,
+    pub improvements: Vec<BatchRunComparison>,
+    pub outcome_changes: Vec<BatchRunComparison>,
+    pub candidate_only: Vec<BatchRunPointer>,
+    pub baseline_only: Vec<BatchRunPointer>,
+}
+
 #[derive(Clone, Debug)]
 struct ResolvedBatchRun {
     descriptor: ResolvedRunDescriptor,
@@ -221,6 +313,94 @@ pub fn load_pack(path: &Path) -> Result<ScenarioPackSpec> {
 
 pub fn run_pack_file(path: &Path, output_dir: Option<&Path>) -> Result<BatchReport> {
     run_pack_file_with_workers(path, output_dir, 1)
+}
+
+pub fn load_batch_report(path: &Path) -> Result<BatchReport> {
+    let summary_path = if path.is_dir() {
+        path.join("summary.json")
+    } else {
+        path.to_path_buf()
+    };
+    let raw = fs::read_to_string(&summary_path)
+        .with_context(|| format!("failed to read batch report {}", summary_path.display()))?;
+    serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse batch report {}", summary_path.display()))
+}
+
+pub fn compare_batch_reports(candidate: &BatchReport, baseline: &BatchReport) -> BatchComparison {
+    let candidate_records = candidate
+        .records
+        .iter()
+        .map(|record| (record.resolved.run_id.clone(), record))
+        .collect::<BTreeMap<_, _>>();
+    let baseline_records = baseline
+        .records
+        .iter()
+        .map(|record| (record.resolved.run_id.clone(), record))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut shared_run_ids = Vec::new();
+    let mut candidate_only = Vec::new();
+    for (run_id, record) in &candidate_records {
+        if baseline_records.contains_key(run_id) {
+            shared_run_ids.push(run_id.clone());
+        } else {
+            candidate_only.push(run_pointer(record));
+        }
+    }
+
+    let mut baseline_only = Vec::new();
+    for (run_id, record) in &baseline_records {
+        if !candidate_records.contains_key(run_id) {
+            baseline_only.push(run_pointer(record));
+        }
+    }
+
+    let mut regressions = Vec::new();
+    let mut improvements = Vec::new();
+    let mut outcome_changes = Vec::new();
+    for run_id in shared_run_ids.iter().cloned() {
+        let candidate_record = candidate_records
+            .get(&run_id)
+            .expect("shared run ids should exist in candidate map");
+        let baseline_record = baseline_records
+            .get(&run_id)
+            .expect("shared run ids should exist in baseline map");
+        if let Some(comparison) = compare_run_pair(candidate_record, baseline_record) {
+            match comparison.change_kind {
+                BatchRunChangeKind::NewFailure => regressions.push(comparison),
+                BatchRunChangeKind::Recovered => improvements.push(comparison),
+                BatchRunChangeKind::OutcomeChanged => outcome_changes.push(comparison),
+            }
+        }
+    }
+
+    regressions.sort_by(run_comparison_sort_key);
+    improvements.sort_by(run_comparison_sort_key);
+    outcome_changes.sort_by(run_comparison_sort_key);
+    candidate_only.sort_by(run_pointer_sort_key);
+    baseline_only.sort_by(run_pointer_sort_key);
+
+    BatchComparison {
+        candidate_pack_id: candidate.pack_id.clone(),
+        candidate_pack_name: candidate.pack_name.clone(),
+        baseline_pack_id: baseline.pack_id.clone(),
+        baseline_pack_name: baseline.pack_name.clone(),
+        basis: BatchCompareBasis {
+            mode: "run_id".to_owned(),
+            shared_runs: shared_run_ids.len(),
+            candidate_only_runs: candidate_only.len(),
+            baseline_only_runs: baseline_only.len(),
+        },
+        summary: compare_summary_delta(&candidate.summary, &baseline.summary),
+        by_entry: compare_group_sets(&candidate.summary.by_entry, &baseline.summary.by_entry),
+        by_family: compare_group_sets(&candidate.summary.by_family, &baseline.summary.by_family),
+        regressions,
+        improvements,
+        outcome_changes,
+        candidate_only,
+        baseline_only,
+    }
 }
 
 pub fn run_pack_file_with_workers(
@@ -895,6 +1075,146 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
     }
 }
 
+fn compare_summary_delta(candidate: &BatchSummary, baseline: &BatchSummary) -> BatchSummaryDelta {
+    BatchSummaryDelta {
+        candidate_success_rate: success_rate(candidate.success_runs, candidate.total_runs),
+        baseline_success_rate: success_rate(baseline.success_runs, baseline.total_runs),
+        success_rate_delta: success_rate(candidate.success_runs, candidate.total_runs)
+            - success_rate(baseline.success_runs, baseline.total_runs),
+        candidate_success_runs: candidate.success_runs,
+        baseline_success_runs: baseline.success_runs,
+        success_runs_delta: candidate.success_runs as i64 - baseline.success_runs as i64,
+        candidate_failure_runs: candidate.failure_runs,
+        baseline_failure_runs: baseline.failure_runs,
+        failure_runs_delta: candidate.failure_runs as i64 - baseline.failure_runs as i64,
+        candidate_mean_sim_time_s: candidate.mean_sim_time_s,
+        baseline_mean_sim_time_s: baseline.mean_sim_time_s,
+        mean_sim_time_delta_s: candidate.mean_sim_time_s - baseline.mean_sim_time_s,
+        candidate_max_sim_time_s: candidate.max_sim_time_s,
+        baseline_max_sim_time_s: baseline.max_sim_time_s,
+        max_sim_time_delta_s: candidate.max_sim_time_s - baseline.max_sim_time_s,
+    }
+}
+
+fn compare_group_sets(
+    candidate_groups: &[BatchGroupSummary],
+    baseline_groups: &[BatchGroupSummary],
+) -> Vec<BatchGroupComparison> {
+    let candidate_map = candidate_groups
+        .iter()
+        .map(|group| (group.key.clone(), group))
+        .collect::<BTreeMap<_, _>>();
+    let baseline_map = baseline_groups
+        .iter()
+        .map(|group| (group.key.clone(), group))
+        .collect::<BTreeMap<_, _>>();
+    let keys = candidate_map
+        .keys()
+        .chain(baseline_map.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    keys.into_iter()
+        .map(|key| {
+            let candidate = candidate_map.get(&key).copied();
+            let baseline = baseline_map.get(&key).copied();
+            BatchGroupComparison {
+                key,
+                candidate_total_runs: candidate.map(|group| group.total_runs),
+                baseline_total_runs: baseline.map(|group| group.total_runs),
+                candidate_success_rate: candidate
+                    .map(|group| success_rate(group.success_runs, group.total_runs)),
+                baseline_success_rate: baseline
+                    .map(|group| success_rate(group.success_runs, group.total_runs)),
+                success_rate_delta: match (candidate, baseline) {
+                    (Some(candidate), Some(baseline)) => Some(
+                        success_rate(candidate.success_runs, candidate.total_runs)
+                            - success_rate(baseline.success_runs, baseline.total_runs),
+                    ),
+                    _ => None,
+                },
+                candidate_failure_runs: candidate.map(|group| group.failure_runs),
+                baseline_failure_runs: baseline.map(|group| group.failure_runs),
+                failure_runs_delta: match (candidate, baseline) {
+                    (Some(candidate), Some(baseline)) => {
+                        Some(candidate.failure_runs as i64 - baseline.failure_runs as i64)
+                    }
+                    _ => None,
+                },
+                candidate_mean_sim_time_s: candidate.map(|group| group.mean_sim_time_s),
+                baseline_mean_sim_time_s: baseline.map(|group| group.mean_sim_time_s),
+                mean_sim_time_delta_s: match (candidate, baseline) {
+                    (Some(candidate), Some(baseline)) => {
+                        Some(candidate.mean_sim_time_s - baseline.mean_sim_time_s)
+                    }
+                    _ => None,
+                },
+                candidate_failed_seeds: candidate
+                    .map(|group| group.failed_seeds.clone())
+                    .unwrap_or_default(),
+                baseline_failed_seeds: baseline
+                    .map(|group| group.failed_seeds.clone())
+                    .unwrap_or_default(),
+                sample_run_ids: candidate
+                    .map(|group| group.sample_run_ids.clone())
+                    .or_else(|| baseline.map(|group| group.sample_run_ids.clone()))
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
+fn compare_run_pair(
+    candidate_record: &BatchRunRecord,
+    baseline_record: &BatchRunRecord,
+) -> Option<BatchRunComparison> {
+    let candidate_success = matches!(
+        candidate_record.manifest.mission_outcome,
+        MissionOutcome::Success
+    );
+    let baseline_success = matches!(
+        baseline_record.manifest.mission_outcome,
+        MissionOutcome::Success
+    );
+    let candidate_mission_outcome = enum_label(&candidate_record.manifest.mission_outcome);
+    let baseline_mission_outcome = enum_label(&baseline_record.manifest.mission_outcome);
+    let candidate_end_reason = enum_label(&candidate_record.manifest.end_reason);
+    let baseline_end_reason = enum_label(&baseline_record.manifest.end_reason);
+    let sim_time_delta_s =
+        candidate_record.manifest.sim_time_s - baseline_record.manifest.sim_time_s;
+
+    let change_kind = if baseline_success && !candidate_success {
+        BatchRunChangeKind::NewFailure
+    } else if !baseline_success && candidate_success {
+        BatchRunChangeKind::Recovered
+    } else if candidate_mission_outcome != baseline_mission_outcome
+        || candidate_end_reason != baseline_end_reason
+        || sim_time_delta_s.abs() > 1e-9
+    {
+        BatchRunChangeKind::OutcomeChanged
+    } else {
+        return None;
+    };
+
+    Some(BatchRunComparison {
+        run_id: candidate_record.resolved.run_id.clone(),
+        entry_id: candidate_record.resolved.entry_id.clone(),
+        family_id: candidate_record.resolved.family_id.clone(),
+        change_kind,
+        candidate_seed: candidate_record.manifest.scenario_seed,
+        baseline_seed: baseline_record.manifest.scenario_seed,
+        candidate_mission_outcome,
+        baseline_mission_outcome,
+        candidate_end_reason,
+        baseline_end_reason,
+        candidate_sim_time_s: candidate_record.manifest.sim_time_s,
+        baseline_sim_time_s: baseline_record.manifest.sim_time_s,
+        sim_time_delta_s,
+        candidate_bundle_dir: candidate_record.bundle_dir.clone(),
+        baseline_bundle_dir: baseline_record.bundle_dir.clone(),
+    })
+}
+
 fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary {
     let total_runs = records.len();
     let success_runs = records
@@ -959,6 +1279,31 @@ fn run_pointer(record: &BatchRunRecord) -> BatchRunPointer {
         sim_time_s: record.manifest.sim_time_s,
         bundle_dir: record.bundle_dir.clone(),
     }
+}
+
+fn success_rate(success_runs: usize, total_runs: usize) -> f64 {
+    if total_runs == 0 {
+        0.0
+    } else {
+        success_runs as f64 / total_runs as f64
+    }
+}
+
+fn run_pointer_sort_key(lhs: &BatchRunPointer, rhs: &BatchRunPointer) -> std::cmp::Ordering {
+    lhs.entry_id
+        .cmp(&rhs.entry_id)
+        .then(lhs.scenario_seed.cmp(&rhs.scenario_seed))
+        .then(lhs.run_id.cmp(&rhs.run_id))
+}
+
+fn run_comparison_sort_key(
+    lhs: &BatchRunComparison,
+    rhs: &BatchRunComparison,
+) -> std::cmp::Ordering {
+    lhs.entry_id
+        .cmp(&rhs.entry_id)
+        .then(lhs.candidate_seed.cmp(&rhs.candidate_seed))
+        .then(lhs.run_id.cmp(&rhs.run_id))
 }
 
 fn load_scenario(path: &Path) -> Result<ScenarioSpec> {
@@ -1262,5 +1607,50 @@ mod tests {
             record.resolved.source_kind == ResolvedRunSourceKind::FamilySweep
                 && !record.resolved.resolved_parameters.is_empty()
         }));
+    }
+
+    #[test]
+    fn compare_reports_flags_regressions_on_shared_runs() {
+        let base_dir = fixtures_root();
+        let baseline_pack = ScenarioPackSpec {
+            id: "compare_baseline".to_owned(),
+            name: "Compare baseline".to_owned(),
+            description: "compare baseline".to_owned(),
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "landing_case".to_owned(),
+                scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                controller: "baseline".to_owned(),
+                controller_config: None,
+            })],
+        };
+        let candidate_pack = ScenarioPackSpec {
+            id: "compare_candidate".to_owned(),
+            name: "Compare candidate".to_owned(),
+            description: "compare candidate".to_owned(),
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "landing_case".to_owned(),
+                scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                controller: "idle".to_owned(),
+                controller_config: None,
+            })],
+        };
+
+        let baseline = run_pack(&baseline_pack, &base_dir, None).unwrap();
+        let candidate = run_pack(&candidate_pack, &base_dir, None).unwrap();
+        let comparison = compare_batch_reports(&candidate, &baseline);
+
+        assert_eq!(comparison.basis.shared_runs, 1);
+        assert_eq!(comparison.regressions.len(), 1);
+        assert!(comparison.improvements.is_empty());
+        assert_eq!(comparison.summary.failure_runs_delta, 1);
+        assert_eq!(comparison.regressions[0].run_id, "landing_case");
+        assert_eq!(
+            comparison.regressions[0].baseline_mission_outcome,
+            "success"
+        );
+        assert_eq!(
+            comparison.regressions[0].candidate_mission_outcome,
+            "failed_crash"
+        );
     }
 }

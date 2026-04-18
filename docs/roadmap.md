@@ -130,10 +130,12 @@ Status:
   - native multithreaded execution in `pd-eval`
   - richer batch summaries grouped by entry and family, including failed seeds
     and slowest runs
+  - a first static batch report page
+  - first-class candidate-vs-baseline comparison for batch outputs
 - still missing:
   - stronger comparison/regression reporting
-  - polished batch-level report UX
   - a real digest-backed compare/cache workflow over the new batch identities
+  - polished batch-level report UX
 
 ### Phase 3: Transfer guidance
 
@@ -239,6 +241,9 @@ Each case should have:
 
 The point is not perfect numeric parity. The point is to know whether the new
 lab matches the intended behavior envelope closely enough to trust iteration.
+
+Baseline comparison should be treated as a first-class reporting mode, not only
+as a post-hoc analysis utility.
 
 ## 5.1 Coverage and seeds
 

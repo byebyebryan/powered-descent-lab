@@ -302,6 +302,7 @@ Likely responsibilities:
 - summary report generation
 - trace and replay inspection pages
 - single-run trajectory and state inspection
+- batch summary and candidate-vs-baseline compare pages
 - lightweight interaction over precomputed run data
 - trajectory scrubbing, hover, or drag-based state inspection
 
@@ -317,6 +318,7 @@ questions without reading raw JSON:
 - where the vehicle flew relative to terrain and target
 - how altitude, clearance, velocity, attitude, and throttle evolved
 - where discrete events and controller phase/status changes happened
+- how a candidate batch changed relative to a known baseline over shared runs
 
 ### 5.6 Telemetry and reporting stack
 

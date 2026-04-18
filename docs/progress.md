@@ -275,6 +275,9 @@
   - failed seeds
   - slowest runs
   - stable digests for the pack spec and resolved run set
+- `pd-eval` now emits a first static batch `report.html`, and batch comparison
+  against a baseline directory is now a first-class workflow rather than only a
+  future design note.
 
 #### Checkpoint 13: report server script and artifact-key review
 
@@ -331,11 +334,39 @@
   - `outputs/eval/latest/`
   - `outputs/eval/<pack>/runs/latest/`
 
+#### Checkpoint 15: first batch report and baseline compare
+
+- Added a first static batch-report page at:
+  - `outputs/eval/<pack>/report.html`
+- Added `pd-eval report <batch-dir>` so batch pages can be regenerated from an
+  existing output directory.
+- Added optional baseline comparison through `--baseline-dir` on:
+  - `pd-eval run-pack`
+  - `pd-eval report`
+- Added `compare.json` as a first-class batch artifact when a baseline is
+  supplied.
+- The compare model currently uses shared `run_id` matching and records:
+  - compare basis (`shared`, `candidate only`, `baseline only`)
+  - global candidate-vs-baseline deltas
+  - grouped deltas by entry and family
+  - regression, recovery, and outcome-change run lists
+- Borrowed the useful part of the `pylander` batch-report approach:
+  - comparative reports matter more than standalone summaries
+  - grouped scenario views and representative run links are more useful than a
+    giant flat table
+- Kept the first `pd-lab` batch report simpler than the late `pylander` bundle
+  pages:
+  - dense HTML tables and cards first
+  - no heavy chart layer yet
+  - drill-down links currently target bundle artifacts unless a per-run report
+    already exists
+
 ### Active implementation focus
 
-1. Turn the richer batch JSON into a more usable inspection surface:
-   - lightweight batch HTML/report pages
-   - direct links to representative failed and slow runs
+1. Tighten the first batch-report pass:
+   - improve information density and compare readability
+   - decide how much charting is worth adding over the current table-first view
+   - make drill-down links better than raw bundle JSON where useful
 2. Keep expanding the scenario corpus intentionally:
    - more curated family definitions
    - more off-nominal terminal cases borrowed conceptually from `pylander`
@@ -345,12 +376,18 @@
 
 ### Known limitations
 
-- `pd-eval` now supports seeded expansion and native parallel execution, but it
-  still only emits JSON-first batch summaries rather than a dedicated batch
-  report page.
+- `pd-eval` now has a real batch report page, but the current version is still
+  table-first and intentionally minimal compared with the older `pylander`
+  report stack.
 - Scenario-family perturbations currently cover only a small set of numeric
   fields; terrain mutation and richer family grammars are still future work.
 - Batch identity digests exist, but there is not yet a cache or compare layer
   that actively uses them.
 - Replay remains authoritative on scenario plus action/event logs; controller
   telemetry and sampled traces are still carried-through inspection data.
+- Batch compare currently matches runs by shared `run_id`. That is the right
+  first compare basis, but it is not yet a richer “same resolved scenario under
+  different candidate/controller configs” matcher.
+- `pd-eval` still does not generate polished per-run drill-down pages itself, so
+  batch links currently fall back to bundle artifacts when no `report.html`
+  exists for that run.

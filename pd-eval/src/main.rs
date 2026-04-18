@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use pd_eval::run_pack_file_with_workers;
+use pd_eval::{
+    load_batch_report, report::write_batch_report_artifacts, run_pack_file_with_workers,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "pd-eval")]
@@ -15,6 +17,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Commands {
     RunPack(RunPackArgs),
+    Report(ReportArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -25,8 +28,20 @@ struct RunPackArgs {
     #[arg(long, value_name = "OUTPUT_DIR")]
     output_dir: Option<PathBuf>,
 
+    #[arg(long, value_name = "BASELINE_DIR")]
+    baseline_dir: Option<PathBuf>,
+
     #[arg(long, value_name = "N")]
     workers: Option<usize>,
+}
+
+#[derive(Debug, Parser)]
+struct ReportArgs {
+    #[arg(value_name = "BATCH_DIR")]
+    dir: PathBuf,
+
+    #[arg(long, value_name = "BASELINE_DIR")]
+    baseline_dir: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -44,10 +59,42 @@ fn main() -> Result<()> {
                 Some(default_output_dir.as_path()),
                 requested_workers,
             )?;
+            let baseline_report = args
+                .baseline_dir
+                .as_deref()
+                .map(load_batch_report)
+                .transpose()?;
+            write_batch_report_artifacts(
+                default_output_dir.as_path(),
+                &report,
+                args.baseline_dir
+                    .as_deref()
+                    .zip(baseline_report.as_ref())
+                    .map(|(dir, report)| (dir, report)),
+            )?;
             println!("{}", serde_json::to_string_pretty(&report.summary)?);
         }
+        Commands::Report(args) => render_report(args)?,
     }
 
+    Ok(())
+}
+
+fn render_report(args: ReportArgs) -> Result<()> {
+    let report = load_batch_report(&args.dir)?;
+    let baseline_report = args
+        .baseline_dir
+        .as_deref()
+        .map(load_batch_report)
+        .transpose()?;
+    write_batch_report_artifacts(
+        &args.dir,
+        &report,
+        args.baseline_dir
+            .as_deref()
+            .zip(baseline_report.as_ref())
+            .map(|(dir, report)| (dir, report)),
+    )?;
     Ok(())
 }
 
