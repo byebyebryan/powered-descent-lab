@@ -125,11 +125,15 @@ Status:
   - controller config/spec plumbing for built-in controllers
   - controller-local status, phase, metrics, and markers
   - a first static single-run inspection report in `pd-cli`
+  - scenario-family expansion with explicit seeds and seed ranges
+  - deterministic perturbation resolution recorded per run
+  - native multithreaded execution in `pd-eval`
+  - richer batch summaries grouped by entry and family, including failed seeds
+    and slowest runs
 - still missing:
-  - seeded scenario expansion
-  - native parallel execution
   - stronger comparison/regression reporting
   - polished batch-level report UX
+  - a real digest-backed compare/cache workflow over the new batch identities
 
 ### Phase 3: Transfer guidance
 

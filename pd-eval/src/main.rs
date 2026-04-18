@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use pd_eval::run_pack_file;
+use pd_eval::run_pack_file_with_workers;
 
 #[derive(Debug, Parser)]
 #[command(name = "pd-eval")]
@@ -24,6 +24,9 @@ struct RunPackArgs {
 
     #[arg(long, value_name = "OUTPUT_DIR")]
     output_dir: Option<PathBuf>,
+
+    #[arg(long, value_name = "N")]
+    workers: Option<usize>,
 }
 
 fn main() -> Result<()> {
@@ -35,7 +38,12 @@ fn main() -> Result<()> {
                 .output_dir
                 .clone()
                 .unwrap_or_else(|| default_eval_output_dir(&args.pack));
-            let report = run_pack_file(&args.pack, Some(default_output_dir.as_path()))?;
+            let requested_workers = args.workers.unwrap_or_else(default_worker_count);
+            let report = run_pack_file_with_workers(
+                &args.pack,
+                Some(default_output_dir.as_path()),
+                requested_workers,
+            )?;
             println!("{}", serde_json::to_string_pretty(&report.summary)?);
         }
     }
@@ -51,14 +59,17 @@ fn repo_root() -> PathBuf {
 }
 
 fn default_eval_output_dir(pack_path: &std::path::Path) -> PathBuf {
-    repo_root()
-        .join("outputs")
-        .join("eval")
-        .join(
-            pack_path
-                .file_stem()
-                .and_then(|name| name.to_str())
-                .filter(|name| !name.is_empty())
-                .unwrap_or("pack"),
-        )
+    repo_root().join("outputs").join("eval").join(
+        pack_path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("pack"),
+    )
+}
+
+fn default_worker_count() -> usize {
+    std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get())
+        .unwrap_or(1)
 }

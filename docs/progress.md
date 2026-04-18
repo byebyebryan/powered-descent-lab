@@ -262,6 +262,19 @@
   - keep single-run report paths stable and semantic
   - reserve digests and commit/workspace keys for batch caches and compare
     workflows
+- `pd-eval` now expands scenario families into resolved seeded runs, records the
+  resolved perturbation parameters per run, and can execute those runs on a
+  native thread pool while preserving stable output ordering.
+- Batch outputs now include:
+  - `pack.json`
+  - `resolved_runs.json`
+  - `summary.json`
+  - per-run bundles under `outputs/eval/<pack>/runs/`
+- Batch summaries are now rich enough to surface:
+  - outcome counts by entry and family
+  - failed seeds
+  - slowest runs
+  - stable digests for the pack spec and resolved run set
 
 #### Checkpoint 13: report server script and artifact-key review
 
@@ -282,3 +295,62 @@
 - Added `latest` symlinks for report-producing `pd-cli` workflows so the most
   recently written single-run or replay report is reachable through a stable
   convenience path.
+
+#### Checkpoint 14: seeded sweeps and multithreaded batch eval
+
+- Extended `pd-eval` pack entries from only pinned scenarios to two concrete
+  forms:
+  - `scenario`
+  - `family`
+- Added scenario-family expansion with:
+  - explicit seed lists
+  - seed ranges
+  - deterministic numeric perturbations with optional quantization
+- Kept the ownership boundary intact:
+  - `pd-core` still runs one resolved concrete scenario
+  - `pd-eval` owns family expansion, seed policy, and multirun orchestration
+- Added stable resolved-run identity:
+  - semantic run IDs such as `terminal_baseline_sweep_seed_0003`
+  - recorded `family_id`, resolved seed, and resolved perturbation values
+- Added deterministic batch identity with separate digests for:
+  - the pack spec
+  - the resolved run set
+- Added native multithreaded execution in `pd-eval` via a bounded worker pool.
+- Preserved deterministic output order and verified that sequential and
+  multithreaded execution produce the same resolved-run digest.
+- Added richer batch summary output:
+  - mission and physical outcome counts
+  - end-reason counts
+  - grouped summaries by entry and by family
+  - failed-run pointers with seed and bundle location
+  - slowest-run pointers for quick inspection
+- Added a first seeded sweep fixture:
+  - `fixtures/packs/terminal_sweep_suite.json`
+- Added `latest` symlink maintenance for `pd-eval` output directories so the
+  most recent batch result is reachable through:
+  - `outputs/eval/latest/`
+  - `outputs/eval/<pack>/runs/latest/`
+
+### Active implementation focus
+
+1. Turn the richer batch JSON into a more usable inspection surface:
+   - lightweight batch HTML/report pages
+   - direct links to representative failed and slow runs
+2. Keep expanding the scenario corpus intentionally:
+   - more curated family definitions
+   - more off-nominal terminal cases borrowed conceptually from `pylander`
+3. Use the new sweep path to tighten controller iteration:
+   - failure-seed tracking
+   - baseline comparison and regression thresholds
+
+### Known limitations
+
+- `pd-eval` now supports seeded expansion and native parallel execution, but it
+  still only emits JSON-first batch summaries rather than a dedicated batch
+  report page.
+- Scenario-family perturbations currently cover only a small set of numeric
+  fields; terrain mutation and richer family grammars are still future work.
+- Batch identity digests exist, but there is not yet a cache or compare layer
+  that actively uses them.
+- Replay remains authoritative on scenario plus action/event logs; controller
+  telemetry and sampled traces are still carried-through inspection data.

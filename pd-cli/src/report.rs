@@ -25,12 +25,18 @@ pub fn write_run_report(
         controller_updates,
     );
     let html = report_template()
-        .replace("__REPORT_TITLE__", &escape_html(&format!("{} report", scenario.name)))
+        .replace(
+            "__REPORT_TITLE__",
+            &escape_html(&format!("{} report", scenario.name)),
+        )
         .replace("__PLOTLY_HREF__", PLOTLY_CDN_URL)
         .replace("__REPORT_DATA__", &json_html(&report_data));
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create report output directory {}", parent.display())
+            format!(
+                "failed to create report output directory {}",
+                parent.display()
+            )
         })?;
     }
     fs::write(path, html)
@@ -169,7 +175,12 @@ fn build_report_samples(
 fn build_report_events(samples: &[ReportSample], events: &[EventRecord]) -> Vec<ReportEvent> {
     events
         .iter()
-        .filter(|event| !matches!(event.kind, EventKind::ControllerUpdated | EventKind::MissionEnded))
+        .filter(|event| {
+            !matches!(
+                event.kind,
+                EventKind::ControllerUpdated | EventKind::MissionEnded
+            )
+        })
         .map(|event| {
             let sample = nearest_sample(samples, event.physics_step);
             ReportEvent {

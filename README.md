@@ -116,8 +116,31 @@ This is intentionally explicit. Agent skills or local tooling can call the same
 script when they need a report server, but the repo-owned script remains the
 canonical entrypoint.
 
-Generated single-run and replay reports also maintain sibling `latest` links
-under `outputs/` when written through `pd-cli`, for example:
+Generated single-run, replay, and batch outputs also maintain `latest` links
+under `outputs/` when written through the project CLIs, for example:
 
 - `outputs/runs/latest/report.html`
 - `outputs/replays/latest/report.html`
+- `outputs/eval/latest/summary.json`
+- `outputs/eval/<pack>/runs/latest/report.html`
+
+## Batch Eval
+
+`pd-eval` owns scenario packs, scenario-family expansion, seed sweeps, and
+native multithreaded execution.
+
+Example:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_sweep_suite.json --workers 4
+```
+
+That writes:
+
+- `pack.json`
+- `resolved_runs.json`
+- `summary.json`
+- per-run bundles under `outputs/eval/<pack>/runs/`
+
+Batch output keeps stable semantic run directories for inspection while also
+recording stable digests for the resolved pack and resolved run set.

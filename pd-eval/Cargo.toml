@@ -8,5 +8,6 @@ anyhow.workspace = true
 clap.workspace = true
 pd-control = { path = "../pd-control" }
 pd-core = { path = "../pd-core" }
+rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true

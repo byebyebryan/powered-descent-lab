@@ -11,8 +11,8 @@ use pd_control::{
     ControllerSpec, ControllerUpdateRecord, built_in_controller_spec, run_controller_spec,
 };
 use pd_core::{
-    ActionLogEntry, EventRecord, RunArtifacts, RunContext, RunManifest, SampleRecord,
-    ScenarioSpec, replay_simulation,
+    ActionLogEntry, EventRecord, RunArtifacts, RunContext, RunManifest, SampleRecord, ScenarioSpec,
+    replay_simulation,
 };
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -90,7 +90,8 @@ fn main() -> Result<()> {
 
 fn run(args: RunArgs) -> Result<()> {
     let scenario = load_scenario(&args.scenario)?;
-    let controller_spec = resolve_controller_spec(&args.controller, args.controller_config.as_deref())?;
+    let controller_spec =
+        resolve_controller_spec(&args.controller, args.controller_config.as_deref())?;
     let ctx = RunContext::from_scenario(&scenario)
         .map_err(anyhow::Error::msg)
         .context("failed to build run context from scenario")?;
@@ -103,9 +104,7 @@ fn run(args: RunArgs) -> Result<()> {
 
     write_outputs(
         args.output.as_deref(),
-        args.output_dir
-            .as_deref()
-            .or(default_output_dir.as_deref()),
+        args.output_dir.as_deref().or(default_output_dir.as_deref()),
         Some(&scenario),
         Some(&controller_spec),
         &artifacts.run,
@@ -121,8 +120,8 @@ fn replay(args: ReplayArgs) -> Result<()> {
         Some(path) => load_scenario(path)?,
         None => bundle.scenario.clone(),
     };
-    let default_output_dir =
-        (args.output.is_none() && args.output_dir.is_none()).then(|| default_replay_output_dir(&args.bundle_dir));
+    let default_output_dir = (args.output.is_none() && args.output_dir.is_none())
+        .then(|| default_replay_output_dir(&args.bundle_dir));
     let ctx = RunContext::from_scenario(&scenario)
         .map_err(anyhow::Error::msg)
         .context("failed to build run context from scenario")?;
@@ -140,9 +139,7 @@ fn replay(args: ReplayArgs) -> Result<()> {
 
     write_outputs(
         args.output.as_deref(),
-        args.output_dir
-            .as_deref()
-            .or(default_output_dir.as_deref()),
+        args.output_dir.as_deref().or(default_output_dir.as_deref()),
         Some(&scenario),
         bundle.controller_spec.as_ref(),
         &replayed,
@@ -179,8 +176,7 @@ fn resolve_controller_spec(name: &str, config_path: Option<&Path>) -> Result<Con
             .with_context(|| format!("failed to parse controller config json {}", path.display()));
     }
 
-    built_in_controller_spec(name)
-        .ok_or_else(|| anyhow::anyhow!("unknown controller '{}'", name))
+    built_in_controller_spec(name).ok_or_else(|| anyhow::anyhow!("unknown controller '{}'", name))
 }
 
 fn load_scenario(path: &Path) -> Result<ScenarioSpec> {
@@ -199,10 +195,22 @@ fn write_outputs(
     controller_updates: &[ControllerUpdateRecord],
 ) -> Result<()> {
     if let Some(path) = output {
-        write_artifacts(path, scenario, controller_spec, artifacts, controller_updates)?;
+        write_artifacts(
+            path,
+            scenario,
+            controller_spec,
+            artifacts,
+            controller_updates,
+        )?;
     }
     if let Some(path) = output_dir {
-        write_artifact_bundle(path, scenario, controller_spec, artifacts, controller_updates)?;
+        write_artifact_bundle(
+            path,
+            scenario,
+            controller_spec,
+            artifacts,
+            controller_updates,
+        )?;
     }
     Ok(())
 }
@@ -384,7 +392,10 @@ fn maybe_update_latest_link(target_dir: &Path) -> Result<()> {
     if let Ok(metadata) = fs::symlink_metadata(&latest_path) {
         if metadata.file_type().is_symlink() || metadata.is_file() {
             fs::remove_file(&latest_path).with_context(|| {
-                format!("failed to remove existing latest link {}", latest_path.display())
+                format!(
+                    "failed to remove existing latest link {}",
+                    latest_path.display()
+                )
             })?;
         } else {
             eprintln!(
@@ -406,14 +417,11 @@ fn maybe_update_latest_link(target_dir: &Path) -> Result<()> {
 }
 
 fn default_run_output_dir(scenario_path: &Path, controller_spec: &ControllerSpec) -> PathBuf {
-    repo_root()
-        .join("outputs")
-        .join("runs")
-        .join(format!(
-            "{}__{}",
-            file_stem_or_fallback(scenario_path, "run"),
-            controller_spec.id()
-        ))
+    repo_root().join("outputs").join("runs").join(format!(
+        "{}__{}",
+        file_stem_or_fallback(scenario_path, "run"),
+        controller_spec.id()
+    ))
 }
 
 fn default_replay_output_dir(bundle_dir: &Path) -> PathBuf {
