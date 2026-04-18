@@ -20,10 +20,14 @@ Current design direction:
 - fixed-step deterministic simulation
 - controller updates may run at a lower fixed rate than physics, with commands
   held between controller ticks
+- a proper bot framework, not only a thin `Observation -> Command` callback
 - one primary goal per scenario
 - formal controller API with full immutable scenario context at setup time and a
   compact per-tick observation
-- authored scenario packs and regression suites
+- controller outputs that can include status, phase, metrics, and report/debug
+  markers in addition to vehicle commands
+- authored scenario packs, curated scenario families, and seeded regression
+  sweeps
 - 1D heightfield terrain as the canonical world model, with richer query APIs
   layered on top
 - no LOD in v1 for controller-facing terrain data
@@ -34,6 +38,10 @@ Current design direction:
   top, rather than a production observability stack
 - action and event logs as authoritative replay inputs, with sampled traces kept
   as optional report/debug caches
+- native multithreaded batch evaluation in `pd-eval`, especially for seeded
+  scenario sweeps
+- basic static inspection/reporting as part of the near-term controller workflow,
+  not only a late polish phase
 - static web reports over captured artifacts, with optional lightweight
   trajectory inspection later, but no browser runtime target
 
@@ -58,6 +66,9 @@ What mattered from that broader experimentation was the project split:
 `pd-lab` borrows ideas, concepts, scenario lessons, and telemetry vocabulary
 from `pylander`, but not its implementation or module layout.
 
+It should also reuse the scenario lessons that proved useful in `pylander`
+without treating the old scenario files as fixtures to transliterate directly.
+
 ## Scope
 
 `pd-lab` owns:
@@ -67,6 +78,7 @@ from `pylander`, but not its implementation or module layout.
 - scenario packs
 - evaluation and benchmarking
 - telemetry, traces, and replay artifacts
+- controller telemetry and report/debug artifacts
 
 `pd-lab` does not own:
 

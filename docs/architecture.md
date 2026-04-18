@@ -47,6 +47,14 @@ Scenario identity should come from authored data and metadata. CLI selector
 syntax is useful, but it should remain a thin layer over named scenarios and
 scenario packs.
 
+The lab should distinguish between:
+
+- concrete scenarios, which are fully resolved and directly runnable
+- scenario families, which define a curated perturbation space plus seed policy
+
+`pd-core` should consume only resolved concrete scenarios. Seed expansion,
+scenario-family expansion, and randomized coverage belong in `pd-eval`.
+
 ### Concrete v1 stack
 
 The intended v1 stack is:
@@ -219,10 +227,12 @@ Responsibilities:
 Responsibilities:
 
 - controller trait
+- controller identity and factory/registry
 - controller configuration schemas
 - baseline controller implementations
 - shared planning and optimization helpers
 - controller-local telemetry
+- controller-facing status, phase, and report/debug markers
 
 Controllers should consume:
 
@@ -233,6 +243,11 @@ Controllers should produce:
 
 - vehicle command
 - optional debug and telemetry payloads
+
+The new bot framework should borrow the useful parts of `pylander`'s bot layer:
+rich setup-time environment, compact per-tick state, and controller-owned
+inspection data. It should not move mission success authority back into the
+controller layer.
 
 ### 5.3 `pd-cli`
 
@@ -255,6 +270,9 @@ developer entry point.
 Responsibilities:
 
 - batch scenario packs
+- scenario-family expansion
+- seeded coverage and regression sweeps
+- deterministic native parallel execution
 - baseline comparisons
 - regression suites
 - telemetry aggregation
@@ -264,14 +282,26 @@ Responsibilities:
 The eval layer should orchestrate runs around the same core and controller
 contracts used by `pd-cli`.
 
+Recommended parallelism boundary:
+
+- `pd-core` stays single-run and deterministic
+- `pd-eval` expands packs and seed sweeps into concrete runs
+- `pd-eval` may execute independent runs in parallel on native threads
+- immutable scenario data such as compiled terrain can be shared across worker
+  threads where useful
+- output ordering and aggregate reports should still be written in a stable,
+  deterministic order
+
 ### 5.5 Report generation and report viewer
 
-These are optional later layers around generated artifacts.
+A minimal inspection/report path is part of the core bot-lab workflow, not only
+late polish.
 
 Likely responsibilities:
 
 - summary report generation
 - trace and replay inspection pages
+- single-run trajectory and state inspection
 - lightweight interaction over precomputed run data
 - trajectory scrubbing, hover, or drag-based state inspection
 
@@ -280,6 +310,13 @@ They should not own:
 - authoritative simulation
 - controller execution
 - benchmark orchestration
+
+The first report milestone should be enough to answer basic controller
+questions without reading raw JSON:
+
+- where the vehicle flew relative to terrain and target
+- how altitude, clearance, velocity, attitude, and throttle evolved
+- where discrete events and controller phase/status changes happened
 
 ### 5.6 Telemetry and reporting stack
 
@@ -317,6 +354,11 @@ Build-vs-buy stance:
 This is the main tradeoff relative to late `pylander`: keep the custom parts
 that genuinely need to be custom, and replace the generic reporting/analytics
 plumbing around them.
+
+Practical sequencing rule:
+
+- invest in minimal inspection early
+- defer only the richer and more polished report UX
 
 ## 6. Proposed Repo Shape
 
@@ -375,6 +417,24 @@ Recommended v1 stance:
 
 This preserves determinism while allowing controller cost to stay decoupled from
 the finest physics step.
+
+## 7.1.1 Controller output frame
+
+The controller contract should be richer than `Command` alone.
+
+Recommended shape:
+
+- `command`: authoritative actuation request consumed by the core
+- `status`: short human-readable mode string
+- `phase`: optional structured controller phase label
+- `metrics`: controller-owned numeric or categorical diagnostics
+- `markers`: optional discrete annotations for reports and replay
+
+Only `command` is authoritative for simulation. The rest exists to make
+controller behavior explainable during evaluation and reporting.
+
+This is one of the main places to borrow ideas from `pylander`'s bot framework
+without copying its exact interface shape.
 
 ## 7.2 Observation Surface
 
@@ -510,6 +570,10 @@ The core should emit structured events for notable state transitions:
 
 Events should be usable in both human-readable summaries and replay artifacts.
 
+Controller markers are separate from core events. They belong in a controller
+namespace so built-in and future controllers can annotate runs without changing
+the core event contract.
+
 ## 7.6 Landing Success Contract
 
 Landing success should not be defined only by world-frame `vx` and `vy`.
@@ -560,6 +624,7 @@ Recommended authoritative artifact split:
 - one action log sufficient to replay controller outputs over time
 - one event stream for discrete events and controller debug markers
 - one optional profiling trace for runtime and solver timing
+- one optional sampled trace cache for report generation and debugging
 
 Recommended encoding direction:
 
@@ -581,6 +646,10 @@ Recommended stance:
 
 The exact encoding can be finalized later, but it should be friendly to both
 native tooling and a later static report viewer.
+
+If controller output frames include status, phase, metrics, or markers, those
+should be captured in controller-namespaced artifacts rather than flattened into
+the core manifest schema.
 
 ## 7.8 Telemetry namespaces
 
@@ -635,6 +704,7 @@ Operational rules:
 
 - fixed-step simulation
 - seeded randomness only through explicit scenario inputs
+- eval-side parallel execution must not change per-run results
 - no wall-clock time in authoritative state transitions
 - profiling and compute timing are observed outputs, not simulation inputs
 
@@ -646,11 +716,21 @@ Recommended model:
 
 - every concrete scenario has a canonical ID
 - scenario metadata carries family, tags, difficulty, seed, and notes
+- scenario families define curated randomized perturbations, not unbounded fuzz
 - packs group scenarios by explicit inclusion or tag queries
+- packs may also expand scenario families over explicit seed sets or seed-sweep
+  ranges
 - CLI selectors are convenience syntax on top of data-backed identity
 
 That lets the lab keep human-friendly handles without baking too much taxonomy
 into one parser.
+
+Recommended ownership split:
+
+- `pd-core` runs one resolved concrete scenario
+- `pd-eval` expands family plus seed specifications into concrete runs
+- artifacts record both family identity and the resolved seed/parameters used for
+  that run
 
 The first scenario families should stay narrow and high-value:
 
@@ -660,6 +740,8 @@ The first scenario families should stay narrow and high-value:
 - small pinned bug reproductions
 
 Do not start with a giant parameter cross-product or random fuzz catalog.
+Start with the curated scenario shapes that proved useful in `pylander`, then
+re-author them in the new data model.
 
 ## 10. Telemetry Model
 
@@ -687,6 +769,8 @@ Controller metrics examples:
 - fallback counts
 - stage transitions
 - terrain-divert diagnostics
+- guidance mode or status strings
+- report markers such as cutoff points or notable planner decisions
 
 Controller metrics should be namespaced by controller ID so the lab can compare
 multiple approaches without schema collisions.
@@ -697,6 +781,10 @@ multiple approaches without schema collisions.
 
 The visualization target should be generated reports over captured artifacts,
 not a new game shell or browser runtime.
+
+But it does need enough inspection support early to make controller iteration
+practical. A bot lab without a usable inspection path turns every run into
+manual log reading.
 
 An extended target is reasonable:
 
@@ -712,6 +800,13 @@ Recommended split for report UX:
 - keep a custom trajectory/detail viewer for per-run inspection where the domain
   is unique
 - avoid turning the report layer into a second simulation or analysis backend
+
+Near-term minimum:
+
+- a single-run view with terrain, trajectory, target, and event markers
+- time-series plots for the main state and control signals
+- batch summaries that make seeded regressions visible without replaying every
+  run
 
 Reason:
 

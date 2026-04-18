@@ -23,7 +23,8 @@ Current implementation status:
 - Phase 0 is complete.
 - Phase 1 is functionally complete for the first usable landing slice.
 - Phase 2 has started with a minimal `pd-eval` pack runner and aggregate JSON
-  summaries.
+  summaries, but the phase is now explicitly framed around building a proper bot
+  workflow rather than only adding more packs.
 - One Phase 3 contract probe has been pulled forward intentionally:
   `timed_checkpoint`, to validate early-termination mission evaluation without
   committing to the full transfer stack yet.
@@ -88,16 +89,22 @@ Status:
 - complete for the initial landing slice
 - artifact bundles are now self-contained enough to replay from the bundle alone
 
-### Phase 2: Batch evaluation
+### Phase 2: Bot workflow and evaluation
 
 Target:
 
-- move from single-run debugging to controller lab workflows
+- move from single-run debugging to a proper controller lab workflow
 
 Planned scope:
 
 - `pd-eval`
+- controller config schemas and named controller instances
+- controller-local telemetry, status, phase, and report/debug markers
+- minimal single-run inspection and report outputs
 - scenario packs
+- curated scenario families based on useful `pylander` lessons
+- seeded coverage and regression sweeps
+- native multithreaded execution in `pd-eval`
 - baseline comparison reports
 - aggregate metrics
 - profiling hooks
@@ -105,14 +112,17 @@ Planned scope:
 
 Exit criteria:
 
-- controller changes can be checked against a small named suite
-- result regressions are visible without manual replay inspection
+- controller changes can be checked against a small named suite plus seeded
+  coverage runs
+- controller behavior is explainable without manual raw-JSON inspection
+- result regressions are visible without replaying every run by hand
 
 Status:
 
 - started
 - current implementation includes a first named pack runner and summary counts,
-  but not yet real regression thresholds or comparison reporting
+  but not yet controller-local telemetry, seeded scenario expansion, native
+  parallel execution, or usable inspection reports
 
 ### Phase 3: Transfer guidance
 
@@ -162,7 +172,7 @@ Exit criteria:
 
 Target:
 
-- improve inspection over captured artifacts, not core ownership
+- deepen report UX over captured artifacts, not core ownership
 
 Planned scope:
 
@@ -171,6 +181,9 @@ Planned scope:
 - lightweight interaction over captured trajectory data
 - hover, scrub, or drag-based state inspection
 - generated summary charts built on top of the owned artifact schema
+
+This phase is for richer and more polished report UX after a minimal inspection
+path already exists in Phase 2.
 
 Exit criteria:
 
@@ -203,6 +216,9 @@ The first cross-check set should stay small and high signal:
 - one short transfer
 - one terrain-reactive regression once terrain queries exist
 
+These should be re-authored from the scenario shapes that proved useful in
+`pylander`, not copied over mechanically as file-for-file ports.
+
 Each case should have:
 
 - a pinned scenario ID
@@ -212,6 +228,19 @@ Each case should have:
 
 The point is not perfect numeric parity. The point is to know whether the new
 lab matches the intended behavior envelope closely enough to trust iteration.
+
+## 5.1 Coverage and seeds
+
+Pinned scenarios are necessary but not sufficient.
+
+The lab should also support curated randomized coverage:
+
+- one scenario family definition
+- multiple explicit seeds or seed-sweep ranges
+- stable recorded resolved parameters per run
+
+This is how the lab should validate controller robustness without exploding into
+unbounded fuzzing.
 
 ## 6. Risks To Control Early
 
