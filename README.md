@@ -92,3 +92,26 @@ without treating the old scenario files as fixtures to transliterate directly.
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Early Design Scratchpad](docs/early_design.md)
+
+## Report Serving
+
+Generated reports live under `outputs/` and can be served locally with:
+
+```bash
+./scripts/serve-reports start
+```
+
+The script starts a simple HTTP server inside a named detached `tmux` session
+and serves `outputs/` at `http://127.0.0.1:8000/` by default.
+
+Useful commands:
+
+```bash
+./scripts/serve-reports status
+./scripts/serve-reports attach
+./scripts/serve-reports stop
+```
+
+This is intentionally explicit. Agent skills or local tooling can call the same
+script when they need a report server, but the repo-owned script remains the
+canonical entrypoint.

@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+
+session_name="${PDL_REPORT_SESSION:-pdlab-reports}"
+host="${PDL_REPORT_HOST:-127.0.0.1}"
+port="${PDL_REPORT_PORT:-8000}"
+root="${PDL_REPORT_ROOT:-${repo_root}/outputs}"
+log_dir="${root}/.serve"
+log_file="${log_dir}/server.log"
+
+command_name="$(basename "$0")"
+action="${1:-start}"
+
+require_cmd() {
+  local name="$1"
+  if ! command -v "$name" >/dev/null 2>&1; then
+    echo "${command_name}: missing required command: ${name}" >&2
+    exit 1
+  fi
+}
+
+http_ok() {
+  python3 - "$host" "$port" <<'PY'
+import sys
+import urllib.error
+import urllib.request
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+url = f"http://{host}:{port}/"
+try:
+    with urllib.request.urlopen(url, timeout=0.75) as response:
+        sys.exit(0 if 200 <= int(response.status) < 500 else 1)
+except (OSError, urllib.error.URLError, TimeoutError):
+    sys.exit(1)
+PY
+}
+
+session_exists() {
+  tmux has-session -t "$session_name" 2>/dev/null
+}
+
+print_status() {
+  if session_exists; then
+    local tmux_state="running"
+    local http_state="down"
+    if http_ok; then
+      http_state="serving"
+    fi
+    echo "session: ${session_name} (${tmux_state})"
+    echo "root: ${root}"
+    echo "url:  http://${host}:${port}/"
+    echo "http: ${http_state}"
+    echo "log:  ${log_file}"
+  else
+    echo "session: ${session_name} (stopped)"
+    echo "root: ${root}"
+    echo "url:  http://${host}:${port}/"
+  fi
+}
+
+start_server() {
+  require_cmd tmux
+  require_cmd python3
+
+  mkdir -p "$root" "$log_dir"
+
+  if session_exists; then
+    echo "${command_name}: tmux session '${session_name}' already exists"
+    print_status
+    exit 0
+  fi
+
+  local q_repo_root q_root q_log_file q_host
+  printf -v q_repo_root '%q' "$repo_root"
+  printf -v q_root '%q' "$root"
+  printf -v q_log_file '%q' "$log_file"
+  printf -v q_host '%q' "$host"
+
+  tmux new-session -d -s "$session_name" \
+    "cd ${q_repo_root} && exec python3 -m http.server ${port} --bind ${q_host} --directory ${q_root} >> ${q_log_file} 2>&1"
+
+  for _ in $(seq 1 20); do
+    if http_ok; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  if ! http_ok; then
+    echo "${command_name}: server session started, but HTTP did not come up cleanly" >&2
+    echo "attach with: tmux attach -t ${session_name}" >&2
+    exit 1
+  fi
+
+  echo "serving ${root}"
+  echo "url: http://${host}:${port}/"
+  echo "tmux session: ${session_name}"
+  echo "attach: tmux attach -t ${session_name}"
+  echo "stop: ${command_name} stop"
+}
+
+stop_server() {
+  require_cmd tmux
+
+  if ! session_exists; then
+    echo "${command_name}: tmux session '${session_name}' is not running"
+    exit 0
+  fi
+
+  tmux kill-session -t "$session_name"
+  echo "stopped ${session_name}"
+}
+
+attach_server() {
+  require_cmd tmux
+
+  if ! session_exists; then
+    echo "${command_name}: tmux session '${session_name}' is not running" >&2
+    echo "start it with: ${command_name} start" >&2
+    exit 1
+  fi
+
+  exec tmux attach -t "$session_name"
+}
+
+usage() {
+  cat <<EOF
+Usage: ${command_name} [start|stop|restart|status|attach|url]
+
+Defaults:
+  session: ${session_name}
+  root:    ${root}
+  url:     http://${host}:${port}/
+
+Environment overrides:
+  PDL_REPORT_SESSION
+  PDL_REPORT_HOST
+  PDL_REPORT_PORT
+  PDL_REPORT_ROOT
+EOF
+}
+
+case "$action" in
+  start)
+    start_server
+    ;;
+  stop)
+    stop_server
+    ;;
+  restart)
+    stop_server
+    start_server
+    ;;
+  status)
+    require_cmd tmux
+    print_status
+    ;;
+  attach)
+    attach_server
+    ;;
+  url)
+    echo "http://${host}:${port}/"
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    echo "${command_name}: unknown action '${action}'" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

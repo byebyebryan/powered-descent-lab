@@ -251,3 +251,31 @@
   inspection surface than a stack of roomy cards.
 - Moved compact metric-plot legends into the top chart margin so they no longer
   collide with the x-axis title.
+
+## 2026-04-18
+
+### Current status
+
+- Reports can now be served from a repo-owned script instead of ad hoc shell
+  commands.
+- The intended output-path stance is now captured explicitly:
+  - keep single-run report paths stable and semantic
+  - reserve digests and commit/workspace keys for batch caches and compare
+    workflows
+
+#### Checkpoint 13: report server script and artifact-key review
+
+- Added `scripts/serve-reports` as the canonical local report-serving entrypoint.
+- The script:
+  - serves `outputs/` over `python3 -m http.server`
+  - runs inside a named detached `tmux` session by default
+  - supports `start`, `stop`, `restart`, `status`, `attach`, and `url`
+- Documented the workflow in the repo README so remote-over-SSH usage has one
+  obvious entrypoint.
+- Reviewed `pylander`'s artifact identity approach and kept the useful split:
+  - semantic stable keys for per-run inspection paths
+  - short digests and commit/workspace identity only for cache-heavy benchmark
+    and compare outputs
+- Deliberately did not pull over the heavier tracepack/cache naming machinery
+  yet, because `pd-lab` does not have the equivalent compare workflow in-tree
+  yet.

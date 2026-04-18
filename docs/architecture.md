@@ -643,6 +643,11 @@ Recommended stance:
 - actions and events are the primary replay inputs
 - sampled traces are decimated or event-focused by default
 - dense sampled traces are a debug mode, not the default contract
+- per-run bundle and report paths should prefer stable semantic keys such as
+  scenario ID, controller ID, family, and seed
+- commit hashes, config digests, or timestamps should only enter artifact names
+  when they are actually needed for cache identity, collision avoidance, or
+  compare workflows
 
 The exact encoding can be finalized later, but it should be friendly to both
 native tooling and a later static report viewer.
@@ -724,6 +729,15 @@ Recommended model:
 
 That lets the lab keep human-friendly handles without baking too much taxonomy
 into one parser.
+
+Output-path stance:
+
+- single-run iteration should favor stable, human-readable output paths so the
+  same run can be regenerated in place and refreshed through a stable URL
+- batch caches and compare artifacts may use short digests derived from the
+  resolved pack, controller/config inputs, and commit/workspace identity
+- timestamps are useful for ad hoc archival bundles, but they should not be the
+  primary identity mechanism for regression workflows
 
 Recommended ownership split:
 
