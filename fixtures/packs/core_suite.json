@@ -1,0 +1,22 @@
+{
+  "id": "core_suite",
+  "name": "Core suite",
+  "description": "Minimal named suite covering nominal landing, obvious failure, and early checkpoint evaluation.",
+  "entries": [
+    {
+      "id": "flat_baseline_success",
+      "scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "baseline"
+    },
+    {
+      "id": "flat_idle_failure",
+      "scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "idle"
+    },
+    {
+      "id": "checkpoint_idle_success",
+      "scenario": "../scenarios/timed_checkpoint_idle.json",
+      "controller": "idle"
+    }
+  ]
+}

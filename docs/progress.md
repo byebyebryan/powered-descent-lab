@@ -17,12 +17,13 @@
   goal shape.
 - Replay bundles now include `scenario.json` and can be replayed without an
   external scenario path.
+- `pd-eval` now has a first minimal pack runner and summary output path.
 
 ### Active implementation focus
 
-1. Start the first actual `pd-eval` pack runner instead of staying in single-run
-   mode.
-2. Add more authored scenarios around the evaluation layer.
+1. Add more authored scenarios and named packs around the evaluation layer.
+2. Tighten batch summaries from "counts only" toward actual regression-friendly
+   comparisons.
 3. Keep artifacts simple and authoritative:
    - run manifest
    - action log
@@ -61,6 +62,9 @@
 
 - Contact/landing logic is intentionally simple and will need refinement before
   richer terrain or transfer-style evaluations.
+- `pd-eval` currently produces only JSON bundle output and summary counts. It
+  does not yet provide baseline-to-baseline diffs, thresholds, or richer
+  aggregate metrics.
 - Controllers still emit only `Command`; controller config schemas and
   controller-local telemetry/debug payloads are not implemented yet.
 - Replay bundles are now self-contained for scenarios, but controller
@@ -134,3 +138,15 @@
   - `samples.json`
 - `pd-cli replay` can now reconstruct from the bundle alone without requiring a
   separate scenario path.
+
+#### Checkpoint 7: minimal batch evaluation
+
+- Added the first `pd-eval` batch runner and `pd-eval run-pack`.
+- Added a pack spec and the first named suite:
+  - `fixtures/packs/core_suite.json`
+- Batch eval now emits per-run bundles plus one JSON summary with:
+  - total runs
+  - success count
+  - mean sim time
+  - mission-outcome counts
+  - end-reason counts

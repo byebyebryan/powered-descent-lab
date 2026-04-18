@@ -164,8 +164,12 @@ dependencies = [
 name = "pd-eval"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
  "pd-control",
  "pd-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

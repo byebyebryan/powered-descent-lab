@@ -16,6 +16,18 @@ Success means:
 - a migration path that uses `pylander` as a source of concepts and behavior
   references rather than as code or structure to port
 
+## 1.1 Current status
+
+Current implementation status:
+
+- Phase 0 is complete.
+- Phase 1 is functionally complete for the first usable landing slice.
+- Phase 2 has started with a minimal `pd-eval` pack runner and aggregate JSON
+  summaries.
+- One Phase 3 contract probe has been pulled forward intentionally:
+  `timed_checkpoint`, to validate early-termination mission evaluation without
+  committing to the full transfer stack yet.
+
 ## 2. What Not To Build First
 
 Do not start by rebuilding:
@@ -71,6 +83,11 @@ Exit criteria:
 - one controller can be iterated on without touching frontend concerns
 - run output is structured enough for later comparison tooling
 
+Status:
+
+- complete for the initial landing slice
+- artifact bundles are now self-contained enough to replay from the bundle alone
+
 ### Phase 2: Batch evaluation
 
 Target:
@@ -91,6 +108,12 @@ Exit criteria:
 - controller changes can be checked against a small named suite
 - result regressions are visible without manual replay inspection
 
+Status:
+
+- started
+- current implementation includes a first named pack runner and summary counts,
+  but not yet real regression thresholds or comparison reporting
+
 ### Phase 3: Transfer guidance
 
 Target:
@@ -110,6 +133,12 @@ Exit criteria:
 
 - the lab supports both terminal and transfer evaluation under the same core
   contracts
+
+Status:
+
+- not started as a full phase
+- one early-stop evaluation primitive (`timed_checkpoint`) is in place as a
+  contract probe only
 
 ### Phase 4: Terrain-aware lab
 
