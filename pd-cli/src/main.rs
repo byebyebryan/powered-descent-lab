@@ -1,16 +1,20 @@
+mod report;
+
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand, ValueEnum};
-use pd_control::{BaselineController, IdleController, run_controller};
-use pd_core::{
-    ActionLogEntry, EventRecord, RunArtifacts, RunContext, RunManifest, ScenarioSpec,
-    replay_simulation,
+use clap::{Parser, Subcommand};
+use pd_control::{
+    ControllerSpec, ControllerUpdateRecord, built_in_controller_spec, run_controller_spec,
 };
-use serde::de::DeserializeOwned;
+use pd_core::{
+    ActionLogEntry, EventRecord, RunArtifacts, RunContext, RunManifest, SampleRecord,
+    ScenarioSpec, replay_simulation,
+};
+use serde::{Serialize, de::DeserializeOwned};
 
 #[derive(Debug, Parser)]
 #[command(name = "pd-cli")]
@@ -24,12 +28,7 @@ struct Cli {
 enum Commands {
     Run(RunArgs),
     Replay(ReplayArgs),
-}
-
-#[derive(Clone, Debug, ValueEnum)]
-enum ControllerChoice {
-    Baseline,
-    Idle,
+    Report(ReportArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -37,8 +36,11 @@ struct RunArgs {
     #[arg(value_name = "SCENARIO_JSON")]
     scenario: PathBuf,
 
-    #[arg(long, value_enum, default_value_t = ControllerChoice::Baseline)]
-    controller: ControllerChoice,
+    #[arg(long, default_value = "baseline")]
+    controller: String,
+
+    #[arg(long, value_name = "CONTROLLER_JSON")]
+    controller_config: Option<PathBuf>,
 
     #[arg(long, value_name = "ARTIFACTS_JSON")]
     output: Option<PathBuf>,
@@ -62,41 +64,45 @@ struct ReplayArgs {
     output_dir: Option<PathBuf>,
 }
 
+#[derive(Debug, Parser)]
+struct ReportArgs {
+    #[arg(long, value_name = "ARTIFACTS_DIR")]
+    bundle_dir: PathBuf,
+
+    #[arg(long, value_name = "REPORT_HTML")]
+    output: Option<PathBuf>,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Run(args) => run(args),
         Commands::Replay(args) => replay(args),
+        Commands::Report(args) => render_report(args),
     }
 }
 
 fn run(args: RunArgs) -> Result<()> {
     let scenario = load_scenario(&args.scenario)?;
+    let controller_spec = resolve_controller_spec(&args.controller, args.controller_config.as_deref())?;
     let ctx = RunContext::from_scenario(&scenario)
         .map_err(anyhow::Error::msg)
         .context("failed to build run context from scenario")?;
 
-    let artifacts = match args.controller {
-        ControllerChoice::Baseline => {
-            let mut controller = BaselineController;
-            run_controller(&ctx, &mut controller)
-        }
-        ControllerChoice::Idle => {
-            let mut controller = IdleController;
-            run_controller(&ctx, &mut controller)
-        }
-    }
-    .map_err(anyhow::Error::msg)
-    .context("simulation run failed")?;
+    let artifacts = run_controller_spec(&ctx, &controller_spec)
+        .map_err(anyhow::Error::msg)
+        .context("simulation run failed")?;
 
     write_outputs(
         args.output.as_deref(),
         args.output_dir.as_deref(),
         Some(&scenario),
-        &artifacts,
+        Some(&controller_spec),
+        &artifacts.run,
+        &artifacts.controller_updates,
     )?;
-    println!("{}", serde_json::to_string_pretty(&artifacts.manifest)?);
+    println!("{}", serde_json::to_string_pretty(&artifacts.run.manifest)?);
     Ok(())
 }
 
@@ -125,10 +131,42 @@ fn replay(args: ReplayArgs) -> Result<()> {
         args.output.as_deref(),
         args.output_dir.as_deref(),
         Some(&scenario),
+        bundle.controller_spec.as_ref(),
         &replayed,
+        &bundle.controller_updates,
     )?;
     println!("{}", serde_json::to_string_pretty(&replayed.manifest)?);
     Ok(())
+}
+
+fn render_report(args: ReportArgs) -> Result<()> {
+    let bundle = load_artifact_bundle(&args.bundle_dir)?;
+    let output = args
+        .output
+        .unwrap_or_else(|| args.bundle_dir.join("report.html"));
+    report::write_run_report(
+        &output,
+        &bundle.scenario,
+        bundle.controller_spec.as_ref(),
+        &bundle.manifest,
+        &bundle.events,
+        &bundle.samples,
+        &bundle.controller_updates,
+    )?;
+    println!("{}", output.display());
+    Ok(())
+}
+
+fn resolve_controller_spec(name: &str, config_path: Option<&Path>) -> Result<ControllerSpec> {
+    if let Some(path) = config_path {
+        let raw = fs::read_to_string(path)
+            .with_context(|| format!("failed to read controller config file {}", path.display()))?;
+        return serde_json::from_str(&raw)
+            .with_context(|| format!("failed to parse controller config json {}", path.display()));
+    }
+
+    built_in_controller_spec(name)
+        .ok_or_else(|| anyhow::anyhow!("unknown controller '{}'", name))
 }
 
 fn load_scenario(path: &Path) -> Result<ScenarioSpec> {
@@ -142,18 +180,26 @@ fn write_outputs(
     output: Option<&Path>,
     output_dir: Option<&Path>,
     scenario: Option<&ScenarioSpec>,
+    controller_spec: Option<&ControllerSpec>,
     artifacts: &RunArtifacts,
+    controller_updates: &[ControllerUpdateRecord],
 ) -> Result<()> {
     if let Some(path) = output {
-        write_artifacts(path, artifacts)?;
+        write_artifacts(path, scenario, controller_spec, artifacts, controller_updates)?;
     }
     if let Some(path) = output_dir {
-        write_artifact_bundle(path, scenario, artifacts)?;
+        write_artifact_bundle(path, scenario, controller_spec, artifacts, controller_updates)?;
     }
     Ok(())
 }
 
-fn write_artifacts(path: &Path, artifacts: &RunArtifacts) -> Result<()> {
+fn write_artifacts(
+    path: &Path,
+    scenario: Option<&ScenarioSpec>,
+    controller_spec: Option<&ControllerSpec>,
+    artifacts: &RunArtifacts,
+    controller_updates: &[ControllerUpdateRecord],
+) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
@@ -162,7 +208,12 @@ fn write_artifacts(path: &Path, artifacts: &RunArtifacts) -> Result<()> {
             )
         })?;
     }
-    let raw = serde_json::to_string_pretty(artifacts)?;
+    let raw = serde_json::to_string_pretty(&StandaloneArtifacts {
+        scenario,
+        controller_spec,
+        run: artifacts,
+        controller_updates,
+    })?;
     fs::write(path, raw)
         .with_context(|| format!("failed to write artifacts file {}", path.display()))?;
     Ok(())
@@ -171,30 +222,51 @@ fn write_artifacts(path: &Path, artifacts: &RunArtifacts) -> Result<()> {
 fn write_artifact_bundle(
     path: &Path,
     scenario: Option<&ScenarioSpec>,
+    controller_spec: Option<&ControllerSpec>,
     artifacts: &RunArtifacts,
+    controller_updates: &[ControllerUpdateRecord],
 ) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create artifact bundle dir {}", path.display()))?;
     if let Some(scenario) = scenario {
         write_json(&path.join("scenario.json"), scenario)?;
     }
+    if let Some(controller_spec) = controller_spec {
+        write_json(&path.join("controller.json"), controller_spec)?;
+    }
     write_json(&path.join("manifest.json"), &artifacts.manifest)?;
     write_json(&path.join("actions.json"), &artifacts.actions)?;
     write_json(&path.join("events.json"), &artifacts.events)?;
     write_json(&path.join("samples.json"), &artifacts.samples)?;
+    write_json(&path.join("controller_updates.json"), controller_updates)?;
+    if let Some(scenario) = scenario {
+        report::write_run_report(
+            &path.join("report.html"),
+            scenario,
+            controller_spec,
+            &artifacts.manifest,
+            &artifacts.events,
+            &artifacts.samples,
+            controller_updates,
+        )?;
+    }
     Ok(())
 }
 
 fn load_artifact_bundle(path: &Path) -> Result<ArtifactBundle> {
     Ok(ArtifactBundle {
         scenario: read_json(&path.join("scenario.json"))?,
+        controller_spec: read_optional_json(&path.join("controller.json"))?,
         manifest: read_json(&path.join("manifest.json"))?,
         actions: read_json(&path.join("actions.json"))?,
         events: read_json(&path.join("events.json"))?,
+        samples: read_json(&path.join("samples.json"))?,
+        controller_updates: read_optional_json(&path.join("controller_updates.json"))?
+            .unwrap_or_default(),
     })
 }
 
-fn write_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
+fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
     let raw = serde_json::to_string_pretty(value)?;
     fs::write(path, raw)
         .with_context(|| format!("failed to write json file {}", path.display()))?;
@@ -208,11 +280,31 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
         .with_context(|| format!("failed to parse json file {}", path.display()))
 }
 
+fn read_optional_json<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    read_json(path).map(Some)
+}
+
 struct ArtifactBundle {
     scenario: ScenarioSpec,
+    controller_spec: Option<ControllerSpec>,
     manifest: RunManifest,
     actions: Vec<ActionLogEntry>,
     events: Vec<EventRecord>,
+    samples: Vec<SampleRecord>,
+    controller_updates: Vec<ControllerUpdateRecord>,
+}
+
+#[derive(Serialize)]
+struct StandaloneArtifacts<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scenario: Option<&'a ScenarioSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    controller_spec: Option<&'a ControllerSpec>,
+    run: &'a RunArtifacts,
+    controller_updates: &'a [ControllerUpdateRecord],
 }
 
 fn manifest_matches(lhs: &RunManifest, rhs: &RunManifest) -> bool {

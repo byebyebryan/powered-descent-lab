@@ -120,9 +120,16 @@ Exit criteria:
 Status:
 
 - started
-- current implementation includes a first named pack runner and summary counts,
-  but not yet controller-local telemetry, seeded scenario expansion, native
-  parallel execution, or usable inspection reports
+- current implementation includes:
+  - a first named pack runner and summary counts
+  - controller config/spec plumbing for built-in controllers
+  - controller-local status, phase, metrics, and markers
+  - a first static single-run inspection report in `pd-cli`
+- still missing:
+  - seeded scenario expansion
+  - native parallel execution
+  - stronger comparison/regression reporting
+  - polished batch-level report UX
 
 ### Phase 3: Transfer guidance
 

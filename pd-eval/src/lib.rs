@@ -5,8 +5,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use pd_control::{BaselineController, IdleController, run_controller};
-use pd_core::{MissionOutcome, RunArtifacts, RunContext, RunManifest, ScenarioSpec};
+use pd_control::{
+    ControllerSpec, ControlledRunArtifacts, built_in_controller_spec, run_controller_spec,
+};
+use pd_core::{MissionOutcome, RunContext, RunManifest, ScenarioSpec};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -22,12 +24,15 @@ pub struct ScenarioPackEntry {
     pub id: String,
     pub scenario: String,
     pub controller: String,
+    #[serde(default)]
+    pub controller_config: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BatchRunRecord {
     pub entry_id: String,
     pub scenario_path: String,
+    pub controller_spec: ControllerSpec,
     pub manifest: RunManifest,
     pub bundle_dir: Option<String>,
 }
@@ -78,21 +83,23 @@ pub fn run_pack(
     for entry in &pack.entries {
         let scenario_path = base_dir.join(&entry.scenario);
         let scenario = load_scenario(&scenario_path)?;
+        let controller_spec = load_controller_spec(base_dir, entry)?;
         let ctx = RunContext::from_scenario(&scenario)
             .map_err(anyhow::Error::msg)
             .with_context(|| format!("failed to build run context for entry {}", entry.id))?;
-        let artifacts = run_named_controller(&entry.controller, &ctx)
+        let artifacts = run_controller_spec(&ctx, &controller_spec)
             .with_context(|| format!("failed to run controller for entry {}", entry.id))?;
 
         let bundle_dir = output_dir.map(|root| root.join("runs").join(&entry.id));
         if let Some(bundle_dir) = bundle_dir.as_deref() {
-            write_artifact_bundle(bundle_dir, &scenario, &artifacts)?;
+            write_artifact_bundle(bundle_dir, &scenario, &controller_spec, &artifacts)?;
         }
 
         records.push(BatchRunRecord {
             entry_id: entry.id.clone(),
             scenario_path: entry.scenario.clone(),
-            manifest: artifacts.manifest,
+            controller_spec: controller_spec.clone(),
+            manifest: artifacts.run.manifest,
             bundle_dir: bundle_dir.map(|path| path.to_string_lossy().into_owned()),
         });
     }
@@ -156,18 +163,22 @@ fn load_scenario(path: &Path) -> Result<ScenarioSpec> {
         .with_context(|| format!("failed to parse scenario json {}", path.display()))
 }
 
-fn run_named_controller(controller: &str, ctx: &RunContext) -> Result<RunArtifacts> {
-    match controller {
-        "baseline" | "baseline_v1" => {
-            let mut baseline = BaselineController;
-            run_controller(ctx, &mut baseline).map_err(anyhow::Error::msg)
-        }
-        "idle" => {
-            let mut idle = IdleController;
-            run_controller(ctx, &mut idle).map_err(anyhow::Error::msg)
-        }
-        other => bail!("unknown controller '{other}'"),
+fn load_controller_spec(base_dir: &Path, entry: &ScenarioPackEntry) -> Result<ControllerSpec> {
+    if let Some(path) = entry.controller_config.as_deref() {
+        let full_path = base_dir.join(path);
+        let raw = fs::read_to_string(&full_path).with_context(|| {
+            format!("failed to read controller config file {}", full_path.display())
+        })?;
+        return serde_json::from_str(&raw).with_context(|| {
+            format!(
+                "failed to parse controller config json {}",
+                full_path.display()
+            )
+        });
     }
+
+    built_in_controller_spec(&entry.controller)
+        .ok_or_else(|| anyhow::anyhow!("unknown controller '{}'", entry.controller))
 }
 
 fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
@@ -209,15 +220,21 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 fn write_artifact_bundle(
     path: &Path,
     scenario: &ScenarioSpec,
-    artifacts: &RunArtifacts,
+    controller_spec: &ControllerSpec,
+    artifacts: &ControlledRunArtifacts,
 ) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create artifact bundle dir {}", path.display()))?;
     write_json(&path.join("scenario.json"), scenario)?;
-    write_json(&path.join("manifest.json"), &artifacts.manifest)?;
-    write_json(&path.join("actions.json"), &artifacts.actions)?;
-    write_json(&path.join("events.json"), &artifacts.events)?;
-    write_json(&path.join("samples.json"), &artifacts.samples)?;
+    write_json(&path.join("controller.json"), controller_spec)?;
+    write_json(
+        &path.join("controller_updates.json"),
+        &artifacts.controller_updates,
+    )?;
+    write_json(&path.join("manifest.json"), &artifacts.run.manifest)?;
+    write_json(&path.join("actions.json"), &artifacts.run.actions)?;
+    write_json(&path.join("events.json"), &artifacts.run.events)?;
+    write_json(&path.join("samples.json"), &artifacts.run.samples)?;
     Ok(())
 }
 
@@ -253,11 +270,13 @@ mod tests {
                     id: "landing_success".to_owned(),
                     scenario: "scenarios/flat_terminal_descent.json".to_owned(),
                     controller: "baseline".to_owned(),
+                    controller_config: None,
                 },
                 ScenarioPackEntry {
                     id: "checkpoint_success".to_owned(),
                     scenario: "scenarios/timed_checkpoint_idle.json".to_owned(),
                     controller: "idle".to_owned(),
+                    controller_config: None,
                 },
             ],
         };

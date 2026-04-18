@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 pd-core = { path = "../pd-core" }
+serde.workspace = true

@@ -21,22 +21,28 @@
 - The docs are now realigned around the next real milestone: turning the thin
   controller loop into a proper bot framework with inspection, seeded coverage,
   and eval-side native parallelism.
+- The controller layer now emits structured controller frames with:
+  - command
+  - status
+  - phase
+  - metrics
+  - report/debug markers
+- `pd-cli` now writes controller config and controller-update traces into
+  artifact bundles and can generate a first static single-run inspection report.
 
 ### Active implementation focus
 
-1. Broaden `pd-control` from a thin `Observation -> Command` callback into a
-   real bot framework:
-   - controller config schemas
-   - controller-local telemetry
-   - status, phase, metrics, and markers for reports
-2. Pull minimal reporting and inspection into the near-term workflow so runs are
-   explainable without raw JSON inspection.
-3. Extend `pd-eval` with scenario families, seeded coverage, and deterministic
+1. Extend `pd-eval` with scenario families, seeded coverage, and deterministic
    native multithreading.
-4. Keep artifacts simple and authoritative:
+2. Tighten the first report path beyond a single static run page:
+   - richer event/marker inspection
+   - better batch-level summaries
+   - easier regeneration from batch bundles
+3. Keep artifacts simple and authoritative:
    - run manifest
    - action log
    - event log
+   - controller update trace
    - optional sampled/debug trace
 
 ### Notes
@@ -74,16 +80,16 @@
 - `pd-eval` currently produces only JSON bundle output and summary counts. It
   does not yet provide baseline-to-baseline diffs, thresholds, or richer
   aggregate metrics.
-- Controllers still emit only `Command`; controller config schemas and
-  controller-local telemetry/debug payloads are not implemented yet.
-- There is no usable report/inspection path yet beyond console output and raw
-  artifact files.
 - Scenario authoring is still pinned-case only. Scenario families, seed sweeps,
   and randomized coverage have not been implemented yet.
 - `pd-eval` is still single-threaded. Native parallel execution for multi-seed
   and multi-scenario runs is still design-only.
-- Replay bundles are now self-contained for scenarios, but controller
-  configuration is still implicit because only built-in controllers exist.
+- Replay bundles now capture controller config and controller traces, but replay
+  still treats those as carried-through inspection data rather than as
+  authoritative replay inputs.
+- The first report path is single-run only. `pd-eval` bundles can be rendered
+  through `pd-cli report`, but batch output does not yet generate polished
+  report pages directly.
 
 #### Checkpoint 2: baseline runner path
 
@@ -181,3 +187,24 @@
 - Clarified the migration stance:
   - reuse scenario ideas and proven scenario shapes from `pylander`
   - do not transliterate the old bot interface or scenario files directly
+
+#### Checkpoint 9: first proper bot-framework slice
+
+- Replaced the thin controller callback with a richer controller frame contract:
+  - `command`
+  - `status`
+  - `phase`
+  - `metrics`
+  - `markers`
+- Added controller config/spec support for built-in controllers plus JSON-loaded
+  controller configs in `pd-cli` and `pd-eval`.
+- Updated bundle outputs to include:
+  - `controller.json`
+  - `controller_updates.json`
+- Added the first static single-run inspection report:
+  - terrain and trajectory view
+  - event and marker overlays
+  - sampled state inspection
+  - basic time-series charts for altitude, velocity, throttle, and attitude
+- Added `pd-cli report --bundle-dir ...` so report generation can be rerun over
+  captured bundles.

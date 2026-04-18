@@ -151,6 +151,7 @@ name = "pd-control"
 version = "0.1.0"
 dependencies = [
  "pd-core",
+ "serde",
 ]
 
 [[package]]
