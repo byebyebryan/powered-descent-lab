@@ -31,6 +31,9 @@
   artifact bundles and can generate a first static single-run inspection report.
 - CLI defaults now write repo-local artifacts under `outputs/` so generated
   bundles and reports are easier to find during iteration.
+- The single-run HTML report has now been reworked around a denser Plotly-based
+  layout with a large spatial plot, compact metric panels, hover inspection,
+  and summarized events/markers instead of verbose raw tables.
 
 ### Active implementation focus
 
@@ -219,3 +222,17 @@
   path is specified.
 - `pd-eval run-pack` now defaults to `outputs/eval/<pack>/`.
 - `/outputs` is ignored in git so generated artifacts stay local.
+
+#### Checkpoint 11: report density pass
+
+- Reworked the report layout after comparing it with the more mature
+  `pylander` viewer shape.
+- Borrowed the useful parts conceptually:
+  - Plotly-based interactive plots
+  - one primary spatial panel
+  - compact metric panels instead of long stacked sections
+  - hover-driven inspection
+  - sparse event markers and summaries instead of long event tables
+- Kept the new report simpler than the old `pylander` viewer:
+  - no direct transliteration of the old HTML structure
+  - still static-output-first and bundle-driven
