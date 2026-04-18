@@ -449,19 +449,19 @@ fn report_template() -> &'static str {
       background: linear-gradient(180deg, #f7f4ec 0%, var(--bg) 100%);
     }
     main {
-      max-width: 1540px;
+      max-width: 1520px;
       margin: 0 auto;
-      padding: 20px 18px 30px;
+      padding: 18px 16px 24px;
     }
     section, header {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 16px;
-      box-shadow: 0 8px 24px var(--shadow);
+      box-shadow: 0 6px 18px var(--shadow);
     }
     header {
-      padding: 16px 18px;
-      margin-bottom: 14px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
     }
     h1, h2, h3 {
       margin: 0;
@@ -517,13 +517,13 @@ fn report_template() -> &'static str {
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
     .stat, .panel-block {
       border: 1px solid var(--line);
       border-radius: 12px;
       background: rgba(255, 255, 255, 0.45);
-      padding: 10px 12px;
+      padding: 9px 11px;
     }
     .stat .label {
       font-size: 0.78rem;
@@ -533,32 +533,33 @@ fn report_template() -> &'static str {
       margin-bottom: 3px;
     }
     .stat .value {
-      font-size: 1.15rem;
+      font-size: 1.08rem;
       font-weight: 700;
     }
     .main-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1.9fr) minmax(22rem, 0.95fr);
-      gap: 14px;
+      grid-template-columns: minmax(0, 2.05fr) minmax(21rem, 0.92fr);
+      gap: 12px;
       align-items: start;
     }
     .left-stack, .right-stack {
       display: grid;
-      gap: 14px;
+      gap: 12px;
     }
     .right-stack {
       position: sticky;
       top: 14px;
     }
     .panel {
-      padding: 14px 16px 16px;
+      padding: 12px 14px 14px;
+      overflow: hidden;
     }
     .panel-head {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: 10px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     .panel-head h2 {
       font-size: 1.18rem;
@@ -567,13 +568,14 @@ fn report_template() -> &'static str {
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+      justify-content: flex-end;
     }
     .plot-toolbar button {
       border: 1px solid var(--line);
       background: #f7f1e4;
       color: var(--ink);
       border-radius: 999px;
-      padding: 5px 12px;
+      padding: 4px 10px;
       cursor: pointer;
       font: inherit;
     }
@@ -584,7 +586,7 @@ fn report_template() -> &'static str {
     }
     .chart {
       width: 100%;
-      height: 430px;
+      height: 408px;
       border: 1px solid var(--line);
       border-radius: 12px;
       background: #fbf8f1;
@@ -592,10 +594,10 @@ fn report_template() -> &'static str {
     .metric-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
+      gap: 12px;
     }
     .metric-grid .chart {
-      height: 285px;
+      height: 258px;
     }
     .chip-row {
       display: flex;
@@ -635,6 +637,9 @@ fn report_template() -> &'static str {
     .compact-list {
       display: grid;
       gap: 8px;
+      max-height: 14rem;
+      overflow: auto;
+      padding-right: 2px;
     }
     .compact-item {
       display: grid;
@@ -688,8 +693,8 @@ fn report_template() -> &'static str {
     }
     details {
       border-top: 1px solid rgba(216, 207, 191, 0.75);
-      margin-top: 12px;
-      padding-top: 10px;
+      margin-top: 10px;
+      padding-top: 8px;
     }
     details summary {
       cursor: pointer;
@@ -704,7 +709,7 @@ fn report_template() -> &'static str {
       color: #f5f0e6;
       font-size: 0.82rem;
       overflow: auto;
-      max-height: 16rem;
+      max-height: 14rem;
     }
     .empty {
       color: var(--muted);
@@ -730,10 +735,10 @@ fn report_template() -> &'static str {
         grid-template-columns: 1fr 1fr;
       }
       .chart {
-        height: 360px;
+        height: 340px;
       }
       .metric-grid .chart {
-        height: 260px;
+        height: 250px;
       }
     }
   </style>
@@ -889,7 +894,20 @@ fn report_template() -> &'static str {
     const reportData = __REPORT_DATA__;
     const paperBg = "#fffaf0";
     const plotBg = "#fbf8f1";
-    const baseConfig = { responsive: true, displaylogo: false };
+    const sharedConfig = {
+      responsive: true,
+      displaylogo: false,
+      modeBarButtonsToRemove: [
+        "lasso2d",
+        "select2d",
+        "toggleSpikelines",
+        "hoverClosestCartesian",
+        "hoverCompareCartesian",
+        "autoScale2d",
+      ],
+    };
+    const spatialConfig = sharedConfig;
+    const compactConfig = { ...sharedConfig, displayModeBar: false };
 
     const fmt = (value, digits = 2) =>
       Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "n/a";
@@ -970,18 +988,30 @@ fn report_template() -> &'static str {
       [1.0, "#0b3d91"],
     ];
 
-    const layoutBase = (title, extra = {}) => Object.assign({
-      title,
+    const axisStyle = (extra = {}) => Object.assign({
+      automargin: true,
+      gridcolor: "rgba(216, 207, 191, 0.5)",
+      zerolinecolor: "rgba(108, 97, 77, 0.45)",
+      linecolor: "rgba(108, 97, 77, 0.35)",
+    }, extra);
+
+    const layoutBase = (extra = {}) => Object.assign({
       paper_bgcolor: paperBg,
       plot_bgcolor: plotBg,
-      margin: { l: 58, r: 50, t: 54, b: 38 },
+      margin: { l: 58, r: 24, t: 16, b: 38 },
       legend: {
         orientation: "h",
         yanchor: "bottom",
-        y: 1.02,
+        y: 1.03,
         xanchor: "left",
         x: 0,
         bgcolor: "rgba(255,250,240,0.92)",
+        font: { size: 11 },
+      },
+      font: {
+        family: "Georgia, Times New Roman, serif",
+        size: 12,
+        color: "#1d1f24",
       },
       hoverlabel: {
         bgcolor: "#fffaf0",
@@ -989,6 +1019,32 @@ fn report_template() -> &'static str {
         font: { family: "Georgia, serif", size: 12, color: "#1d1f24" },
       },
     }, extra);
+
+    const spatialLayout = (extra = {}) => layoutBase(Object.assign({
+      margin: { l: 58, r: 76, t: 18, b: 34 },
+      legend: {
+        orientation: "h",
+        yanchor: "bottom",
+        y: 1.02,
+        xanchor: "left",
+        x: 0,
+        bgcolor: "rgba(255,250,240,0.92)",
+        font: { size: 11 },
+      },
+    }, extra));
+
+    const metricLayout = (extra = {}) => layoutBase(Object.assign({
+      margin: { l: 56, r: 54, t: 10, b: 82 },
+      legend: {
+        orientation: "h",
+        yanchor: "top",
+        y: -0.2,
+        xanchor: "left",
+        x: 0,
+        bgcolor: "rgba(255,250,240,0.92)",
+        font: { size: 11 },
+      },
+    }, extra));
 
     const summarizeOutcome = () => {
       setText("scenario-title", reportData.scenarioName);
@@ -1335,14 +1391,14 @@ fn report_template() -> &'static str {
       Plotly.newPlot(
         spatialElement,
         spatialTraces.map((trace, index) => ({ ...trace, visible: visibilityForMode("plain")[index] })),
-        layoutBase("Trajectory", {
+        spatialLayout({
           hovermode: "closest",
           hoverdistance: 32,
-          xaxis: { title: "" },
-          yaxis: { title: "", scaleanchor: "x", scaleratio: 1 },
+          xaxis: axisStyle({ title: "" }),
+          yaxis: axisStyle({ title: "", scaleanchor: "x", scaleratio: 1 }),
           annotations: [],
         }),
-        baseConfig,
+        spatialConfig,
       );
 
       const toolbar = document.getElementById("spatial-mode-toolbar");
@@ -1353,7 +1409,7 @@ fn report_template() -> &'static str {
         Plotly.update(
           spatialElement,
           { visible: visibilityForMode(mode) },
-          { title: mode === "speed" ? "Trajectory (speed-colored)" : mode === "throttle" ? "Trajectory (throttle-colored)" : mode === "vectors" ? "Trajectory (thrust vectors)" : "Trajectory", annotations: mode === "vectors" ? vectorAnnotations : [] }
+          { annotations: mode === "vectors" ? vectorAnnotations : [] }
         );
       };
       for (const button of toolbar.querySelectorAll("button[data-mode]")) {
@@ -1396,14 +1452,14 @@ fn report_template() -> &'static str {
           { type: "scatter", mode: "lines", name: "vx", x: timeValues, y: vxValues, line: { color: "#8e3b2e", width: 2 }, yaxis: "y2", visible: "legendonly" },
           { type: "scatter", mode: "lines", name: "vy", x: timeValues, y: vyValues, line: { color: "#6d28d9", width: 2 }, yaxis: "y2", visible: "legendonly" },
         ],
-        layoutBase("Altitude And Velocity", {
+        metricLayout({
           hovermode: "x unified",
-          xaxis: { title: "Time (s)" },
-          yaxis: { title: "Meters", zeroline: true },
-          yaxis2: { title: "Meters / sec", overlaying: "y", side: "right", zeroline: true },
+          xaxis: axisStyle({ title: "Time (s)" }),
+          yaxis: axisStyle({ title: "Meters", zeroline: true }),
+          yaxis2: axisStyle({ title: "Meters / sec", overlaying: "y", side: "right", zeroline: true }),
           shapes: eventGuideShapes,
         }),
-        baseConfig,
+        compactConfig,
       );
 
       const element = document.getElementById("chart-state");
@@ -1441,15 +1497,15 @@ fn report_template() -> &'static str {
           { type: "scatter", mode: "lines", name: "throttle", x: timeValues, y: throttleValues, line: { color: "#0e6b60", width: 3 }, yaxis: "y2" },
           { type: "scatter", mode: "lines", name: "fuel", x: timeValues, y: fuelValues, line: { color: "#8a6d3b", width: 2, dash: "dot" }, yaxis: "y3", visible: "legendonly" },
         ],
-        layoutBase("Throttle And Attitude", {
+        metricLayout({
           hovermode: "x unified",
-          xaxis: { title: "Time (s)" },
-          yaxis: { title: "Degrees", zeroline: true },
-          yaxis2: { title: "Throttle", overlaying: "y", side: "right", range: [0, 1.05], zeroline: true },
-          yaxis3: { title: "Fuel kg", overlaying: "y", side: "right", position: 0.95, showgrid: false, visible: false },
+          xaxis: axisStyle({ title: "Time (s)" }),
+          yaxis: axisStyle({ title: "Degrees", zeroline: true }),
+          yaxis2: axisStyle({ title: "Throttle", overlaying: "y", side: "right", range: [0, 1.05], zeroline: true }),
+          yaxis3: axisStyle({ title: "Fuel kg", overlaying: "y", side: "right", position: 0.95, showgrid: false, visible: false }),
           shapes: eventGuideShapes,
         }),
-        baseConfig,
+        compactConfig,
       );
 
       const element = document.getElementById("chart-control");

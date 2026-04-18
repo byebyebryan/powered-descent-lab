@@ -236,3 +236,16 @@
 - Kept the new report simpler than the old `pylander` viewer:
   - no direct transliteration of the old HTML structure
   - still static-output-first and bundle-driven
+
+#### Checkpoint 12: report layout cleanup
+
+- Tightened the report layout after direct visual inspection of generated HTML
+  pages in a browser.
+- Removed redundant inner Plotly titles so the panel headings remain the only
+  titles on the page.
+- Reduced chart clutter by:
+  - disabling the modebar on compact metric plots
+  - simplifying chart margins
+  - moving compact-plot legends out of the title/modebar collision zone
+- Tightened spacing across the dashboard so the page reads more like a dense
+  inspection surface than a stack of roomy cards.
