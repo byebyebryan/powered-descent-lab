@@ -260,6 +260,8 @@ fn apply_timed_checkpoint_contact(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use crate::{
         model::{
@@ -275,6 +277,9 @@ mod tests {
             id: "timed_checkpoint".to_owned(),
             name: "Timed checkpoint".to_owned(),
             description: "checkpoint test".to_owned(),
+            seed: 2,
+            tags: vec!["test".to_owned(), "checkpoint".to_owned()],
+            metadata: BTreeMap::from([("suite".to_owned(), "unit".to_owned())]),
             sim: SimConfig {
                 physics_hz: 120,
                 controller_hz: 60,

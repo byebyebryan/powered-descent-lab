@@ -2,6 +2,16 @@
   "id": "timed_checkpoint_idle",
   "name": "Timed checkpoint idle coast",
   "description": "Minimal in-flight checkpoint scenario for early-termination evaluation.",
+  "seed": 1002,
+  "tags": [
+    "checkpoint",
+    "idle",
+    "phase3_probe"
+  ],
+  "metadata": {
+    "family": "timed_checkpoint",
+    "controller_expectation": "idle"
+  },
   "sim": {
     "physics_hz": 120,
     "controller_hz": 60,

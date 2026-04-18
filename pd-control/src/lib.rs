@@ -80,6 +80,8 @@ pub fn run_controller(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use pd_core::{
         EndReason, EvaluationGoal, LandingPadSpec, MissionSpec, ScenarioSpec, SimConfig,
@@ -91,6 +93,9 @@ mod tests {
             id: "controller_smoke".to_owned(),
             name: "Controller smoke".to_owned(),
             description: "controller smoke".to_owned(),
+            seed: 3,
+            tags: vec!["test".to_owned(), "landing".to_owned()],
+            metadata: BTreeMap::from([("suite".to_owned(), "control".to_owned())]),
             sim: SimConfig {
                 physics_hz: 120,
                 controller_hz: 60,

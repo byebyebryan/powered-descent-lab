@@ -2,6 +2,16 @@
   "id": "flat_terminal_descent",
   "name": "Flat terminal descent",
   "description": "Minimal flat-pad terminal descent scenario for the first runnable slice.",
+  "seed": 1001,
+  "tags": [
+    "terminal",
+    "baseline",
+    "phase1"
+  ],
+  "metadata": {
+    "family": "terminal_descent",
+    "difficulty": "nominal"
+  },
   "sim": {
     "physics_hz": 120,
     "controller_hz": 60,

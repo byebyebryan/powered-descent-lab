@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{math::Vec2, terrain::TerrainDefinition};
@@ -309,6 +311,9 @@ pub struct ScenarioSpec {
     pub id: String,
     pub name: String,
     pub description: String,
+    pub seed: u64,
+    pub tags: Vec<String>,
+    pub metadata: BTreeMap<String, String>,
     pub sim: SimConfig,
     pub world: WorldSpec,
     pub vehicle: VehicleSpec,
@@ -323,6 +328,21 @@ impl ScenarioSpec {
         }
         if self.name.trim().is_empty() {
             return Err("scenario name must not be empty".to_owned());
+        }
+        for tag in &self.tags {
+            if tag.trim().is_empty() {
+                return Err("scenario tags must not contain empty values".to_owned());
+            }
+        }
+        for (key, value) in &self.metadata {
+            if key.trim().is_empty() {
+                return Err("scenario metadata keys must not be empty".to_owned());
+            }
+            if value.trim().is_empty() {
+                return Err(format!(
+                    "scenario metadata value for key '{key}' must not be empty"
+                ));
+            }
         }
         self.sim.validate()?;
         self.world.validate()?;
@@ -348,6 +368,8 @@ impl ScenarioSpec {
 pub struct RunContext {
     pub scenario_id: String,
     pub scenario_name: String,
+    pub scenario_seed: u64,
+    pub scenario_tags: Vec<String>,
     pub sim: SimConfig,
     pub world: WorldSpec,
     pub vehicle: VehicleSpec,
@@ -367,6 +389,8 @@ impl RunContext {
         Ok(Self {
             scenario_id: spec.id.clone(),
             scenario_name: spec.name.clone(),
+            scenario_seed: spec.seed,
+            scenario_tags: spec.tags.clone(),
             sim: spec.sim.clone(),
             world: spec.world.clone(),
             vehicle: spec.vehicle.clone(),
@@ -493,6 +517,8 @@ pub struct RunManifest {
     pub schema_version: u32,
     pub scenario_id: String,
     pub scenario_name: String,
+    pub scenario_seed: u64,
+    pub scenario_tags: Vec<String>,
     pub controller_id: String,
     pub physics_hz: u32,
     pub controller_hz: u32,

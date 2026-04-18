@@ -474,6 +474,8 @@ fn build_manifest(
         schema_version: RUN_SCHEMA_VERSION,
         scenario_id: ctx.scenario_id.clone(),
         scenario_name: ctx.scenario_name.clone(),
+        scenario_seed: ctx.scenario_seed,
+        scenario_tags: ctx.scenario_tags.clone(),
         controller_id: controller_id.to_owned(),
         physics_hz: ctx.sim.physics_hz,
         controller_hz: ctx.sim.controller_hz,
@@ -526,6 +528,8 @@ fn shortest_angle_delta(current_rad: f64, target_rad: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use crate::model::{
         EvaluationGoal, LandingPadSpec, MissionSpec, ScenarioSpec, SimConfig, VehicleGeometry,
@@ -538,6 +542,9 @@ mod tests {
             id: "smoke".to_owned(),
             name: "Smoke".to_owned(),
             description: "smoke test".to_owned(),
+            seed: 1,
+            tags: vec!["test".to_owned(), "smoke".to_owned()],
+            metadata: BTreeMap::from([("suite".to_owned(), "unit".to_owned())]),
             sim: SimConfig {
                 physics_hz: 120,
                 controller_hz: 60,

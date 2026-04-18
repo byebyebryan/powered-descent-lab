@@ -15,11 +15,14 @@
 - First single-run path is now implemented through `pd-cli`.
 - Early-termination mission evaluation now has a first concrete timed-checkpoint
   goal shape.
+- Replay bundles now include `scenario.json` and can be replayed without an
+  external scenario path.
 
 ### Active implementation focus
 
-1. Add more authored scenarios around the new evaluation layer.
-2. Tighten result summaries and telemetry around non-landing mission outcomes.
+1. Start the first actual `pd-eval` pack runner instead of staying in single-run
+   mode.
+2. Add more authored scenarios around the evaluation layer.
 3. Keep artifacts simple and authoritative:
    - run manifest
    - action log
@@ -56,11 +59,12 @@
 
 ### Known limitations
 
-- Mission goals are still limited to landing-on-pad scenarios.
 - Contact/landing logic is intentionally simple and will need refinement before
   richer terrain or transfer-style evaluations.
-- Replay verification is being added now, but mission/eval logic still lives
-  inside the simulation loop instead of a cleaner termination/evaluation layer.
+- Controllers still emit only `Command`; controller config schemas and
+  controller-local telemetry/debug payloads are not implemented yet.
+- Replay bundles are now self-contained for scenarios, but controller
+  configuration is still implicit because only built-in controllers exist.
 
 #### Checkpoint 2: baseline runner path
 
@@ -119,3 +123,14 @@
   relative to the designated target pad.
 - Added an authored scenario fixture:
   - `fixtures/scenarios/timed_checkpoint_idle.json`
+
+#### Checkpoint 6: self-contained replay bundles
+
+- Added `seed`, `tags`, and `metadata` to `ScenarioSpec`.
+- Replay bundles now write `scenario.json` alongside:
+  - `manifest.json`
+  - `actions.json`
+  - `events.json`
+  - `samples.json`
+- `pd-cli replay` can now reconstruct from the bundle alone without requiring a
+  separate scenario path.

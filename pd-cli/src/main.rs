@@ -50,7 +50,7 @@ struct RunArgs {
 #[derive(Debug, Parser)]
 struct ReplayArgs {
     #[arg(value_name = "SCENARIO_JSON")]
-    scenario: PathBuf,
+    scenario: Option<PathBuf>,
 
     #[arg(long, value_name = "ARTIFACTS_DIR")]
     bundle_dir: PathBuf,
@@ -93,6 +93,7 @@ fn run(args: RunArgs) -> Result<()> {
     write_outputs(
         args.output.as_deref(),
         args.output_dir.as_deref(),
+        Some(&scenario),
         &artifacts,
     )?;
     println!("{}", serde_json::to_string_pretty(&artifacts.manifest)?);
@@ -100,26 +101,30 @@ fn run(args: RunArgs) -> Result<()> {
 }
 
 fn replay(args: ReplayArgs) -> Result<()> {
-    let scenario = load_scenario(&args.scenario)?;
+    let bundle = load_artifact_bundle(&args.bundle_dir)?;
+    let scenario = match args.scenario.as_deref() {
+        Some(path) => load_scenario(path)?,
+        None => bundle.scenario.clone(),
+    };
     let ctx = RunContext::from_scenario(&scenario)
         .map_err(anyhow::Error::msg)
         .context("failed to build run context from scenario")?;
-    let original = load_artifact_bundle(&args.bundle_dir)?;
 
-    let replayed = replay_simulation(&ctx, &original.manifest.controller_id, &original.actions)
+    let replayed = replay_simulation(&ctx, &bundle.manifest.controller_id, &bundle.actions)
         .map_err(anyhow::Error::msg)
         .context("replay failed from action log")?;
 
-    if !manifest_matches(&replayed.manifest, &original.manifest) {
+    if !manifest_matches(&replayed.manifest, &bundle.manifest) {
         anyhow::bail!("replayed manifest does not match original manifest");
     }
-    if !event_streams_match(&replayed.events, &original.events) {
+    if !event_streams_match(&replayed.events, &bundle.events) {
         anyhow::bail!("replayed events do not match original event log");
     }
 
     write_outputs(
         args.output.as_deref(),
         args.output_dir.as_deref(),
+        Some(&scenario),
         &replayed,
     )?;
     println!("{}", serde_json::to_string_pretty(&replayed.manifest)?);
@@ -136,13 +141,14 @@ fn load_scenario(path: &Path) -> Result<ScenarioSpec> {
 fn write_outputs(
     output: Option<&Path>,
     output_dir: Option<&Path>,
+    scenario: Option<&ScenarioSpec>,
     artifacts: &RunArtifacts,
 ) -> Result<()> {
     if let Some(path) = output {
         write_artifacts(path, artifacts)?;
     }
     if let Some(path) = output_dir {
-        write_artifact_bundle(path, artifacts)?;
+        write_artifact_bundle(path, scenario, artifacts)?;
     }
     Ok(())
 }
@@ -162,9 +168,16 @@ fn write_artifacts(path: &Path, artifacts: &RunArtifacts) -> Result<()> {
     Ok(())
 }
 
-fn write_artifact_bundle(path: &Path, artifacts: &RunArtifacts) -> Result<()> {
+fn write_artifact_bundle(
+    path: &Path,
+    scenario: Option<&ScenarioSpec>,
+    artifacts: &RunArtifacts,
+) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create artifact bundle dir {}", path.display()))?;
+    if let Some(scenario) = scenario {
+        write_json(&path.join("scenario.json"), scenario)?;
+    }
     write_json(&path.join("manifest.json"), &artifacts.manifest)?;
     write_json(&path.join("actions.json"), &artifacts.actions)?;
     write_json(&path.join("events.json"), &artifacts.events)?;
@@ -174,6 +187,7 @@ fn write_artifact_bundle(path: &Path, artifacts: &RunArtifacts) -> Result<()> {
 
 fn load_artifact_bundle(path: &Path) -> Result<ArtifactBundle> {
     Ok(ArtifactBundle {
+        scenario: read_json(&path.join("scenario.json"))?,
         manifest: read_json(&path.join("manifest.json"))?,
         actions: read_json(&path.join("actions.json"))?,
         events: read_json(&path.join("events.json"))?,
@@ -195,6 +209,7 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
 }
 
 struct ArtifactBundle {
+    scenario: ScenarioSpec,
     manifest: RunManifest,
     actions: Vec<ActionLogEntry>,
     events: Vec<EventRecord>,
@@ -204,6 +219,8 @@ fn manifest_matches(lhs: &RunManifest, rhs: &RunManifest) -> bool {
     lhs.schema_version == rhs.schema_version
         && lhs.scenario_id == rhs.scenario_id
         && lhs.scenario_name == rhs.scenario_name
+        && lhs.scenario_seed == rhs.scenario_seed
+        && lhs.scenario_tags == rhs.scenario_tags
         && lhs.controller_id == rhs.controller_id
         && lhs.physics_hz == rhs.physics_hz
         && lhs.controller_hz == rhs.controller_hz

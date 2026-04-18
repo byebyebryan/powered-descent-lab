@@ -553,6 +553,8 @@ Trace data should be a first-class output of the lab.
 
 Recommended authoritative artifact split:
 
+- one scenario spec or equivalent scenario snapshot to make replay bundles
+  portable across machines and worktrees
 - one run manifest with scenario, controller, config, result, and summary
   metrics
 - one action log sufficient to replay controller outputs over time
@@ -572,6 +574,7 @@ source of replay.
 
 Recommended stance:
 
+- a replay bundle should be runnable without an external scenario file
 - actions and events are the primary replay inputs
 - sampled traces are decimated or event-focused by default
 - dense sampled traces are a debug mode, not the default contract
