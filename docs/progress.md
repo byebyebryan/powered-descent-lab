@@ -249,3 +249,5 @@
   - moving compact-plot legends out of the title/modebar collision zone
 - Tightened spacing across the dashboard so the page reads more like a dense
   inspection surface than a stack of roomy cards.
+- Moved compact metric-plot legends into the top chart margin so they no longer
+  collide with the x-axis title.

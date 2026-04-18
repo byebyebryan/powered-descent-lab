@@ -1034,11 +1034,11 @@ fn report_template() -> &'static str {
     }, extra));
 
     const metricLayout = (extra = {}) => layoutBase(Object.assign({
-      margin: { l: 56, r: 54, t: 10, b: 82 },
+      margin: { l: 56, r: 54, t: 36, b: 54 },
       legend: {
         orientation: "h",
-        yanchor: "top",
-        y: -0.2,
+        yanchor: "bottom",
+        y: 1.02,
         xanchor: "left",
         x: 0,
         bgcolor: "rgba(255,250,240,0.92)",
