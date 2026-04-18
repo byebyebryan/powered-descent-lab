@@ -279,3 +279,6 @@
 - Deliberately did not pull over the heavier tracepack/cache naming machinery
   yet, because `pd-lab` does not have the equivalent compare workflow in-tree
   yet.
+- Added `latest` symlinks for report-producing `pd-cli` workflows so the most
+  recently written single-run or replay report is reachable through a stable
+  convenience path.

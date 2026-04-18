@@ -115,3 +115,9 @@ Useful commands:
 This is intentionally explicit. Agent skills or local tooling can call the same
 script when they need a report server, but the repo-owned script remains the
 canonical entrypoint.
+
+Generated single-run and replay reports also maintain sibling `latest` links
+under `outputs/` when written through `pd-cli`, for example:
+
+- `outputs/runs/latest/report.html`
+- `outputs/replays/latest/report.html`

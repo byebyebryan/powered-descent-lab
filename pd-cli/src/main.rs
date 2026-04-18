@@ -16,6 +16,11 @@ use pd_core::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
+#[cfg(unix)]
+use std::os::unix::fs as platform_fs;
+#[cfg(windows)]
+use std::os::windows::fs as platform_fs;
+
 #[derive(Debug, Parser)]
 #[command(name = "pd-cli")]
 #[command(about = "Powered descent lab command-line entry point")]
@@ -161,6 +166,7 @@ fn render_report(args: ReportArgs) -> Result<()> {
         &bundle.samples,
         &bundle.controller_updates,
     )?;
+    maybe_update_latest_link(&args.bundle_dir)?;
     println!("{}", output.display());
     Ok(())
 }
@@ -257,6 +263,7 @@ fn write_artifact_bundle(
             &artifacts.samples,
             controller_updates,
         )?;
+        maybe_update_latest_link(path)?;
     }
     Ok(())
 }
@@ -351,6 +358,51 @@ fn repo_root() -> PathBuf {
         .parent()
         .expect("pd-cli crate should live under repo root")
         .to_path_buf()
+}
+
+fn maybe_update_latest_link(target_dir: &Path) -> Result<()> {
+    let repo_root = repo_root();
+    let outputs_root = repo_root.join("outputs");
+    let resolved_target_dir = if target_dir.is_absolute() {
+        target_dir.to_path_buf()
+    } else {
+        repo_root.join(target_dir)
+    };
+
+    if !resolved_target_dir.starts_with(&outputs_root) {
+        return Ok(());
+    }
+
+    let Some(parent_dir) = resolved_target_dir.parent() else {
+        return Ok(());
+    };
+    let Some(target_name) = resolved_target_dir.file_name() else {
+        return Ok(());
+    };
+
+    let latest_path = parent_dir.join("latest");
+    if let Ok(metadata) = fs::symlink_metadata(&latest_path) {
+        if metadata.file_type().is_symlink() || metadata.is_file() {
+            fs::remove_file(&latest_path).with_context(|| {
+                format!("failed to remove existing latest link {}", latest_path.display())
+            })?;
+        } else {
+            eprintln!(
+                "skipping latest link update because '{}' exists and is not a symlink",
+                latest_path.display()
+            );
+            return Ok(());
+        }
+    }
+
+    platform_fs::symlink(PathBuf::from(target_name), &latest_path).with_context(|| {
+        format!(
+            "failed to create latest link {} -> {}",
+            latest_path.display(),
+            target_name.to_string_lossy()
+        )
+    })?;
+    Ok(())
 }
 
 fn default_run_output_dir(scenario_path: &Path, controller_spec: &ControllerSpec) -> PathBuf {
