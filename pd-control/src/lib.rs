@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 use pd_core::{Observation, RunArtifacts, RunContext, SimulationError, run_simulation};
 use serde::{Deserialize, Serialize};
@@ -102,13 +103,23 @@ pub struct ControllerUpdateRecord {
     pub sim_time_s: f64,
     pub physics_step: u64,
     pub controller_update_index: u64,
+    #[serde(default)]
+    pub compute_time_us: Option<u64>,
     pub frame: ControllerFrame,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RunPerformanceStats {
+    pub wall_time_us: u64,
+    #[serde(default)]
+    pub thread_cpu_time_us: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ControlledRunArtifacts {
     pub run: RunArtifacts,
     pub controller_updates: Vec<ControllerUpdateRecord>,
+    pub performance: RunPerformanceStats,
 }
 
 pub fn run_controller(
@@ -118,12 +129,17 @@ pub fn run_controller(
     controller.reset(ctx);
     let controller_id = controller.id().to_owned();
     let mut controller_updates = Vec::new();
+    let wall_started_at = Instant::now();
+    let thread_cpu_started_at = current_thread_cpu_time_us();
     let run = run_simulation(ctx, &controller_id, |ctx, observation| {
+        let started_at = Instant::now();
         let frame = controller.update(ctx, observation).clamped();
+        let compute_time_us = started_at.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
         controller_updates.push(ControllerUpdateRecord {
             sim_time_s: observation.sim_time_s,
             physics_step: observation.physics_step,
             controller_update_index: controller_updates.len() as u64,
+            compute_time_us: Some(compute_time_us),
             frame: frame.clone(),
         });
         frame.command
@@ -132,7 +148,36 @@ pub fn run_controller(
     Ok(ControlledRunArtifacts {
         run,
         controller_updates,
+        performance: RunPerformanceStats {
+            wall_time_us: wall_started_at
+                .elapsed()
+                .as_micros()
+                .min(u128::from(u64::MAX)) as u64,
+            thread_cpu_time_us: current_thread_cpu_time_us()
+                .zip(thread_cpu_started_at)
+                .map(|(finished, started)| finished.saturating_sub(started)),
+        },
     })
+}
+
+#[cfg(unix)]
+fn current_thread_cpu_time_us() -> Option<u64> {
+    let mut spec = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut spec) };
+    if rc != 0 || spec.tv_sec < 0 || spec.tv_nsec < 0 {
+        return None;
+    }
+    let secs = spec.tv_sec as u128;
+    let nanos = spec.tv_nsec as u128;
+    Some(((secs * 1_000_000) + (nanos / 1_000)).min(u128::from(u64::MAX)) as u64)
+}
+
+#[cfg(not(unix))]
+fn current_thread_cpu_time_us() -> Option<u64> {
+    None
 }
 
 pub fn run_controller_spec(

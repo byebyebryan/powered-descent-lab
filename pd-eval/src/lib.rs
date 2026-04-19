@@ -1518,6 +1518,7 @@ fn write_artifact_bundle(
         &path.join("controller_updates.json"),
         &artifacts.controller_updates,
     )?;
+    write_json(&path.join("performance.json"), &artifacts.performance)?;
     write_json(&path.join("manifest.json"), &artifacts.run.manifest)?;
     write_json(&path.join("actions.json"), &artifacts.run.actions)?;
     write_json(&path.join("events.json"), &artifacts.run.events)?;

@@ -9,7 +9,8 @@ use std::{
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use pd_control::{
-    ControllerSpec, ControllerUpdateRecord, built_in_controller_spec, run_controller_spec,
+    ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, built_in_controller_spec,
+    run_controller_spec,
 };
 use pd_core::{
     ActionLogEntry, EventRecord, RunArtifacts, RunContext, RunManifest, SampleRecord, ScenarioSpec,
@@ -110,6 +111,7 @@ fn run(args: RunArgs) -> Result<()> {
         Some(&controller_spec),
         &artifacts.run,
         &artifacts.controller_updates,
+        Some(&artifacts.performance),
     )?;
     println!("{}", serde_json::to_string_pretty(&artifacts.run.manifest)?);
     Ok(())
@@ -145,6 +147,7 @@ fn replay(args: ReplayArgs) -> Result<()> {
         bundle.controller_spec.as_ref(),
         &replayed,
         &bundle.controller_updates,
+        bundle.performance.as_ref(),
     )?;
     println!("{}", serde_json::to_string_pretty(&replayed.manifest)?);
     Ok(())
@@ -163,6 +166,7 @@ fn render_report(args: ReportArgs) -> Result<()> {
         &bundle.events,
         &bundle.samples,
         &bundle.controller_updates,
+        bundle.performance.as_ref(),
     )?;
     if output
         .file_name()
@@ -202,6 +206,7 @@ fn write_outputs(
     controller_spec: Option<&ControllerSpec>,
     artifacts: &RunArtifacts,
     controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
 ) -> Result<()> {
     if let Some(path) = output {
         write_artifacts(
@@ -210,6 +215,7 @@ fn write_outputs(
             controller_spec,
             artifacts,
             controller_updates,
+            performance,
         )?;
     }
     if let Some(path) = output_dir {
@@ -219,6 +225,7 @@ fn write_outputs(
             controller_spec,
             artifacts,
             controller_updates,
+            performance,
         )?;
     }
     Ok(())
@@ -230,6 +237,7 @@ fn write_artifacts(
     controller_spec: Option<&ControllerSpec>,
     artifacts: &RunArtifacts,
     controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
 ) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
@@ -244,6 +252,7 @@ fn write_artifacts(
         controller_spec,
         run: artifacts,
         controller_updates,
+        performance,
     })?;
     fs::write(path, raw)
         .with_context(|| format!("failed to write artifacts file {}", path.display()))?;
@@ -256,6 +265,7 @@ fn write_artifact_bundle(
     controller_spec: Option<&ControllerSpec>,
     artifacts: &RunArtifacts,
     controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
 ) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create artifact bundle dir {}", path.display()))?;
@@ -270,6 +280,9 @@ fn write_artifact_bundle(
     write_json(&path.join("events.json"), &artifacts.events)?;
     write_json(&path.join("samples.json"), &artifacts.samples)?;
     write_json(&path.join("controller_updates.json"), controller_updates)?;
+    if let Some(performance) = performance {
+        write_json(&path.join("performance.json"), performance)?;
+    }
     if let Some(scenario) = scenario {
         report::write_run_report(
             &path.join("report.html"),
@@ -279,6 +292,7 @@ fn write_artifact_bundle(
             &artifacts.events,
             &artifacts.samples,
             controller_updates,
+            performance,
         )?;
         if let Some(report_site_output) = default_report_site_output_for_bundle(path) {
             report::write_run_report(
@@ -289,6 +303,7 @@ fn write_artifact_bundle(
                 &artifacts.events,
                 &artifacts.samples,
                 controller_updates,
+                performance,
             )?;
             update_report_site_indexes_for_file(&report_site_output)?;
         }
@@ -307,6 +322,7 @@ fn load_artifact_bundle(path: &Path) -> Result<ArtifactBundle> {
         samples: read_json(&path.join("samples.json"))?,
         controller_updates: read_optional_json(&path.join("controller_updates.json"))?
             .unwrap_or_default(),
+        performance: read_optional_json(&path.join("performance.json"))?,
     })
 }
 
@@ -339,6 +355,7 @@ struct ArtifactBundle {
     events: Vec<EventRecord>,
     samples: Vec<SampleRecord>,
     controller_updates: Vec<ControllerUpdateRecord>,
+    performance: Option<RunPerformanceStats>,
 }
 
 #[derive(Serialize)]
@@ -349,6 +366,8 @@ struct StandaloneArtifacts<'a> {
     controller_spec: Option<&'a ControllerSpec>,
     run: &'a RunArtifacts,
     controller_updates: &'a [ControllerUpdateRecord],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    performance: Option<&'a RunPerformanceStats>,
 }
 
 fn manifest_matches(lhs: &RunManifest, rhs: &RunManifest) -> bool {

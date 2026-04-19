@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, Result};
-use pd_control::{ControllerSpec, ControllerUpdateRecord, TelemetryValue};
-use pd_core::{EventKind, EventRecord, RunManifest, SampleRecord, ScenarioSpec};
+use pd_control::{ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue};
+use pd_core::{EvaluationGoal, EventKind, EventRecord, RunManifest, SampleRecord, ScenarioSpec};
 use serde::Serialize;
 
 const PLOTLY_CDN_URL: &str = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";
@@ -15,6 +15,7 @@ pub fn write_run_report(
     events: &[EventRecord],
     samples: &[SampleRecord],
     controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
 ) -> Result<()> {
     let report_data = build_report_data(
         scenario,
@@ -23,6 +24,7 @@ pub fn write_run_report(
         events,
         samples,
         controller_updates,
+        performance,
     );
     let html = report_template()
         .replace(
@@ -51,6 +53,7 @@ fn build_report_data(
     events: &[EventRecord],
     samples: &[SampleRecord],
     controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
 ) -> ReportData {
     let report_samples = build_report_samples(samples, controller_updates);
     let report_markers = build_report_markers(&report_samples, controller_updates);
@@ -69,6 +72,7 @@ fn build_report_data(
             mission_outcome: enum_label(&manifest.mission_outcome),
             end_reason: enum_label(&manifest.end_reason),
         },
+        run_performance: build_run_performance(manifest, performance),
         terrain: scenario
             .world
             .terrain
@@ -106,6 +110,11 @@ fn build_report_data(
                 .as_slice(),
         ),
         phase_summary: summarize_phases(&report_samples),
+        landing_quality: build_landing_quality(manifest),
+        checkpoint_quality: build_checkpoint_quality(manifest),
+        flight_stats: build_flight_stats(&report_samples, manifest),
+        bot_stats: build_bot_stats(manifest, controller_updates),
+        mission_details: build_mission_details(scenario),
     }
 }
 
@@ -163,6 +172,7 @@ fn build_report_samples(
             throttle_frac,
             target_attitude_rad,
             target_attitude_deg: target_attitude_rad.to_degrees(),
+            compute_time_ms: update_compute_time_ms(current_update),
             status,
             phase,
             metrics,
@@ -263,6 +273,245 @@ fn summarize_phases(samples: &[ReportSample]) -> Vec<ReportPhaseSummary> {
         .collect()
 }
 
+fn build_landing_quality(manifest: &RunManifest) -> Option<ReportLandingQuality> {
+    let landing = manifest.summary.landing.as_ref()?;
+    Some(ReportLandingQuality {
+        landing_offset_m: landing.touchdown_center_offset_m,
+        pad_margin_m: landing.pad_margin_m,
+        impact_attitude_deg: landing.attitude_error_rad.to_degrees(),
+        impact_normal_speed_mps: landing.normal_speed_mps,
+        impact_tangential_speed_mps: landing.tangential_speed_mps,
+        impact_speed_mps: landing.normal_speed_mps.hypot(landing.tangential_speed_mps),
+        angular_rate_degps: landing.angular_rate_radps.to_degrees(),
+        normal_speed_margin_mps: landing.normal_speed_margin_mps,
+        tangential_speed_margin_mps: landing.tangential_speed_margin_mps,
+        attitude_margin_deg: landing.attitude_margin_rad.to_degrees(),
+        angular_rate_margin_degps: landing.angular_rate_margin_radps.to_degrees(),
+        envelope_margin_ratio: landing.envelope_margin_ratio,
+        on_target: landing.on_target,
+        min_touchdown_clearance_m: manifest.summary.min_touchdown_clearance_m,
+        min_hull_clearance_m: manifest.summary.min_hull_clearance_m,
+    })
+}
+
+fn build_checkpoint_quality(manifest: &RunManifest) -> Option<ReportCheckpointQuality> {
+    let checkpoint = manifest.summary.checkpoint.as_ref()?;
+    Some(ReportCheckpointQuality {
+        position_error_m: checkpoint.position_error_m,
+        velocity_error_mps: checkpoint.velocity_error_mps,
+        attitude_error_deg: checkpoint.attitude_error_rad.to_degrees(),
+        position_margin_m: checkpoint.position_margin_m,
+        velocity_margin_mps: checkpoint.velocity_margin_mps,
+        attitude_margin_deg: checkpoint.attitude_margin_rad.to_degrees(),
+        envelope_margin_ratio: checkpoint.envelope_margin_ratio,
+    })
+}
+
+fn build_flight_stats(samples: &[ReportSample], manifest: &RunManifest) -> ReportFlightStats {
+    let mut path_distance_m = 0.0;
+    let mut horizontal_distance_m = 0.0;
+    let mut max_altitude_m = f64::NEG_INFINITY;
+    let mut min_altitude_m = f64::INFINITY;
+
+    for window in samples.windows(2) {
+        let lhs = &window[0];
+        let rhs = &window[1];
+        path_distance_m += (rhs.x_m - lhs.x_m).hypot(rhs.y_m - lhs.y_m);
+        horizontal_distance_m += (rhs.x_m - lhs.x_m).abs();
+    }
+
+    for sample in samples {
+        max_altitude_m = max_altitude_m.max(sample.height_above_target_m);
+        min_altitude_m = min_altitude_m.min(sample.height_above_target_m);
+    }
+
+    let net_displacement_m = match (samples.first(), samples.last()) {
+        (Some(first), Some(last)) => (last.x_m - first.x_m).hypot(last.y_m - first.y_m),
+        _ => 0.0,
+    };
+    let average_speed_mps = if manifest.sim_time_s > f64::EPSILON {
+        path_distance_m / manifest.sim_time_s
+    } else {
+        0.0
+    };
+
+    ReportFlightStats {
+        flight_time_s: manifest.sim_time_s,
+        path_distance_m,
+        horizontal_distance_m,
+        net_displacement_m,
+        average_speed_mps,
+        max_speed_mps: manifest.summary.max_speed_mps,
+        max_altitude_m: if max_altitude_m.is_finite() {
+            max_altitude_m
+        } else {
+            0.0
+        },
+        min_altitude_m: if min_altitude_m.is_finite() {
+            min_altitude_m
+        } else {
+            0.0
+        },
+        fuel_used_kg: manifest.summary.fuel_used_kg,
+        fuel_remaining_kg: manifest.summary.fuel_remaining_kg,
+    }
+}
+
+fn build_run_performance(
+    manifest: &RunManifest,
+    performance: Option<&RunPerformanceStats>,
+) -> ReportRunPerformance {
+    let wall_time_ms = performance.map(|stats| stats.wall_time_us as f64 / 1000.0);
+    let thread_cpu_time_ms = performance
+        .and_then(|stats| stats.thread_cpu_time_us)
+        .map(|value| value as f64 / 1000.0);
+    let cpu_time_per_tick_us = performance
+        .and_then(|stats| stats.thread_cpu_time_us)
+        .and_then(|value| {
+            (manifest.physics_steps > 0).then(|| value as f64 / manifest.physics_steps as f64)
+        });
+    let sim_rate_x = wall_time_ms.and_then(|wall| {
+        if wall <= f64::EPSILON {
+            None
+        } else {
+            Some((manifest.sim_time_s * 1000.0) / wall)
+        }
+    });
+    let physics_steps_per_s = wall_time_ms.and_then(|wall| {
+        if wall <= f64::EPSILON {
+            None
+        } else {
+            Some(manifest.physics_steps as f64 / (wall / 1000.0))
+        }
+    });
+
+    ReportRunPerformance {
+        wall_time_ms,
+        thread_cpu_time_ms,
+        cpu_time_per_tick_us,
+        sim_rate_x,
+        physics_steps_per_s,
+    }
+}
+
+fn build_bot_stats(
+    manifest: &RunManifest,
+    controller_updates: &[ControllerUpdateRecord],
+) -> ReportBotStats {
+    let mut compute_ms = controller_updates
+        .iter()
+        .filter_map(|update| update.compute_time_us.map(|value| value as f64 / 1000.0))
+        .collect::<Vec<_>>();
+    compute_ms.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap_or(std::cmp::Ordering::Equal));
+
+    let total_compute_ms = (!compute_ms.is_empty()).then(|| compute_ms.iter().sum::<f64>());
+    let mean_compute_ms = total_compute_ms.map(|total| total / compute_ms.len() as f64);
+    let p95_compute_ms = percentile(&compute_ms, 0.95);
+    let max_compute_ms = compute_ms.last().copied();
+    let mean_control_dt_ms = (manifest.controller_updates > 1)
+        .then(|| (manifest.sim_time_s * 1000.0) / manifest.controller_updates as f64);
+    let control_duty_cycle_pct = total_compute_ms.map(|total| {
+        if manifest.sim_time_s <= f64::EPSILON {
+            0.0
+        } else {
+            (total / (manifest.sim_time_s * 1000.0)) * 100.0
+        }
+    });
+
+    ReportBotStats {
+        controller_updates: manifest.controller_updates,
+        total_compute_ms,
+        mean_compute_ms,
+        p95_compute_ms,
+        max_compute_ms,
+        mean_control_dt_ms,
+        control_duty_cycle_pct,
+    }
+}
+
+fn build_mission_details(scenario: &ScenarioSpec) -> ReportMissionDetails {
+    let target_pad = scenario
+        .world
+        .landing_pad(scenario.mission.goal.target_pad_id())
+        .expect("validated scenario should contain mission target pad");
+    ReportMissionDetails {
+        description: scenario.description.clone(),
+        scenario_seed: scenario.seed,
+        tags: scenario.tags.clone(),
+        gravity_mps2: scenario.world.gravity_mps2,
+        sim: ReportSimDetails {
+            physics_hz: scenario.sim.physics_hz,
+            controller_hz: scenario.sim.controller_hz,
+            sample_hz: scenario.sim.sample_hz,
+            max_time_s: scenario.sim.max_time_s,
+        },
+        initial_state: ReportInitialState {
+            x_m: scenario.initial_state.position_m.x,
+            y_m: scenario.initial_state.position_m.y,
+            vx_mps: scenario.initial_state.velocity_mps.x,
+            vy_mps: scenario.initial_state.velocity_mps.y,
+            speed_mps: scenario.initial_state.velocity_mps.length(),
+            attitude_deg: scenario.initial_state.attitude_rad.to_degrees(),
+            angular_rate_degps: scenario.initial_state.angular_rate_radps.to_degrees(),
+        },
+        vehicle: ReportVehicleDetails {
+            hull_width_m: scenario.vehicle.geometry.hull_width_m,
+            hull_height_m: scenario.vehicle.geometry.hull_height_m,
+            touchdown_half_span_m: scenario.vehicle.geometry.touchdown_half_span_m,
+            touchdown_base_offset_m: scenario.vehicle.geometry.touchdown_base_offset_m,
+            dry_mass_kg: scenario.vehicle.dry_mass_kg,
+            initial_fuel_kg: scenario.vehicle.initial_fuel_kg,
+            max_fuel_kg: scenario.vehicle.max_fuel_kg,
+            max_thrust_n: scenario.vehicle.max_thrust_n,
+            max_fuel_burn_kgps: scenario.vehicle.max_fuel_burn_kgps,
+            max_rotation_rate_degps: scenario.vehicle.max_rotation_rate_radps.to_degrees(),
+            safe_touchdown_normal_speed_mps: scenario.vehicle.safe_touchdown_normal_speed_mps,
+            safe_touchdown_tangential_speed_mps: scenario
+                .vehicle
+                .safe_touchdown_tangential_speed_mps,
+            safe_touchdown_attitude_deg: scenario
+                .vehicle
+                .safe_touchdown_attitude_error_rad
+                .to_degrees(),
+            safe_touchdown_angular_rate_degps: scenario
+                .vehicle
+                .safe_touchdown_angular_rate_radps
+                .to_degrees(),
+        },
+        target_pad: ReportTargetPadDetails {
+            id: target_pad.id.clone(),
+            center_x_m: target_pad.center_x_m,
+            surface_y_m: target_pad.surface_y_m,
+            width_m: target_pad.width_m,
+        },
+        mission: ReportMissionGoalDetails::from_goal(&scenario.mission.goal),
+        terrain_point_count: scenario.world.terrain.points().len(),
+        evaluation_basis: mission_evaluation_basis(&scenario.mission.goal),
+    }
+}
+
+fn mission_evaluation_basis(goal: &EvaluationGoal) -> String {
+    match goal {
+        EvaluationGoal::LandingOnPad { .. } => "Landing success currently uses stable contact plus pad overlap, normal/tangential touchdown speed, attitude error, and angular rate. No force or impulse check is used yet.".to_owned(),
+        EvaluationGoal::TimedCheckpoint { .. } => "Checkpoint success currently uses position, velocity, and attitude envelope checks at the configured end time.".to_owned(),
+    }
+}
+
+fn update_compute_time_ms(update: Option<&ControllerUpdateRecord>) -> Option<f64> {
+    update
+        .and_then(|update| update.compute_time_us)
+        .map(|value| value as f64 / 1000.0)
+}
+
+fn percentile(values: &[f64], quantile: f64) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let quantile = quantile.clamp(0.0, 1.0);
+    let index = ((values.len() - 1) as f64 * quantile).round() as usize;
+    values.get(index).copied()
+}
+
 fn nearest_sample<T>(samples: &[T], physics_step: u64) -> Option<&T>
 where
     T: HasPhysicsStep,
@@ -329,6 +578,7 @@ struct ReportData {
     controller_id: String,
     controller_spec: Option<ControllerSpec>,
     manifest: ReportManifest,
+    run_performance: ReportRunPerformance,
     terrain: Vec<ReportVec2>,
     pad: Option<ReportPad>,
     samples: Vec<ReportSample>,
@@ -337,6 +587,11 @@ struct ReportData {
     event_counts: Vec<ReportCount>,
     marker_counts: Vec<ReportCount>,
     phase_summary: Vec<ReportPhaseSummary>,
+    landing_quality: Option<ReportLandingQuality>,
+    checkpoint_quality: Option<ReportCheckpointQuality>,
+    flight_stats: ReportFlightStats,
+    bot_stats: ReportBotStats,
+    mission_details: ReportMissionDetails,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -348,6 +603,16 @@ struct ReportManifest {
     physical_outcome: String,
     mission_outcome: String,
     end_reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportRunPerformance {
+    wall_time_ms: Option<f64>,
+    thread_cpu_time_ms: Option<f64>,
+    cpu_time_per_tick_us: Option<f64>,
+    sim_rate_x: Option<f64>,
+    physics_steps_per_s: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -386,6 +651,7 @@ struct ReportSample {
     throttle_frac: f64,
     target_attitude_rad: f64,
     target_attitude_deg: f64,
+    compute_time_ms: Option<f64>,
     status: String,
     phase: Option<String>,
     metrics: BTreeMap<String, TelemetryValue>,
@@ -428,6 +694,159 @@ struct ReportPhaseSummary {
     label: String,
     duration_s: f64,
     sample_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportLandingQuality {
+    landing_offset_m: f64,
+    pad_margin_m: f64,
+    impact_attitude_deg: f64,
+    impact_normal_speed_mps: f64,
+    impact_tangential_speed_mps: f64,
+    impact_speed_mps: f64,
+    angular_rate_degps: f64,
+    normal_speed_margin_mps: f64,
+    tangential_speed_margin_mps: f64,
+    attitude_margin_deg: f64,
+    angular_rate_margin_degps: f64,
+    envelope_margin_ratio: f64,
+    on_target: bool,
+    min_touchdown_clearance_m: f64,
+    min_hull_clearance_m: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportCheckpointQuality {
+    position_error_m: f64,
+    velocity_error_mps: f64,
+    attitude_error_deg: f64,
+    position_margin_m: f64,
+    velocity_margin_mps: f64,
+    attitude_margin_deg: f64,
+    envelope_margin_ratio: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportFlightStats {
+    flight_time_s: f64,
+    path_distance_m: f64,
+    horizontal_distance_m: f64,
+    net_displacement_m: f64,
+    average_speed_mps: f64,
+    max_speed_mps: f64,
+    max_altitude_m: f64,
+    min_altitude_m: f64,
+    fuel_used_kg: f64,
+    fuel_remaining_kg: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportBotStats {
+    controller_updates: u64,
+    total_compute_ms: Option<f64>,
+    mean_compute_ms: Option<f64>,
+    p95_compute_ms: Option<f64>,
+    max_compute_ms: Option<f64>,
+    mean_control_dt_ms: Option<f64>,
+    control_duty_cycle_pct: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportMissionDetails {
+    description: String,
+    scenario_seed: u64,
+    tags: Vec<String>,
+    gravity_mps2: f64,
+    sim: ReportSimDetails,
+    initial_state: ReportInitialState,
+    vehicle: ReportVehicleDetails,
+    target_pad: ReportTargetPadDetails,
+    mission: ReportMissionGoalDetails,
+    terrain_point_count: usize,
+    evaluation_basis: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportSimDetails {
+    physics_hz: u32,
+    controller_hz: u32,
+    sample_hz: Option<u32>,
+    max_time_s: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportInitialState {
+    x_m: f64,
+    y_m: f64,
+    vx_mps: f64,
+    vy_mps: f64,
+    speed_mps: f64,
+    attitude_deg: f64,
+    angular_rate_degps: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportVehicleDetails {
+    hull_width_m: f64,
+    hull_height_m: f64,
+    touchdown_half_span_m: f64,
+    touchdown_base_offset_m: f64,
+    dry_mass_kg: f64,
+    initial_fuel_kg: f64,
+    max_fuel_kg: f64,
+    max_thrust_n: f64,
+    max_fuel_burn_kgps: f64,
+    max_rotation_rate_degps: f64,
+    safe_touchdown_normal_speed_mps: f64,
+    safe_touchdown_tangential_speed_mps: f64,
+    safe_touchdown_attitude_deg: f64,
+    safe_touchdown_angular_rate_degps: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportTargetPadDetails {
+    id: String,
+    center_x_m: f64,
+    surface_y_m: f64,
+    width_m: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportMissionGoalDetails {
+    goal_kind: String,
+    target_pad_id: String,
+    end_time_s: Option<f64>,
+}
+
+impl ReportMissionGoalDetails {
+    fn from_goal(goal: &EvaluationGoal) -> Self {
+        match goal {
+            EvaluationGoal::LandingOnPad { target_pad_id } => Self {
+                goal_kind: "landing_on_pad".to_owned(),
+                target_pad_id: target_pad_id.clone(),
+                end_time_s: None,
+            },
+            EvaluationGoal::TimedCheckpoint {
+                target_pad_id,
+                end_time_s,
+                ..
+            } => Self {
+                goal_kind: "timed_checkpoint".to_owned(),
+                target_pad_id: target_pad_id.clone(),
+                end_time_s: Some(*end_time_s),
+            },
+        }
+    }
 }
 
 fn report_template() -> &'static str {
@@ -604,11 +1023,11 @@ fn report_template() -> &'static str {
     }
     .metric-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       gap: 12px;
     }
     .metric-grid .chart {
-      height: 258px;
+      height: 336px;
     }
     .chip-row {
       display: flex;
@@ -644,6 +1063,27 @@ fn report_template() -> &'static str {
     .summary-grid {
       display: grid;
       gap: 12px;
+    }
+    .key-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .hero-main .key-grid {
+      margin-top: 2px;
+    }
+    .key-grid .stat {
+      min-width: 0;
+      padding: 8px 10px;
+    }
+    .key-grid .stat .value {
+      font-size: 1rem;
+    }
+    .stat .meta {
+      margin-top: 3px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.2;
     }
     .compact-list {
       display: grid;
@@ -702,6 +1142,69 @@ fn report_template() -> &'static str {
       line-height: 1.2;
       font-variant-numeric: tabular-nums;
     }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .detail-grid .panel.wide {
+      grid-column: span 4;
+    }
+    .fact-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .fact {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.58);
+    }
+    .fact .label {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .fact .value {
+      font-weight: 700;
+      font-size: 0.98rem;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+    }
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+    .mission-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .mission-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 11px;
+      background: rgba(255, 255, 255, 0.52);
+      min-width: 0;
+    }
+    .mission-card h3 {
+      margin: 0 0 8px;
+      font-size: 0.92rem;
+    }
+    .mission-list {
+      display: grid;
+      gap: 5px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .mission-list strong {
+      color: var(--ink);
+    }
     details {
       border-top: 1px solid rgba(216, 207, 191, 0.75);
       margin-top: 10px;
@@ -734,6 +1237,12 @@ fn report_template() -> &'static str {
       .right-stack {
         position: static;
       }
+      .detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .detail-grid .panel.wide {
+        grid-column: span 2;
+      }
     }
     @media (max-width: 860px) {
       .hero {
@@ -741,6 +1250,21 @@ fn report_template() -> &'static str {
       }
       .metric-grid {
         grid-template-columns: 1fr;
+      }
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+      .detail-grid .panel.wide {
+        grid-column: span 1;
+      }
+      .key-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .mission-grid {
+        grid-template-columns: 1fr;
+      }
+      .fact-grid {
+        grid-template-columns: 1fr 1fr;
       }
       .inspect-grid {
         grid-template-columns: 1fr 1fr;
@@ -750,6 +1274,11 @@ fn report_template() -> &'static str {
       }
       .metric-grid .chart {
         height: 250px;
+      }
+    }
+    @media (max-width: 560px) {
+      .key-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -786,6 +1315,28 @@ fn report_template() -> &'static str {
               <div class="value" id="end-reason"></div>
             </div>
           </div>
+          <div class="key-grid">
+            <div class="stat">
+              <div class="label">Fuel Used</div>
+              <div class="value" id="key-fuel-used"></div>
+              <div class="meta" id="key-fuel-meta"></div>
+            </div>
+            <div class="stat">
+              <div class="label">Flight Time</div>
+              <div class="value" id="key-flight-time"></div>
+              <div class="meta" id="key-flight-meta"></div>
+            </div>
+            <div class="stat">
+              <div class="label" id="key-quality-label"></div>
+              <div class="value" id="key-quality-value"></div>
+              <div class="meta" id="key-quality-meta"></div>
+            </div>
+            <div class="stat">
+              <div class="label">Bot Step</div>
+              <div class="value" id="key-bot-step"></div>
+              <div class="meta" id="key-bot-meta"></div>
+            </div>
+          </div>
         </div>
         <div class="summary-grid">
           <div class="panel-block">
@@ -804,8 +1355,16 @@ fn report_template() -> &'static str {
                 <div class="value" id="controller-updates"></div>
               </div>
               <div class="stat">
-                <div class="label">Samples</div>
-                <div class="value" id="sample-count"></div>
+                <div class="label">Wall Time</div>
+                <div class="value" id="wall-time"></div>
+              </div>
+              <div class="stat">
+                <div class="label">CPU Time</div>
+                <div class="value" id="cpu-time"></div>
+              </div>
+              <div class="stat">
+                <div class="label">CPU / Tick</div>
+                <div class="value" id="cpu-per-tick"></div>
               </div>
             </div>
           </div>
@@ -839,20 +1398,11 @@ fn report_template() -> &'static str {
           <section class="panel">
             <div class="panel-head">
               <div>
-                <div class="eyebrow">Flight State</div>
-                <h2>Altitude And Velocity</h2>
+                <div class="eyebrow">Time</div>
+                <h2>Velocity And Thrust Components</h2>
               </div>
             </div>
-            <div id="chart-state" class="chart"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <div class="eyebrow">Control</div>
-                <h2>Throttle And Attitude</h2>
-              </div>
-            </div>
-            <div id="chart-control" class="chart"></div>
+            <div id="chart-metrics" class="chart"></div>
           </section>
         </section>
       </div>
@@ -899,6 +1449,76 @@ fn report_template() -> &'static str {
         </section>
       </div>
     </section>
+
+    <section class="detail-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Landing</div>
+            <h2 id="quality-title">Landing Quality</h2>
+          </div>
+        </div>
+        <div class="fact-grid" id="quality-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Flight</div>
+            <h2>Flight Stats</h2>
+          </div>
+        </div>
+        <div class="fact-grid" id="flight-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Bot</div>
+            <h2>Controller Stats</h2>
+          </div>
+        </div>
+        <div class="fact-grid" id="bot-grid"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Run</div>
+            <h2>Run And Sim Performance</h2>
+          </div>
+        </div>
+        <div class="fact-grid" id="run-grid"></div>
+      </section>
+
+      <section class="panel wide">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Mission</div>
+            <h2>Mission Profile</h2>
+          </div>
+        </div>
+        <p class="muted" id="mission-description"></p>
+        <div class="mission-grid">
+          <div class="mission-card">
+            <h3>Scenario</h3>
+            <div class="mission-list" id="mission-card-scenario"></div>
+          </div>
+          <div class="mission-card">
+            <h3>Initial State</h3>
+            <div class="mission-list" id="mission-card-initial"></div>
+          </div>
+          <div class="mission-card">
+            <h3>Vehicle</h3>
+            <div class="mission-list" id="mission-card-vehicle"></div>
+          </div>
+          <div class="mission-card">
+            <h3>Goal And Target</h3>
+            <div class="mission-list" id="mission-card-goal"></div>
+          </div>
+        </div>
+      </section>
+    </section>
   </main>
 
   <script>
@@ -927,6 +1547,9 @@ fn report_template() -> &'static str {
       const node = document.getElementById(id);
       if (node) node.textContent = value;
     };
+
+    const fmtOptional = (value, digits = 2, suffix = "") =>
+      Number.isFinite(Number(value)) ? `${Number(value).toFixed(digits)}${suffix}` : "n/a";
 
     const valueExtent = (values) => {
       const finite = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
@@ -983,8 +1606,8 @@ fn report_template() -> &'static str {
     const attitudeValues = samples.map((sample) => Number(sample.attitudeDeg));
     const targetAttitudeValues = samples.map((sample) => Number(sample.targetAttitudeDeg));
     const fuelValues = samples.map((sample) => Number(sample.fuelKg));
-    const thrustXValues = samples.map((sample) => Number(sample.throttleFrac) * Math.sin(Number(sample.attitudeRad || 0)));
-    const thrustYValues = samples.map((sample) => Number(sample.throttleFrac) * Math.cos(Number(sample.attitudeRad || 0)));
+    const throttleXValues = samples.map((sample) => Number(sample.throttleFrac) * Math.sin(Number(sample.attitudeRad || 0)));
+    const throttleYValues = samples.map((sample) => Number(sample.throttleFrac) * Math.cos(Number(sample.attitudeRad || 0)));
 
     const speedColorScale = [
       [0.0, "#fff3bf"],
@@ -1057,11 +1680,19 @@ fn report_template() -> &'static str {
       },
     }, extra));
 
+    const maxFuelKg = Number(reportData.missionDetails?.vehicle?.maxFuelKg || 0);
+    const fuelPercent = (fuelKg) => {
+      const value = Number(fuelKg);
+      if (!Number.isFinite(value) || !Number.isFinite(maxFuelKg) || maxFuelKg <= 1e-9) return null;
+      return (value / maxFuelKg) * 100.0;
+    };
+    const fmtFuelPct = (fuelKg, digits = 1) => fmtOptional(fuelPercent(fuelKg), digits, " %");
+
     const summarizeOutcome = () => {
       setText("scenario-title", reportData.scenarioName);
       setText(
         "scenario-subtitle",
-        `${reportData.scenarioId} · ${samples.length} sampled states · ${markers.length} controller markers`
+        `${reportData.scenarioId} · ${markers.length} controller markers`
       );
       setText("controller-id", reportData.controllerId);
       setText("mission-outcome", reportData.manifest.missionOutcome);
@@ -1070,12 +1701,188 @@ fn report_template() -> &'static str {
       setText("sim-time", `${fmt(reportData.manifest.simTimeS, 2)} s`);
       setText("physics-steps", String(reportData.manifest.physicsSteps));
       setText("controller-updates", String(reportData.manifest.controllerUpdates));
-      setText("sample-count", String(samples.length));
+      setText("wall-time", fmtOptional(reportData.runPerformance.wallTimeMs, 2, " ms"));
+      setText("cpu-time", fmtOptional(reportData.runPerformance.threadCpuTimeMs, 2, " ms"));
+      setText("cpu-per-tick", fmtOptional(reportData.runPerformance.cpuTimePerTickUs, 2, " us"));
 
       const banner = document.getElementById("outcome-banner");
       const isFailure = String(reportData.manifest.missionOutcome || "").startsWith("failed");
       banner.textContent = `${reportData.manifest.missionOutcome} · ${reportData.manifest.endReason}`;
       banner.classList.toggle("failure", isFailure);
+    };
+
+    const renderFacts = (targetId, rows) => {
+      const root = document.getElementById(targetId);
+      root.innerHTML = "";
+      rows.forEach(([label, value]) => {
+        const fact = document.createElement("div");
+        fact.className = "fact";
+        fact.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>`;
+        root.appendChild(fact);
+      });
+    };
+
+    const renderMissionList = (targetId, rows) => {
+      const root = document.getElementById(targetId);
+      root.innerHTML = rows
+        .map(([label, value]) => `<div><strong>${label}:</strong> ${value}</div>`)
+        .join("");
+    };
+
+    const renderKeyStats = () => {
+      const flight = reportData.flightStats;
+      const bot = reportData.botStats;
+      setText("key-fuel-used", fmtFuelPct(flight.fuelUsedKg));
+      setText("key-fuel-meta", `${fmt(flight.fuelUsedKg)} kg used · ${fmtFuelPct(flight.fuelRemainingKg)} remaining`);
+      setText("key-flight-time", `${fmt(flight.flightTimeS, 2)} s`);
+      setText("key-flight-meta", `${fmt(flight.averageSpeedMps)} m/s avg · ${fmt(flight.pathDistanceM)} m path`);
+
+      if (reportData.landingQuality) {
+        const landing = reportData.landingQuality;
+        setText("key-quality-label", "Landing Offset");
+        setText("key-quality-value", `${fmt(landing.landingOffsetM)} m`);
+        setText(
+          "key-quality-meta",
+          `${fmt(landing.impactSpeedMps)} m/s impact · ${fmt(landing.impactAttitudeDeg, 1)} deg`
+        );
+      } else if (reportData.checkpointQuality) {
+        const checkpoint = reportData.checkpointQuality;
+        setText("key-quality-label", "Checkpoint Error");
+        setText("key-quality-value", `${fmt(checkpoint.positionErrorM)} m`);
+        setText(
+          "key-quality-meta",
+          `${fmt(checkpoint.velocityErrorMps)} m/s vel err · ${fmt(checkpoint.attitudeErrorDeg, 1)} deg`
+        );
+      } else {
+        setText("key-quality-label", "Mission Quality");
+        setText("key-quality-value", "n/a");
+        setText("key-quality-meta", "No landing or checkpoint quality summary captured");
+      }
+
+      setText("key-bot-step", fmtOptional(bot.meanComputeMs, 3, " ms"));
+      setText(
+        "key-bot-meta",
+        `${fmtOptional(bot.p95ComputeMs, 3, " ms")} p95 · ${fmtOptional(bot.controlDutyCyclePct, 2, " %")} duty`
+      );
+    };
+
+    const renderQuality = () => {
+      if (reportData.landingQuality) {
+        const landing = reportData.landingQuality;
+        setText("quality-title", "Landing Quality");
+        renderFacts("quality-grid", [
+          ["Offset", `${fmt(landing.landingOffsetM)} m`],
+          ["Pad margin", `${fmt(landing.padMarginM)} m`],
+          ["Impact attitude", `${fmt(landing.impactAttitudeDeg, 1)} deg`],
+          ["Normal speed", `${fmt(landing.impactNormalSpeedMps)} m/s`],
+          ["Tangential speed", `${fmt(landing.impactTangentialSpeedMps)} m/s`],
+          ["Impact speed", `${fmt(landing.impactSpeedMps)} m/s`],
+          ["Angular rate", `${fmt(landing.angularRateDegps, 1)} deg/s`],
+          ["Margin", `${fmt(landing.envelopeMarginRatio * 100, 1)} %`],
+          ["Normal margin", `${fmt(landing.normalSpeedMarginMps)} m/s`],
+          ["Tangential margin", `${fmt(landing.tangentialSpeedMarginMps)} m/s`],
+          ["Attitude margin", `${fmt(landing.attitudeMarginDeg, 1)} deg`],
+          ["Clearance", `${fmt(landing.minTouchdownClearanceM, 3)} / ${fmt(landing.minHullClearanceM, 3)} m`],
+        ]);
+        return;
+      }
+
+      if (reportData.checkpointQuality) {
+        const checkpoint = reportData.checkpointQuality;
+        setText("quality-title", "Checkpoint Quality");
+        renderFacts("quality-grid", [
+          ["Position error", `${fmt(checkpoint.positionErrorM)} m`],
+          ["Velocity error", `${fmt(checkpoint.velocityErrorMps)} m/s`],
+          ["Attitude error", `${fmt(checkpoint.attitudeErrorDeg, 1)} deg`],
+          ["Position margin", `${fmt(checkpoint.positionMarginM)} m`],
+          ["Velocity margin", `${fmt(checkpoint.velocityMarginMps)} m/s`],
+          ["Attitude margin", `${fmt(checkpoint.attitudeMarginDeg, 1)} deg`],
+          ["Envelope margin", `${fmt(checkpoint.envelopeMarginRatio * 100, 1)} %`],
+        ]);
+        return;
+      }
+
+      setText("quality-title", "Mission Quality");
+      renderFacts("quality-grid", [["Status", "No mission-quality summary captured."]]);
+    };
+
+    const renderFlightStats = () => {
+      const flight = reportData.flightStats;
+      renderFacts("flight-grid", [
+        ["Flight time", `${fmt(flight.flightTimeS, 2)} s`],
+        ["Path distance", `${fmt(flight.pathDistanceM)} m`],
+        ["Horizontal travel", `${fmt(flight.horizontalDistanceM)} m`],
+        ["Net displacement", `${fmt(flight.netDisplacementM)} m`],
+        ["Average speed", `${fmt(flight.averageSpeedMps)} m/s`],
+        ["Max speed", `${fmt(flight.maxSpeedMps)} m/s`],
+        ["Max altitude", `${fmt(flight.maxAltitudeM)} m`],
+        ["Min altitude", `${fmt(flight.minAltitudeM)} m`],
+        ["Fuel used", `${fmtFuelPct(flight.fuelUsedKg)} · ${fmt(flight.fuelUsedKg)} kg`],
+        ["Fuel left", `${fmtFuelPct(flight.fuelRemainingKg)} · ${fmt(flight.fuelRemainingKg)} kg`],
+      ]);
+    };
+
+    const renderBotStats = () => {
+      const bot = reportData.botStats;
+      renderFacts("bot-grid", [
+        ["Updates", String(bot.controllerUpdates)],
+        ["Total bot compute", fmtOptional(bot.totalComputeMs, 2, " ms")],
+        ["Mean bot step", fmtOptional(bot.meanComputeMs, 3, " ms")],
+        ["P95 bot step", fmtOptional(bot.p95ComputeMs, 3, " ms")],
+        ["Max bot step", fmtOptional(bot.maxComputeMs, 3, " ms")],
+        ["Mean control dt", fmtOptional(bot.meanControlDtMs, 2, " ms")],
+        ["Bot duty cycle", fmtOptional(bot.controlDutyCyclePct, 2, " %")],
+      ]);
+    };
+
+    const renderRunStats = () => {
+      const run = reportData.runPerformance;
+      renderFacts("run-grid", [
+        ["Wall time", fmtOptional(run.wallTimeMs, 2, " ms")],
+        ["CPU time", fmtOptional(run.threadCpuTimeMs, 2, " ms")],
+        ["CPU / tick", fmtOptional(run.cpuTimePerTickUs, 2, " us")],
+        ["Sim rate", fmtOptional(run.simRateX, 1, "x")],
+        ["Step rate", fmtOptional(run.physicsStepsPerS, 0, " steps/s")],
+        ["Sim time", `${fmt(reportData.manifest.simTimeS, 2)} s`],
+        ["Physics steps", String(reportData.manifest.physicsSteps)],
+        ["Control updates", String(reportData.manifest.controllerUpdates)],
+      ]);
+    };
+
+    const renderMissionProfile = () => {
+      const mission = reportData.missionDetails;
+      setText("mission-description", mission.description || "No scenario description provided.");
+      renderMissionList("mission-card-scenario", [
+        ["Seed", String(mission.scenarioSeed)],
+        ["Tags", Array.isArray(mission.tags) && mission.tags.length ? mission.tags.join(", ") : "none"],
+        ["Terrain points", String(mission.terrainPointCount)],
+        ["Rates", `${mission.sim.physicsHz} Hz physics / ${mission.sim.controllerHz} Hz control${mission.sim.sampleHz ? ` / ${mission.sim.sampleHz} Hz samples` : ""}`],
+        ["Max time", `${fmt(mission.sim.maxTimeS, 1)} s`],
+      ]);
+      renderMissionList("mission-card-initial", [
+        ["Position", `${fmt(mission.initialState.xM)} m, ${fmt(mission.initialState.yM)} m`],
+        ["Velocity", `${fmt(mission.initialState.vxMps)} m/s, ${fmt(mission.initialState.vyMps)} m/s`],
+        ["Speed", `${fmt(mission.initialState.speedMps)} m/s`],
+        ["Attitude", `${fmt(mission.initialState.attitudeDeg, 1)} deg`],
+        ["Angular rate", `${fmt(mission.initialState.angularRateDegps, 1)} deg/s`],
+      ]);
+      renderMissionList("mission-card-vehicle", [
+        ["Hull", `${fmt(mission.vehicle.hullWidthM)} m × ${fmt(mission.vehicle.hullHeightM)} m`],
+        ["Touchdown gear", `${fmt(mission.vehicle.touchdownHalfSpanM)} m span / ${fmt(mission.vehicle.touchdownBaseOffsetM)} m offset`],
+        ["Mass", `${fmt(mission.vehicle.dryMassKg)} kg dry`],
+        ["Fuel", `${fmtFuelPct(mission.vehicle.initialFuelKg)} start · ${fmt(mission.vehicle.initialFuelKg)} / ${fmt(mission.vehicle.maxFuelKg)} kg`],
+        ["Thrust", `${fmt(mission.vehicle.maxThrustN, 0)} N max`],
+        ["Burn / rotate", `${fmt(mission.vehicle.maxFuelBurnKgps)} kg/s / ${fmt(mission.vehicle.maxRotationRateDegps, 1)} deg/s`],
+        ["Touchdown limits", `${fmt(mission.vehicle.safeTouchdownNormalSpeedMps)} n, ${fmt(mission.vehicle.safeTouchdownTangentialSpeedMps)} t, ${fmt(mission.vehicle.safeTouchdownAttitudeDeg, 1)} deg, ${fmt(mission.vehicle.safeTouchdownAngularRateDegps, 1)} deg/s`],
+      ]);
+      renderMissionList("mission-card-goal", [
+        ["Goal", mission.mission.goalKind],
+        ["Target pad", mission.targetPad.id],
+        ["Pad geometry", `${fmt(mission.targetPad.centerXM)} m center / ${fmt(mission.targetPad.widthM)} m width`],
+        ["Pad surface", `${fmt(mission.targetPad.surfaceYM)} m`],
+        ["Checkpoint", mission.mission.endTimeS != null ? `${fmt(mission.mission.endTimeS, 2)} s` : "n/a"],
+        ["Evaluation", mission.evaluationBasis],
+      ]);
     };
 
     const renderCountChips = (targetId, counts, emptyLabel) => {
@@ -1157,16 +1964,12 @@ fn report_template() -> &'static str {
         xs.push(Number(pad.centerXM) + (Number(pad.widthM) / 2));
         ys.push(Number(pad.surfaceYM));
       }
-      if (!xs.length || !ys.length) {
-        return { span: 1 };
-      }
+      if (!xs.length || !ys.length) return { span: 1 };
       const minX = Math.min(...xs);
       const maxX = Math.max(...xs);
       const minY = Math.min(...ys);
       const maxY = Math.max(...ys);
-      return {
-        span: Math.max(maxX - minX, maxY - minY, 1),
-      };
+      return { span: Math.max(maxX - minX, maxY - minY, 1) };
     };
 
     const buildHoverCarrier = () => ({
@@ -1177,8 +1980,7 @@ fn report_template() -> &'static str {
       y: yValues,
       customdata: samples.map((sample, index) => [index]),
       line: { color: "rgba(14,107,96,0.002)", width: 18 },
-      hovertemplate:
-        "t=%{customdata[0]}<extra></extra>",
+      hovertemplate: "t=%{customdata[0]}<extra></extra>",
       showlegend: false,
     });
 
@@ -1208,7 +2010,7 @@ fn report_template() -> &'static str {
           y: [y0, y1],
           line: {
             color: interpolateColor(colorscale, 0.5 * (value0 + value1), extent.min, extent.max),
-            width: 4,
+            width: 4.5,
           },
           hoverinfo: "skip",
           showlegend: false,
@@ -1241,44 +2043,6 @@ fn report_template() -> &'static str {
       return traces;
     };
 
-    const buildVectorAnnotations = () => {
-      const annotations = [];
-      const span = spatialBounds().span;
-      const vectorScale = 0.06 * span;
-      let nextTarget = null;
-      for (let index = 0; index < samples.length; index += 1) {
-        const timeValue = Number(samples[index].simTimeS);
-        if (!Number.isFinite(timeValue)) continue;
-        if (nextTarget === null) nextTarget = timeValue;
-        if (timeValue + 1e-9 < nextTarget) continue;
-        const throttle = Number(samples[index].throttleFrac);
-        const attitudeRad = Number(samples[index].attitudeRad);
-        const x0 = Number(samples[index].xM);
-        const y0 = Number(samples[index].yM);
-        if (![throttle, attitudeRad, x0, y0].every((value) => Number.isFinite(value))) continue;
-        const dx = Math.sin(attitudeRad) * throttle * vectorScale;
-        const dy = Math.cos(attitudeRad) * throttle * vectorScale;
-        annotations.push({
-          x: x0 + dx,
-          y: y0 + dy,
-          ax: x0,
-          ay: y0,
-          xref: "x",
-          yref: "y",
-          axref: "x",
-          ayref: "y",
-          text: "",
-          showarrow: true,
-          arrowhead: 3,
-          arrowsize: 0.6,
-          arrowwidth: 2.5,
-          arrowcolor: interpolateColor(throttleColorScale, throttle, 0.0, 1.0),
-        });
-        nextTarget += 1.0;
-      }
-      return annotations;
-    };
-
     const eventStyle = (kind) => {
       const normalized = String(kind || "").toLowerCase();
       if (normalized.includes("touchdown") || normalized.includes("satisfied")) {
@@ -1291,6 +2055,213 @@ fn report_template() -> &'static str {
         return { color: "#b26b00", symbol: "triangle-down" };
       }
       return { color: "#8e3b2e", symbol: "diamond" };
+    };
+
+    const buildEventGuideShapes = () =>
+      keyEvents
+        .map((event) => {
+          const timeValue = Number(event.simTimeS);
+          if (!Number.isFinite(timeValue)) return null;
+          return {
+            type: "line",
+            xref: "x",
+            yref: "paper",
+            x0: timeValue,
+            x1: timeValue,
+            y0: 0,
+            y1: 1,
+            line: { color: eventStyle(event.kind).color, width: 1.2, dash: "dot" },
+          };
+        })
+        .filter(Boolean);
+
+    const ballisticEndTime = ({ startY, targetY, vyMps, gravityMps2 }) => {
+      const g = Math.max(1e-6, Math.abs(Number(gravityMps2)));
+      const a = 0.5 * g;
+      const b = -Number(vyMps);
+      const c = Number(targetY) - Number(startY);
+      const discriminant = (b * b) - (4 * a * c);
+      if (!Number.isFinite(discriminant) || discriminant < 0) return null;
+      const sqrt = Math.sqrt(discriminant);
+      const roots = [(-b - sqrt) / (2 * a), (-b + sqrt) / (2 * a)]
+        .filter((value) => Number.isFinite(value) && value > 1e-6);
+      if (!roots.length) return null;
+      return Math.max(...roots);
+    };
+
+    const ballisticCurveFromState = ({ startX, startY, vxMps, vyMps, targetY, gravityMps2 }) => {
+      const endTime = ballisticEndTime({ startY, targetY, vyMps, gravityMps2 });
+      if (!Number.isFinite(endTime)) return null;
+      const g = Math.max(1e-6, Math.abs(Number(gravityMps2)));
+      const pointCount = Math.max(20, Math.min(72, Math.round(16 + (endTime * 8))));
+      const xs = [];
+      const ys = [];
+      for (let index = 0; index < pointCount; index += 1) {
+        const t = (endTime * index) / (pointCount - 1);
+        xs.push(Number(startX) + (Number(vxMps) * t));
+        ys.push(Number(startY) + (Number(vyMps) * t) - (0.5 * g * t * t));
+      }
+      if (ys.length) ys[ys.length - 1] = Number(targetY);
+      return { xs, ys, endTime };
+    };
+
+    const idealizedReferenceKinematics = ({ startX, startY, targetX, targetY, apexY, gravityMps2 }) => {
+      const g = Math.max(1e-6, Math.abs(Number(gravityMps2)));
+      const peakY = Math.max(Number(startY), Number(apexY));
+      const vyUp = Math.sqrt(Math.max(0, 2 * g * (peakY - Number(startY))));
+      const flightTime = ballisticEndTime({
+        startY: Number(startY),
+        targetY: Number(targetY),
+        vyMps: vyUp,
+        gravityMps2,
+      });
+      if (!Number.isFinite(flightTime) || flightTime <= 1e-6) return null;
+      return {
+        flightTime,
+        vxMps: (Number(targetX) - Number(startX)) / flightTime,
+        vyUpMps: vyUp,
+      };
+    };
+
+    const idealizedReferenceImpactAngleDeg = (params) => {
+      const solution = idealizedReferenceKinematics(params);
+      if (!solution) return null;
+      const g = Math.max(1e-6, Math.abs(Number(params.gravityMps2)));
+      const vyTarget = solution.vyUpMps - (g * solution.flightTime);
+      return Math.atan2(Math.max(0, -vyTarget), Math.abs(solution.vxMps)) * (180 / Math.PI);
+    };
+
+    const idealizedReferenceExitAngleDeg = (params) => {
+      const solution = idealizedReferenceKinematics(params);
+      if (!solution) return null;
+      return Math.atan2(Math.max(0, solution.vyUpMps), Math.abs(solution.vxMps)) * (180 / Math.PI);
+    };
+
+    const idealizedReferenceApexY = ({ startX, startY, targetX, targetY, gravityMps2 }) => {
+      const dx = Number(targetX) - Number(startX);
+      const dy = Number(targetY) - Number(startY);
+      let basePeak = Number(targetY) > Number(startY)
+        ? Math.max(Number(startY), Number(targetY) + 1.0)
+        : Number(startY);
+      if (Math.abs(dx) <= 1e-6) return basePeak;
+      const paramsBase = { startX, startY, targetX, targetY, gravityMps2 };
+      const meetsAngleFloor = (peakY) => {
+        const impactAngle = idealizedReferenceImpactAngleDeg({ ...paramsBase, apexY: peakY });
+        return Number.isFinite(impactAngle) && impactAngle >= 45.0;
+      };
+      if (meetsAngleFloor(basePeak)) return basePeak;
+      let lowPeak = basePeak;
+      let growth = Math.max(16.0, 0.25 * Math.max(Math.abs(dx), Math.abs(dy), 1.0));
+      let highPeak = null;
+      let candidatePeak = basePeak;
+      for (let index = 0; index < 16; index += 1) {
+        candidatePeak += growth;
+        if (meetsAngleFloor(candidatePeak)) {
+          highPeak = candidatePeak;
+          break;
+        }
+        lowPeak = candidatePeak;
+        growth *= 2.0;
+      }
+      if (!Number.isFinite(highPeak)) return candidatePeak;
+      for (let index = 0; index < 32; index += 1) {
+        const midPeak = 0.5 * (lowPeak + highPeak);
+        if (meetsAngleFloor(midPeak)) {
+          highPeak = midPeak;
+        } else {
+          lowPeak = midPeak;
+        }
+      }
+      return highPeak;
+    };
+
+    const idealizedReferenceCurve = ({ startX, startY, targetX, targetY, gravityMps2 }) => {
+      const apexY = idealizedReferenceApexY({ startX, startY, targetX, targetY, gravityMps2 });
+      const solution = idealizedReferenceKinematics({
+        startX,
+        startY,
+        targetX,
+        targetY,
+        apexY,
+        gravityMps2,
+      });
+      if (!solution) return null;
+      const g = Math.max(1e-6, Math.abs(Number(gravityMps2)));
+      const pointCount = Math.max(24, Math.min(84, Math.round(18 + (solution.flightTime * 10))));
+      const xs = [];
+      const ys = [];
+      for (let index = 0; index < pointCount; index += 1) {
+        const t = (solution.flightTime * index) / (pointCount - 1);
+        xs.push(Number(startX) + (solution.vxMps * t));
+        ys.push(Number(startY) + (solution.vyUpMps * t) - (0.5 * g * t * t));
+      }
+      if (xs.length) {
+        xs[xs.length - 1] = Number(targetX);
+        ys[ys.length - 1] = Number(targetY);
+      }
+      return { xs, ys };
+    };
+
+    const buildVectorSampleIndices = () => {
+      if (timeValues.length <= 1) return timeValues.length ? [0] : [];
+      const totalT = Math.max(0, Number(timeValues[timeValues.length - 1]) - Number(timeValues[0]));
+      const intervalS = Math.max(0.22, totalT / 30.0);
+      const picked = [];
+      let nextT = Number(timeValues[0]);
+      for (let index = 0; index < timeValues.length; index += 1) {
+        const timeValue = Number(timeValues[index]);
+        if (!Number.isFinite(timeValue)) continue;
+        if (!picked.length || timeValue >= nextT - 1e-9) {
+          picked.push(index);
+          nextT = timeValue + intervalS;
+        }
+      }
+      if (picked[picked.length - 1] !== timeValues.length - 1) {
+        picked.push(timeValues.length - 1);
+      }
+      return picked;
+    };
+
+    const buildVectorAnnotations = () => {
+      const annotations = [];
+      const span = spatialBounds().span;
+      const vectorLength = 0.048 * span;
+      for (const index of buildVectorSampleIndices()) {
+        const throttle = Number(samples[index].throttleFrac);
+        if (!Number.isFinite(throttle) || throttle <= 0.015) continue;
+        const attitudeRad = Number(samples[index].attitudeRad);
+        const x0 = Number(samples[index].xM);
+        const y0 = Number(samples[index].yM);
+        if (![attitudeRad, x0, y0].every((value) => Number.isFinite(value))) continue;
+        const dx = Math.sin(attitudeRad) * vectorLength * throttle;
+        const dy = Math.cos(attitudeRad) * vectorLength * throttle;
+        if (Math.hypot(dx, dy) <= 0.0045 * span) continue;
+        const arrowBase = {
+          x: x0 + dx,
+          y: y0 + dy,
+          ax: x0,
+          ay: y0,
+          xref: "x",
+          yref: "y",
+          axref: "x",
+          ayref: "y",
+          text: "",
+          showarrow: true,
+          arrowhead: 3,
+          arrowsize: 0.82,
+        };
+        annotations.push({
+          ...arrowBase,
+          arrowwidth: 6.2,
+          arrowcolor: "rgba(255,250,240,0.94)",
+        });
+        annotations.push({
+          ...arrowBase,
+          arrowwidth: 3.2,
+          arrowcolor: interpolateColor(throttleColorScale, throttle, 0.0, 1.0),
+        });
+      }
+      return annotations;
     };
 
     const buildSpatialPlot = () => {
@@ -1318,14 +2289,14 @@ fn report_template() -> &'static str {
         name: "trajectory",
         x: xValues,
         y: yValues,
-        line: { color: "#0e6b60", width: 3 },
+        line: { color: "#0e6b60", width: 3.2 },
         hoverinfo: "skip",
       };
       const hoverTrace = {
         ...buildHoverCarrier(),
-        customdata: samples.map((sample, index) => [index, Number(sample.simTimeS), Number(sample.speedMps), sample.phase || "", sample.status || ""]),
+        customdata: samples.map((sample, index) => [index, Number(sample.simTimeS), Number(sample.speedMps), sample.phase || "", sample.status || "", Number(sample.throttleFrac)]),
         hovertemplate:
-          "t=%{customdata[1]:.2f}s<br>x=%{x:.1f}<br>y=%{y:.1f}<br>speed=%{customdata[2]:.2f}<br>phase=%{customdata[3]}<br>%{customdata[4]}<extra></extra>",
+          "t=%{customdata[1]:.2f}s<br>x=%{x:.1f}<br>y=%{y:.1f}<br>speed=%{customdata[2]:.2f}<br>throttle=%{customdata[5]:.2f}<br>phase=%{customdata[3]}<br>%{customdata[4]}<extra></extra>",
       };
       const eventTrace = {
         type: "scatter",
@@ -1358,6 +2329,46 @@ fn report_template() -> &'static str {
         },
       };
 
+      const gravityMps2 = Number(reportData.missionDetails.gravityMps2 || 0);
+      const initial = reportData.missionDetails.initialState || null;
+      const ballisticCurve = (initial && pad)
+        ? ballisticCurveFromState({
+            startX: Number(initial.xM),
+            startY: Number(initial.yM),
+            vxMps: Number(initial.vxMps),
+            vyMps: Number(initial.vyMps),
+            targetY: Number(pad.surfaceYM),
+            gravityMps2,
+          })
+        : null;
+      const ballisticTrace = ballisticCurve ? {
+        type: "scatter",
+        mode: "lines",
+        name: "start ballistic",
+        x: ballisticCurve.xs,
+        y: ballisticCurve.ys,
+        line: { color: "#cf7b00", width: 2.2, dash: "dot" },
+        hoverinfo: "skip",
+      } : null;
+      const referenceCurve = (initial && pad)
+        ? idealizedReferenceCurve({
+            startX: Number(initial.xM),
+            startY: Number(initial.yM),
+            targetX: Number(pad.centerXM),
+            targetY: Number(pad.surfaceYM),
+            gravityMps2,
+          })
+        : null;
+      const referenceTrace = referenceCurve ? {
+        type: "scatter",
+        mode: "lines",
+        name: "idealized reference",
+        x: referenceCurve.xs,
+        y: referenceCurve.ys,
+        line: { color: "#5b73c6", width: 2.4, dash: "dash" },
+        hoverinfo: "skip",
+      } : null;
+
       const speedTraces = buildScalarSpatialTraces({
         values: speedValues,
         colorscale: speedColorScale,
@@ -1375,27 +2386,33 @@ fn report_template() -> &'static str {
         plainTrace,
         ...speedTraces,
         ...throttleTraces,
+        ...(ballisticTrace ? [ballisticTrace] : []),
+        ...(referenceTrace ? [referenceTrace] : []),
         markerTrace,
         eventTrace,
         hoverTrace,
       ];
-      const plainEnd = (padTrace ? 3 : 2);
-      const speedStart = plainEnd;
+      const plainIndex = padTrace ? 2 : 1;
+      const speedStart = plainIndex + 1;
       const speedEnd = speedStart + speedTraces.length;
       const throttleStart = speedEnd;
       const throttleEnd = throttleStart + throttleTraces.length;
-      const markerIndex = throttleEnd;
-      const eventIndex = markerIndex + 1;
-      const hoverIndex = eventIndex + 1;
+      const markerIndex = spatialTraces.length - 3;
+      const eventIndex = spatialTraces.length - 2;
+      const hoverIndex = spatialTraces.length - 1;
+      const alwaysVisible = new Set([0, eventIndex, hoverIndex]);
+      if (padTrace) alwaysVisible.add(1);
+      if (ballisticTrace) alwaysVisible.add(throttleEnd);
+      if (referenceTrace) alwaysVisible.add(throttleEnd + (ballisticTrace ? 1 : 0));
 
       const visibilityForMode = (mode) =>
         spatialTraces.map((_trace, index) => {
-          const alwaysVisible = index === 0 || (padTrace && index === 1) || index === markerIndex || index === eventIndex || index === hoverIndex;
-          if (alwaysVisible) return true;
+          if (index === markerIndex) return mode !== "vectors";
+          if (alwaysVisible.has(index)) return true;
+          if (index === plainIndex) return true;
           if (mode === "speed") return index >= speedStart && index < speedEnd;
           if (mode === "throttle") return index >= throttleStart && index < throttleEnd;
-          if (mode === "vectors") return index === plainEnd - 1;
-          return index === plainEnd - 1;
+          return false;
         });
 
       const spatialElement = document.getElementById("chart-spatial");
@@ -1435,91 +2452,78 @@ fn report_template() -> &'static str {
       });
     };
 
-    const buildStatePlot = () => {
-      const eventGuideShapes = keyEvents
-        .map((event) => {
-          const timeValue = Number(event.simTimeS);
-          if (!Number.isFinite(timeValue)) return null;
-          return {
-            type: "line",
-            xref: "x",
-            yref: "paper",
-            x0: timeValue,
-            x1: timeValue,
-            y0: 0,
-            y1: 1,
-            line: { color: eventStyle(event.kind).color, width: 1.2, dash: "dot" },
-          };
-        })
-        .filter(Boolean);
-
+    const buildMetricsPlot = () => {
+      const eventGuideShapes = buildEventGuideShapes();
       Plotly.newPlot(
-        "chart-state",
+        "chart-metrics",
         [
-          { type: "scatter", mode: "lines", name: "height", x: timeValues, y: altitudeValues, line: { color: "#d97706", width: 3 } },
-          { type: "scatter", mode: "lines", name: "touchdown clearance", x: timeValues, y: touchdownClearanceValues, line: { color: "#0e6b60", width: 2.5 } },
-          { type: "scatter", mode: "lines", name: "hull clearance", x: timeValues, y: hullClearanceValues, line: { color: "#8a6d3b", width: 2, dash: "dot" }, visible: "legendonly" },
-          { type: "scatter", mode: "lines", name: "speed", x: timeValues, y: speedValues, line: { color: "#3f6ad8", width: 3 }, yaxis: "y2" },
-          { type: "scatter", mode: "lines", name: "vx", x: timeValues, y: vxValues, line: { color: "#8e3b2e", width: 2 }, yaxis: "y2", visible: "legendonly" },
-          { type: "scatter", mode: "lines", name: "vy", x: timeValues, y: vyValues, line: { color: "#6d28d9", width: 2 }, yaxis: "y2", visible: "legendonly" },
+          {
+            type: "scatter",
+            mode: "lines",
+            name: "velocity",
+            x: timeValues,
+            y: speedValues,
+            line: { color: "#1f8f63", width: 3.4 },
+          },
+          {
+            type: "scatter",
+            mode: "lines",
+            name: "vx",
+            x: timeValues,
+            y: vxValues,
+            line: { color: "#2f9e44", width: 2.6, dash: "dot" },
+            visible: "legendonly",
+          },
+          {
+            type: "scatter",
+            mode: "lines",
+            name: "vy",
+            x: timeValues,
+            y: vyValues,
+            line: { color: "#5b73c6", width: 2.6, dash: "dash" },
+            visible: "legendonly",
+          },
+          {
+            type: "scatter",
+            mode: "lines",
+            name: "thrust",
+            x: timeValues,
+            y: throttleValues,
+            line: { color: "#d97706", width: 3.2 },
+            yaxis: "y2",
+          },
+          {
+            type: "scatter",
+            mode: "lines",
+            name: "tx",
+            x: timeValues,
+            y: throttleXValues,
+            line: { color: "#0b7285", width: 2.4, dash: "dot" },
+            yaxis: "y2",
+            visible: "legendonly",
+          },
+          {
+            type: "scatter",
+            mode: "lines",
+            name: "ty",
+            x: timeValues,
+            y: throttleYValues,
+            line: { color: "#cf7b00", width: 2.4, dash: "dash" },
+            yaxis: "y2",
+            visible: "legendonly",
+          },
         ],
         metricLayout({
           hovermode: "x unified",
           xaxis: axisStyle({ title: "Time (s)" }),
-          yaxis: axisStyle({ title: "Meters", zeroline: true }),
-          yaxis2: axisStyle({ title: "Meters / sec", overlaying: "y", side: "right", zeroline: true }),
+          yaxis: axisStyle({ title: "Velocity (m/s)", zeroline: true }),
+          yaxis2: axisStyle({ title: "Thrust (0..1)", overlaying: "y", side: "right", zeroline: true }),
           shapes: eventGuideShapes,
         }),
         compactConfig,
       );
 
-      const element = document.getElementById("chart-state");
-      element.on("plotly_hover", (eventData) => {
-        const points = Array.isArray(eventData?.points) ? eventData.points : [];
-        const point = points.find((candidate) => Number.isInteger(candidate.pointIndex));
-        if (!point) return;
-        updateInspect(Number(point.pointIndex));
-      });
-    };
-
-    const buildControlPlot = () => {
-      const eventGuideShapes = keyEvents
-        .map((event) => {
-          const timeValue = Number(event.simTimeS);
-          if (!Number.isFinite(timeValue)) return null;
-          return {
-            type: "line",
-            xref: "x",
-            yref: "paper",
-            x0: timeValue,
-            x1: timeValue,
-            y0: 0,
-            y1: 1,
-            line: { color: eventStyle(event.kind).color, width: 1.2, dash: "dot" },
-          };
-        })
-        .filter(Boolean);
-
-      Plotly.newPlot(
-        "chart-control",
-        [
-          { type: "scatter", mode: "lines", name: "attitude deg", x: timeValues, y: attitudeValues, line: { color: "#d97706", width: 3 } },
-          { type: "scatter", mode: "lines", name: "target deg", x: timeValues, y: targetAttitudeValues, line: { color: "#4c6ef5", width: 2.5, dash: "dash" } },
-          { type: "scatter", mode: "lines", name: "throttle", x: timeValues, y: throttleValues, line: { color: "#0e6b60", width: 3 }, yaxis: "y2" },
-          { type: "scatter", mode: "lines", name: "fuel", x: timeValues, y: fuelValues, line: { color: "#8a6d3b", width: 2, dash: "dot" }, yaxis: "y3", visible: "legendonly" },
-        ],
-        metricLayout({
-          hovermode: "x unified",
-          xaxis: axisStyle({ title: "Time (s)" }),
-          yaxis: axisStyle({ title: "Degrees", zeroline: true }),
-          yaxis2: axisStyle({ title: "Throttle", overlaying: "y", side: "right", range: [0, 1.05], zeroline: true }),
-          yaxis3: axisStyle({ title: "Fuel kg", overlaying: "y", side: "right", position: 0.95, showgrid: false, visible: false }),
-          shapes: eventGuideShapes,
-        }),
-        compactConfig,
-      );
-
-      const element = document.getElementById("chart-control");
+      const element = document.getElementById("chart-metrics");
       element.on("plotly_hover", (eventData) => {
         const points = Array.isArray(eventData?.points) ? eventData.points : [];
         const point = points.find((candidate) => Number.isInteger(candidate.pointIndex));
@@ -1540,7 +2544,8 @@ fn report_template() -> &'static str {
       ["Target dx", `${fmt(sample.targetDxM)} m`],
       ["Throttle", `${fmt(sample.throttleFrac * 100, 1)} %`],
       ["Attitude", `${fmt(sample.attitudeDeg, 1)} deg`],
-      ["Fuel", `${fmt(sample.fuelKg)} kg`],
+      ["Fuel", `${fmtFuelPct(sample.fuelKg)} · ${fmt(sample.fuelKg)} kg`],
+      ["Bot step", fmtOptional(sample.computeTimeMs, 3, " ms")],
     ];
 
     const updateInspect = (index) => {
@@ -1563,14 +2568,19 @@ fn report_template() -> &'static str {
 
     const init = () => {
       summarizeOutcome();
+      renderKeyStats();
       renderCountChips("event-chips", reportData.eventCounts, "No key events recorded.");
       renderCountChips("marker-chips", reportData.markerCounts, "No controller markers recorded.");
       renderPhaseChips();
       renderEventList();
       renderControllerSpec();
+      renderQuality();
+      renderFlightStats();
+      renderBotStats();
+      renderRunStats();
+      renderMissionProfile();
       buildSpatialPlot();
-      buildStatePlot();
-      buildControlPlot();
+      buildMetricsPlot();
       updateInspect(samples.length ? samples.length - 1 : 0);
     };
 

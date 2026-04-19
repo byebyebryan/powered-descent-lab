@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+libc.workspace = true
 pd-core = { path = "../pd-core" }
 serde.workspace = true
