@@ -1,0 +1,420 @@
+{
+  "id": "terminal_bot_lab_suite",
+  "name": "Terminal bot-lab suite",
+  "description": "Curated terminal-descent families for controller iteration, comparing the baseline and staged controllers across nominal, crossrange, and low-margin cases.",
+  "entries": [
+    {
+      "id": "terminal_nominal_baseline",
+      "family": "terminal_nominal",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "baseline",
+      "seed_range": {
+        "start": 0,
+        "count": 5
+      },
+      "tags": [
+        "terminal",
+        "nominal",
+        "bot_lab"
+      ],
+      "metadata": {
+        "difficulty": "nominal"
+      },
+      "perturbations": [
+        {
+          "id": "spawn_dx",
+          "path": "initial_state.position_m.x",
+          "mode": "offset",
+          "min": -14.0,
+          "max": 14.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_y",
+          "path": "initial_state.position_m.y",
+          "mode": "offset",
+          "min": -10.0,
+          "max": 12.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_vx",
+          "path": "initial_state.velocity_mps.x",
+          "mode": "offset",
+          "min": -2.0,
+          "max": 2.0,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_vy",
+          "path": "initial_state.velocity_mps.y",
+          "mode": "offset",
+          "min": -2.5,
+          "max": 2.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "fuel_scale",
+          "path": "vehicle.initial_fuel_kg",
+          "mode": "scale",
+          "min": 0.9,
+          "max": 1.0,
+          "quantize": 0.01
+        }
+      ]
+    },
+    {
+      "id": "terminal_nominal_staged",
+      "family": "terminal_nominal",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "staged",
+      "seed_range": {
+        "start": 0,
+        "count": 5
+      },
+      "tags": [
+        "terminal",
+        "nominal",
+        "bot_lab"
+      ],
+      "metadata": {
+        "difficulty": "nominal"
+      },
+      "perturbations": [
+        {
+          "id": "spawn_dx",
+          "path": "initial_state.position_m.x",
+          "mode": "offset",
+          "min": -14.0,
+          "max": 14.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_y",
+          "path": "initial_state.position_m.y",
+          "mode": "offset",
+          "min": -10.0,
+          "max": 12.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_vx",
+          "path": "initial_state.velocity_mps.x",
+          "mode": "offset",
+          "min": -2.0,
+          "max": 2.0,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_vy",
+          "path": "initial_state.velocity_mps.y",
+          "mode": "offset",
+          "min": -2.5,
+          "max": 2.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "fuel_scale",
+          "path": "vehicle.initial_fuel_kg",
+          "mode": "scale",
+          "min": 0.9,
+          "max": 1.0,
+          "quantize": 0.01
+        }
+      ]
+    },
+    {
+      "id": "terminal_crossrange_baseline",
+      "family": "terminal_crossrange",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "baseline",
+      "seed_range": {
+        "start": 100,
+        "count": 5
+      },
+      "tags": [
+        "terminal",
+        "crossrange",
+        "bot_lab"
+      ],
+      "metadata": {
+        "difficulty": "crossrange"
+      },
+      "perturbations": [
+        {
+          "id": "spawn_dx",
+          "path": "initial_state.position_m.x",
+          "mode": "offset",
+          "min": -24.0,
+          "max": 24.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_y",
+          "path": "initial_state.position_m.y",
+          "mode": "offset",
+          "min": -6.0,
+          "max": 12.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_vx",
+          "path": "initial_state.velocity_mps.x",
+          "mode": "offset",
+          "min": -3.5,
+          "max": 3.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_vy",
+          "path": "initial_state.velocity_mps.y",
+          "mode": "offset",
+          "min": -2.0,
+          "max": 2.0,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_attitude",
+          "path": "initial_state.attitude_rad",
+          "mode": "offset",
+          "min": -0.08,
+          "max": 0.08,
+          "quantize": 0.01
+        },
+        {
+          "id": "spawn_rate",
+          "path": "initial_state.angular_rate_radps",
+          "mode": "offset",
+          "min": -0.18,
+          "max": 0.18,
+          "quantize": 0.01
+        },
+        {
+          "id": "fuel_scale",
+          "path": "vehicle.initial_fuel_kg",
+          "mode": "scale",
+          "min": 0.94,
+          "max": 1.0,
+          "quantize": 0.01
+        }
+      ]
+    },
+    {
+      "id": "terminal_crossrange_staged",
+      "family": "terminal_crossrange",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "staged",
+      "seed_range": {
+        "start": 100,
+        "count": 5
+      },
+      "tags": [
+        "terminal",
+        "crossrange",
+        "bot_lab"
+      ],
+      "metadata": {
+        "difficulty": "crossrange"
+      },
+      "perturbations": [
+        {
+          "id": "spawn_dx",
+          "path": "initial_state.position_m.x",
+          "mode": "offset",
+          "min": -24.0,
+          "max": 24.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_y",
+          "path": "initial_state.position_m.y",
+          "mode": "offset",
+          "min": -6.0,
+          "max": 12.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_vx",
+          "path": "initial_state.velocity_mps.x",
+          "mode": "offset",
+          "min": -3.5,
+          "max": 3.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_vy",
+          "path": "initial_state.velocity_mps.y",
+          "mode": "offset",
+          "min": -2.0,
+          "max": 2.0,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_attitude",
+          "path": "initial_state.attitude_rad",
+          "mode": "offset",
+          "min": -0.08,
+          "max": 0.08,
+          "quantize": 0.01
+        },
+        {
+          "id": "spawn_rate",
+          "path": "initial_state.angular_rate_radps",
+          "mode": "offset",
+          "min": -0.18,
+          "max": 0.18,
+          "quantize": 0.01
+        },
+        {
+          "id": "fuel_scale",
+          "path": "vehicle.initial_fuel_kg",
+          "mode": "scale",
+          "min": 0.94,
+          "max": 1.0,
+          "quantize": 0.01
+        }
+      ]
+    },
+    {
+      "id": "terminal_low_margin_baseline",
+      "family": "terminal_low_margin",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "baseline",
+      "seed_range": {
+        "start": 200,
+        "count": 5
+      },
+      "tags": [
+        "terminal",
+        "low_margin",
+        "bot_lab"
+      ],
+      "metadata": {
+        "difficulty": "low_margin"
+      },
+      "perturbations": [
+        {
+          "id": "spawn_dx",
+          "path": "initial_state.position_m.x",
+          "mode": "offset",
+          "min": -18.0,
+          "max": 18.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_y",
+          "path": "initial_state.position_m.y",
+          "mode": "offset",
+          "min": -8.0,
+          "max": 8.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_vx",
+          "path": "initial_state.velocity_mps.x",
+          "mode": "offset",
+          "min": -2.5,
+          "max": 2.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_vy",
+          "path": "initial_state.velocity_mps.y",
+          "mode": "offset",
+          "min": -4.0,
+          "max": 1.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_attitude",
+          "path": "initial_state.attitude_rad",
+          "mode": "offset",
+          "min": -0.1,
+          "max": 0.1,
+          "quantize": 0.01
+        },
+        {
+          "id": "fuel_scale",
+          "path": "vehicle.initial_fuel_kg",
+          "mode": "scale",
+          "min": 0.76,
+          "max": 0.9,
+          "quantize": 0.01
+        }
+      ]
+    },
+    {
+      "id": "terminal_low_margin_staged",
+      "family": "terminal_low_margin",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "controller": "staged",
+      "seed_range": {
+        "start": 200,
+        "count": 5
+      },
+      "tags": [
+        "terminal",
+        "low_margin",
+        "bot_lab"
+      ],
+      "metadata": {
+        "difficulty": "low_margin"
+      },
+      "perturbations": [
+        {
+          "id": "spawn_dx",
+          "path": "initial_state.position_m.x",
+          "mode": "offset",
+          "min": -18.0,
+          "max": 18.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_y",
+          "path": "initial_state.position_m.y",
+          "mode": "offset",
+          "min": -8.0,
+          "max": 8.0,
+          "quantize": 0.5
+        },
+        {
+          "id": "spawn_vx",
+          "path": "initial_state.velocity_mps.x",
+          "mode": "offset",
+          "min": -2.5,
+          "max": 2.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_vy",
+          "path": "initial_state.velocity_mps.y",
+          "mode": "offset",
+          "min": -4.0,
+          "max": 1.5,
+          "quantize": 0.25
+        },
+        {
+          "id": "spawn_attitude",
+          "path": "initial_state.attitude_rad",
+          "mode": "offset",
+          "min": -0.1,
+          "max": 0.1,
+          "quantize": 0.01
+        },
+        {
+          "id": "fuel_scale",
+          "path": "vehicle.initial_fuel_kg",
+          "mode": "scale",
+          "min": 0.76,
+          "max": 0.9,
+          "quantize": 0.01
+        }
+      ]
+    },
+    {
+      "id": "checkpoint_idle_reference",
+      "scenario": "../scenarios/timed_checkpoint_idle.json",
+      "controller": "idle"
+    }
+  ]
+}

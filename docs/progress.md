@@ -371,20 +371,20 @@
 
 ### Active implementation focus
 
-1. Keep improving report meaning before report polish:
-   - better representative-run selection
-   - clearer "open this next" guidance
-   - better regression surfacing for shared-run compare
-2. Tie batch and run reports together more tightly:
+1. Keep growing the controller kit rather than letting built-ins drift apart:
+   - richer helper queries over terrain and target frame
+   - shared metric/marker conventions across controller styles
+   - small reusable guidance utilities instead of copy-pasted heuristics
+2. Use the new bot-lab suite to tighten controller iteration:
+   - compare baseline vs staged behavior on the same curated families
+   - rank which failures are controller issues vs corpus issues
+   - decide which scenario families deserve first-class promotion later
+3. Tie batch and run reports together more tightly:
    - stronger drill-down from compare rows into run pages
    - more stable labeling of current vs baseline review links
-3. Keep expanding the scenario corpus intentionally:
-   - more curated family definitions
-   - more off-nominal terminal cases borrowed conceptually from `pylander`
-4. Tighten controller iteration against the new summary layer:
-   - failure-seed tracking
-   - baseline comparison thresholds
-   - controller-side metrics and markers that explain why edge runs fail
+4. Keep improving report meaning before report polish:
+   - better representative-run selection
+   - clearer "open this next" guidance
 
 ### Known limitations
 
@@ -403,6 +403,9 @@
 - `pd-eval` still does not generate polished per-run drill-down pages itself, so
   batch links currently fall back to bundle artifacts when no `report.html`
   exists for that run.
+- The controller kit now exists, but it is still centered on the current
+  terminal-descent problem. It has not yet been pressure-tested against richer
+  transfer guidance or terrain-reactive scenarios.
 
 #### Checkpoint 16: report-site structure and indexes
 
@@ -473,3 +476,37 @@
     sections
 - Kept the new run summaries and compare surfaces aligned with the report-site
   tree, so report navigation and batch triage now reinforce each other.
+
+#### Checkpoint 18: controller kit and curated bot-lab corpus
+
+- Split `pd-control` into a clearer bot-framework shape:
+  - shared controller view/helpers in `pd-control/src/kit.rs`
+  - concrete built-in controllers in `pd-control/src/controllers.rs`
+- Added a reusable `ControllerView` over `RunContext + Observation` with:
+  - target-relative position helpers
+  - pad-margin and fuel-fraction helpers
+  - target-surface normal/tangent kinematics
+  - hover-throttle and vertical-target helper calculations
+  - direct terrain sampling/profile helpers for controller code
+- Added a small shared diagnostics convention layer:
+  - common phase labels
+  - common metric keys
+  - standard phase/gate marker helpers
+  - a `ControllerFrameBuilder` so built-ins stop hand-assembling frames
+- Refactored `baseline_v1` onto the shared controller kit.
+- Added a second built-in controller, `staged_descent_v1`, with:
+  - explicit `translate -> descent -> flare -> touchdown` staging
+  - standardized phase and gate markers
+  - distinct behavior from the original baseline instead of a renamed clone
+- Added a curated pack for controller iteration:
+  - `fixtures/packs/terminal_bot_lab_suite.json`
+- The new pack intentionally exercises both built-in controllers over:
+  - nominal terminal runs
+  - crossrange / attitude-biased terminal runs
+  - low-margin / low-fuel terminal runs
+  - one checkpoint reference
+- This is the first point where `pd-lab` feels closer to a real bot framework
+  rather than just a deterministic sim with batch tooling:
+  - controllers now have a reusable helper layer
+  - multiple controller styles share the same lab contract
+  - the corpus is shaped for controller work, not only for smoke testing

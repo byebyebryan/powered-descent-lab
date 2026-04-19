@@ -124,6 +124,9 @@ Status:
   - a first named pack runner and summary counts
   - controller config/spec plumbing for built-in controllers
   - controller-local status, phase, metrics, and markers
+  - a shared controller helper kit over target-relative state and terrain
+  - a second built-in controller style to keep the framework from collapsing
+    into one heuristic path
   - a first static single-run inspection report in `pd-cli`
   - scenario-family expansion with explicit seeds and seed ranges
   - deterministic perturbation resolution recorded per run
@@ -132,6 +135,8 @@ Status:
     and slowest runs
   - a first static batch report page
   - first-class candidate-vs-baseline comparison for batch outputs
+  - a curated terminal bot-lab pack that exercises nominal, crossrange, and
+    low-margin controller cases
 - still missing:
   - stronger comparison/regression reporting
   - a real digest-backed compare/cache workflow over the new batch identities

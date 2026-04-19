@@ -1,7 +1,16 @@
 use std::collections::BTreeMap;
 
-use pd_core::{Command, Observation, RunArtifacts, RunContext, SimulationError, run_simulation};
+use pd_core::{Observation, RunArtifacts, RunContext, SimulationError, run_simulation};
 use serde::{Deserialize, Serialize};
+
+mod controllers;
+pub mod kit;
+
+pub use controllers::{
+    BaselineController, BaselineControllerConfig, ControllerSpec, IdleController,
+    StagedDescentController, StagedDescentControllerConfig, built_in_controller_spec,
+};
+pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, standard_marker};
 
 pub trait Controller {
     fn id(&self) -> &str;
@@ -62,7 +71,7 @@ pub struct ControllerMarker {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ControllerFrame {
-    pub command: Command,
+    pub command: pd_core::Command,
     pub status: String,
     pub phase: Option<String>,
     #[serde(default)]
@@ -72,7 +81,7 @@ pub struct ControllerFrame {
 }
 
 impl ControllerFrame {
-    pub fn command_only(command: Command) -> Self {
+    pub fn command_only(command: pd_core::Command) -> Self {
         Self {
             command,
             status: String::new(),
@@ -100,253 +109,6 @@ pub struct ControllerUpdateRecord {
 pub struct ControlledRunArtifacts {
     pub run: RunArtifacts,
     pub controller_updates: Vec<ControllerUpdateRecord>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct BaselineControllerConfig {
-    pub horizontal_position_gain: f64,
-    pub horizontal_velocity_limit_mps: f64,
-    pub horizontal_velocity_gain: f64,
-    pub high_altitude_m: f64,
-    pub medium_altitude_m: f64,
-    pub low_altitude_m: f64,
-    pub high_descent_rate_mps: f64,
-    pub medium_descent_rate_mps: f64,
-    pub low_descent_rate_mps: f64,
-    pub touchdown_descent_rate_mps: f64,
-    pub high_attitude_limit_rad: f64,
-    pub medium_attitude_limit_rad: f64,
-    pub low_attitude_limit_rad: f64,
-    pub vertical_speed_gain: f64,
-    pub tilt_throttle_gain: f64,
-}
-
-impl Default for BaselineControllerConfig {
-    fn default() -> Self {
-        Self {
-            horizontal_position_gain: 0.08,
-            horizontal_velocity_limit_mps: 5.0,
-            horizontal_velocity_gain: 0.08,
-            high_altitude_m: 80.0,
-            medium_altitude_m: 30.0,
-            low_altitude_m: 12.0,
-            high_descent_rate_mps: -18.0,
-            medium_descent_rate_mps: -10.0,
-            low_descent_rate_mps: -5.0,
-            touchdown_descent_rate_mps: -2.0,
-            high_attitude_limit_rad: 0.45,
-            medium_attitude_limit_rad: 0.25,
-            low_attitude_limit_rad: 0.12,
-            vertical_speed_gain: 0.09,
-            tilt_throttle_gain: 0.04,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ControllerSpec {
-    Idle,
-    BaselineV1 {
-        #[serde(flatten)]
-        config: BaselineControllerConfig,
-    },
-}
-
-impl ControllerSpec {
-    pub fn id(&self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::BaselineV1 { .. } => "baseline_v1",
-        }
-    }
-
-    pub fn instantiate(&self) -> Box<dyn Controller> {
-        match self {
-            Self::Idle => Box::new(IdleController),
-            Self::BaselineV1 { config } => Box::new(BaselineController::new(config.clone())),
-        }
-    }
-}
-
-pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
-    match name {
-        "idle" => Some(ControllerSpec::Idle),
-        "baseline" | "baseline_v1" => Some(ControllerSpec::BaselineV1 {
-            config: BaselineControllerConfig::default(),
-        }),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct IdleController;
-
-impl Controller for IdleController {
-    fn id(&self) -> &str {
-        "idle"
-    }
-
-    fn update(&mut self, _ctx: &RunContext, _observation: &Observation) -> ControllerFrame {
-        ControllerFrame {
-            command: Command::idle(),
-            status: "idle".to_owned(),
-            phase: Some("idle".to_owned()),
-            metrics: BTreeMap::from([
-                ("throttle_mode".to_owned(), TelemetryValue::from("off")),
-                ("guidance_active".to_owned(), TelemetryValue::from(false)),
-            ]),
-            markers: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct BaselineController {
-    config: BaselineControllerConfig,
-    last_phase: Option<String>,
-}
-
-impl Default for BaselineController {
-    fn default() -> Self {
-        Self::new(BaselineControllerConfig::default())
-    }
-}
-
-impl BaselineController {
-    pub fn new(config: BaselineControllerConfig) -> Self {
-        Self {
-            config,
-            last_phase: None,
-        }
-    }
-
-    fn phase_for_altitude(&self, altitude_m: f64) -> &'static str {
-        if altitude_m > self.config.high_altitude_m {
-            "acquire"
-        } else if altitude_m > self.config.medium_altitude_m {
-            "descent"
-        } else if altitude_m > self.config.low_altitude_m {
-            "flare"
-        } else {
-            "touchdown"
-        }
-    }
-
-    fn desired_vertical_speed_mps(&self, altitude_m: f64) -> f64 {
-        if altitude_m > self.config.high_altitude_m {
-            self.config.high_descent_rate_mps
-        } else if altitude_m > self.config.medium_altitude_m {
-            self.config.medium_descent_rate_mps
-        } else if altitude_m > self.config.low_altitude_m {
-            self.config.low_descent_rate_mps
-        } else {
-            self.config.touchdown_descent_rate_mps
-        }
-    }
-}
-
-impl Controller for BaselineController {
-    fn id(&self) -> &str {
-        "baseline_v1"
-    }
-
-    fn reset(&mut self, _ctx: &RunContext) {
-        self.last_phase = None;
-    }
-
-    fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
-        let max_accel_mps2 = ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0);
-        let hover_throttle = observation.gravity_mps2 / max_accel_mps2.max(f64::EPSILON);
-        let altitude_m = observation.touchdown_clearance_m.max(0.0);
-        let desired_vx_mps = (observation.target_dx_m * self.config.horizontal_position_gain)
-            .clamp(
-                -self.config.horizontal_velocity_limit_mps,
-                self.config.horizontal_velocity_limit_mps,
-            );
-        let raw_attitude_rad = ((desired_vx_mps - observation.velocity_mps.x)
-            * self.config.horizontal_velocity_gain)
-            .clamp(
-                -self.config.high_attitude_limit_rad,
-                self.config.high_attitude_limit_rad,
-            );
-        let attitude_limit_rad = if altitude_m > self.config.medium_altitude_m {
-            self.config.high_attitude_limit_rad
-        } else if altitude_m > self.config.low_altitude_m {
-            self.config.medium_attitude_limit_rad
-        } else {
-            self.config.low_attitude_limit_rad
-        };
-        let target_attitude_rad = raw_attitude_rad.clamp(-attitude_limit_rad, attitude_limit_rad);
-
-        let desired_vy_mps = self.desired_vertical_speed_mps(altitude_m);
-        let vertical_error_mps = desired_vy_mps - observation.velocity_mps.y;
-        let throttle_frac = (hover_throttle
-            + (vertical_error_mps * self.config.vertical_speed_gain)
-            + target_attitude_rad.abs() * self.config.tilt_throttle_gain)
-            .clamp(0.0, 1.0);
-
-        let phase = self.phase_for_altitude(altitude_m).to_owned();
-        let status = match phase.as_str() {
-            "acquire" => "tracking target pad",
-            "descent" => "stabilizing descent rate",
-            "flare" => "reducing sink and tilt",
-            "touchdown" => "final touchdown envelope",
-            _ => "guiding",
-        }
-        .to_owned();
-
-        let mut markers = Vec::new();
-        if self.last_phase.as_deref() != Some(phase.as_str()) {
-            markers.push(ControllerMarker {
-                id: format!("phase_{}", phase),
-                label: format!("phase: {}", phase),
-                x_m: Some(observation.position_m.x),
-                y_m: Some(observation.position_m.y),
-                metadata: BTreeMap::from([
-                    ("phase".to_owned(), TelemetryValue::from(phase.as_str())),
-                    (
-                        "target_dx_m".to_owned(),
-                        TelemetryValue::from(observation.target_dx_m),
-                    ),
-                ]),
-            });
-        }
-        self.last_phase = Some(phase.clone());
-
-        ControllerFrame {
-            command: Command {
-                throttle_frac,
-                target_attitude_rad,
-            },
-            status,
-            phase: Some(phase),
-            metrics: BTreeMap::from([
-                ("altitude_m".to_owned(), TelemetryValue::from(altitude_m)),
-                (
-                    "target_dx_m".to_owned(),
-                    TelemetryValue::from(observation.target_dx_m),
-                ),
-                (
-                    "desired_vx_mps".to_owned(),
-                    TelemetryValue::from(desired_vx_mps),
-                ),
-                (
-                    "desired_vy_mps".to_owned(),
-                    TelemetryValue::from(desired_vy_mps),
-                ),
-                (
-                    "hover_throttle".to_owned(),
-                    TelemetryValue::from(hover_throttle),
-                ),
-                (
-                    "vertical_error_mps".to_owned(),
-                    TelemetryValue::from(vertical_error_mps),
-                ),
-            ]),
-            markers,
-        }
-    }
 }
 
 pub fn run_controller(
@@ -460,8 +222,10 @@ mod tests {
 
         assert!((0.0..=1.0).contains(&frame.command.throttle_frac));
         assert!(frame.command.target_attitude_rad.is_finite());
-        assert_eq!(frame.phase.as_deref(), Some("acquire"));
+        assert_eq!(frame.phase.as_deref(), Some(phase::ACQUIRE));
         assert_eq!(frame.markers.len(), 1);
+        assert!(frame.metrics.contains_key(metric::ALTITUDE_M));
+        assert!(frame.metrics.contains_key(metric::TARGET_DX_M));
     }
 
     #[test]
@@ -499,8 +263,57 @@ mod tests {
         observation.velocity_mps.y = -1.0;
         let second = controller.update(&ctx, &observation);
 
-        assert_eq!(first.phase.as_deref(), Some("acquire"));
-        assert_eq!(second.phase.as_deref(), Some("touchdown"));
+        assert_eq!(first.phase.as_deref(), Some(phase::ACQUIRE));
+        assert_eq!(second.phase.as_deref(), Some(phase::TOUCHDOWN));
         assert_eq!(second.markers.len(), 1);
+    }
+
+    #[test]
+    fn staged_controller_lands_flat_fixture() {
+        let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::StagedDescentV1 {
+                config: StagedDescentControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        ));
+    }
+
+    #[test]
+    fn staged_controller_emits_gate_markers() {
+        let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        let mut controller = StagedDescentController::default();
+
+        let _first = controller.update(&ctx, &observation);
+        observation.position_m.x = 1.0;
+        observation.position_m.y = 40.0;
+        observation.touchdown_clearance_m = 40.0;
+        observation.target_dx_m = -1.0;
+        let second = controller.update(&ctx, &observation);
+        observation.position_m.y = 12.0;
+        observation.touchdown_clearance_m = 12.0;
+        let third = controller.update(&ctx, &observation);
+
+        assert!(
+            second
+                .markers
+                .iter()
+                .any(|marker| marker.id == marker::LATERAL_CAPTURE)
+        );
+        assert!(
+            third
+                .markers
+                .iter()
+                .any(|marker| marker.id == marker::TERMINAL_GATE)
+        );
     }
 }
