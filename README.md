@@ -102,7 +102,9 @@ Generated reports live under `outputs/` and can be served locally with:
 ```
 
 The script starts a simple HTTP server inside a named detached `tmux` session
-and serves `outputs/` at `http://127.0.0.1:8000/` by default.
+and serves `outputs/` on `0.0.0.0:8000` by default. The root URL now lands on a
+generated `outputs/index.html` page, and `/reports/` remains the clean
+report-only subtree. The printed LAN URL resolves automatically when available.
 
 Useful commands:
 
@@ -123,6 +125,16 @@ under `outputs/` when written through the project CLIs, for example:
 - `outputs/replays/latest/report.html`
 - `outputs/eval/latest/summary.json`
 - `outputs/eval/<pack>/runs/latest/report.html`
+
+Stable HTML entrypoints also live under `outputs/reports/`, for example:
+
+- `outputs/reports/index.html`
+- `outputs/reports/runs/latest/`
+- `outputs/reports/eval/latest/`
+
+The root landing page is:
+
+- `outputs/index.html`
 
 ## Batch Eval
 

@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 
 session_name="${PDL_REPORT_SESSION:-pdlab-reports}"
-host="${PDL_REPORT_HOST:-127.0.0.1}"
+host="${PDL_REPORT_HOST:-0.0.0.0}"
 port="${PDL_REPORT_PORT:-8000}"
 root="${PDL_REPORT_ROOT:-${repo_root}/outputs}"
 log_dir="${root}/.serve"
@@ -22,8 +22,44 @@ require_cmd() {
   fi
 }
 
+probe_host() {
+  case "$host" in
+    0.0.0.0) echo "127.0.0.1" ;;
+    ::) echo "::1" ;;
+    *) echo "$host" ;;
+  esac
+}
+
+lan_host() {
+  local ip_line ip_addr
+  if command -v ip >/dev/null 2>&1; then
+    ip_line="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n '1p' || true)"
+    ip_addr="$(printf '%s\n' "$ip_line" | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
+    if [[ -n "$ip_addr" ]]; then
+      echo "$ip_addr"
+      return
+    fi
+  fi
+
+  echo ""
+}
+
+display_url() {
+  local access_host
+  access_host="$(lan_host)"
+  if [[ "$host" == "0.0.0.0" && -n "$access_host" ]]; then
+    echo "http://${access_host}:${port}/"
+  else
+    echo "http://${host}:${port}/"
+  fi
+}
+
+display_reports_url() {
+  echo "$(display_url)reports/"
+}
+
 http_ok() {
-  python3 - "$host" "$port" <<'PY'
+  python3 - "$(probe_host)" "$port" <<'PY'
 import sys
 import urllib.error
 import urllib.request
@@ -52,13 +88,17 @@ print_status() {
     fi
     echo "session: ${session_name} (${tmux_state})"
     echo "root: ${root}"
-    echo "url:  http://${host}:${port}/"
+    echo "bind: http://${host}:${port}/"
+    echo "url:  $(display_url)"
+    echo "site: $(display_reports_url)"
     echo "http: ${http_state}"
     echo "log:  ${log_file}"
   else
     echo "session: ${session_name} (stopped)"
     echo "root: ${root}"
-    echo "url:  http://${host}:${port}/"
+    echo "bind: http://${host}:${port}/"
+    echo "url:  $(display_url)"
+    echo "site: $(display_reports_url)"
   fi
 }
 
@@ -97,7 +137,9 @@ start_server() {
   fi
 
   echo "serving ${root}"
-  echo "url: http://${host}:${port}/"
+  echo "bind: http://${host}:${port}/"
+  echo "url:  $(display_url)"
+  echo "site: $(display_reports_url)"
   echo "tmux session: ${session_name}"
   echo "attach: tmux attach -t ${session_name}"
   echo "stop: ${command_name} stop"
@@ -134,7 +176,9 @@ Usage: ${command_name} [start|stop|restart|status|attach|url]
 Defaults:
   session: ${session_name}
   root:    ${root}
-  url:     http://${host}:${port}/
+  bind:    http://${host}:${port}/
+  url:     $(display_url)
+  site:    $(display_reports_url)
 
 Environment overrides:
   PDL_REPORT_SESSION
@@ -163,7 +207,7 @@ case "$action" in
     attach_server
     ;;
   url)
-    echo "http://${host}:${port}/"
+    echo "$(display_url)"
     ;;
   -h|--help|help)
     usage

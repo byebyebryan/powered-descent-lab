@@ -278,6 +278,14 @@
 - `pd-eval` now emits a first static batch `report.html`, and batch comparison
   against a baseline directory is now a first-class workflow rather than only a
   future design note.
+- The report server now binds on all interfaces by default and prints a
+  detected LAN URL so remote devices on the local network can open generated
+  reports directly.
+- A separate `outputs/reports/` tree now exists as the primary navigation
+  surface for HTML pages, so report browsing no longer starts in raw artifact
+  directories.
+- `outputs/index.html` now acts as a generated root landing page above the
+  report tree, so the server root can point at one stable navigation page.
 
 #### Checkpoint 13: report server script and artifact-key review
 
@@ -367,10 +375,13 @@
    - improve information density and compare readability
    - decide how much charting is worth adding over the current table-first view
    - make drill-down links better than raw bundle JSON where useful
-2. Keep expanding the scenario corpus intentionally:
+2. Improve the report-site navigation layer:
+   - better timestamps and labels in the generated indexes
+   - more useful grouping once the number of reports grows
+3. Keep expanding the scenario corpus intentionally:
    - more curated family definitions
    - more off-nominal terminal cases borrowed conceptually from `pylander`
-3. Use the new sweep path to tighten controller iteration:
+4. Use the new sweep path to tighten controller iteration:
    - failure-seed tracking
    - baseline comparison and regression thresholds
 
@@ -391,3 +402,34 @@
 - `pd-eval` still does not generate polished per-run drill-down pages itself, so
   batch links currently fall back to bundle artifacts when no `report.html`
   exists for that run.
+
+#### Checkpoint 16: report-site structure and indexes
+
+- Split stable HTML navigation away from raw artifacts by introducing:
+  - `outputs/reports/index.html`
+  - `outputs/reports/runs/`
+  - `outputs/reports/replays/`
+  - `outputs/reports/eval/`
+- `pd-cli report` now defaults to the report-site path for bundles rather than
+  writing back into the bundle directory.
+- `pd-cli` single-run and replay bundle writes now also emit report-site copies
+  automatically when the bundle lives under `outputs/`.
+- `pd-eval` batch report generation now also emits report-site copies under:
+  - `outputs/reports/eval/<pack>/index.html`
+- Added simple generated index pages for the report-site home and each top-level
+  scope, sorted newest-first.
+- The server workflow now points to the root landing page first, with the
+  report-only subtree still available under `/reports/`.
+- Added a generated root landing page at `outputs/index.html` with links to:
+  - the report site
+  - raw artifact directories
+  - latest run and latest batch pages
+- Follow-up fixes tightened the navigation contract:
+  - newest-first ordering now keys off the generated report file timestamp
+    instead of the directory timestamp, so regenerating a report actually moves
+    it to the top
+  - nested report collections such as `outputs/reports/eval/<pack>/runs/` now
+    get their own `index.html` page instead of dropping back to a raw directory
+    listing
+  - batch report drill-down links now prefer report-site detail pages when they
+    exist, keeping navigation inside `/reports/`
