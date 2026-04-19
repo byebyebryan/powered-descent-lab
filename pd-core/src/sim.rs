@@ -5,8 +5,9 @@ use crate::{
     },
     math::Vec2,
     model::{
-        ActionLogEntry, Command, EndReason, EventKind, EventRecord, MissionOutcome, Observation,
-        PhysicalOutcome, RUN_SCHEMA_VERSION, RunArtifacts, RunContext, RunManifest, SampleRecord,
+        ActionLogEntry, CheckpointRunSummary, Command, EndReason, EvaluationGoal, EventKind,
+        EventRecord, LandingRunSummary, MissionOutcome, Observation, PhysicalOutcome,
+        RUN_SCHEMA_VERSION, RunArtifacts, RunContext, RunManifest, RunSummary, SampleRecord,
     },
 };
 
@@ -38,6 +39,11 @@ pub struct SimulationState {
     pub physical_outcome: PhysicalOutcome,
     pub mission_outcome: MissionOutcome,
     pub end_reason: EndReason,
+    pub min_touchdown_clearance_m: f64,
+    pub min_hull_clearance_m: f64,
+    pub max_speed_mps: f64,
+    pub max_abs_attitude_rad: f64,
+    pub max_abs_angular_rate_radps: f64,
 }
 
 impl SimulationState {
@@ -55,7 +61,7 @@ impl SimulationState {
             .validate()
             .map_err(SimulationError::InvalidContext)?;
 
-        Ok(Self {
+        let mut state = Self {
             sim_time_s: 0.0,
             physics_step: 0,
             position_m: ctx.initial_state.position_m,
@@ -67,7 +73,14 @@ impl SimulationState {
             physical_outcome: PhysicalOutcome::Flying,
             mission_outcome: MissionOutcome::InProgress,
             end_reason: EndReason::Running,
-        })
+            min_touchdown_clearance_m: f64::INFINITY,
+            min_hull_clearance_m: f64::INFINITY,
+            max_speed_mps: 0.0,
+            max_abs_attitude_rad: 0.0,
+            max_abs_angular_rate_radps: 0.0,
+        };
+        state.update_extrema(ctx);
+        Ok(state)
     }
 
     pub fn is_terminal(&self) -> bool {
@@ -83,11 +96,7 @@ impl SimulationState {
     }
 
     pub fn build_observation(&self, ctx: &RunContext) -> Observation {
-        let touchdown_points = self.touchdown_points_world(ctx);
-        let touchdown_clearance_m = touchdown_points
-            .iter()
-            .map(|point| point.y - ctx.world.terrain.sample_height(point.x))
-            .fold(f64::INFINITY, f64::min);
+        let landing_snapshot = self.landing_snapshot(ctx);
 
         Observation {
             sim_time_s: self.sim_time_s,
@@ -103,8 +112,8 @@ impl SimulationState {
             height_above_target_m: self.position_m.y - ctx.target_pad.surface_y_m,
             target_surface_y_m: ctx.target_pad.surface_y_m,
             target_pad_half_width_m: ctx.target_pad.half_width_m(),
-            touchdown_clearance_m,
-            min_hull_clearance_m: self.min_hull_clearance_m(ctx),
+            touchdown_clearance_m: landing_snapshot.min_touchdown_clearance_m,
+            min_hull_clearance_m: landing_snapshot.min_hull_clearance_m,
         }
     }
 
@@ -120,6 +129,7 @@ impl SimulationState {
 
         self.physics_step += 1;
         self.sim_time_s = self.physics_step as f64 / f64::from(ctx.sim.physics_hz);
+        self.update_extrema(ctx);
 
         let contact_events =
             apply_contact_classification(ctx, self, self.detect_contact_classification(ctx));
@@ -173,7 +183,47 @@ impl SimulationState {
         self.position_m += self.velocity_mps * dt_s;
     }
 
+    fn update_extrema(&mut self, ctx: &RunContext) {
+        let landing_snapshot = self.landing_snapshot(ctx);
+        self.min_touchdown_clearance_m = self
+            .min_touchdown_clearance_m
+            .min(landing_snapshot.min_touchdown_clearance_m);
+        self.min_hull_clearance_m = self
+            .min_hull_clearance_m
+            .min(landing_snapshot.min_hull_clearance_m);
+        self.max_speed_mps = self.max_speed_mps.max(self.velocity_mps.length());
+        self.max_abs_attitude_rad = self.max_abs_attitude_rad.max(self.attitude_rad.abs());
+        self.max_abs_angular_rate_radps = self
+            .max_abs_angular_rate_radps
+            .max(self.angular_rate_radps.abs());
+    }
+
     fn detect_contact_classification(&self, ctx: &RunContext) -> ContactClassification {
+        let snapshot = self.landing_snapshot(ctx);
+
+        if snapshot.min_touchdown_clearance_m > 0.0 && snapshot.min_hull_clearance_m > 0.0 {
+            return ContactClassification::None;
+        }
+
+        let stable_touchdown = snapshot.min_touchdown_clearance_m <= 0.05
+            && snapshot.max_touchdown_clearance_m <= 0.15
+            && snapshot.min_hull_clearance_m >= 0.0;
+        let safe_touchdown = snapshot.normal_speed_mps
+            <= ctx.vehicle.safe_touchdown_normal_speed_mps
+            && snapshot.tangential_speed_mps <= ctx.vehicle.safe_touchdown_tangential_speed_mps
+            && snapshot.attitude_error_rad <= ctx.vehicle.safe_touchdown_attitude_error_rad
+            && snapshot.angular_rate_radps <= ctx.vehicle.safe_touchdown_angular_rate_radps;
+
+        if stable_touchdown && safe_touchdown {
+            return ContactClassification::StableTouchdown {
+                on_target: snapshot.on_target,
+            };
+        }
+
+        ContactClassification::Crash
+    }
+
+    fn landing_snapshot(&self, ctx: &RunContext) -> LandingSnapshot {
         let touchdown_points = self.touchdown_points_world(ctx);
         let touchdown_clearances_m =
             touchdown_points.map(|point| point.y - ctx.world.terrain.sample_height(point.x));
@@ -186,16 +236,10 @@ impl SimulationState {
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
         let min_hull_clearance_m = self.min_hull_clearance_m(ctx);
-
-        if min_touchdown_clearance_m > 0.0 && min_hull_clearance_m > 0.0 {
-            return ContactClassification::None;
-        }
-
         let normal_speed_mps = (-self.velocity_mps.y).max(0.0);
         let tangential_speed_mps = self.velocity_mps.x.abs();
         let attitude_error_rad = self.attitude_rad.abs();
         let angular_rate_radps = self.angular_rate_radps.abs();
-
         let touchdown_x_min = touchdown_points
             .iter()
             .map(|point| point.x)
@@ -204,22 +248,22 @@ impl SimulationState {
             .iter()
             .map(|point| point.x)
             .fold(f64::NEG_INFINITY, f64::max);
+        let touchdown_center_x_m = (touchdown_x_min + touchdown_x_max) * 0.5;
         let pad_x_min = ctx.target_pad.center_x_m - ctx.target_pad.half_width_m();
         let pad_x_max = ctx.target_pad.center_x_m + ctx.target_pad.half_width_m();
         let on_target = touchdown_x_min >= pad_x_min && touchdown_x_max <= pad_x_max;
-        let stable_touchdown = min_touchdown_clearance_m <= 0.05
-            && max_touchdown_clearance_m <= 0.15
-            && min_hull_clearance_m >= 0.0;
-        let safe_touchdown = normal_speed_mps <= ctx.vehicle.safe_touchdown_normal_speed_mps
-            && tangential_speed_mps <= ctx.vehicle.safe_touchdown_tangential_speed_mps
-            && attitude_error_rad <= ctx.vehicle.safe_touchdown_attitude_error_rad
-            && angular_rate_radps <= ctx.vehicle.safe_touchdown_angular_rate_radps;
 
-        if stable_touchdown && safe_touchdown {
-            return ContactClassification::StableTouchdown { on_target };
+        LandingSnapshot {
+            min_touchdown_clearance_m,
+            max_touchdown_clearance_m,
+            min_hull_clearance_m,
+            normal_speed_mps,
+            tangential_speed_mps,
+            attitude_error_rad,
+            angular_rate_radps,
+            touchdown_center_offset_m: touchdown_center_x_m - ctx.target_pad.center_x_m,
+            on_target,
         }
-
-        ContactClassification::Crash
     }
 
     fn touchdown_points_world(&self, ctx: &RunContext) -> [Vec2; 2] {
@@ -258,6 +302,46 @@ impl SimulationState {
             .map(|point| point.y - ctx.world.terrain.sample_height(point.x))
             .fold(f64::INFINITY, f64::min)
     }
+
+    fn build_run_summary(&self, ctx: &RunContext) -> RunSummary {
+        let landing_snapshot = self.landing_snapshot(ctx);
+        let landing = build_landing_run_summary(ctx, &landing_snapshot);
+        let checkpoint = build_checkpoint_run_summary(ctx, self);
+        let envelope_margin_ratio = checkpoint
+            .as_ref()
+            .map(|summary| summary.envelope_margin_ratio)
+            .or_else(|| {
+                landing
+                    .as_ref()
+                    .map(|summary| summary.envelope_margin_ratio)
+            });
+
+        RunSummary {
+            fuel_remaining_kg: self.fuel_kg.max(0.0),
+            fuel_used_kg: (ctx.vehicle.initial_fuel_kg - self.fuel_kg).max(0.0),
+            min_touchdown_clearance_m: self.min_touchdown_clearance_m,
+            min_hull_clearance_m: self.min_hull_clearance_m,
+            max_speed_mps: self.max_speed_mps,
+            max_abs_attitude_rad: self.max_abs_attitude_rad,
+            max_abs_angular_rate_radps: self.max_abs_angular_rate_radps,
+            envelope_margin_ratio,
+            landing,
+            checkpoint,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LandingSnapshot {
+    min_touchdown_clearance_m: f64,
+    max_touchdown_clearance_m: f64,
+    min_hull_clearance_m: f64,
+    normal_speed_mps: f64,
+    tangential_speed_mps: f64,
+    attitude_error_rad: f64,
+    angular_rate_radps: f64,
+    touchdown_center_offset_m: f64,
+    on_target: bool,
 }
 
 pub fn run_simulation<F>(
@@ -485,7 +569,108 @@ fn build_manifest(
         physical_outcome: state.physical_outcome.clone(),
         mission_outcome: state.mission_outcome.clone(),
         end_reason: state.end_reason.clone(),
+        summary: state.build_run_summary(ctx),
     }
+}
+
+fn build_landing_run_summary(
+    ctx: &RunContext,
+    snapshot: &LandingSnapshot,
+) -> Option<LandingRunSummary> {
+    let pad_margin_m = ctx.target_pad.half_width_m() - snapshot.touchdown_center_offset_m.abs();
+    let normal_speed_margin_mps =
+        ctx.vehicle.safe_touchdown_normal_speed_mps - snapshot.normal_speed_mps;
+    let tangential_speed_margin_mps =
+        ctx.vehicle.safe_touchdown_tangential_speed_mps - snapshot.tangential_speed_mps;
+    let attitude_margin_rad =
+        ctx.vehicle.safe_touchdown_attitude_error_rad - snapshot.attitude_error_rad;
+    let angular_rate_margin_radps =
+        ctx.vehicle.safe_touchdown_angular_rate_radps - snapshot.angular_rate_radps;
+    let envelope_margin_ratio = [
+        normal_speed_margin_mps
+            / ctx
+                .vehicle
+                .safe_touchdown_normal_speed_mps
+                .max(f64::EPSILON),
+        tangential_speed_margin_mps
+            / ctx
+                .vehicle
+                .safe_touchdown_tangential_speed_mps
+                .max(f64::EPSILON),
+        attitude_margin_rad
+            / ctx
+                .vehicle
+                .safe_touchdown_attitude_error_rad
+                .max(f64::EPSILON),
+        angular_rate_margin_radps
+            / ctx
+                .vehicle
+                .safe_touchdown_angular_rate_radps
+                .max(f64::EPSILON),
+        pad_margin_m / ctx.target_pad.half_width_m().max(f64::EPSILON),
+    ]
+    .into_iter()
+    .fold(f64::INFINITY, f64::min);
+
+    Some(LandingRunSummary {
+        touchdown_center_offset_m: snapshot.touchdown_center_offset_m,
+        pad_margin_m,
+        normal_speed_mps: snapshot.normal_speed_mps,
+        tangential_speed_mps: snapshot.tangential_speed_mps,
+        attitude_error_rad: snapshot.attitude_error_rad,
+        angular_rate_radps: snapshot.angular_rate_radps,
+        normal_speed_margin_mps,
+        tangential_speed_margin_mps,
+        attitude_margin_rad,
+        angular_rate_margin_radps,
+        envelope_margin_ratio,
+        on_target: snapshot.on_target,
+    })
+}
+
+fn build_checkpoint_run_summary(
+    ctx: &RunContext,
+    state: &SimulationState,
+) -> Option<CheckpointRunSummary> {
+    let EvaluationGoal::TimedCheckpoint {
+        desired_position_offset_m,
+        max_position_error_m,
+        desired_velocity_mps,
+        max_velocity_error_mps,
+        max_attitude_error_rad,
+        ..
+    } = &ctx.mission.goal
+    else {
+        return None;
+    };
+
+    let actual_position_offset_m = Vec2::new(
+        state.position_m.x - ctx.target_pad.center_x_m,
+        state.position_m.y - ctx.target_pad.surface_y_m,
+    );
+    let position_error_m = (actual_position_offset_m - *desired_position_offset_m).length();
+    let velocity_error_mps = (state.velocity_mps - *desired_velocity_mps).length();
+    let attitude_error_rad = state.attitude_rad.abs();
+    let position_margin_m = *max_position_error_m - position_error_m;
+    let velocity_margin_mps = *max_velocity_error_mps - velocity_error_mps;
+    let attitude_margin_rad = *max_attitude_error_rad - attitude_error_rad;
+    let envelope_margin_ratio = [
+        position_margin_m / max_position_error_m.max(f64::EPSILON),
+        velocity_margin_mps / max_velocity_error_mps.max(f64::EPSILON),
+        attitude_margin_rad / max_attitude_error_rad.max(f64::EPSILON),
+    ]
+    .into_iter()
+    .fold(f64::INFINITY, f64::min);
+
+    Some(CheckpointRunSummary {
+        position_error_m,
+        velocity_error_mps,
+        attitude_error_rad,
+        position_margin_m,
+        velocity_margin_mps,
+        attitude_margin_rad,
+        envelope_margin_ratio,
+    })
 }
 
 fn maybe_push_sample(

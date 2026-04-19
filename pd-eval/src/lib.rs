@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use pd_control::{
     ControlledRunArtifacts, ControllerSpec, built_in_controller_spec, run_controller_spec,
 };
-use pd_core::{MissionOutcome, RunContext, RunManifest, ScenarioSpec};
+use pd_core::{MissionOutcome, RunContext, RunManifest, RunSummary, ScenarioSpec};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 2;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScenarioPackSpec {
@@ -156,10 +156,18 @@ pub struct BatchGroupSummary {
     pub success_runs: usize,
     pub failure_runs: usize,
     pub mean_sim_time_s: f64,
+    #[serde(default)]
+    pub mean_success_fuel_remaining_kg: Option<f64>,
     pub mission_outcomes: BTreeMap<String, usize>,
     pub end_reasons: BTreeMap<String, usize>,
     pub sample_run_ids: Vec<String>,
     pub failed_seeds: Vec<u64>,
+    #[serde(default)]
+    pub weakest_success_run_id: Option<String>,
+    #[serde(default)]
+    pub closest_failure_run_id: Option<String>,
+    #[serde(default)]
+    pub worst_failure_run_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -174,6 +182,12 @@ pub struct BatchRunPointer {
     pub end_reason: String,
     pub sim_time_s: f64,
     pub bundle_dir: Option<String>,
+    #[serde(default)]
+    pub margin_ratio: Option<f64>,
+    #[serde(default)]
+    pub fuel_remaining_kg: f64,
+    #[serde(default)]
+    pub summary: RunSummary,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -190,6 +204,14 @@ pub struct BatchSummary {
     pub by_family: Vec<BatchGroupSummary>,
     pub failed_runs: Vec<BatchRunPointer>,
     pub slowest_runs: Vec<BatchRunPointer>,
+    #[serde(default)]
+    pub closest_failures: Vec<BatchRunPointer>,
+    #[serde(default)]
+    pub worst_failures: Vec<BatchRunPointer>,
+    #[serde(default)]
+    pub weakest_successes: Vec<BatchRunPointer>,
+    #[serde(default)]
+    pub lowest_fuel_successes: Vec<BatchRunPointer>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -277,6 +299,18 @@ pub struct BatchRunComparison {
     pub sim_time_delta_s: f64,
     pub candidate_bundle_dir: Option<String>,
     pub baseline_bundle_dir: Option<String>,
+    #[serde(default)]
+    pub candidate_margin_ratio: Option<f64>,
+    #[serde(default)]
+    pub baseline_margin_ratio: Option<f64>,
+    #[serde(default)]
+    pub margin_ratio_delta: Option<f64>,
+    #[serde(default)]
+    pub candidate_fuel_remaining_kg: f64,
+    #[serde(default)]
+    pub baseline_fuel_remaining_kg: f64,
+    #[serde(default)]
+    pub fuel_remaining_delta_kg: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1059,6 +1093,38 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
     });
     slowest_runs.truncate(10);
 
+    let mut closest_failures = records
+        .iter()
+        .filter(|record| !matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .map(run_pointer)
+        .collect::<Vec<_>>();
+    closest_failures.sort_by(closest_failure_sort_key);
+    closest_failures.truncate(10);
+
+    let mut worst_failures = records
+        .iter()
+        .filter(|record| !matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .map(run_pointer)
+        .collect::<Vec<_>>();
+    worst_failures.sort_by(worst_failure_sort_key);
+    worst_failures.truncate(10);
+
+    let mut weakest_successes = records
+        .iter()
+        .filter(|record| matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .map(run_pointer)
+        .collect::<Vec<_>>();
+    weakest_successes.sort_by(weakest_success_sort_key);
+    weakest_successes.truncate(10);
+
+    let mut lowest_fuel_successes = records
+        .iter()
+        .filter(|record| matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .map(run_pointer)
+        .collect::<Vec<_>>();
+    lowest_fuel_successes.sort_by(lowest_fuel_success_sort_key);
+    lowest_fuel_successes.truncate(10);
+
     BatchSummary {
         total_runs,
         success_runs,
@@ -1072,6 +1138,10 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
         by_family,
         failed_runs,
         slowest_runs,
+        closest_failures,
+        worst_failures,
+        weakest_successes,
+        lowest_fuel_successes,
     }
 }
 
@@ -1182,6 +1252,14 @@ fn compare_run_pair(
     let baseline_end_reason = enum_label(&baseline_record.manifest.end_reason);
     let sim_time_delta_s =
         candidate_record.manifest.sim_time_s - baseline_record.manifest.sim_time_s;
+    let candidate_margin_ratio = summary_margin_ratio(&candidate_record.manifest.summary);
+    let baseline_margin_ratio = summary_margin_ratio(&baseline_record.manifest.summary);
+    let margin_ratio_delta = match (candidate_margin_ratio, baseline_margin_ratio) {
+        (Some(candidate), Some(baseline)) => Some(candidate - baseline),
+        _ => None,
+    };
+    let candidate_fuel_remaining_kg = candidate_record.manifest.summary.fuel_remaining_kg;
+    let baseline_fuel_remaining_kg = baseline_record.manifest.summary.fuel_remaining_kg;
 
     let change_kind = if baseline_success && !candidate_success {
         BatchRunChangeKind::NewFailure
@@ -1212,6 +1290,12 @@ fn compare_run_pair(
         sim_time_delta_s,
         candidate_bundle_dir: candidate_record.bundle_dir.clone(),
         baseline_bundle_dir: baseline_record.bundle_dir.clone(),
+        candidate_margin_ratio,
+        baseline_margin_ratio,
+        margin_ratio_delta,
+        candidate_fuel_remaining_kg,
+        baseline_fuel_remaining_kg,
+        fuel_remaining_delta_kg: candidate_fuel_remaining_kg - baseline_fuel_remaining_kg,
     })
 }
 
@@ -1236,6 +1320,9 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
     let mut end_reasons = BTreeMap::new();
     let mut failed_seeds = Vec::new();
     let mut sample_run_ids = Vec::new();
+    let mut success_fuel_remaining = Vec::new();
+    let mut success_pointers = Vec::new();
+    let mut failure_pointers = Vec::new();
 
     for record in records {
         *mission_outcomes
@@ -1244,14 +1331,33 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         *end_reasons
             .entry(enum_label(&record.manifest.end_reason))
             .or_insert(0) += 1;
+        let pointer = run_pointer(record);
         if !matches!(record.manifest.mission_outcome, MissionOutcome::Success) {
             failed_seeds.push(record.resolved.resolved_seed);
+            failure_pointers.push(pointer);
+        } else {
+            success_fuel_remaining.push(record.manifest.summary.fuel_remaining_kg);
+            success_pointers.push(pointer);
         }
         if sample_run_ids.len() < 5 {
             sample_run_ids.push(record.resolved.run_id.clone());
         }
     }
     failed_seeds.sort_unstable();
+    let mean_success_fuel_remaining_kg = if success_fuel_remaining.is_empty() {
+        None
+    } else {
+        Some(success_fuel_remaining.iter().sum::<f64>() / success_fuel_remaining.len() as f64)
+    };
+    success_pointers.sort_by(weakest_success_sort_key);
+    failure_pointers.sort_by(closest_failure_sort_key);
+    let closest_failure_run_id = failure_pointers
+        .first()
+        .map(|pointer| pointer.run_id.clone());
+    failure_pointers.sort_by(worst_failure_sort_key);
+    let worst_failure_run_id = failure_pointers
+        .first()
+        .map(|pointer| pointer.run_id.clone());
 
     BatchGroupSummary {
         key: key.to_owned(),
@@ -1259,10 +1365,16 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         success_runs,
         failure_runs,
         mean_sim_time_s,
+        mean_success_fuel_remaining_kg,
         mission_outcomes,
         end_reasons,
         sample_run_ids,
         failed_seeds,
+        weakest_success_run_id: success_pointers
+            .first()
+            .map(|pointer| pointer.run_id.clone()),
+        closest_failure_run_id,
+        worst_failure_run_id,
     }
 }
 
@@ -1278,7 +1390,14 @@ fn run_pointer(record: &BatchRunRecord) -> BatchRunPointer {
         end_reason: enum_label(&record.manifest.end_reason),
         sim_time_s: record.manifest.sim_time_s,
         bundle_dir: record.bundle_dir.clone(),
+        margin_ratio: summary_margin_ratio(&record.manifest.summary),
+        fuel_remaining_kg: record.manifest.summary.fuel_remaining_kg,
+        summary: record.manifest.summary.clone(),
     }
+}
+
+fn summary_margin_ratio(summary: &RunSummary) -> Option<f64> {
+    summary.envelope_margin_ratio
 }
 
 fn success_rate(success_runs: usize, total_runs: usize) -> f64 {
@@ -1296,14 +1415,60 @@ fn run_pointer_sort_key(lhs: &BatchRunPointer, rhs: &BatchRunPointer) -> std::cm
         .then(lhs.run_id.cmp(&rhs.run_id))
 }
 
+fn closest_failure_sort_key(lhs: &BatchRunPointer, rhs: &BatchRunPointer) -> std::cmp::Ordering {
+    rhs.margin_ratio
+        .unwrap_or(f64::NEG_INFINITY)
+        .partial_cmp(&lhs.margin_ratio.unwrap_or(f64::NEG_INFINITY))
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then(run_pointer_sort_key(lhs, rhs))
+}
+
+fn worst_failure_sort_key(lhs: &BatchRunPointer, rhs: &BatchRunPointer) -> std::cmp::Ordering {
+    lhs.margin_ratio
+        .unwrap_or(f64::INFINITY)
+        .partial_cmp(&rhs.margin_ratio.unwrap_or(f64::INFINITY))
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then(run_pointer_sort_key(lhs, rhs))
+}
+
+fn weakest_success_sort_key(lhs: &BatchRunPointer, rhs: &BatchRunPointer) -> std::cmp::Ordering {
+    lhs.margin_ratio
+        .unwrap_or(f64::INFINITY)
+        .partial_cmp(&rhs.margin_ratio.unwrap_or(f64::INFINITY))
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then(run_pointer_sort_key(lhs, rhs))
+}
+
+fn lowest_fuel_success_sort_key(
+    lhs: &BatchRunPointer,
+    rhs: &BatchRunPointer,
+) -> std::cmp::Ordering {
+    lhs.fuel_remaining_kg
+        .partial_cmp(&rhs.fuel_remaining_kg)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then(run_pointer_sort_key(lhs, rhs))
+}
+
 fn run_comparison_sort_key(
     lhs: &BatchRunComparison,
     rhs: &BatchRunComparison,
 ) -> std::cmp::Ordering {
-    lhs.entry_id
-        .cmp(&rhs.entry_id)
-        .then(lhs.candidate_seed.cmp(&rhs.candidate_seed))
-        .then(lhs.run_id.cmp(&rhs.run_id))
+    lhs.candidate_margin_ratio
+        .unwrap_or(f64::INFINITY)
+        .partial_cmp(&rhs.candidate_margin_ratio.unwrap_or(f64::INFINITY))
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then(
+            lhs.margin_ratio_delta
+                .unwrap_or(f64::INFINITY)
+                .partial_cmp(&rhs.margin_ratio_delta.unwrap_or(f64::INFINITY))
+                .unwrap_or(std::cmp::Ordering::Equal),
+        )
+        .then(
+            lhs.entry_id
+                .cmp(&rhs.entry_id)
+                .then(lhs.candidate_seed.cmp(&rhs.candidate_seed))
+                .then(lhs.run_id.cmp(&rhs.run_id)),
+        )
 }
 
 fn load_scenario(path: &Path) -> Result<ScenarioSpec> {

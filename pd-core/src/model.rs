@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{math::Vec2, terrain::TerrainDefinition};
 
-pub const RUN_SCHEMA_VERSION: u32 = 1;
+pub const RUN_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SimConfig {
@@ -512,6 +512,49 @@ pub struct SampleRecord {
     pub held_command: Command,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LandingRunSummary {
+    pub touchdown_center_offset_m: f64,
+    pub pad_margin_m: f64,
+    pub normal_speed_mps: f64,
+    pub tangential_speed_mps: f64,
+    pub attitude_error_rad: f64,
+    pub angular_rate_radps: f64,
+    pub normal_speed_margin_mps: f64,
+    pub tangential_speed_margin_mps: f64,
+    pub attitude_margin_rad: f64,
+    pub angular_rate_margin_radps: f64,
+    pub envelope_margin_ratio: f64,
+    pub on_target: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CheckpointRunSummary {
+    pub position_error_m: f64,
+    pub velocity_error_mps: f64,
+    pub attitude_error_rad: f64,
+    pub position_margin_m: f64,
+    pub velocity_margin_mps: f64,
+    pub attitude_margin_rad: f64,
+    pub envelope_margin_ratio: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RunSummary {
+    pub fuel_remaining_kg: f64,
+    pub fuel_used_kg: f64,
+    pub min_touchdown_clearance_m: f64,
+    pub min_hull_clearance_m: f64,
+    pub max_speed_mps: f64,
+    pub max_abs_attitude_rad: f64,
+    pub max_abs_angular_rate_radps: f64,
+    pub envelope_margin_ratio: Option<f64>,
+    #[serde(default)]
+    pub landing: Option<LandingRunSummary>,
+    #[serde(default)]
+    pub checkpoint: Option<CheckpointRunSummary>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunManifest {
     pub schema_version: u32,
@@ -528,6 +571,8 @@ pub struct RunManifest {
     pub physical_outcome: PhysicalOutcome,
     pub mission_outcome: MissionOutcome,
     pub end_reason: EndReason,
+    #[serde(default)]
+    pub summary: RunSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

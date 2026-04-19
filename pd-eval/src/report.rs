@@ -306,6 +306,9 @@ fn render_batch_report(
     }}
     .muted {{ color: var(--muted); }}
     .mono {{ font-family: var(--mono); }}
+    .good {{ color: var(--good); }}
+    .bad {{ color: var(--bad); }}
+    .warn {{ color: var(--warn); }}
     .delta-pos {{ color: var(--bad); }}
     .delta-neg {{ color: var(--good); }}
     .delta-flat {{ color: var(--muted); }}
@@ -399,16 +402,29 @@ fn render_batch_report(
 
     <section class="layout">
       <div class="panel">
-        <h2>Failed Runs</h2>
-        <p>Candidate failures first, with direct links back to the recorded bundle.</p>
-        <div class="table-wrap">{failed_runs_table}</div>
+        <h2>{priority_left_title}</h2>
+        <p>{priority_left_subtitle}</p>
+        <div class="table-wrap">{priority_left_table}</div>
       </div>
       <div class="panel">
-        <h2>Slowest Runs</h2>
-        <p>Longest-running candidate executions, useful for controller and profile triage.</p>
-        <div class="table-wrap">{slowest_runs_table}</div>
+        <h2>Representative Successes</h2>
+        <p>These are the successes most worth keeping open during controller iteration: weakest margins first, then lowest-fuel survivors.</p>
+        <div class="table-wrap">{weakest_successes_table}</div>
+        <details>
+          <summary>Lowest-fuel successes ({lowest_fuel_successes_count})</summary>
+          <div class="table-wrap">{lowest_fuel_successes_table}</div>
+        </details>
       </div>
     </section>
+
+    <details>
+      <summary>Failure Inventory ({failed_runs_count})</summary>
+      <div class="table-wrap">{failed_runs_table}</div>
+    </details>
+    <details>
+      <summary>Slowest Runs ({slowest_runs_count})</summary>
+      <div class="table-wrap">{slowest_runs_table}</div>
+    </details>
 
     {comparison_sections}
   </div>
@@ -465,6 +481,46 @@ fn render_batch_report(
             &output_dir,
             "No candidate runs recorded."
         ),
+        priority_left_title = if comparison.is_some() {
+            "Priority Review"
+        } else {
+            "Closest Current Failures"
+        },
+        priority_left_subtitle = if comparison.is_some() {
+            "Start with new failures versus baseline, then move to the nearest current misses."
+        } else {
+            "These failures are closest to the success envelope and usually explain the next useful controller changes."
+        },
+        priority_left_table = comparison
+            .map(|comparison| {
+                render_run_comparison_table(
+                    &comparison.regressions,
+                    &output_dir,
+                    &candidate_record_links,
+                    &baseline_record_map,
+                    "No regressions recorded. Use the failure inventory below instead.",
+                )
+            })
+            .unwrap_or_else(|| {
+                render_run_pointer_table(
+                    &candidate.summary.closest_failures,
+                    &output_dir,
+                    "No current failures recorded.",
+                )
+            }),
+        weakest_successes_table = render_run_pointer_table(
+            &candidate.summary.weakest_successes,
+            &output_dir,
+            "No candidate successes recorded."
+        ),
+        lowest_fuel_successes_count = candidate.summary.lowest_fuel_successes.len(),
+        lowest_fuel_successes_table = render_run_pointer_table(
+            &candidate.summary.lowest_fuel_successes,
+            &output_dir,
+            "No candidate successes recorded."
+        ),
+        failed_runs_count = candidate.summary.failed_runs.len(),
+        slowest_runs_count = candidate.summary.slowest_runs.len(),
         comparison_sections = comparison
             .map(|comparison| {
                 render_comparison_sections(
@@ -480,6 +536,9 @@ fn render_batch_report(
 
 fn render_candidate_cards(candidate: &BatchReport) -> String {
     let success_rate = percentage(candidate.summary.success_runs, candidate.summary.total_runs);
+    let closest_failure = candidate.summary.closest_failures.first();
+    let weakest_success = candidate.summary.weakest_successes.first();
+    let lowest_fuel_success = candidate.summary.lowest_fuel_successes.first();
     [
         format!(
             r#"<article class="card">
@@ -495,6 +554,33 @@ fn render_candidate_cards(candidate: &BatchReport) -> String {
         ),
         format!(
             r#"<article class="card">
+  <h2>Current Edge</h2>
+  <div class="metric"><span>Closest failure</span><strong class="{closest_failure_class}">{closest_failure_margin}</strong></div>
+  <div class="metric"><span>Weakest success</span><strong class="{weakest_success_class}">{weakest_success_margin}</strong></div>
+  <div class="metric"><span>Lowest fuel success</span><strong>{lowest_fuel_success}</strong></div>
+</article>"#,
+            closest_failure_class = closest_failure
+                .and_then(|pointer| pointer.margin_ratio)
+                .map(margin_class)
+                .unwrap_or("muted"),
+            closest_failure_margin = closest_failure
+                .and_then(|pointer| pointer.margin_ratio)
+                .map(format_margin_ratio)
+                .unwrap_or_else(|| "-".to_owned()),
+            weakest_success_class = weakest_success
+                .and_then(|pointer| pointer.margin_ratio)
+                .map(margin_class)
+                .unwrap_or("muted"),
+            weakest_success_margin = weakest_success
+                .and_then(|pointer| pointer.margin_ratio)
+                .map(format_margin_ratio)
+                .unwrap_or_else(|| "-".to_owned()),
+            lowest_fuel_success = lowest_fuel_success
+                .map(|pointer| format!("{:.1}kg", pointer.fuel_remaining_kg))
+                .unwrap_or_else(|| "-".to_owned()),
+        ),
+        format!(
+            r#"<article class="card">
   <h2>Timing</h2>
   <div class="metric"><span>Mean sim time</span><strong>{:.2}s</strong></div>
   <div class="metric"><span>Max sim time</span><strong>{:.2}s</strong></div>
@@ -506,7 +592,7 @@ fn render_candidate_cards(candidate: &BatchReport) -> String {
         ),
         format!(
             r#"<article class="card">
-  <h2>Outcomes</h2>
+  <h2>Outcome Shape</h2>
   {}
 </article>"#,
             candidate
@@ -599,20 +685,32 @@ fn render_group_table(
     baseline_record_map: &BTreeMap<String, String>,
     output_dir: &Path,
 ) -> String {
+    let candidate_group_map = candidate_groups
+        .iter()
+        .map(|group| (group.key.as_str(), group))
+        .collect::<BTreeMap<_, _>>();
     if let Some(comparisons) = comparisons {
         let rows = comparisons
             .iter()
             .map(|group| {
+                let candidate_group = candidate_group_map.get(group.key.as_str()).copied();
                 format!(
-                    "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
                     escape_html(&group.key),
                     render_optional_runs(group.candidate_total_runs, group.candidate_success_rate),
                     render_optional_runs(group.baseline_total_runs, group.baseline_success_rate),
                     render_optional_delta(group.success_rate_delta, ValueKind::PercentPoints),
                     render_optional_delta(group.failure_runs_delta.map(|value| value as f64), ValueKind::Count),
                     render_optional_delta(group.mean_sim_time_delta_s, ValueKind::Seconds),
+                    candidate_group
+                        .and_then(|item| item.mean_success_fuel_remaining_kg)
+                        .map(|value| format!("{value:.1}kg"))
+                        .unwrap_or_else(|| "-".to_owned()),
                     render_sample_links(
-                        &group.sample_run_ids,
+                        candidate_group
+                            .map(render_group_review_ids)
+                            .unwrap_or_default()
+                            .as_slice(),
                         candidate_record_map,
                         baseline_record_map,
                         output_dir,
@@ -622,7 +720,7 @@ fn render_group_table(
             .collect::<Vec<_>>()
             .join("");
         return format!(
-            "<table><thead><tr><th>Key</th><th>Candidate</th><th>Baseline</th><th>Success Δ</th><th>Fail Δ</th><th>Mean Δ</th><th>Samples</th></tr></thead><tbody>{}</tbody></table>",
+            "<table><thead><tr><th>Key</th><th>Candidate</th><th>Baseline</th><th>Success Δ</th><th>Fail Δ</th><th>Mean Δ</th><th>Fuel</th><th>Review</th></tr></thead><tbody>{}</tbody></table>",
             rows
         );
     }
@@ -631,14 +729,17 @@ fn render_group_table(
         .iter()
         .map(|group| {
             format!(
-                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{:.2}s</td><td class=\"seed-list\">{}</td><td>{}</td></tr>",
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{:.2}s</td><td>{}</td><td class=\"seed-list\">{}</td><td>{}</td></tr>",
                 escape_html(&group.key),
                 render_rate(group.success_runs, group.total_runs),
                 group.failure_runs,
                 group.mean_sim_time_s,
+                group.mean_success_fuel_remaining_kg
+                    .map(|value| format!("{value:.1}kg"))
+                    .unwrap_or_else(|| "-".to_owned()),
                 render_seed_list(&group.failed_seeds),
                 render_sample_links(
-                    &group.sample_run_ids,
+                    &render_group_review_ids(group),
                     candidate_record_map,
                     &BTreeMap::new(),
                     output_dir,
@@ -648,7 +749,7 @@ fn render_group_table(
         .collect::<Vec<_>>()
         .join("");
     format!(
-        "<table><thead><tr><th>Key</th><th>Success</th><th>Failures</th><th>Mean</th><th>Failed seeds</th><th>Samples</th></tr></thead><tbody>{}</tbody></table>",
+        "<table><thead><tr><th>Key</th><th>Success</th><th>Failures</th><th>Mean</th><th>Fuel</th><th>Failed seeds</th><th>Review</th></tr></thead><tbody>{}</tbody></table>",
         rows
     )
 }
@@ -665,11 +766,12 @@ fn render_run_pointer_table(
         .iter()
         .map(|row| {
             format!(
-                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{:.2}s</td><td>{}</td></tr>",
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{:.1}kg</td><td>{:.2}s</td><td>{}</td></tr>",
                 escape_html(&row.run_id),
                 escape_html(&row.mission_outcome),
-                escape_html(&row.end_reason),
-                row.scenario_seed,
+                render_pointer_focus(row),
+                render_pointer_margin(row),
+                row.fuel_remaining_kg,
                 row.sim_time_s,
                 render_pointer_links(row, output_dir),
             )
@@ -677,7 +779,7 @@ fn render_run_pointer_table(
         .collect::<Vec<_>>()
         .join("");
     format!(
-        "<table><thead><tr><th>Run</th><th>Outcome</th><th>Reason</th><th>Seed</th><th>Sim</th><th>Links</th></tr></thead><tbody>{}</tbody></table>",
+        "<table><thead><tr><th>Run</th><th>Outcome</th><th>Focus</th><th>Margin</th><th>Fuel</th><th>Sim</th><th>Links</th></tr></thead><tbody>{}</tbody></table>",
         body
     )
 }
@@ -764,11 +866,13 @@ fn render_run_comparison_table(
         .iter()
         .map(|row| {
             format!(
-                "<tr><td><code>{}</code></td><td>{}</td><td>{} → {}</td><td>{:.2}s</td><td>{}</td></tr>",
+                "<tr><td><code>{}</code></td><td>{}</td><td>{} → {}</td><td>{}</td><td>{}</td><td>{:.2}s</td><td>{}</td></tr>",
                 escape_html(&row.run_id),
                 escape_html(&enum_label(&row.change_kind)),
                 escape_html(&row.baseline_mission_outcome),
                 escape_html(&row.candidate_mission_outcome),
+                render_comparison_margin_delta(row),
+                render_comparison_fuel_delta(row),
                 row.sim_time_delta_s,
                 render_dual_links(
                     &row.run_id,
@@ -781,7 +885,7 @@ fn render_run_comparison_table(
         .collect::<Vec<_>>()
         .join("");
     format!(
-        "<table><thead><tr><th>Run</th><th>Kind</th><th>Outcome</th><th>Sim Δ</th><th>Links</th></tr></thead><tbody>{}</tbody></table>",
+        "<table><thead><tr><th>Run</th><th>Kind</th><th>Outcome</th><th>Margin Δ</th><th>Fuel Δ</th><th>Sim Δ</th><th>Links</th></tr></thead><tbody>{}</tbody></table>",
         body
     )
 }
@@ -835,6 +939,73 @@ fn render_seed_list(seeds: &[u64]) -> String {
         rendered.push(format!("+{}", seeds.len() - 6));
     }
     rendered.join(", ")
+}
+
+fn render_group_review_ids(group: &crate::BatchGroupSummary) -> Vec<String> {
+    [
+        group.closest_failure_run_id.as_ref(),
+        group.worst_failure_run_id.as_ref(),
+        group.weakest_success_run_id.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .cloned()
+    .collect()
+}
+
+fn render_pointer_focus(pointer: &BatchRunPointer) -> String {
+    if let Some(checkpoint) = pointer.summary.checkpoint.as_ref() {
+        return format!(
+            "seed {} | pos {:.2}m | vel {:.2}m/s | att {:.1}°",
+            pointer.scenario_seed,
+            checkpoint.position_error_m,
+            checkpoint.velocity_error_mps,
+            checkpoint.attitude_error_rad.to_degrees()
+        );
+    }
+    if let Some(landing) = pointer.summary.landing.as_ref() {
+        return format!(
+            "seed {} | pad {:+.2}m | n {:.2} | t {:.2} | att {:.1}°",
+            pointer.scenario_seed,
+            landing.touchdown_center_offset_m,
+            landing.normal_speed_mps,
+            landing.tangential_speed_mps,
+            landing.attitude_error_rad.to_degrees()
+        );
+    }
+    format!("seed {}", pointer.scenario_seed)
+}
+
+fn render_pointer_margin(pointer: &BatchRunPointer) -> String {
+    pointer
+        .margin_ratio
+        .map(|value| {
+            format!(
+                r#"<span class="{}">{}</span>"#,
+                margin_class(value),
+                format_margin_ratio(value)
+            )
+        })
+        .unwrap_or_else(|| r#"<span class="muted">-</span>"#.to_owned())
+}
+
+fn render_comparison_margin_delta(row: &BatchRunComparison) -> String {
+    match row.margin_ratio_delta {
+        Some(delta) => format!(
+            r#"<span class="{}">{}</span>"#,
+            delta_class(-delta),
+            format_margin_delta(delta)
+        ),
+        None => r#"<span class="muted">-</span>"#.to_owned(),
+    }
+}
+
+fn render_comparison_fuel_delta(row: &BatchRunComparison) -> String {
+    format!(
+        r#"<span class="{}">{}</span>"#,
+        delta_class(-row.fuel_remaining_delta_kg),
+        format_signed_kg(row.fuel_remaining_delta_kg)
+    )
 }
 
 fn candidate_record_map(candidate: &BatchReport) -> BTreeMap<String, String> {
@@ -1688,8 +1859,20 @@ fn format_signed_seconds(value: f64) -> String {
     format!("{:+.2}s", value)
 }
 
+fn format_signed_kg(value: f64) -> String {
+    format!("{:+.1}kg", value)
+}
+
 fn format_signed_i64(value: i64) -> String {
     format!("{value:+}")
+}
+
+fn format_margin_ratio(value: f64) -> String {
+    format!("{:+.1}%", value * 100.0)
+}
+
+fn format_margin_delta(value: f64) -> String {
+    format!("{:+.1} pp", value * 100.0)
 }
 
 fn delta_class(value: f64) -> &'static str {
@@ -1699,6 +1882,16 @@ fn delta_class(value: f64) -> &'static str {
         "delta-neg"
     } else {
         "delta-flat"
+    }
+}
+
+fn margin_class(value: f64) -> &'static str {
+    if value > 0.0 {
+        "good"
+    } else if value < 0.0 {
+        "bad"
+    } else {
+        "warn"
     }
 }
 

@@ -371,19 +371,20 @@
 
 ### Active implementation focus
 
-1. Tighten the first batch-report pass:
-   - improve information density and compare readability
-   - decide how much charting is worth adding over the current table-first view
-   - make drill-down links better than raw bundle JSON where useful
-2. Improve the report-site navigation layer:
-   - better timestamps and labels in the generated indexes
-   - more useful grouping once the number of reports grows
+1. Keep improving report meaning before report polish:
+   - better representative-run selection
+   - clearer "open this next" guidance
+   - better regression surfacing for shared-run compare
+2. Tie batch and run reports together more tightly:
+   - stronger drill-down from compare rows into run pages
+   - more stable labeling of current vs baseline review links
 3. Keep expanding the scenario corpus intentionally:
    - more curated family definitions
    - more off-nominal terminal cases borrowed conceptually from `pylander`
-4. Use the new sweep path to tighten controller iteration:
+4. Tighten controller iteration against the new summary layer:
    - failure-seed tracking
-   - baseline comparison and regression thresholds
+   - baseline comparison thresholds
+   - controller-side metrics and markers that explain why edge runs fail
 
 ### Known limitations
 
@@ -433,3 +434,42 @@
     listing
   - batch report drill-down links now prefer report-site detail pages when they
     exist, keeping navigation inside `/reports/`
+
+#### Checkpoint 17: run summaries and compare-first batch triage
+
+- Added structured per-run summary metrics to `RunManifest.summary` and bumped
+  the run artifact schema to `2`.
+- The run summary now carries:
+  - fuel used and fuel remaining
+  - minimum touchdown and hull clearance
+  - max speed, attitude magnitude, and angular-rate magnitude
+  - mission-envelope margin ratios
+  - landing-specific terminal metrics:
+    - pad offset
+    - normal and tangential touchdown speed
+    - attitude and angular-rate touchdown margins
+  - checkpoint-specific terminal metrics:
+    - position, velocity, and attitude error
+    - checkpoint-envelope margins
+- Reworked batch summaries around review value instead of only flat inventories:
+  - closest current failures
+  - worst failures
+  - weakest successes
+  - lowest-fuel successes
+  - mean remaining fuel for successful groups
+- Reworked compare ordering to rank shared runs by envelope-margin regression
+  first, then by fuel and timing deltas.
+- Borrowed the useful lesson from the late `pylander` benchmarking flow:
+  the first question is usually not "show me every run", it is:
+  - what regressed
+  - what is closest to the edge
+  - which run should I open next
+- Updated the batch HTML page to surface that directly:
+  - `Current Edge` cards on the overview
+  - compare-time `Priority Review`
+  - standalone `Closest Current Failures`
+  - `Representative Successes`
+  - failure inventories and slowest runs pushed into secondary `details`
+    sections
+- Kept the new run summaries and compare surfaces aligned with the report-site
+  tree, so report navigation and batch triage now reinforce each other.
