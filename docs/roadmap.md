@@ -135,12 +135,18 @@ Status:
     and slowest runs
   - a first static batch report page
   - first-class candidate-vs-baseline comparison for batch outputs
-  - a curated terminal bot-lab pack that exercises nominal, crossrange, and
-    low-margin controller cases
+  - a curated terminal bot-lab pack that currently exercises clean nominal and
+    low-margin controller cases while the explicit arrival-profile matrix is
+    still being designed
 - still missing:
   - stronger comparison/regression reporting
   - a real digest-backed compare/cache workflow over the new batch identities
   - polished batch-level report UX
+  - first-class terminal-guidance selector support:
+    - hierarchy axes such as mission, arrival family, condition set, and
+      vehicle variant
+    - `arc_point x velocity_band` matrix coverage instead of one flat family
+      name plus lane-specific entry IDs
 
 ### Phase 3: Transfer guidance
 

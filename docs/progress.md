@@ -510,3 +510,39 @@
   - controllers now have a reusable helper layer
   - multiple controller styles share the same lab contract
   - the corpus is shaped for controller work, not only for smoke testing
+
+#### Checkpoint 19: terminal-guidance selector realignment
+
+- Reviewed the current terminal bot-lab pack against the old `pylander`
+  selector model and confirmed the deeper issue was not only report layout:
+  the corpus was still too flat:
+  - one coarse `family`
+  - one overloaded `entry_id`
+  - one leaf `seed`
+- Locked the intended terminal-guidance selector model into the architecture:
+  - hierarchy axes:
+    - `mission`
+    - `arrival_family`
+    - `condition_set`
+    - `vehicle_variant`
+  - matrix axes:
+    - `arc_point`
+    - `velocity_band`
+  - leaf variation:
+    - `seed`
+  - controller lane:
+    - separate from the physical case
+- Documented the current implementation stance clearly:
+  - current packs still approximate that model with `family + entry + seed`
+  - pack metadata should carry explicit selector fields even before the report
+    layer grows first-class matrix support
+- Simplified the active terminal bot-lab corpus to reduce noise while that
+  selector work is still in progress:
+  - removed the dedicated `crossrange` family
+  - kept clean nominal and low-margin terminal cases
+  - recorded expectation tiers so not every case is implicitly treated as
+    "must be solved"
+- The next structural step is no longer "add more families". It is:
+  - teach `pd-eval` about explicit terminal selector coordinates
+  - replace ad hoc seeded arrival perturbations with a denser
+    `arc_point x velocity_band` matrix

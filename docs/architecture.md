@@ -732,6 +732,56 @@ Recommended model:
 That lets the lab keep human-friendly handles without baking too much taxonomy
 into one parser.
 
+For terminal guidance specifically, the selector model should be more explicit
+than one flat family name:
+
+- physical-case hierarchy:
+  - `mission`
+  - `arrival_family`
+  - `condition_set`
+  - `vehicle_variant`
+- dense matrix axes inside a physical case:
+  - `arc_point`
+  - `velocity_band`
+- small local variation:
+  - `seed`
+- controller comparison lane:
+  - `controller`
+
+This is intentionally not a pure tree. The hierarchy axes answer "what class of
+terminal case is this?", while the matrix axes answer "where inside the arrival
+profile space did it land?". Controller choice should stay separate from the
+physical-case selector so the same case can be compared across multiple lanes.
+
+Example resolved selector:
+
+- `mission=terminal_guidance`
+- `arrival_family=half_arc_terminal_v1`
+- `condition_set=clean`
+- `vehicle_variant=nominal`
+- `arc_point=p07`
+- `velocity_band=v03`
+- `seed=0042`
+- `controller=baseline_v1`
+
+The current pack implementation is still an interim approximation:
+
+- `family` is the coarse physical-case bucket
+- `entry` is the controller lane inside that bucket
+- metadata should carry the explicit selector fields even before reports gain
+  first-class matrix rendering
+
+For the first terminal-guidance corpus:
+
+- start with clean nominal and low-margin cases
+- drop dedicated `crossrange` families until `arc_point x velocity_band`
+  coverage exists as a real matrix
+- treat case expectations explicitly:
+  - `core`: should normally succeed
+  - `stress`: hard but still useful for success-rate tracking
+  - `frontier`: may be infeasible; crash avoidance matters more than 100%
+    success
+
 Output-path stance:
 
 - single-run iteration should favor stable, human-readable output paths so the
