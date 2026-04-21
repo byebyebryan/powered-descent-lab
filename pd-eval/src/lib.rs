@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use pd_control::{
     ControlledRunArtifacts, ControllerSpec, built_in_controller_spec, run_controller_spec,
 };
-use pd_core::{MissionOutcome, RunContext, RunManifest, RunSummary, ScenarioSpec};
+use pd_core::{MissionOutcome, RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,36 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 3;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 5;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchMetricSummary {
+    pub mean: f64,
+    #[serde(default)]
+    pub stddev: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchRunReviewMetrics {
+    #[serde(default)]
+    pub fuel_used_pct_of_max: Option<f64>,
+    #[serde(default)]
+    pub landing_offset_abs_m: Option<f64>,
+    #[serde(default)]
+    pub reference_gap_mean_m: Option<f64>,
+    #[serde(default)]
+    pub reference_gap_max_m: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub struct SelectorAxes {
+    pub mission: String,
+    pub arrival_family: String,
+    pub condition_set: String,
+    pub vehicle_variant: String,
+    #[serde(default)]
+    pub expectation_tier: Option<String>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScenarioPackSpec {
@@ -66,6 +95,8 @@ pub struct ConcreteScenarioPackEntry {
     pub controller: String,
     #[serde(default)]
     pub controller_config: Option<String>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -129,6 +160,10 @@ pub struct ResolvedRunDescriptor {
     pub resolved_scenario_id: String,
     pub resolved_scenario_name: String,
     pub family_id: Option<String>,
+    #[serde(default)]
+    pub selector: SelectorAxes,
+    #[serde(default)]
+    pub lane_id: String,
     pub resolved_seed: u64,
     pub resolved_parameters: BTreeMap<String, f64>,
     pub controller_id: String,
@@ -139,6 +174,8 @@ pub struct ResolvedRunDescriptor {
 pub struct BatchRunRecord {
     pub resolved: ResolvedRunDescriptor,
     pub manifest: RunManifest,
+    #[serde(default)]
+    pub review: BatchRunReviewMetrics,
     pub bundle_dir: Option<String>,
 }
 
@@ -157,7 +194,15 @@ pub struct BatchGroupSummary {
     pub failure_runs: usize,
     pub mean_sim_time_s: f64,
     #[serde(default)]
+    pub sim_time_stats: Option<BatchMetricSummary>,
+    #[serde(default)]
     pub mean_success_fuel_remaining_kg: Option<f64>,
+    #[serde(default)]
+    pub fuel_used_pct_of_max: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub landing_offset_abs_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub reference_gap_mean_m: Option<BatchMetricSummary>,
     pub mission_outcomes: BTreeMap<String, usize>,
     pub end_reasons: BTreeMap<String, usize>,
     pub sample_run_ids: Vec<String>,
@@ -175,6 +220,10 @@ pub struct BatchRunPointer {
     pub run_id: String,
     pub entry_id: String,
     pub family_id: Option<String>,
+    #[serde(default)]
+    pub selector: SelectorAxes,
+    #[serde(default)]
+    pub lane_id: String,
     pub scenario_id: String,
     pub scenario_seed: u64,
     pub controller_id: String,
@@ -186,6 +235,8 @@ pub struct BatchRunPointer {
     pub margin_ratio: Option<f64>,
     #[serde(default)]
     pub fuel_remaining_kg: f64,
+    #[serde(default)]
+    pub review: BatchRunReviewMetrics,
     #[serde(default)]
     pub summary: RunSummary,
 }
@@ -287,6 +338,10 @@ pub struct BatchRunComparison {
     pub run_id: String,
     pub entry_id: String,
     pub family_id: Option<String>,
+    #[serde(default)]
+    pub selector: SelectorAxes,
+    #[serde(default)]
+    pub lane_id: String,
     pub change_kind: BatchRunChangeKind,
     pub candidate_seed: u64,
     pub baseline_seed: u64,
@@ -702,8 +757,10 @@ fn resolve_concrete_run(
     controller_spec: &ControllerSpec,
 ) -> Result<ResolvedBatchRun> {
     let scenario_path = base_dir.join(&entry.scenario);
-    let scenario = load_scenario(&scenario_path)?;
+    let mut scenario = load_scenario(&scenario_path)?;
+    scenario.metadata.extend(entry.metadata.clone());
     let family_id = scenario.metadata.get("family").cloned();
+    let selector = selector_axes_from_metadata(&scenario.metadata);
     let descriptor = ResolvedRunDescriptor {
         run_id: sanitize_token(&entry.id),
         entry_id: entry.id.clone(),
@@ -712,6 +769,8 @@ fn resolve_concrete_run(
         resolved_scenario_id: scenario.id.clone(),
         resolved_scenario_name: scenario.name.clone(),
         family_id,
+        selector,
+        lane_id: entry.controller.clone(),
         resolved_seed: scenario.seed,
         resolved_parameters: BTreeMap::new(),
         controller_id: controller_spec.id().to_owned(),
@@ -735,6 +794,7 @@ fn resolve_family_runs(
 
     for seed in family_entry_seeds(entry) {
         let (scenario, resolved_parameters) = resolve_family_scenario(entry, &base_scenario, seed)?;
+        let selector = selector_axes_from_metadata(&scenario.metadata);
         let descriptor = ResolvedRunDescriptor {
             run_id: resolved_family_run_id(&entry.id, seed),
             entry_id: entry.id.clone(),
@@ -743,6 +803,8 @@ fn resolve_family_runs(
             resolved_scenario_id: scenario.id.clone(),
             resolved_scenario_name: scenario.name.clone(),
             family_id: Some(entry.family.clone()),
+            selector,
+            lane_id: entry.controller.clone(),
             resolved_seed: seed,
             resolved_parameters,
             controller_id: controller_spec.id().to_owned(),
@@ -827,6 +889,30 @@ fn merge_unique_tags(base_tags: &[String], extra_tags: &[String]) -> Vec<String>
         }
     }
     merged
+}
+
+fn selector_axes_from_metadata(metadata: &BTreeMap<String, String>) -> SelectorAxes {
+    SelectorAxes {
+        mission: selector_value(metadata.get("mission"), "unspecified"),
+        arrival_family: selector_value(metadata.get("arrival_family"), "unspecified"),
+        condition_set: selector_value(metadata.get("condition_set"), "unspecified"),
+        vehicle_variant: selector_value(metadata.get("vehicle_variant"), "unspecified"),
+        expectation_tier: metadata
+            .get("expectation_tier")
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+    }
+}
+
+fn selector_value(value: Option<&String>, fallback: &str) -> String {
+    value
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback)
+        .to_owned()
 }
 
 fn is_supported_numeric_path(path: &str) -> bool {
@@ -1008,9 +1094,12 @@ fn execute_resolved_run(
         )?;
     }
 
+    let review = derive_run_review_metrics(&resolved_run.scenario, &artifacts.run);
+
     Ok(BatchRunRecord {
         resolved: resolved_run.descriptor.clone(),
         manifest: artifacts.run.manifest,
+        review,
         bundle_dir: bundle_dir.map(|path| path.to_string_lossy().into_owned()),
     })
 }
@@ -1278,6 +1367,8 @@ fn compare_run_pair(
         run_id: candidate_record.resolved.run_id.clone(),
         entry_id: candidate_record.resolved.entry_id.clone(),
         family_id: candidate_record.resolved.family_id.clone(),
+        selector: candidate_record.resolved.selector.clone(),
+        lane_id: candidate_record.resolved.lane_id.clone(),
         change_kind,
         candidate_seed: candidate_record.manifest.scenario_seed,
         baseline_seed: baseline_record.manifest.scenario_seed,
@@ -1321,6 +1412,10 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
     let mut failed_seeds = Vec::new();
     let mut sample_run_ids = Vec::new();
     let mut success_fuel_remaining = Vec::new();
+    let mut success_fuel_used_pct = Vec::new();
+    let mut success_landing_offset_abs_m = Vec::new();
+    let mut success_reference_gap_mean_m = Vec::new();
+    let mut success_sim_time_s = Vec::new();
     let mut success_pointers = Vec::new();
     let mut failure_pointers = Vec::new();
 
@@ -1337,6 +1432,16 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             failure_pointers.push(pointer);
         } else {
             success_fuel_remaining.push(record.manifest.summary.fuel_remaining_kg);
+            success_sim_time_s.push(record.manifest.sim_time_s);
+            if let Some(value) = record.review.fuel_used_pct_of_max {
+                success_fuel_used_pct.push(value);
+            }
+            if let Some(value) = record.review.landing_offset_abs_m {
+                success_landing_offset_abs_m.push(value);
+            }
+            if let Some(value) = record.review.reference_gap_mean_m {
+                success_reference_gap_mean_m.push(value);
+            }
             success_pointers.push(pointer);
         }
         if sample_run_ids.len() < 5 {
@@ -1365,7 +1470,11 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         success_runs,
         failure_runs,
         mean_sim_time_s,
+        sim_time_stats: metric_summary(&success_sim_time_s),
         mean_success_fuel_remaining_kg,
+        fuel_used_pct_of_max: metric_summary(&success_fuel_used_pct),
+        landing_offset_abs_m: metric_summary(&success_landing_offset_abs_m),
+        reference_gap_mean_m: metric_summary(&success_reference_gap_mean_m),
         mission_outcomes,
         end_reasons,
         sample_run_ids,
@@ -1383,6 +1492,8 @@ fn run_pointer(record: &BatchRunRecord) -> BatchRunPointer {
         run_id: record.resolved.run_id.clone(),
         entry_id: record.resolved.entry_id.clone(),
         family_id: record.resolved.family_id.clone(),
+        selector: record.resolved.selector.clone(),
+        lane_id: record.resolved.lane_id.clone(),
         scenario_id: record.manifest.scenario_id.clone(),
         scenario_seed: record.manifest.scenario_seed,
         controller_id: record.manifest.controller_id.clone(),
@@ -1392,8 +1503,315 @@ fn run_pointer(record: &BatchRunRecord) -> BatchRunPointer {
         bundle_dir: record.bundle_dir.clone(),
         margin_ratio: summary_margin_ratio(&record.manifest.summary),
         fuel_remaining_kg: record.manifest.summary.fuel_remaining_kg,
+        review: record.review.clone(),
         summary: record.manifest.summary.clone(),
     }
+}
+
+fn metric_summary(values: &[f64]) -> Option<BatchMetricSummary> {
+    if values.is_empty() {
+        return None;
+    }
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    let variance = values
+        .iter()
+        .map(|value| {
+            let delta = *value - mean;
+            delta * delta
+        })
+        .sum::<f64>()
+        / values.len() as f64;
+    Some(BatchMetricSummary {
+        mean,
+        stddev: Some(variance.sqrt()),
+    })
+}
+
+fn derive_run_review_metrics(
+    scenario: &ScenarioSpec,
+    artifacts: &pd_core::RunArtifacts,
+) -> BatchRunReviewMetrics {
+    let fuel_used_pct_of_max = (scenario.vehicle.max_fuel_kg > 1e-9)
+        .then(|| (artifacts.manifest.summary.fuel_used_kg / scenario.vehicle.max_fuel_kg) * 100.0);
+    let landing_offset_abs_m = artifacts
+        .manifest
+        .summary
+        .landing
+        .as_ref()
+        .map(|landing| landing.touchdown_center_offset_m.abs());
+    let (reference_gap_mean_m, reference_gap_max_m) =
+        reference_gap_metrics(scenario, &artifacts.samples)
+            .map(|metrics| (Some(metrics.gap_mean_m), Some(metrics.gap_max_m)))
+            .unwrap_or((None, None));
+
+    BatchRunReviewMetrics {
+        fuel_used_pct_of_max,
+        landing_offset_abs_m,
+        reference_gap_mean_m,
+        reference_gap_max_m,
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ReferenceGapMetrics {
+    gap_mean_m: f64,
+    gap_max_m: f64,
+}
+
+fn reference_gap_metrics(
+    scenario: &ScenarioSpec,
+    samples: &[SampleRecord],
+) -> Option<ReferenceGapMetrics> {
+    let target_pad = scenario
+        .world
+        .landing_pads
+        .iter()
+        .find(|pad| pad.id == scenario.mission.goal.target_pad_id())?;
+    let actual_points = samples
+        .iter()
+        .map(|sample| {
+            (
+                sample.observation.position_m.x,
+                sample.observation.position_m.y,
+            )
+        })
+        .collect::<Vec<_>>();
+    if actual_points.len() < 2 {
+        return None;
+    }
+    let reference_points = idealized_reference_curve(
+        scenario.initial_state.position_m.x,
+        scenario.initial_state.position_m.y,
+        target_pad.center_x_m,
+        target_pad.surface_y_m,
+        scenario.world.gravity_mps2,
+    )?;
+    if reference_points.len() < 2 {
+        return None;
+    }
+
+    let (actual_cumulative, actual_length) = polyline_lengths(&actual_points)?;
+    let mut gaps = Vec::with_capacity(actual_points.len());
+    for point in &actual_points {
+        let (_projection, distance) = project_point_to_polyline(*point, &reference_points)?;
+        gaps.push(distance);
+    }
+    if gaps.len() < 2 {
+        return None;
+    }
+
+    let gap_area = (0..(gaps.len() - 1))
+        .map(|index| {
+            0.5 * (gaps[index] + gaps[index + 1])
+                * (actual_cumulative[index + 1] - actual_cumulative[index])
+        })
+        .sum::<f64>();
+    Some(ReferenceGapMetrics {
+        gap_mean_m: gap_area / actual_length,
+        gap_max_m: gaps.iter().copied().fold(0.0_f64, f64::max),
+    })
+}
+
+fn idealized_reference_curve(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    gravity_mps2: f64,
+) -> Option<Vec<(f64, f64)>> {
+    let apex_y = idealized_reference_apex_y(start_x, start_y, target_x, target_y, gravity_mps2);
+    let (flight_time, vx_mps, vy_up_mps) =
+        idealized_reference_kinematics(start_x, start_y, target_x, target_y, apex_y, gravity_mps2)?;
+    let g = gravity_mps2.abs().max(1e-6);
+    let point_count = ((18.0 + (flight_time * 10.0)).round() as usize).clamp(24, 84);
+    let mut points = Vec::with_capacity(point_count);
+    for index in 0..point_count {
+        let t = if point_count <= 1 {
+            0.0
+        } else {
+            (flight_time * index as f64) / (point_count as f64 - 1.0)
+        };
+        points.push((
+            start_x + (vx_mps * t),
+            start_y + (vy_up_mps * t) - (0.5 * g * t * t),
+        ));
+    }
+    if let Some(last) = points.last_mut() {
+        *last = (target_x, target_y);
+    }
+    Some(points)
+}
+
+fn idealized_reference_apex_y(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    gravity_mps2: f64,
+) -> f64 {
+    let dx = target_x - start_x;
+    let dy = target_y - start_y;
+    let base_peak = if target_y > start_y {
+        start_y.max(target_y + 1.0)
+    } else {
+        start_y
+    };
+    if dx.abs() <= 1e-6 {
+        return base_peak;
+    }
+    let meets_angle_floor = |peak_y: f64| {
+        idealized_reference_impact_angle_deg(
+            start_x,
+            start_y,
+            target_x,
+            target_y,
+            peak_y,
+            gravity_mps2,
+        )
+        .is_some_and(|impact_angle| impact_angle >= 45.0)
+    };
+    if meets_angle_floor(base_peak) {
+        return base_peak;
+    }
+
+    let mut low_peak = base_peak;
+    let mut growth = 16.0_f64.max(0.25 * dx.abs().max(dy.abs()).max(1.0));
+    let mut candidate_peak = base_peak;
+    let mut high_peak = None;
+    for _ in 0..16 {
+        candidate_peak += growth;
+        if meets_angle_floor(candidate_peak) {
+            high_peak = Some(candidate_peak);
+            break;
+        }
+        low_peak = candidate_peak;
+        growth *= 2.0;
+    }
+    let Some(mut high_peak) = high_peak else {
+        return candidate_peak;
+    };
+    for _ in 0..32 {
+        let mid_peak = 0.5 * (low_peak + high_peak);
+        if meets_angle_floor(mid_peak) {
+            high_peak = mid_peak;
+        } else {
+            low_peak = mid_peak;
+        }
+    }
+    high_peak
+}
+
+fn idealized_reference_impact_angle_deg(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    apex_y: f64,
+    gravity_mps2: f64,
+) -> Option<f64> {
+    let (flight_time, vx_mps, vy_up_mps) =
+        idealized_reference_kinematics(start_x, start_y, target_x, target_y, apex_y, gravity_mps2)?;
+    let g = gravity_mps2.abs().max(1e-6);
+    let vy_target = vy_up_mps - (g * flight_time);
+    Some(((-vy_target).max(0.0)).atan2(vx_mps.abs()) * (180.0 / std::f64::consts::PI))
+}
+
+fn idealized_reference_kinematics(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    apex_y: f64,
+    gravity_mps2: f64,
+) -> Option<(f64, f64, f64)> {
+    let g = gravity_mps2.abs().max(1e-6);
+    let peak_y = start_y.max(apex_y);
+    let vy_up_mps = (2.0 * g * (peak_y - start_y).max(0.0)).sqrt();
+    let flight_time = ballistic_end_time(start_y, target_y, vy_up_mps, gravity_mps2)?;
+    if !flight_time.is_finite() || flight_time <= 1e-6 {
+        return None;
+    }
+    Some((flight_time, (target_x - start_x) / flight_time, vy_up_mps))
+}
+
+fn ballistic_end_time(start_y: f64, target_y: f64, vy_mps: f64, gravity_mps2: f64) -> Option<f64> {
+    let g = gravity_mps2.abs().max(1e-6);
+    let a = 0.5 * g;
+    let b = -vy_mps;
+    let c = target_y - start_y;
+    let discriminant = (b * b) - (4.0 * a * c);
+    if !discriminant.is_finite() || discriminant < 0.0 {
+        return None;
+    }
+    let sqrt = discriminant.sqrt();
+    let mut roots = [(-b - sqrt) / (2.0 * a), (-b + sqrt) / (2.0 * a)]
+        .into_iter()
+        .filter(|value| value.is_finite() && *value > 1e-6)
+        .collect::<Vec<_>>();
+    roots.sort_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap_or(std::cmp::Ordering::Equal));
+    roots.pop()
+}
+
+fn polyline_lengths(points: &[(f64, f64)]) -> Option<(Vec<f64>, f64)> {
+    if points.len() < 2 {
+        return None;
+    }
+    let mut cumulative = Vec::with_capacity(points.len());
+    cumulative.push(0.0);
+    let mut length = 0.0;
+    for index in 1..points.len() {
+        let dx = points[index].0 - points[index - 1].0;
+        let dy = points[index].1 - points[index - 1].1;
+        length += (dx * dx + dy * dy).sqrt();
+        cumulative.push(length);
+    }
+    (length > 1e-9).then_some((cumulative, length))
+}
+
+fn project_point_to_polyline(
+    point: (f64, f64),
+    polyline: &[(f64, f64)],
+) -> Option<((f64, f64), f64)> {
+    if polyline.is_empty() {
+        return None;
+    }
+    let mut best_projection = polyline[0];
+    let mut best_distance = point_distance(point, best_projection);
+    for index in 1..polyline.len() {
+        let (projection, distance) =
+            project_point_to_segment(point, polyline[index - 1], polyline[index]);
+        if distance < best_distance {
+            best_projection = projection;
+            best_distance = distance;
+        }
+    }
+    Some((best_projection, best_distance))
+}
+
+fn project_point_to_segment(
+    point: (f64, f64),
+    start: (f64, f64),
+    end: (f64, f64),
+) -> ((f64, f64), f64) {
+    let seg_dx = end.0 - start.0;
+    let seg_dy = end.1 - start.1;
+    let seg_len_sq = (seg_dx * seg_dx) + (seg_dy * seg_dy);
+    if seg_len_sq <= 1e-12 {
+        return (start, point_distance(point, start));
+    }
+    let mix = (((point.0 - start.0) * seg_dx) + ((point.1 - start.1) * seg_dy)) / seg_len_sq;
+    let clamped_mix = mix.clamp(0.0, 1.0);
+    let projection = (
+        start.0 + (seg_dx * clamped_mix),
+        start.1 + (seg_dy * clamped_mix),
+    );
+    (projection, point_distance(point, projection))
+}
+
+fn point_distance(lhs: (f64, f64), rhs: (f64, f64)) -> f64 {
+    let dx = lhs.0 - rhs.0;
+    let dy = lhs.1 - rhs.1;
+    (dx * dx + dy * dy).sqrt()
 }
 
 fn summary_margin_ratio(summary: &RunSummary) -> Option<f64> {
@@ -1673,12 +2091,14 @@ mod tests {
                     scenario: "scenarios/flat_terminal_descent.json".to_owned(),
                     controller: "baseline".to_owned(),
                     controller_config: None,
+                    metadata: BTreeMap::new(),
                 }),
                 ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                     id: "checkpoint_success".to_owned(),
                     scenario: "scenarios/timed_checkpoint_idle.json".to_owned(),
                     controller: "idle".to_owned(),
                     controller_config: None,
+                    metadata: BTreeMap::new(),
                 }),
             ],
         };
@@ -1729,13 +2149,24 @@ mod tests {
                         },
                     ],
                     tags: vec!["sweep".to_owned()],
-                    metadata: BTreeMap::from([("difficulty".to_owned(), "sweep".to_owned())]),
+                    metadata: BTreeMap::from([
+                        ("difficulty".to_owned(), "sweep".to_owned()),
+                        ("mission".to_owned(), "terminal_guidance".to_owned()),
+                        (
+                            "arrival_family".to_owned(),
+                            "seeded_terminal_arrival_v0".to_owned(),
+                        ),
+                        ("condition_set".to_owned(), "clean".to_owned()),
+                        ("vehicle_variant".to_owned(), "nominal".to_owned()),
+                        ("expectation_tier".to_owned(), "core".to_owned()),
+                    ]),
                 }),
                 ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                     id: "checkpoint".to_owned(),
                     scenario: "scenarios/timed_checkpoint_idle.json".to_owned(),
                     controller: "idle".to_owned(),
                     controller_config: None,
+                    metadata: BTreeMap::new(),
                 }),
             ],
         };
@@ -1773,6 +2204,26 @@ mod tests {
             record.resolved.source_kind == ResolvedRunSourceKind::FamilySweep
                 && !record.resolved.resolved_parameters.is_empty()
         }));
+        let family_record = sequential
+            .records
+            .iter()
+            .find(|record| record.resolved.entry_id == "terminal_sweep")
+            .expect("family record present");
+        assert_eq!(family_record.resolved.selector.mission, "terminal_guidance");
+        assert_eq!(
+            family_record.resolved.selector.arrival_family,
+            "seeded_terminal_arrival_v0"
+        );
+        assert_eq!(family_record.resolved.selector.condition_set, "clean");
+        assert_eq!(family_record.resolved.selector.vehicle_variant, "nominal");
+        assert_eq!(
+            family_record.resolved.selector.expectation_tier.as_deref(),
+            Some("core")
+        );
+        assert_eq!(family_record.resolved.lane_id, "baseline");
+        let pointer = run_pointer(family_record);
+        assert_eq!(pointer.selector.vehicle_variant, "nominal");
+        assert_eq!(pointer.lane_id, "baseline");
     }
 
     #[test]
@@ -1787,6 +2238,7 @@ mod tests {
                 scenario: "scenarios/flat_terminal_descent.json".to_owned(),
                 controller: "baseline".to_owned(),
                 controller_config: None,
+                metadata: BTreeMap::new(),
             })],
         };
         let candidate_pack = ScenarioPackSpec {
@@ -1798,6 +2250,7 @@ mod tests {
                 scenario: "scenarios/flat_terminal_descent.json".to_owned(),
                 controller: "idle".to_owned(),
                 controller_config: None,
+                metadata: BTreeMap::new(),
             })],
         };
 
@@ -1817,6 +2270,50 @@ mod tests {
         assert_eq!(
             comparison.regressions[0].candidate_mission_outcome,
             "failed_crash"
+        );
+    }
+
+    #[test]
+    fn concrete_entry_metadata_overrides_selector_axes() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "concrete_metadata_override".to_owned(),
+            name: "Concrete metadata override".to_owned(),
+            description: "selector metadata override".to_owned(),
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "checkpoint".to_owned(),
+                scenario: "scenarios/timed_checkpoint_idle.json".to_owned(),
+                controller: "idle".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::from([
+                    ("mission".to_owned(), "terminal_guidance".to_owned()),
+                    (
+                        "arrival_family".to_owned(),
+                        "override_arrival_family".to_owned(),
+                    ),
+                    ("condition_set".to_owned(), "stress".to_owned()),
+                    ("vehicle_variant".to_owned(), "heavy_cargo".to_owned()),
+                    ("expectation_tier".to_owned(), "frontier".to_owned()),
+                ]),
+            })],
+        };
+
+        let report = run_pack(&pack, &base_dir, None).unwrap();
+        let record = report
+            .records
+            .iter()
+            .find(|record| record.resolved.entry_id == "checkpoint")
+            .expect("concrete record present");
+        assert_eq!(record.resolved.selector.mission, "terminal_guidance");
+        assert_eq!(
+            record.resolved.selector.arrival_family,
+            "override_arrival_family"
+        );
+        assert_eq!(record.resolved.selector.condition_set, "stress");
+        assert_eq!(record.resolved.selector.vehicle_variant, "heavy_cargo");
+        assert_eq!(
+            record.resolved.selector.expectation_tier.as_deref(),
+            Some("frontier")
         );
     }
 }

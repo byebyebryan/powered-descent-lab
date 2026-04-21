@@ -10,7 +10,12 @@
   ],
   "metadata": {
     "family": "timed_checkpoint",
-    "controller_expectation": "idle"
+    "controller_expectation": "idle",
+    "mission": "checkpoint_validation",
+    "arrival_family": "checkpoint_reference_v0",
+    "condition_set": "clean",
+    "vehicle_variant": "nominal",
+    "expectation_tier": "reference"
   },
   "sim": {
     "physics_hz": 120,

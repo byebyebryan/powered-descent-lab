@@ -10,7 +10,12 @@
   ],
   "metadata": {
     "family": "terminal_descent",
-    "difficulty": "nominal"
+    "difficulty": "nominal",
+    "mission": "terminal_guidance",
+    "arrival_family": "single_terminal_reference_v0",
+    "condition_set": "clean",
+    "vehicle_variant": "nominal",
+    "expectation_tier": "core"
   },
   "sim": {
     "physics_hz": 120,

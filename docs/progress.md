@@ -335,8 +335,11 @@
   - grouped summaries by entry and by family
   - failed-run pointers with seed and bundle location
   - slowest-run pointers for quick inspection
-- Added a first seeded sweep fixture:
-  - `fixtures/packs/terminal_sweep_suite.json`
+- Added a first seeded sweep fixture.
+  It has since been demoted and renamed into the explicit compare smoke
+  fixtures:
+  - `fixtures/packs/terminal_compare_baseline_fixture.json`
+  - `fixtures/packs/terminal_compare_regression_fixture.json`
 - Added `latest` symlink maintenance for `pd-eval` output directories so the
   most recent batch result is reachable through:
   - `outputs/eval/latest/`
@@ -546,3 +549,17 @@
   - teach `pd-eval` about explicit terminal selector coordinates
   - replace ad hoc seeded arrival perturbations with a denser
     `arc_point x velocity_band` matrix
+
+#### Checkpoint 20: suite simplification around terminal bot lab
+
+- Recentered the day-to-day evaluation workflow on:
+  - `fixtures/packs/terminal_bot_lab_suite.json`
+- Demoted the old sweep/regression packs from primary examples to explicit
+  compare smoke fixtures:
+  - `fixtures/packs/terminal_compare_baseline_fixture.json`
+  - `fixtures/packs/terminal_compare_regression_fixture.json`
+- Updated the README batch-eval examples so the main example points at the
+  bot-lab suite, while external pack-vs-pack compare is shown only through the
+  fixture pair.
+- Cleaned up generated outputs so the report index no longer surfaces the old
+  sweep suite names as if they were first-class review surfaces.

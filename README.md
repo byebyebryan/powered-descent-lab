@@ -144,14 +144,19 @@ native multithreaded execution.
 Example:
 
 ```bash
-cargo run -p pd-eval -- run-pack fixtures/packs/terminal_sweep_suite.json --workers 4
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 4
 ```
 
 Compare a candidate batch against a recorded baseline:
 
 ```bash
-cargo run -p pd-eval -- run-pack fixtures/packs/terminal_sweep_suite.json --workers 4 --baseline-dir outputs/eval/terminal_sweep_suite
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_compare_baseline_fixture.json --workers 4
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_compare_regression_fixture.json --workers 4 --baseline-dir outputs/eval/terminal_compare_baseline_fixture
 ```
+
+Use `terminal_bot_lab_suite` as the primary controller workbench. The
+`terminal_compare_*_fixture` packs are only for smoke-testing pack-vs-pack
+compare output.
 
 That writes:
 

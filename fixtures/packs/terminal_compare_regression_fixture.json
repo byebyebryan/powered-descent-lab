@@ -1,23 +1,30 @@
 {
-  "id": "terminal_sweep_suite",
-  "name": "Terminal sweep suite",
-  "description": "Seeded terminal-descent family plus one pinned checkpoint scenario for broader batch validation.",
+  "id": "terminal_compare_regression_fixture",
+  "name": "Terminal compare regression fixture",
+  "description": "Deliberately weaker candidate pack for pack-vs-pack compare smoke tests. Run it against terminal_compare_baseline_fixture to exercise regression reporting.",
   "entries": [
     {
-      "id": "terminal_baseline_sweep",
-      "family": "terminal_nominal",
+      "id": "terminal_compare_baseline",
+      "family": "terminal_guidance_fixture_nominal",
       "base_scenario": "../scenarios/flat_terminal_descent.json",
-      "controller": "baseline",
+      "controller": "idle",
       "seed_range": {
         "start": 0,
         "count": 6
       },
       "tags": [
-        "sweep",
-        "terminal"
+        "fixture",
+        "compare",
+        "terminal",
+        "regression"
       ],
       "metadata": {
-        "difficulty": "nominal_sweep"
+        "difficulty": "nominal_fixture",
+        "mission": "terminal_guidance",
+        "arrival_family": "seeded_terminal_arrival_v0",
+        "condition_set": "clean",
+        "vehicle_variant": "nominal",
+        "expectation_tier": "stress"
       },
       "perturbations": [
         {
@@ -65,7 +72,14 @@
     {
       "id": "checkpoint_idle_reference",
       "scenario": "../scenarios/timed_checkpoint_idle.json",
-      "controller": "idle"
+      "controller": "idle",
+      "metadata": {
+        "mission": "checkpoint_validation",
+        "arrival_family": "checkpoint_reference_v0",
+        "condition_set": "clean",
+        "vehicle_variant": "nominal",
+        "expectation_tier": "reference"
+      }
     }
   ]
 }
