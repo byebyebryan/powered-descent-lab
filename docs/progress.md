@@ -563,3 +563,27 @@
   fixture pair.
 - Cleaned up generated outputs so the report index no longer surfaces the old
   sweep suite names as if they were first-class review surfaces.
+
+#### Checkpoint 21: batch report provenance and compare context
+
+- Added an explicit `Context` section near the top of batch reports so the page
+  says what kind of report it is before the overview/tree:
+  - `standalone`
+  - `lane compare`
+  - `external compare`
+- The context table now surfaces:
+  - current source
+  - baseline source
+  - baseline resolution
+  - compare basis
+  - scope resolution
+  - compare status
+- External compare pages now distinguish:
+  - exact compare
+  - shared-intersection compare
+  - unavailable compare
+- Internal bot-lab pages now say clearly that the comparison is lane-based
+  within one pack, rather than an external baseline compare.
+- The page also states a current limitation explicitly:
+  - cached result reuse / promotion / invalidation is not modeled in `pd-lab`
+    yet, so the report does not pretend to show it.

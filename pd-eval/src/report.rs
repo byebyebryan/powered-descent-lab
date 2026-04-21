@@ -192,12 +192,77 @@ fn render_batch_report(
     .header-overview {{
       margin-bottom: 16px;
     }}
+    .header-context {{
+      margin-bottom: 16px;
+    }}
     .header-overview h2 {{
       margin: 0 0 10px;
       font-size: 0.9rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: var(--muted);
+    }}
+    .context-table {{
+      width: 100%;
+      min-width: 1080px;
+    }}
+    .context-table thead th {{
+      white-space: nowrap;
+      font-size: 0.74rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: rgba(248,243,234,0.92);
+    }}
+    .context-table td {{
+      vertical-align: top;
+    }}
+    .context-value {{
+      display: grid;
+      gap: 2px;
+      font-variant-numeric: tabular-nums;
+    }}
+    .context-main {{
+      color: var(--ink);
+      font-weight: 700;
+      line-height: 1.25;
+    }}
+    .context-sub {{
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.25;
+    }}
+    .status-chip {{
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }}
+    .status-chip.ok {{
+      background: rgba(47, 125, 74, 0.12);
+      color: var(--good);
+      border-color: rgba(47, 125, 74, 0.22);
+    }}
+    .status-chip.partial {{
+      background: rgba(199, 160, 84, 0.16);
+      color: #7a5611;
+      border-color: rgba(199, 160, 84, 0.26);
+    }}
+    .status-chip.warn {{
+      background: rgba(181, 93, 45, 0.12);
+      color: #8a5126;
+      border-color: rgba(181, 93, 45, 0.22);
+    }}
+    .status-chip.muted {{
+      background: rgba(102, 92, 79, 0.08);
+      color: var(--muted);
+      border-color: rgba(102, 92, 79, 0.16);
     }}
     .summary-table {{
       width: 100%;
@@ -698,6 +763,8 @@ fn render_batch_report(
       </div>
     </header>
 
+    {context_html}
+
     {overview_html}
 
 	    <section class="panel">
@@ -847,6 +914,8 @@ fn render_batch_report(
             .as_ref()
             .map(|href| format!(r#"<a href="{}">baseline report</a>"#, escape_html(href)))
             .unwrap_or_default(),
+        context_html =
+            render_context_table(candidate, baseline.map(|(_, report)| report), comparison),
         overview_html =
             render_overview_table(candidate, baseline.map(|(_, report)| report), comparison,),
         tree_controls = render_tree_controls(comparison.is_some()),
@@ -1208,6 +1277,233 @@ fn batch_report_subtitle(
     format!(
         "{}. {} total runs captured for this batch.",
         candidate.pack_name, candidate.total_runs
+    )
+}
+
+fn render_context_table(
+    candidate: &BatchReport,
+    baseline: Option<&BatchReport>,
+    comparison: Option<&BatchComparison>,
+) -> String {
+    let lane_split = overview_lane_split_counts(candidate, baseline, comparison);
+    let (mode, current_source, baseline_source, compare_basis, scope_resolution) =
+        if let Some(comparison) = comparison {
+        let scope_resolution = if comparison.basis.shared_runs == 0 {
+            "no shared scope"
+        } else if comparison.basis.candidate_only_runs == 0
+            && comparison.basis.baseline_only_runs == 0
+        {
+            "exact"
+        } else {
+            "shared intersection"
+        };
+            (
+                "external compare",
+                format!(
+                    r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
+                    escape_html(&candidate.pack_id),
+                    escape_html(&candidate.pack_name),
+                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                    escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
+                ),
+                baseline.map(|baseline| {
+                    format!(
+                        r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code> · Baseline Resolution: explicit baseline report · resolved from --baseline-dir for this render</div></div>"#,
+                        escape_html(&baseline.pack_id),
+                        escape_html(&baseline.pack_name),
+                        escape_html(&short_digest(&baseline.identity.pack_spec_digest)),
+                        escape_html(&short_digest(&baseline.identity.resolved_run_digest)),
+                    )
+                }).unwrap_or_else(|| {
+                    context_value(
+                        "missing baseline report",
+                        "Baseline Resolution: none · not applicable for this batch page",
+                    )
+                }),
+                context_value(
+                    &format!(
+                        "{} · shared {} · current-only {} · baseline-only {}",
+                        comparison.basis.mode,
+                        comparison.basis.shared_runs,
+                        comparison.basis.candidate_only_runs,
+                        comparison.basis.baseline_only_runs
+                    ),
+                    "candidate and baseline runs are paired by compare basis",
+                ),
+                context_value(
+                    scope_resolution,
+                    if scope_resolution == "exact" {
+                        "candidate and baseline cover the same resolved run set"
+                    } else if scope_resolution == "shared intersection" {
+                        "report deltas are limited to the shared run intersection"
+                    } else {
+                        "no shared run set was available for comparison"
+                    },
+                ),
+            )
+        } else if let Some((current_runs, baseline_runs, other_runs)) = lane_split {
+            (
+                "lane compare",
+                format!(
+                    r#"<div class="context-value"><div class="context-main">current lane <code>staged</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs</div></div>"#,
+                    escape_html(&candidate.pack_id),
+                    escape_html(&candidate.pack_name),
+                    current_runs,
+                ),
+                format!(
+                    r#"<div class="context-value"><div class="context-main">baseline lane <code>baseline</code> within <code>{}</code></div><div class="context-sub">{} baseline runs{} · Baseline Resolution: internal lane pairing · current and baseline are lanes inside the same pack</div></div>"#,
+                    escape_html(&candidate.pack_id),
+                    baseline_runs,
+                    if other_runs > 0 {
+                        format!(" · {} reference runs excluded", other_runs)
+                    } else {
+                        String::new()
+                    },
+                ),
+                context_value(
+                    &format!(
+                        "lane_id within pack · current {} · baseline {}{}",
+                        current_runs,
+                        baseline_runs,
+                        if other_runs > 0 {
+                            format!(" · other {}", other_runs)
+                        } else {
+                            String::new()
+                        }
+                    ),
+                    "lane rows are compared within the shared selector space of this pack",
+                ),
+                context_value(
+                    "internal lane",
+                    "this is a within-pack lane comparison, not an external baseline",
+                ),
+            )
+        } else {
+            (
+                "standalone",
+                format!(
+                    r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
+                    escape_html(&candidate.pack_id),
+                    escape_html(&candidate.pack_name),
+                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                    escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
+                ),
+                context_value(
+                    "none",
+                    "Baseline Resolution: none · not applicable for this batch page",
+                ),
+                context_none_value("none"),
+                context_value(
+                    "full pack",
+                    "the overview and tree reflect the full batch without a comparison basis",
+                ),
+            )
+        };
+
+    let (compare_status_label, compare_status_class, compare_status_note) =
+        if let Some(comparison) = comparison {
+            if comparison.basis.shared_runs == 0 {
+                (
+                    "unavailable",
+                    "warn",
+                    "no shared runs were available for comparison",
+                )
+            } else if comparison.basis.candidate_only_runs == 0
+                && comparison.basis.baseline_only_runs == 0
+            {
+                (
+                    "available",
+                    "ok",
+                    "full compare available on the resolved run set",
+                )
+            } else {
+                (
+                    "partial",
+                    "partial",
+                    "compare is limited to the shared run intersection",
+                )
+            }
+        } else if lane_split.is_some() {
+            (
+                "available",
+                "ok",
+                "internal lane compare available within this pack",
+            )
+        } else {
+            (
+                "standalone",
+                "muted",
+                "no baseline or internal lane compare requested",
+            )
+        };
+
+    let report_mode_html = format!(
+        r#"<div class="context-value"><div class="context-main"><span class="status-chip {}">{}</span></div><div class="context-sub">explicit report provenance for this batch page</div></div>"#,
+        compare_status_class,
+        escape_html(mode),
+    );
+    let compare_status_html = format!(
+        r#"<div class="context-value"><div class="context-main"><span class="status-chip {}">{}</span></div><div class="context-sub">{}</div></div>"#,
+        compare_status_class,
+        escape_html(compare_status_label),
+        escape_html(compare_status_note),
+    );
+
+    format!(
+        r#"<section class="header-context">
+  <h2>Context</h2>
+  <div class="table-wrap">
+    <table class="context-table">
+      <thead>
+        <tr>
+          <th>Report Mode</th>
+          <th>Current Source</th>
+          <th>Baseline Source</th>
+          <th>Compare Basis</th>
+          <th>Scope Resolution</th>
+          <th>Compare Status</th>
+          <th>Cache / Promotion</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{}</td>
+          <td>{}</td>
+          <td>{}</td>
+          <td>{}</td>
+          <td>{}</td>
+          <td>{}</td>
+          <td>{}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>"#,
+        report_mode_html,
+        current_source,
+        baseline_source,
+        compare_basis,
+        scope_resolution,
+        compare_status_html,
+        context_value(
+            "not modeled",
+            "pd-lab does not yet expose cached result reuse, promotion, or invalidation state",
+        ),
+    )
+}
+
+fn context_value(main: &str, sub: &str) -> String {
+    format!(
+        r#"<div class="context-value"><div class="context-main">{}</div><div class="context-sub">{}</div></div>"#,
+        escape_html(main),
+        escape_html(sub),
+    )
+}
+
+fn context_none_value(label: &str) -> String {
+    format!(
+        r#"<div class="context-value"><div class="context-main">{}</div><div class="context-sub">not applicable for this batch page</div></div>"#,
+        escape_html(label),
     )
 }
 
@@ -4074,4 +4370,195 @@ struct ScopeEntry {
     name: String,
     modified: SystemTime,
     modified_label: String,
+}
+
+#[cfg(test)]
+mod report_tests {
+    use std::{
+        collections::BTreeMap,
+        path::{Path, PathBuf},
+    };
+
+    use crate::{
+        ConcreteScenarioPackEntry, NumericPerturbationMode, NumericPerturbationSpec,
+        ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec, SeedRangeSpec,
+        compare_batch_reports, run_pack_with_workers,
+    };
+
+    use super::render_batch_report;
+
+    fn fixtures_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
+    }
+
+    fn terminal_metadata(
+        vehicle_variant: &str,
+        expectation_tier: &str,
+    ) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            ("mission".to_owned(), "terminal_guidance".to_owned()),
+            (
+                "arrival_family".to_owned(),
+                "seeded_terminal_arrival_v0".to_owned(),
+            ),
+            ("condition_set".to_owned(), "clean".to_owned()),
+            ("vehicle_variant".to_owned(), vehicle_variant.to_owned()),
+            ("expectation_tier".to_owned(), expectation_tier.to_owned()),
+        ])
+    }
+
+    fn checkpoint_metadata() -> BTreeMap<String, String> {
+        BTreeMap::from([
+            ("mission".to_owned(), "checkpoint_validation".to_owned()),
+            (
+                "arrival_family".to_owned(),
+                "checkpoint_reference_v0".to_owned(),
+            ),
+            ("condition_set".to_owned(), "clean".to_owned()),
+            ("vehicle_variant".to_owned(), "nominal".to_owned()),
+            ("expectation_tier".to_owned(), "reference".to_owned()),
+        ])
+    }
+
+    fn terminal_family_entry(id: &str, family: &str, controller: &str) -> ScenarioPackEntry {
+        ScenarioPackEntry::Family(ScenarioFamilyEntry {
+            id: id.to_owned(),
+            family: family.to_owned(),
+            base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+            controller: controller.to_owned(),
+            controller_config: None,
+            seeds: Vec::new(),
+            seed_range: Some(SeedRangeSpec { start: 0, count: 2 }),
+            perturbations: vec![
+                NumericPerturbationSpec {
+                    id: "spawn_dx".to_owned(),
+                    path: "initial_state.position_m.x".to_owned(),
+                    mode: NumericPerturbationMode::Offset,
+                    min: -10.0,
+                    max: 10.0,
+                    quantize: Some(0.5),
+                },
+                NumericPerturbationSpec {
+                    id: "spawn_vy".to_owned(),
+                    path: "initial_state.velocity_mps.y".to_owned(),
+                    mode: NumericPerturbationMode::Offset,
+                    min: -2.0,
+                    max: 2.0,
+                    quantize: Some(0.25),
+                },
+            ],
+            tags: vec!["test".to_owned(), "terminal".to_owned()],
+            metadata: terminal_metadata("nominal", "core"),
+        })
+    }
+
+    fn checkpoint_entry() -> ScenarioPackEntry {
+        ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+            id: "checkpoint_idle_reference".to_owned(),
+            scenario: "scenarios/timed_checkpoint_idle.json".to_owned(),
+            controller: "idle".to_owned(),
+            controller_config: None,
+            metadata: checkpoint_metadata(),
+        })
+    }
+
+    #[test]
+    fn lane_compare_report_renders_context_section() {
+        let pack = ScenarioPackSpec {
+            id: "lane_compare_unit".to_owned(),
+            name: "Lane compare unit".to_owned(),
+            description: "lane compare unit".to_owned(),
+            entries: vec![
+                terminal_family_entry(
+                    "terminal_guidance_clean_nominal_baseline",
+                    "terminal_guidance_clean_nominal",
+                    "baseline",
+                ),
+                terminal_family_entry(
+                    "terminal_guidance_clean_nominal_staged",
+                    "terminal_guidance_clean_nominal",
+                    "staged",
+                ),
+                checkpoint_entry(),
+            ],
+        };
+
+        let report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
+        let html = render_batch_report(
+            Path::new("outputs/eval/lane_compare_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("<h2>Context</h2>"));
+        assert!(html.contains("Report Mode"));
+        assert!(html.contains("lane compare"));
+        assert!(html.contains("Compare Basis"));
+        assert!(html.contains("lane_id within pack"));
+        assert!(html.contains("Scope Resolution"));
+        assert!(html.contains("internal lane"));
+        assert!(html.contains("Compare Status"));
+        assert!(html.contains("available"));
+        assert!(html.contains("Cache / Promotion"));
+        assert!(html.contains("not modeled"));
+    }
+
+    #[test]
+    fn external_compare_report_renders_context_section() {
+        let baseline_pack = ScenarioPackSpec {
+            id: "compare_baseline_unit".to_owned(),
+            name: "Compare baseline unit".to_owned(),
+            description: "compare baseline unit".to_owned(),
+            entries: vec![
+                terminal_family_entry(
+                    "terminal_compare_baseline",
+                    "terminal_guidance_fixture_nominal",
+                    "baseline",
+                ),
+                checkpoint_entry(),
+            ],
+        };
+        let candidate_pack = ScenarioPackSpec {
+            id: "compare_candidate_unit".to_owned(),
+            name: "Compare candidate unit".to_owned(),
+            description: "compare candidate unit".to_owned(),
+            entries: vec![
+                terminal_family_entry(
+                    "terminal_compare_baseline",
+                    "terminal_guidance_fixture_nominal",
+                    "idle",
+                ),
+                checkpoint_entry(),
+            ],
+        };
+
+        let baseline_report =
+            run_pack_with_workers(&baseline_pack, &fixtures_root(), None, 1).unwrap();
+        let candidate_report =
+            run_pack_with_workers(&candidate_pack, &fixtures_root(), None, 1).unwrap();
+        let comparison = compare_batch_reports(&candidate_report, &baseline_report);
+        let html = render_batch_report(
+            Path::new("outputs/eval/compare_candidate_unit"),
+            &candidate_report,
+            Some((
+                Path::new("outputs/eval/compare_baseline_unit"),
+                &baseline_report,
+            )),
+            Some(&comparison),
+        );
+
+        assert!(html.contains("<h2>Context</h2>"));
+        assert!(html.contains("Report Mode"));
+        assert!(html.contains("external compare"));
+        assert!(html.contains("Baseline Source"));
+        assert!(html.contains("compare_baseline_unit"));
+        assert!(html.contains("Compare Basis"));
+        assert!(html.contains("run_id"));
+        assert!(html.contains("shared 3"));
+        assert!(html.contains("Scope Resolution"));
+        assert!(html.contains("exact"));
+        assert!(html.contains("Compare Status"));
+        assert!(html.contains("available"));
+    }
 }
