@@ -1231,7 +1231,7 @@ fn overview_lane_split_counts(
         return None;
     }
     let candidate_records = candidate.records.iter().collect::<Vec<_>>();
-    let lane_current_records = controller_lane_records(candidate_records.as_slice(), "staged");
+    let lane_current_records = preferred_current_lane_records(candidate_records.as_slice());
     let lane_baseline_records = controller_lane_records(candidate_records.as_slice(), "baseline");
     if lane_current_records.is_empty() || lane_baseline_records.is_empty() {
         return None;
@@ -1285,6 +1285,8 @@ fn render_context_table(
     baseline: Option<&BatchReport>,
     comparison: Option<&BatchComparison>,
 ) -> String {
+    let candidate_records = candidate.records.iter().collect::<Vec<_>>();
+    let current_lane_id = preferred_current_lane_id(candidate_records.as_slice()).unwrap_or("current");
     let lane_split = overview_lane_split_counts(candidate, baseline, comparison);
     let (mode, current_source, baseline_source, compare_basis, scope_resolution) =
         if let Some(comparison) = comparison {
@@ -1345,7 +1347,8 @@ fn render_context_table(
             (
                 "lane compare",
                 format!(
-                    r#"<div class="context-value"><div class="context-main">current lane <code>staged</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs</div></div>"#,
+                    r#"<div class="context-value"><div class="context-main">current lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs</div></div>"#,
+                    escape_html(current_lane_id),
                     escape_html(&candidate.pack_id),
                     escape_html(&candidate.pack_name),
                     current_runs,
@@ -1362,7 +1365,8 @@ fn render_context_table(
                 ),
                 context_value(
                     &format!(
-                        "lane_id within pack · current {} · baseline {}{}",
+                        "lane_id within pack · current lane {} {} · baseline {}{}",
+                        current_lane_id,
                         current_runs,
                         baseline_runs,
                         if other_runs > 0 {
@@ -1515,7 +1519,7 @@ fn render_overview_table(
     let candidate_scope = selector_scope_counts(candidate);
     let candidate_records = candidate.records.iter().collect::<Vec<_>>();
     let candidate_review = review_aggregate_from_records(candidate_records.as_slice());
-    let lane_current_records = controller_lane_records(candidate_records.as_slice(), "staged");
+    let lane_current_records = preferred_current_lane_records(candidate_records.as_slice());
     let lane_baseline_records = controller_lane_records(candidate_records.as_slice(), "baseline");
     let lane_current_aggregate = (!lane_current_records.is_empty())
         .then(|| review_aggregate_from_records(lane_current_records.as_slice()));
@@ -1836,7 +1840,9 @@ struct ReviewAggregate {
 }
 
 type LaneRecordGroups<'a> = BTreeMap<String, Vec<&'a crate::BatchRunRecord>>;
-type VehicleRecordGroups<'a> = BTreeMap<String, LaneRecordGroups<'a>>;
+type VelocityRecordGroups<'a> = BTreeMap<String, LaneRecordGroups<'a>>;
+type ArcRecordGroups<'a> = BTreeMap<String, VelocityRecordGroups<'a>>;
+type VehicleRecordGroups<'a> = BTreeMap<String, ArcRecordGroups<'a>>;
 type ConditionRecordGroups<'a> = BTreeMap<String, VehicleRecordGroups<'a>>;
 type ArrivalRecordGroups<'a> = BTreeMap<String, ConditionRecordGroups<'a>>;
 type MissionRecordGroups<'a> = BTreeMap<String, ArrivalRecordGroups<'a>>;
@@ -1906,7 +1912,7 @@ fn render_mission_review_section(
         .then(|| review_aggregate_from_records(candidate_records.as_slice()));
     let baseline_aggregate = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
-    let lane_current_aggregate = controller_lane_aggregate(candidate_records.as_slice(), "staged");
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
     let lane_baseline_aggregate =
         controller_lane_aggregate(candidate_records.as_slice(), "baseline");
     let split_by_lane = comparison.is_none()
@@ -2057,7 +2063,7 @@ fn render_arrival_review_section(
         .then(|| review_aggregate_from_records(candidate_records.as_slice()));
     let baseline_aggregate = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
-    let lane_current_aggregate = controller_lane_aggregate(candidate_records.as_slice(), "staged");
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
     let lane_baseline_aggregate =
         controller_lane_aggregate(candidate_records.as_slice(), "baseline");
     let split_by_lane = comparison.is_none()
@@ -2153,7 +2159,7 @@ fn render_condition_review_section(
         .then(|| review_aggregate_from_records(candidate_records.as_slice()));
     let baseline_aggregate = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
-    let lane_current_aggregate = controller_lane_aggregate(candidate_records.as_slice(), "staged");
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
     let lane_baseline_aggregate =
         controller_lane_aggregate(candidate_records.as_slice(), "baseline");
     let split_by_lane = comparison.is_none()
@@ -2237,8 +2243,8 @@ fn render_vehicle_review_section(
     arrival_family: &str,
     condition_set: &str,
     vehicle_variant: &str,
-    candidate_lanes: Option<&LaneRecordGroups<'_>>,
-    baseline_lanes: Option<&LaneRecordGroups<'_>>,
+    candidate_arcs: Option<&ArcRecordGroups<'_>>,
+    baseline_arcs: Option<&ArcRecordGroups<'_>>,
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
@@ -2247,13 +2253,14 @@ fn render_vehicle_review_section(
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
-    let candidate_records = flatten_lane_records(candidate_lanes);
-    let baseline_records = flatten_lane_records(baseline_lanes);
+    let candidate_records = flatten_arc_records(candidate_arcs);
+    let baseline_records = flatten_arc_records(baseline_arcs);
     let aggregate = (!candidate_records.is_empty())
         .then(|| review_aggregate_from_records(candidate_records.as_slice()));
     let baseline_aggregate = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
-    let lane_current_aggregate = controller_lane_aggregate(candidate_records.as_slice(), "staged");
+    let lane_current_aggregate =
+        preferred_current_lane_aggregate(candidate_records.as_slice());
     let lane_baseline_aggregate =
         controller_lane_aggregate(candidate_records.as_slice(), "baseline");
     let split_by_lane = comparison.is_none()
@@ -2283,6 +2290,306 @@ fn render_vehicle_review_section(
         .as_ref()
         .and_then(|_| expectation_tier(candidate_records.as_slice()))
         .or_else(|| expectation_tier(baseline_records.as_slice()));
+    let empty_candidate = ArcRecordGroups::new();
+    let empty_baseline = ArcRecordGroups::new();
+    let candidate_arcs = candidate_arcs.unwrap_or(&empty_candidate);
+    let baseline_arcs = baseline_arcs.unwrap_or(&empty_baseline);
+    let arc_keys = merged_map_keys(candidate_arcs, Some(baseline_arcs));
+    let render_matrix_axes = has_meaningful_selector_keys(arc_keys.as_slice());
+    let group_id = tree_group_id(&[
+        "vehicle",
+        mission,
+        arrival_family,
+        condition_set,
+        vehicle_variant,
+    ]);
+    let child_rows = if render_matrix_axes {
+        arc_keys
+            .iter()
+            .map(|arc_point| {
+                render_arc_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    vehicle_variant,
+                    arc_point,
+                    candidate_arcs.get(arc_point),
+                    baseline_arcs.get(arc_point),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    } else {
+        let empty_candidate_lanes = LaneRecordGroups::new();
+        let empty_baseline_lanes = LaneRecordGroups::new();
+        let candidate_lanes =
+            extract_default_lane_groups_from_arcs(Some(candidate_arcs)).unwrap_or(&empty_candidate_lanes);
+        let baseline_lanes =
+            extract_default_lane_groups_from_arcs(Some(baseline_arcs)).unwrap_or(&empty_baseline_lanes);
+        let mut lane_keys = merged_map_keys(candidate_lanes, Some(baseline_lanes));
+        sort_lane_keys(&mut lane_keys);
+        lane_keys
+            .iter()
+            .map(|lane_id| {
+                render_lane_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    vehicle_variant,
+                    None,
+                    None,
+                    lane_id,
+                    candidate_lanes.get(lane_id),
+                    baseline_lanes.get(lane_id),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    };
+    let mut rows = String::new();
+    let current_note = render_summary_note(
+        comparison.is_some(),
+        TreeRowTone::Current,
+        comparison.is_some().then_some(regression_count),
+        expectation.as_deref(),
+        current_row_aggregate.is_some(),
+        baseline_row_aggregate.is_some(),
+    );
+    rows.push_str(&render_summary_row(
+        vehicle_variant,
+        depth,
+        parent_group_id,
+        ((!arc_keys.is_empty()) || !child_rows.is_empty()).then_some(group_id.as_str()),
+        "vehicle",
+        current_row_aggregate,
+        baseline_row_aggregate,
+        SummaryMetricStyle::MeanDelta,
+        changed,
+        current_note.as_str(),
+        baseline_row_aggregate.is_some().then_some("cur"),
+        TreeRowTone::Current,
+    ));
+    rows.push_str(&child_rows);
+    rows
+}
+
+fn render_arc_review_section(
+    mission: &str,
+    arrival_family: &str,
+    condition_set: &str,
+    vehicle_variant: &str,
+    arc_point: &str,
+    candidate_velocities: Option<&VelocityRecordGroups<'_>>,
+    baseline_velocities: Option<&VelocityRecordGroups<'_>>,
+    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
+    comparison: Option<&BatchComparison>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+    baseline_record_map: &BTreeMap<String, String>,
+    depth: usize,
+    parent_group_id: Option<&str>,
+) -> String {
+    let candidate_records = flatten_velocity_records(candidate_velocities);
+    let baseline_records = flatten_velocity_records(baseline_velocities);
+    let aggregate = (!candidate_records.is_empty())
+        .then(|| review_aggregate_from_records(candidate_records.as_slice()));
+    let baseline_aggregate = (!baseline_records.is_empty())
+        .then(|| review_aggregate_from_records(baseline_records.as_slice()));
+    let lane_current_aggregate =
+        preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_baseline_aggregate =
+        controller_lane_aggregate(candidate_records.as_slice(), "baseline");
+    let split_by_lane = comparison.is_none()
+        && lane_current_aggregate.is_some()
+        && lane_baseline_aggregate.is_some();
+    let current_row_aggregate = if split_by_lane {
+        lane_current_aggregate.as_ref()
+    } else {
+        aggregate.as_ref()
+    };
+    let baseline_row_aggregate = if comparison.is_some() {
+        baseline_aggregate.as_ref()
+    } else if split_by_lane {
+        lane_baseline_aggregate.as_ref()
+    } else {
+        None
+    };
+    let regression_count = count_regressions(comparison, |row| {
+        row.selector.mission == mission
+            && row.selector.arrival_family == arrival_family
+            && row.selector.condition_set == condition_set
+            && row.selector.vehicle_variant == vehicle_variant
+            && row.selector.arc_point == arc_point
+    });
+    let changed =
+        comparison.is_some() && aggregate_changed(current_row_aggregate, baseline_row_aggregate);
+    let empty_candidate = VelocityRecordGroups::new();
+    let empty_baseline = VelocityRecordGroups::new();
+    let candidate_velocities = candidate_velocities.unwrap_or(&empty_candidate);
+    let baseline_velocities = baseline_velocities.unwrap_or(&empty_baseline);
+    let velocity_keys = merged_map_keys(candidate_velocities, Some(baseline_velocities));
+    let render_velocity_axes = has_meaningful_selector_keys(velocity_keys.as_slice());
+    let group_id = tree_group_id(&[
+        "arc",
+        mission,
+        arrival_family,
+        condition_set,
+        vehicle_variant,
+        arc_point,
+    ]);
+    let child_rows = if render_velocity_axes {
+        velocity_keys
+            .iter()
+            .map(|velocity_band| {
+                render_velocity_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    vehicle_variant,
+                    arc_point,
+                    velocity_band,
+                    candidate_velocities.get(velocity_band),
+                    baseline_velocities.get(velocity_band),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    } else {
+        let empty_candidate_lanes = LaneRecordGroups::new();
+        let empty_baseline_lanes = LaneRecordGroups::new();
+        let candidate_lanes = candidate_velocities
+            .get(UNSPECIFIED_SELECTOR_VALUE)
+            .unwrap_or(&empty_candidate_lanes);
+        let baseline_lanes = baseline_velocities
+            .get(UNSPECIFIED_SELECTOR_VALUE)
+            .unwrap_or(&empty_baseline_lanes);
+        let mut lane_keys = merged_map_keys(candidate_lanes, Some(baseline_lanes));
+        sort_lane_keys(&mut lane_keys);
+        lane_keys
+            .iter()
+            .map(|lane_id| {
+                render_lane_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    vehicle_variant,
+                    Some(arc_point),
+                    None,
+                    lane_id,
+                    candidate_lanes.get(lane_id),
+                    baseline_lanes.get(lane_id),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    };
+    let mut rows = String::new();
+    let current_note = render_summary_note(
+        comparison.is_some(),
+        TreeRowTone::Current,
+        comparison.is_some().then_some(regression_count),
+        None,
+        current_row_aggregate.is_some(),
+        baseline_row_aggregate.is_some(),
+    );
+    rows.push_str(&render_summary_row(
+        arc_point,
+        depth,
+        parent_group_id,
+        ((!velocity_keys.is_empty()) || !child_rows.is_empty()).then_some(group_id.as_str()),
+        "arc",
+        current_row_aggregate,
+        baseline_row_aggregate,
+        SummaryMetricStyle::MeanDelta,
+        changed,
+        current_note.as_str(),
+        baseline_row_aggregate.is_some().then_some("cur"),
+        TreeRowTone::Current,
+    ));
+    rows.push_str(&child_rows);
+    rows
+}
+
+fn render_velocity_review_section(
+    mission: &str,
+    arrival_family: &str,
+    condition_set: &str,
+    vehicle_variant: &str,
+    arc_point: &str,
+    velocity_band: &str,
+    candidate_lanes: Option<&LaneRecordGroups<'_>>,
+    baseline_lanes: Option<&LaneRecordGroups<'_>>,
+    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
+    comparison: Option<&BatchComparison>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+    baseline_record_map: &BTreeMap<String, String>,
+    depth: usize,
+    parent_group_id: Option<&str>,
+) -> String {
+    let candidate_records = flatten_lane_records(candidate_lanes);
+    let baseline_records = flatten_lane_records(baseline_lanes);
+    let aggregate = (!candidate_records.is_empty())
+        .then(|| review_aggregate_from_records(candidate_records.as_slice()));
+    let baseline_aggregate = (!baseline_records.is_empty())
+        .then(|| review_aggregate_from_records(baseline_records.as_slice()));
+    let lane_current_aggregate =
+        preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_baseline_aggregate =
+        controller_lane_aggregate(candidate_records.as_slice(), "baseline");
+    let split_by_lane = comparison.is_none()
+        && lane_current_aggregate.is_some()
+        && lane_baseline_aggregate.is_some();
+    let current_row_aggregate = if split_by_lane {
+        lane_current_aggregate.as_ref()
+    } else {
+        aggregate.as_ref()
+    };
+    let baseline_row_aggregate = if comparison.is_some() {
+        baseline_aggregate.as_ref()
+    } else if split_by_lane {
+        lane_baseline_aggregate.as_ref()
+    } else {
+        None
+    };
+    let regression_count = count_regressions(comparison, |row| {
+        row.selector.mission == mission
+            && row.selector.arrival_family == arrival_family
+            && row.selector.condition_set == condition_set
+            && row.selector.vehicle_variant == vehicle_variant
+            && row.selector.arc_point == arc_point
+            && row.selector.velocity_band == velocity_band
+    });
+    let changed =
+        comparison.is_some() && aggregate_changed(current_row_aggregate, baseline_row_aggregate);
     let empty_candidate = LaneRecordGroups::new();
     let empty_baseline = LaneRecordGroups::new();
     let candidate_lanes = candidate_lanes.unwrap_or(&empty_candidate);
@@ -2290,11 +2597,13 @@ fn render_vehicle_review_section(
     let mut lane_keys = merged_map_keys(candidate_lanes, Some(baseline_lanes));
     sort_lane_keys(&mut lane_keys);
     let group_id = tree_group_id(&[
-        "vehicle",
+        "band",
         mission,
         arrival_family,
         condition_set,
         vehicle_variant,
+        arc_point,
+        velocity_band,
     ]);
     let lane_rows = lane_keys
         .iter()
@@ -2304,6 +2613,8 @@ fn render_vehicle_review_section(
                 arrival_family,
                 condition_set,
                 vehicle_variant,
+                Some(arc_point),
+                Some(velocity_band),
                 lane_id,
                 candidate_lanes.get(lane_id),
                 baseline_lanes.get(lane_id),
@@ -2323,16 +2634,16 @@ fn render_vehicle_review_section(
         comparison.is_some(),
         TreeRowTone::Current,
         comparison.is_some().then_some(regression_count),
-        expectation.as_deref(),
+        None,
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
     rows.push_str(&render_summary_row(
-        vehicle_variant,
+        velocity_band,
         depth,
         parent_group_id,
         (!lane_keys.is_empty()).then_some(group_id.as_str()),
-        "vehicle",
+        "band",
         current_row_aggregate,
         baseline_row_aggregate,
         SummaryMetricStyle::MeanDelta,
@@ -2350,6 +2661,8 @@ fn render_lane_review_section(
     arrival_family: &str,
     condition_set: &str,
     vehicle_variant: &str,
+    arc_point: Option<&str>,
+    velocity_band: Option<&str>,
     lane_id: &str,
     candidate_records: Option<&Vec<&crate::BatchRunRecord>>,
     baseline_records: Option<&Vec<&crate::BatchRunRecord>>,
@@ -2372,17 +2685,30 @@ fn render_lane_review_section(
             && row.selector.arrival_family == arrival_family
             && row.selector.condition_set == condition_set
             && row.selector.vehicle_variant == vehicle_variant
+            && arc_point
+                .map(|value| row.selector.arc_point == value)
+                .unwrap_or(true)
+            && velocity_band
+                .map(|value| row.selector.velocity_band == value)
+                .unwrap_or(true)
             && row.lane_id == lane_id
     });
     let changed = aggregate_changed(aggregate.as_ref(), baseline_aggregate.as_ref());
-    let group_id = tree_group_id(&[
+    let mut group_parts = vec![
         "lane",
         mission,
         arrival_family,
         condition_set,
         vehicle_variant,
-        lane_id,
-    ]);
+    ];
+    if let Some(arc_point) = arc_point {
+        group_parts.push(arc_point);
+    }
+    if let Some(velocity_band) = velocity_band {
+        group_parts.push(velocity_band);
+    }
+    group_parts.push(lane_id);
+    let group_id = tree_group_id(group_parts.as_slice());
     let run_rows = render_entry_run_table(
         candidate_records.as_slice(),
         baseline_records.as_slice(),
@@ -2779,7 +3105,7 @@ fn render_seed_run_row(
     }
     if tone == TreeRowTone::Current {
         match record.resolved.lane_id.as_str() {
-            "staged" => row_classes.push("lane-controller-current"),
+            "current" | "staged" => row_classes.push("lane-controller-current"),
             "baseline" => row_classes.push("lane-controller-baseline"),
             _ => {}
         }
@@ -2807,7 +3133,7 @@ fn render_seed_run_row(
         .or_else(|| {
             if tone == TreeRowTone::Current {
                 let (class, label) = match record.resolved.lane_id.as_str() {
-                    "staged" => ("row-tag lane-current", Some("current")),
+                    "current" | "staged" => ("row-tag lane-current", Some("current")),
                     "baseline" => ("row-tag lane-baseline", Some("baseline")),
                     _ => ("", None),
                 };
@@ -2906,6 +3232,10 @@ fn records_by_selector_hierarchy<'a>(candidate: &'a BatchReport) -> MissionRecor
             .or_default()
             .entry(record.resolved.selector.vehicle_variant.clone())
             .or_default()
+            .entry(record.resolved.selector.arc_point.clone())
+            .or_default()
+            .entry(record.resolved.selector.velocity_band.clone())
+            .or_default()
             .entry(record.resolved.lane_id.clone())
             .or_default()
             .push(record);
@@ -2939,6 +3269,10 @@ fn sort_selector_keys(keys: &mut [String]) {
     });
 }
 
+fn has_meaningful_selector_keys(keys: &[String]) -> bool {
+    keys.iter().any(|key| key != UNSPECIFIED_SELECTOR_VALUE)
+}
+
 fn sort_lane_keys(keys: &mut [String]) {
     keys.sort_by(|lhs, rhs| {
         lane_sort_rank(lhs)
@@ -2949,7 +3283,7 @@ fn sort_lane_keys(keys: &mut [String]) {
 
 fn lane_sort_rank(lane_id: &str) -> u8 {
     match lane_id {
-        "staged" => 0,
+        "current" | "staged" => 0,
         "baseline" => 1,
         _ => 2,
     }
@@ -2957,7 +3291,7 @@ fn lane_sort_rank(lane_id: &str) -> u8 {
 
 fn display_lane_label(lane_id: &str) -> String {
     match lane_id {
-        "staged" => "current".to_owned(),
+        "current" | "staged" => "current".to_owned(),
         "baseline" => "baseline".to_owned(),
         _ => lane_id.to_owned(),
     }
@@ -2966,49 +3300,89 @@ fn display_lane_label(lane_id: &str) -> String {
 fn flatten_arrival_records<'a>(
     groups: Option<&ArrivalRecordGroups<'a>>,
 ) -> Vec<&'a crate::BatchRunRecord> {
-    groups
-        .map(|groups| {
-            groups
-                .values()
-                .flat_map(|conditions| conditions.values())
-                .flat_map(|vehicles| vehicles.values())
-                .flat_map(|lanes| lanes.values())
-                .flatten()
-                .copied()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
+    let mut out = Vec::new();
+    if let Some(groups) = groups {
+        for conditions in groups.values() {
+            for vehicles in conditions.values() {
+                for arcs in vehicles.values() {
+                    for velocities in arcs.values() {
+                        for lanes in velocities.values() {
+                            for records in lanes.values() {
+                                out.extend(records.iter().copied());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 fn flatten_condition_records<'a>(
     groups: Option<&ConditionRecordGroups<'a>>,
 ) -> Vec<&'a crate::BatchRunRecord> {
-    groups
-        .map(|groups| {
-            groups
-                .values()
-                .flat_map(|vehicles| vehicles.values())
-                .flat_map(|lanes| lanes.values())
-                .flatten()
-                .copied()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
+    let mut out = Vec::new();
+    if let Some(groups) = groups {
+        for vehicles in groups.values() {
+            for arcs in vehicles.values() {
+                for velocities in arcs.values() {
+                    for lanes in velocities.values() {
+                        for records in lanes.values() {
+                            out.extend(records.iter().copied());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 fn flatten_vehicle_records<'a>(
     groups: Option<&VehicleRecordGroups<'a>>,
 ) -> Vec<&'a crate::BatchRunRecord> {
-    groups
-        .map(|groups| {
-            groups
-                .values()
-                .flat_map(|lanes| lanes.values())
-                .flatten()
-                .copied()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
+    let mut out = Vec::new();
+    if let Some(groups) = groups {
+        for arcs in groups.values() {
+            for velocities in arcs.values() {
+                for lanes in velocities.values() {
+                    for records in lanes.values() {
+                        out.extend(records.iter().copied());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn flatten_arc_records<'a>(groups: Option<&ArcRecordGroups<'a>>) -> Vec<&'a crate::BatchRunRecord> {
+    let mut out = Vec::new();
+    if let Some(groups) = groups {
+        for velocities in groups.values() {
+            for lanes in velocities.values() {
+                for records in lanes.values() {
+                    out.extend(records.iter().copied());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn flatten_velocity_records<'a>(
+    groups: Option<&VelocityRecordGroups<'a>>,
+) -> Vec<&'a crate::BatchRunRecord> {
+    let mut out = Vec::new();
+    if let Some(groups) = groups {
+        for lanes in groups.values() {
+            for records in lanes.values() {
+                out.extend(records.iter().copied());
+            }
+        }
+    }
+    out
 }
 
 fn flatten_lane_records<'a>(
@@ -3020,10 +3394,19 @@ fn flatten_lane_records<'a>(
 }
 
 fn selector_case_key(selector: &crate::SelectorAxes) -> String {
-    format!(
-        "{} / {} / {} / {}",
-        selector.mission, selector.arrival_family, selector.condition_set, selector.vehicle_variant
-    )
+    let mut parts = vec![
+        selector.mission.as_str(),
+        selector.arrival_family.as_str(),
+        selector.condition_set.as_str(),
+        selector.vehicle_variant.as_str(),
+    ];
+    if selector.arc_point != UNSPECIFIED_SELECTOR_VALUE {
+        parts.push(selector.arc_point.as_str());
+    }
+    if selector.velocity_band != UNSPECIFIED_SELECTOR_VALUE {
+        parts.push(selector.velocity_band.as_str());
+    }
+    parts.join(" / ")
 }
 
 fn count_regressions<F>(comparison: Option<&BatchComparison>, predicate: F) -> usize
@@ -3062,12 +3445,49 @@ fn controller_lane_records<'a>(
         .collect::<Vec<_>>()
 }
 
+fn preferred_current_lane_records<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> Vec<&'a crate::BatchRunRecord> {
+    match preferred_current_lane_id(records) {
+        Some(lane_id) => controller_lane_records(records, lane_id),
+        None => Vec::new(),
+    }
+}
+
+fn preferred_current_lane_id(records: &[&crate::BatchRunRecord]) -> Option<&'static str> {
+    if records
+        .iter()
+        .any(|record| record.resolved.lane_id == "current")
+    {
+        Some("current")
+    } else if records
+        .iter()
+        .any(|record| record.resolved.lane_id == "staged")
+    {
+        Some("staged")
+    } else {
+        None
+    }
+}
+
 fn controller_lane_aggregate(
     records: &[&crate::BatchRunRecord],
     lane_id: &str,
 ) -> Option<ReviewAggregate> {
     let filtered = controller_lane_records(records, lane_id);
     (!filtered.is_empty()).then(|| review_aggregate_from_records(filtered.as_slice()))
+}
+
+fn preferred_current_lane_aggregate(records: &[&crate::BatchRunRecord]) -> Option<ReviewAggregate> {
+    preferred_current_lane_id(records).and_then(|lane_id| controller_lane_aggregate(records, lane_id))
+}
+
+fn extract_default_lane_groups_from_arcs<'a>(
+    groups: Option<&'a ArcRecordGroups<'a>>,
+) -> Option<&'a LaneRecordGroups<'a>> {
+    groups
+        .and_then(|groups| groups.get(UNSPECIFIED_SELECTOR_VALUE))
+        .and_then(|velocities| velocities.get(UNSPECIFIED_SELECTOR_VALUE))
 }
 
 fn comparison_change_map(
@@ -4382,6 +4802,7 @@ mod report_tests {
     use crate::{
         ConcreteScenarioPackEntry, NumericPerturbationMode, NumericPerturbationSpec,
         ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec, SeedRangeSpec,
+        TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier,
         compare_batch_reports, run_pack_with_workers,
     };
 
@@ -4494,7 +4915,9 @@ mod report_tests {
         assert!(html.contains("<h2>Context</h2>"));
         assert!(html.contains("Report Mode"));
         assert!(html.contains("lane compare"));
+        assert!(html.contains("current lane <code>staged</code>"));
         assert!(html.contains("Compare Basis"));
+        assert!(html.contains("current lane staged"));
         assert!(html.contains("lane_id within pack"));
         assert!(html.contains("Scope Resolution"));
         assert!(html.contains("internal lane"));
@@ -4560,5 +4983,51 @@ mod report_tests {
         assert!(html.contains("exact"));
         assert!(html.contains("Compare Status"));
         assert!(html.contains("available"));
+    }
+
+    #[test]
+    fn terminal_matrix_report_renders_arc_and_band_levels() {
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_tree_unit".to_owned(),
+            name: "Terminal matrix tree unit".to_owned(),
+            description: "terminal matrix tree unit".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_clean_nominal".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![
+                    TerminalMatrixLaneSpec {
+                        id: "baseline".to_owned(),
+                        controller: "baseline".to_owned(),
+                        controller_config: None,
+                    },
+                    TerminalMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "staged".to_owned(),
+                        controller_config: None,
+                    },
+                ],
+                seed_tier: TerminalSeedTier::Smoke,
+                condition_set: "clean".to_owned(),
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: Vec::new(),
+                tags: vec!["terminal".to_owned(), "bot_lab".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
+        let html = render_batch_report(
+            Path::new("outputs/eval/terminal_matrix_tree_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("selector-inline\">arc</span>"));
+        assert!(html.contains("selector-inline\">band</span>"));
+        assert!(html.contains("selector-code\">a00</span>"));
+        assert!(html.contains("selector-code\">low</span>"));
     }
 }

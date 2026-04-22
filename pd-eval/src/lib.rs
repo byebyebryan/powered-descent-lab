@@ -19,7 +19,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 5;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 6;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct BatchMetricSummary {
@@ -40,14 +40,40 @@ pub struct BatchRunReviewMetrics {
     pub reference_gap_max_m: Option<f64>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+fn default_selector_value() -> String {
+    "unspecified".to_owned()
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct SelectorAxes {
+    #[serde(default = "default_selector_value")]
     pub mission: String,
+    #[serde(default = "default_selector_value")]
     pub arrival_family: String,
+    #[serde(default = "default_selector_value")]
     pub condition_set: String,
+    #[serde(default = "default_selector_value")]
     pub vehicle_variant: String,
+    #[serde(default = "default_selector_value")]
+    pub arc_point: String,
+    #[serde(default = "default_selector_value")]
+    pub velocity_band: String,
     #[serde(default)]
     pub expectation_tier: Option<String>,
+}
+
+impl Default for SelectorAxes {
+    fn default() -> Self {
+        Self {
+            mission: default_selector_value(),
+            arrival_family: default_selector_value(),
+            condition_set: default_selector_value(),
+            vehicle_variant: default_selector_value(),
+            arc_point: default_selector_value(),
+            velocity_band: default_selector_value(),
+            expectation_tier: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -63,6 +89,7 @@ pub struct ScenarioPackSpec {
 pub enum ScenarioPackEntry {
     Scenario(ConcreteScenarioPackEntry),
     Family(ScenarioFamilyEntry),
+    TerminalMatrix(TerminalMatrixEntry),
 }
 
 impl ScenarioPackEntry {
@@ -70,20 +97,7 @@ impl ScenarioPackEntry {
         match self {
             Self::Scenario(entry) => &entry.id,
             Self::Family(entry) => &entry.id,
-        }
-    }
-
-    fn controller_name(&self) -> &str {
-        match self {
-            Self::Scenario(entry) => &entry.controller,
-            Self::Family(entry) => &entry.controller,
-        }
-    }
-
-    fn controller_config_path(&self) -> Option<&str> {
-        match self {
-            Self::Scenario(entry) => entry.controller_config.as_deref(),
-            Self::Family(entry) => entry.controller_config.as_deref(),
+            Self::TerminalMatrix(entry) => &entry.id,
         }
     }
 }
@@ -120,6 +134,47 @@ pub struct ScenarioFamilyEntry {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TerminalMatrixEntry {
+    pub id: String,
+    pub terminal_matrix: String,
+    pub base_scenario: String,
+    pub lanes: Vec<TerminalMatrixLaneSpec>,
+    pub seed_tier: TerminalSeedTier,
+    pub condition_set: String,
+    pub vehicle_variant: String,
+    pub expectation_tier: String,
+    #[serde(default)]
+    pub adjustments: Vec<NumericAdjustmentSpec>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TerminalMatrixLaneSpec {
+    pub id: String,
+    pub controller: String,
+    #[serde(default)]
+    pub controller_config: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalSeedTier {
+    Smoke,
+    Full,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NumericAdjustmentSpec {
+    pub id: String,
+    pub path: String,
+    pub mode: NumericPerturbationMode,
+    pub value: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SeedRangeSpec {
     pub start: u64,
     pub count: u64,
@@ -149,6 +204,7 @@ pub enum NumericPerturbationMode {
 pub enum ResolvedRunSourceKind {
     ConcreteScenario,
     FamilySweep,
+    TerminalMatrix,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -591,20 +647,21 @@ fn validate_pack(pack: &ScenarioPackSpec) -> Result<()> {
         if entry.id().trim().is_empty() {
             bail!("pack entry id must not be empty");
         }
-        if entry.controller_name().trim().is_empty() {
-            bail!("pack entry controller must not be empty");
-        }
         if !seen_ids.insert(entry.id().to_owned()) {
             bail!("duplicate pack entry id '{}'", entry.id());
         }
 
         match entry {
             ScenarioPackEntry::Scenario(entry) => {
+                if entry.controller.trim().is_empty() {
+                    bail!("pack entry controller must not be empty");
+                }
                 if entry.scenario.trim().is_empty() {
                     bail!("pack entry scenario path must not be empty");
                 }
             }
             ScenarioPackEntry::Family(entry) => validate_family_entry(entry)?,
+            ScenarioPackEntry::TerminalMatrix(entry) => validate_terminal_matrix_entry(entry)?,
         }
     }
 
@@ -612,6 +669,12 @@ fn validate_pack(pack: &ScenarioPackSpec) -> Result<()> {
 }
 
 fn validate_family_entry(entry: &ScenarioFamilyEntry) -> Result<()> {
+    if entry.controller.trim().is_empty() {
+        bail!(
+            "family entry '{}' must define a non-empty controller",
+            entry.id
+        );
+    }
     if entry.family.trim().is_empty() {
         bail!(
             "family entry '{}' must define a non-empty family id",
@@ -673,6 +736,117 @@ fn validate_family_entry(entry: &ScenarioFamilyEntry) -> Result<()> {
     Ok(())
 }
 
+fn validate_terminal_matrix_entry(entry: &TerminalMatrixEntry) -> Result<()> {
+    if entry.terminal_matrix.trim().is_empty() {
+        bail!(
+            "terminal matrix entry '{}' must define a non-empty terminal_matrix",
+            entry.id
+        );
+    }
+    if entry.base_scenario.trim().is_empty() {
+        bail!(
+            "terminal matrix entry '{}' must define a non-empty base_scenario",
+            entry.id
+        );
+    }
+    if entry.condition_set.trim().is_empty() {
+        bail!(
+            "terminal matrix entry '{}' must define a non-empty condition_set",
+            entry.id
+        );
+    }
+    if entry.vehicle_variant.trim().is_empty() {
+        bail!(
+            "terminal matrix entry '{}' must define a non-empty vehicle_variant",
+            entry.id
+        );
+    }
+    if entry.expectation_tier.trim().is_empty() {
+        bail!(
+            "terminal matrix entry '{}' must define a non-empty expectation_tier",
+            entry.id
+        );
+    }
+    if entry.lanes.is_empty() {
+        bail!(
+            "terminal matrix entry '{}' must define at least one lane",
+            entry.id
+        );
+    }
+    let mut seen_lane_ids = BTreeSet::new();
+    for lane in &entry.lanes {
+        if lane.id.trim().is_empty() {
+            bail!(
+                "terminal matrix entry '{}' has a lane with an empty id",
+                entry.id
+            );
+        }
+        if lane.controller.trim().is_empty() {
+            bail!(
+                "terminal matrix entry '{}' lane '{}' must define a controller",
+                entry.id,
+                lane.id
+            );
+        }
+        if !seen_lane_ids.insert(lane.id.clone()) {
+            bail!(
+                "terminal matrix entry '{}' has duplicate lane id '{}'",
+                entry.id,
+                lane.id
+            );
+        }
+    }
+    for (key, value) in &entry.metadata {
+        if key.trim().is_empty() || value.trim().is_empty() {
+            bail!(
+                "terminal matrix entry '{}' metadata keys and values must not be empty",
+                entry.id
+            );
+        }
+    }
+    let mut seen_adjustment_ids = BTreeSet::new();
+    for adjustment in &entry.adjustments {
+        validate_numeric_adjustment(entry, adjustment, &mut seen_adjustment_ids)?;
+    }
+    Ok(())
+}
+
+fn validate_numeric_adjustment(
+    entry: &TerminalMatrixEntry,
+    adjustment: &NumericAdjustmentSpec,
+    seen_ids: &mut BTreeSet<String>,
+) -> Result<()> {
+    if adjustment.id.trim().is_empty() {
+        bail!(
+            "terminal matrix entry '{}' has an adjustment with an empty id",
+            entry.id
+        );
+    }
+    if !seen_ids.insert(adjustment.id.clone()) {
+        bail!(
+            "terminal matrix entry '{}' has duplicate adjustment id '{}'",
+            entry.id,
+            adjustment.id
+        );
+    }
+    if !is_supported_terminal_adjustment_path(&adjustment.path) {
+        bail!(
+            "terminal matrix entry '{}' adjustment '{}' uses unsupported path '{}'",
+            entry.id,
+            adjustment.id,
+            adjustment.path
+        );
+    }
+    if !adjustment.value.is_finite() {
+        bail!(
+            "terminal matrix entry '{}' adjustment '{}' must be finite",
+            entry.id,
+            adjustment.id
+        );
+    }
+    Ok(())
+}
+
 fn validate_numeric_perturbation(
     entry: &ScenarioFamilyEntry,
     perturbation: &NumericPerturbationSpec,
@@ -728,13 +902,25 @@ fn validate_numeric_perturbation(
 fn resolve_pack_runs(pack: &ScenarioPackSpec, base_dir: &Path) -> Result<Vec<ResolvedBatchRun>> {
     let mut resolved = Vec::new();
     for entry in &pack.entries {
-        let controller_spec = load_controller_spec(base_dir, entry)?;
         match entry {
             ScenarioPackEntry::Scenario(entry) => {
+                let controller_spec = load_controller_spec(
+                    base_dir,
+                    entry.controller.as_str(),
+                    entry.controller_config.as_deref(),
+                )?;
                 resolved.push(resolve_concrete_run(entry, base_dir, &controller_spec)?)
             }
             ScenarioPackEntry::Family(entry) => {
+                let controller_spec = load_controller_spec(
+                    base_dir,
+                    entry.controller.as_str(),
+                    entry.controller_config.as_deref(),
+                )?;
                 resolved.extend(resolve_family_runs(entry, base_dir, &controller_spec)?)
+            }
+            ScenarioPackEntry::TerminalMatrix(entry) => {
+                resolved.extend(resolve_terminal_matrix_runs(entry, base_dir)?)
             }
         }
     }
@@ -819,6 +1005,479 @@ fn resolve_family_runs(
     Ok(runs)
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TerminalArcPointSpec {
+    id: &'static str,
+    angle_deg: f64,
+    nominal_ttg_s: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerminalArrivalFamilySpec {
+    arrival_family: &'static str,
+    gravity_mps2: f64,
+    radius_nominal_m: f64,
+    low_multiplier: f64,
+    high_multiplier: f64,
+    clamp_low_to_descending: bool,
+    arc_points: &'static [TerminalArcPointSpec],
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerminalBandSpec {
+    id: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerminalSeedSpec {
+    index: u64,
+    radial_pct: Option<f64>,
+    speed_pct: Option<f64>,
+}
+
+const HALF_ARC_TERMINAL_V1_ARC_POINTS: [TerminalArcPointSpec; 7] = [
+    TerminalArcPointSpec {
+        id: "a00",
+        angle_deg: 0.0,
+        nominal_ttg_s: 8.50,
+    },
+    TerminalArcPointSpec {
+        id: "a15",
+        angle_deg: 15.0,
+        nominal_ttg_s: 8.50,
+    },
+    TerminalArcPointSpec {
+        id: "a30",
+        angle_deg: 30.0,
+        nominal_ttg_s: 8.25,
+    },
+    TerminalArcPointSpec {
+        id: "a45",
+        angle_deg: 45.0,
+        nominal_ttg_s: 8.00,
+    },
+    TerminalArcPointSpec {
+        id: "a60",
+        angle_deg: 60.0,
+        nominal_ttg_s: 7.75,
+    },
+    TerminalArcPointSpec {
+        id: "a70",
+        angle_deg: 70.0,
+        nominal_ttg_s: 7.50,
+    },
+    TerminalArcPointSpec {
+        id: "a80",
+        angle_deg: 80.0,
+        nominal_ttg_s: 7.00,
+    },
+];
+
+const HALF_ARC_TERMINAL_V1_SPEC: TerminalArrivalFamilySpec = TerminalArrivalFamilySpec {
+    arrival_family: "half_arc_terminal_v1",
+    gravity_mps2: 9.81,
+    radius_nominal_m: 800.0,
+    low_multiplier: 1.25,
+    high_multiplier: 0.75,
+    clamp_low_to_descending: false,
+    arc_points: &HALF_ARC_TERMINAL_V1_ARC_POINTS,
+};
+
+const TERMINAL_BANDS: [TerminalBandSpec; 3] = [
+    TerminalBandSpec { id: "low" },
+    TerminalBandSpec { id: "mid" },
+    TerminalBandSpec { id: "high" },
+];
+
+const TERMINAL_SMOKE_SEEDS: [TerminalSeedSpec; 3] = [
+    TerminalSeedSpec {
+        index: 0,
+        radial_pct: Some(0.015),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 1,
+        radial_pct: Some(-0.015),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 6,
+        radial_pct: None,
+        speed_pct: Some(0.010),
+    },
+];
+
+const TERMINAL_FULL_SEEDS: [TerminalSeedSpec; 12] = [
+    TerminalSeedSpec {
+        index: 0,
+        radial_pct: Some(0.015),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 1,
+        radial_pct: Some(-0.015),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 2,
+        radial_pct: Some(0.030),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 3,
+        radial_pct: Some(-0.030),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 4,
+        radial_pct: Some(0.045),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 5,
+        radial_pct: Some(-0.045),
+        speed_pct: None,
+    },
+    TerminalSeedSpec {
+        index: 6,
+        radial_pct: None,
+        speed_pct: Some(0.010),
+    },
+    TerminalSeedSpec {
+        index: 7,
+        radial_pct: None,
+        speed_pct: Some(-0.010),
+    },
+    TerminalSeedSpec {
+        index: 8,
+        radial_pct: None,
+        speed_pct: Some(0.020),
+    },
+    TerminalSeedSpec {
+        index: 9,
+        radial_pct: None,
+        speed_pct: Some(-0.020),
+    },
+    TerminalSeedSpec {
+        index: 10,
+        radial_pct: None,
+        speed_pct: Some(0.030),
+    },
+    TerminalSeedSpec {
+        index: 11,
+        radial_pct: None,
+        speed_pct: Some(-0.030),
+    },
+];
+
+fn resolve_terminal_matrix_runs(
+    entry: &TerminalMatrixEntry,
+    base_dir: &Path,
+) -> Result<Vec<ResolvedBatchRun>> {
+    let base_path = base_dir.join(&entry.base_scenario);
+    let base_scenario = load_scenario(&base_path)?;
+    let family_spec = terminal_arrival_family_spec(&entry.terminal_matrix)?;
+    let seed_specs = terminal_seed_specs(entry.seed_tier);
+    let mut runs = Vec::new();
+
+    for lane in &entry.lanes {
+        let controller_spec = load_controller_spec(
+            base_dir,
+            lane.controller.as_str(),
+            lane.controller_config.as_deref(),
+        )?;
+        for arc in family_spec.arc_points {
+            for band in TERMINAL_BANDS {
+                for seed_spec in seed_specs {
+                    let run_id = resolved_terminal_matrix_run_id(
+                        &entry.id,
+                        arc.id,
+                        band.id,
+                        seed_spec.index,
+                        &lane.id,
+                    );
+                    let (scenario, resolved_parameters, selector) = resolve_terminal_matrix_scenario(
+                        entry,
+                        &base_scenario,
+                        family_spec,
+                        arc,
+                        band,
+                        seed_spec,
+                        &lane.id,
+                        &run_id,
+                    )?;
+                    let descriptor = ResolvedRunDescriptor {
+                        run_id,
+                        entry_id: entry.id.clone(),
+                        source_kind: ResolvedRunSourceKind::TerminalMatrix,
+                        scenario_source: entry.base_scenario.clone(),
+                        resolved_scenario_id: scenario.id.clone(),
+                        resolved_scenario_name: scenario.name.clone(),
+                        family_id: Some(entry.id.clone()),
+                        selector,
+                        lane_id: lane.id.clone(),
+                        resolved_seed: seed_spec.index,
+                        resolved_parameters,
+                        controller_id: controller_spec.id().to_owned(),
+                        controller_spec: controller_spec.clone(),
+                    };
+                    runs.push(ResolvedBatchRun {
+                        descriptor,
+                        scenario,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(runs)
+}
+
+fn terminal_arrival_family_spec(name: &str) -> Result<&'static TerminalArrivalFamilySpec> {
+    match name {
+        "half_arc_terminal_v1" => Ok(&HALF_ARC_TERMINAL_V1_SPEC),
+        _ => bail!("unsupported terminal matrix '{}'", name),
+    }
+}
+
+fn terminal_seed_specs(seed_tier: TerminalSeedTier) -> &'static [TerminalSeedSpec] {
+    match seed_tier {
+        TerminalSeedTier::Smoke => &TERMINAL_SMOKE_SEEDS,
+        TerminalSeedTier::Full => &TERMINAL_FULL_SEEDS,
+    }
+}
+
+fn resolved_terminal_matrix_run_id(
+    entry_id: &str,
+    arc_point: &str,
+    velocity_band: &str,
+    seed: u64,
+    lane_id: &str,
+) -> String {
+    sanitize_token(&format!(
+        "{entry_id}__{arc_point}__{velocity_band}__seed_{seed:02}__{lane_id}"
+    ))
+}
+
+fn resolve_terminal_matrix_scenario(
+    entry: &TerminalMatrixEntry,
+    base_scenario: &ScenarioSpec,
+    family_spec: &TerminalArrivalFamilySpec,
+    arc: &TerminalArcPointSpec,
+    band: TerminalBandSpec,
+    seed_spec: &TerminalSeedSpec,
+    lane_id: &str,
+    run_id: &str,
+) -> Result<(ScenarioSpec, BTreeMap<String, f64>, SelectorAxes)> {
+    let mut scenario = base_scenario.clone();
+    scenario.id = run_id.to_owned();
+    scenario.name = format!(
+        "{} [{} {} {} {} {} seed {} {}]",
+        base_scenario.name,
+        family_spec.arrival_family,
+        entry.condition_set,
+        entry.vehicle_variant,
+        arc.id,
+        band.id,
+        seed_spec.index,
+        lane_id
+    );
+    scenario.description = format!(
+        "{} ({} {} {} {} {} {} seed {} lane {})",
+        base_scenario.description,
+        "terminal_matrix",
+        family_spec.arrival_family,
+        entry.condition_set,
+        entry.vehicle_variant,
+        arc.id,
+        band.id,
+        seed_spec.index,
+        lane_id
+    );
+    scenario.seed = seed_spec.index;
+    scenario.tags = merge_unique_tags(&base_scenario.tags, &entry.tags);
+    scenario.metadata.extend(entry.metadata.clone());
+    scenario
+        .metadata
+        .insert("family".to_owned(), entry.id.clone());
+    scenario
+        .metadata
+        .insert("family_entry_id".to_owned(), entry.id.clone());
+    scenario
+        .metadata
+        .insert("resolved_seed".to_owned(), seed_spec.index.to_string());
+    scenario
+        .metadata
+        .insert("mission".to_owned(), "terminal_guidance".to_owned());
+    scenario.metadata.insert(
+        "arrival_family".to_owned(),
+        family_spec.arrival_family.to_owned(),
+    );
+    scenario
+        .metadata
+        .insert("condition_set".to_owned(), entry.condition_set.clone());
+    scenario
+        .metadata
+        .insert("vehicle_variant".to_owned(), entry.vehicle_variant.clone());
+    scenario.metadata.insert(
+        "expectation_tier".to_owned(),
+        entry.expectation_tier.clone(),
+    );
+    scenario
+        .metadata
+        .insert("arc_point".to_owned(), arc.id.to_owned());
+    scenario
+        .metadata
+        .insert("velocity_band".to_owned(), band.id.to_owned());
+    scenario
+        .metadata
+        .insert("lane_id".to_owned(), lane_id.to_owned());
+
+    scenario.world.gravity_mps2 = family_spec.gravity_mps2;
+
+    let mut resolved_parameters = BTreeMap::new();
+    resolved_parameters.insert("gravity_mps2".to_owned(), family_spec.gravity_mps2);
+    resolved_parameters.insert("radius_nominal_m".to_owned(), family_spec.radius_nominal_m);
+    resolved_parameters.insert("arc_angle_deg".to_owned(), arc.angle_deg);
+    resolved_parameters.insert("mid_ttg_s".to_owned(), arc.nominal_ttg_s);
+
+    for adjustment in &entry.adjustments {
+        apply_numeric_adjustment(&mut scenario, adjustment)?;
+        resolved_parameters.insert(adjustment.id.clone(), adjustment.value);
+        scenario.metadata.insert(
+            format!("resolved.{}", adjustment.id),
+            format!("{:.6}", adjustment.value),
+        );
+    }
+
+    let ttg_s = terminal_band_ttg(family_spec, arc, band.id);
+    resolved_parameters.insert("ttg_s".to_owned(), ttg_s);
+
+    let (side_label, side_sign) = resolved_side(arc.id, seed_spec.index);
+    scenario
+        .metadata
+        .insert("resolved.side".to_owned(), side_label.to_owned());
+    resolved_parameters.insert("side_sign".to_owned(), side_sign);
+
+    let radial_jitter_m = seed_spec
+        .radial_pct
+        .map(|pct| (family_spec.radius_nominal_m * pct).clamp(-30.0, 30.0))
+        .unwrap_or(0.0);
+    let resolved_radius_m = family_spec.radius_nominal_m + radial_jitter_m;
+    resolved_parameters.insert("radial_jitter_m".to_owned(), radial_jitter_m);
+    resolved_parameters.insert("radius_m".to_owned(), resolved_radius_m);
+    if let Some(radial_pct) = seed_spec.radial_pct {
+        scenario.metadata.insert(
+            "resolved.seed_variation".to_owned(),
+            "radial".to_owned(),
+        );
+        scenario.metadata.insert(
+            "resolved.radial_pct".to_owned(),
+            format!("{radial_pct:.6}"),
+        );
+    } else if let Some(speed_pct) = seed_spec.speed_pct {
+        scenario
+            .metadata
+            .insert("resolved.seed_variation".to_owned(), "speed".to_owned());
+        scenario.metadata.insert(
+            "resolved.speed_pct".to_owned(),
+            format!("{speed_pct:.6}"),
+        );
+    } else {
+        scenario
+            .metadata
+            .insert("resolved.seed_variation".to_owned(), "none".to_owned());
+    }
+
+    let angle_rad = arc.angle_deg.to_radians();
+    let x_m = if arc.id == "a00" {
+        0.0
+    } else {
+        side_sign * resolved_radius_m * angle_rad.sin()
+    };
+    let y_m = resolved_radius_m * angle_rad.cos();
+    resolved_parameters.insert("start_x_m".to_owned(), x_m);
+    resolved_parameters.insert("start_y_m".to_owned(), y_m);
+
+    let (mut vx_mps, mut vy_mps) =
+        solve_ballistic_velocity(x_m, y_m, ttg_s, family_spec.gravity_mps2);
+    let speed_scale = 1.0 + seed_spec.speed_pct.unwrap_or(0.0);
+    vx_mps *= speed_scale;
+    vy_mps *= speed_scale;
+    resolved_parameters.insert("speed_scale".to_owned(), speed_scale);
+    resolved_parameters.insert("start_vx_mps".to_owned(), vx_mps);
+    resolved_parameters.insert("start_vy_mps".to_owned(), vy_mps);
+    resolved_parameters.insert(
+        "start_speed_mps".to_owned(),
+        (vx_mps.powi(2) + vy_mps.powi(2)).sqrt(),
+    );
+
+    scenario.initial_state.position_m.x = x_m;
+    scenario.initial_state.position_m.y = y_m;
+    scenario.initial_state.velocity_mps.x = vx_mps;
+    scenario.initial_state.velocity_mps.y = vy_mps;
+
+    scenario
+        .validate()
+        .map_err(anyhow::Error::msg)
+        .with_context(|| {
+            format!(
+                "resolved terminal matrix scenario '{}' {} {} seed {} failed validation",
+                entry.id, arc.id, band.id, seed_spec.index
+            )
+        })?;
+
+    let selector = SelectorAxes {
+        mission: "terminal_guidance".to_owned(),
+        arrival_family: family_spec.arrival_family.to_owned(),
+        condition_set: entry.condition_set.clone(),
+        vehicle_variant: entry.vehicle_variant.clone(),
+        arc_point: arc.id.to_owned(),
+        velocity_band: band.id.to_owned(),
+        expectation_tier: Some(entry.expectation_tier.clone()),
+    };
+
+    Ok((scenario, resolved_parameters, selector))
+}
+
+fn terminal_band_ttg(
+    family_spec: &TerminalArrivalFamilySpec,
+    arc: &TerminalArcPointSpec,
+    band_id: &str,
+) -> f64 {
+    match band_id {
+        "mid" => arc.nominal_ttg_s,
+        "low" => {
+            let low = arc.nominal_ttg_s * family_spec.low_multiplier;
+            if family_spec.clamp_low_to_descending {
+                let y_m = family_spec.radius_nominal_m * arc.angle_deg.to_radians().cos();
+                let t_flat_s = ((2.0 * y_m) / family_spec.gravity_mps2).sqrt();
+                low.min(t_flat_s * 0.98)
+            } else {
+                low
+            }
+        }
+        "high" => arc.nominal_ttg_s * family_spec.high_multiplier,
+        _ => arc.nominal_ttg_s,
+    }
+}
+
+fn resolved_side(arc_point: &str, seed: u64) -> (&'static str, f64) {
+    if arc_point == "a00" {
+        ("center", 0.0)
+    } else if seed % 2 == 0 {
+        ("left", -1.0)
+    } else {
+        ("right", 1.0)
+    }
+}
+
+fn solve_ballistic_velocity(x_m: f64, y_m: f64, ttg_s: f64, gravity_mps2: f64) -> (f64, f64) {
+    let vx_mps = -x_m / ttg_s;
+    let vy_mps = ((0.5 * gravity_mps2 * ttg_s * ttg_s) - y_m) / ttg_s;
+    (vx_mps, vy_mps)
+}
+
 fn family_entry_seeds(entry: &ScenarioFamilyEntry) -> Vec<u64> {
     if !entry.seeds.is_empty() {
         return entry.seeds.clone();
@@ -897,6 +1556,8 @@ fn selector_axes_from_metadata(metadata: &BTreeMap<String, String>) -> SelectorA
         arrival_family: selector_value(metadata.get("arrival_family"), "unspecified"),
         condition_set: selector_value(metadata.get("condition_set"), "unspecified"),
         vehicle_variant: selector_value(metadata.get("vehicle_variant"), "unspecified"),
+        arc_point: selector_value(metadata.get("arc_point"), "unspecified"),
+        velocity_band: selector_value(metadata.get("velocity_band"), "unspecified"),
         expectation_tier: metadata
             .get("expectation_tier")
             .map(String::as_str)
@@ -929,6 +1590,20 @@ fn is_supported_numeric_path(path: &str) -> bool {
             | "initial_state.position_m.y"
             | "initial_state.velocity_mps.x"
             | "initial_state.velocity_mps.y"
+            | "initial_state.attitude_rad"
+            | "initial_state.angular_rate_radps"
+    )
+}
+
+fn is_supported_terminal_adjustment_path(path: &str) -> bool {
+    matches!(
+        path,
+        "vehicle.dry_mass_kg"
+            | "vehicle.initial_fuel_kg"
+            | "vehicle.max_fuel_kg"
+            | "vehicle.max_thrust_n"
+            | "vehicle.max_fuel_burn_kgps"
+            | "vehicle.max_rotation_rate_radps"
             | "initial_state.attitude_rad"
             | "initial_state.angular_rate_radps"
     )
@@ -1009,6 +1684,55 @@ fn apply_numeric_perturbation(
             "unsupported numeric perturbation path '{}'",
             perturbation.path
         ),
+    }
+}
+
+fn apply_numeric_adjustment(
+    scenario: &mut ScenarioSpec,
+    adjustment: &NumericAdjustmentSpec,
+) -> Result<()> {
+    match adjustment.path.as_str() {
+        "vehicle.dry_mass_kg" => Ok(apply_numeric_mode(
+            &mut scenario.vehicle.dry_mass_kg,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        "vehicle.initial_fuel_kg" => Ok(apply_numeric_mode(
+            &mut scenario.vehicle.initial_fuel_kg,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        "vehicle.max_fuel_kg" => Ok(apply_numeric_mode(
+            &mut scenario.vehicle.max_fuel_kg,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        "vehicle.max_thrust_n" => Ok(apply_numeric_mode(
+            &mut scenario.vehicle.max_thrust_n,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        "vehicle.max_fuel_burn_kgps" => Ok(apply_numeric_mode(
+            &mut scenario.vehicle.max_fuel_burn_kgps,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        "vehicle.max_rotation_rate_radps" => Ok(apply_numeric_mode(
+            &mut scenario.vehicle.max_rotation_rate_radps,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        "initial_state.attitude_rad" => Ok(apply_numeric_mode(
+            &mut scenario.initial_state.attitude_rad,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        "initial_state.angular_rate_radps" => Ok(apply_numeric_mode(
+            &mut scenario.initial_state.angular_rate_radps,
+            adjustment.mode,
+            adjustment.value,
+        )),
+        _ => bail!("unsupported numeric adjustment path '{}'", adjustment.path),
     }
 }
 
@@ -1409,7 +2133,7 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
 
     let mut mission_outcomes = BTreeMap::new();
     let mut end_reasons = BTreeMap::new();
-    let mut failed_seeds = Vec::new();
+    let mut failed_seeds = BTreeSet::new();
     let mut sample_run_ids = Vec::new();
     let mut success_fuel_remaining = Vec::new();
     let mut success_fuel_used_pct = Vec::new();
@@ -1428,7 +2152,7 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             .or_insert(0) += 1;
         let pointer = run_pointer(record);
         if !matches!(record.manifest.mission_outcome, MissionOutcome::Success) {
-            failed_seeds.push(record.resolved.resolved_seed);
+            failed_seeds.insert(record.resolved.resolved_seed);
             failure_pointers.push(pointer);
         } else {
             success_fuel_remaining.push(record.manifest.summary.fuel_remaining_kg);
@@ -1448,7 +2172,6 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             sample_run_ids.push(record.resolved.run_id.clone());
         }
     }
-    failed_seeds.sort_unstable();
     let mean_success_fuel_remaining_kg = if success_fuel_remaining.is_empty() {
         None
     } else {
@@ -1478,7 +2201,7 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         mission_outcomes,
         end_reasons,
         sample_run_ids,
-        failed_seeds,
+        failed_seeds: failed_seeds.into_iter().collect(),
         weakest_success_run_id: success_pointers
             .first()
             .map(|pointer| pointer.run_id.clone()),
@@ -1901,8 +2624,12 @@ fn load_scenario(path: &Path) -> Result<ScenarioSpec> {
     Ok(scenario)
 }
 
-fn load_controller_spec(base_dir: &Path, entry: &ScenarioPackEntry) -> Result<ControllerSpec> {
-    if let Some(path) = entry.controller_config_path() {
+fn load_controller_spec(
+    base_dir: &Path,
+    controller_name: &str,
+    controller_config_path: Option<&str>,
+) -> Result<ControllerSpec> {
+    if let Some(path) = controller_config_path {
         let full_path = base_dir.join(path);
         let raw = fs::read_to_string(&full_path).with_context(|| {
             format!(
@@ -1918,8 +2645,8 @@ fn load_controller_spec(base_dir: &Path, entry: &ScenarioPackEntry) -> Result<Co
         });
     }
 
-    built_in_controller_spec(entry.controller_name())
-        .ok_or_else(|| anyhow!("unknown controller '{}'", entry.controller_name()))
+    built_in_controller_spec(controller_name)
+        .ok_or_else(|| anyhow!("unknown controller '{}'", controller_name))
 }
 
 fn write_artifact_bundle(
@@ -2315,5 +3042,114 @@ mod tests {
             record.resolved.selector.expectation_tier.as_deref(),
             Some("frontier")
         );
+    }
+
+    #[test]
+    fn terminal_matrix_entry_expands_documented_smoke_axes() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_smoke".to_owned(),
+            name: "Terminal matrix smoke".to_owned(),
+            description: "terminal matrix smoke".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_clean_nominal".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "staged".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Smoke,
+                condition_set: "clean".to_owned(),
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: Vec::new(),
+                tags: vec!["terminal".to_owned(), "smoke".to_owned()],
+                metadata: BTreeMap::from([("difficulty".to_owned(), "nominal".to_owned())]),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &base_dir, None, 1).unwrap();
+        assert_eq!(report.total_runs, 7 * 3 * 3);
+        assert_eq!(report.summary.by_entry[0].total_runs, 7 * 3 * 3);
+
+        let record = report
+            .records
+            .iter()
+            .find(|record| {
+                record.resolved.selector.arc_point == "a80"
+                    && record.resolved.selector.velocity_band == "high"
+                    && record.resolved.resolved_seed == 6
+            })
+            .expect("matrix record present");
+
+        assert_eq!(record.resolved.source_kind, ResolvedRunSourceKind::TerminalMatrix);
+        assert_eq!(record.resolved.selector.mission, "terminal_guidance");
+        assert_eq!(record.resolved.selector.arrival_family, "half_arc_terminal_v1");
+        assert_eq!(record.resolved.selector.condition_set, "clean");
+        assert_eq!(record.resolved.selector.vehicle_variant, "nominal");
+        assert_eq!(record.resolved.selector.arc_point, "a80");
+        assert_eq!(record.resolved.selector.velocity_band, "high");
+        assert_eq!(record.resolved.lane_id, "current");
+        assert!(record
+            .resolved
+            .resolved_scenario_name
+            .contains("a80 high seed 6 current"));
+        assert_eq!(
+            record.resolved.selector.expectation_tier.as_deref(),
+            Some("core")
+        );
+        assert!(
+            (record.manifest.summary.max_speed_mps > 0.0)
+                && (record.manifest.summary.fuel_remaining_kg >= 0.0)
+        );
+        assert_eq!(record.manifest.scenario_seed, 6);
+        assert_eq!(
+            record
+                .resolved
+                .resolved_parameters
+                .get("gravity_mps2")
+                .copied(),
+            Some(9.81)
+        );
+    }
+
+    #[test]
+    fn terminal_matrix_entry_rejects_overwritten_adjustment_paths() {
+        for path in ["world.gravity_mps2", "initial_state.position_m.x"] {
+            let pack = ScenarioPackSpec {
+                id: "terminal_matrix_invalid_adjustment".to_owned(),
+                name: "Terminal matrix invalid adjustment".to_owned(),
+                description: "terminal matrix invalid adjustment".to_owned(),
+                entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                    id: "terminal_guidance_clean_nominal".to_owned(),
+                    terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                    base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    lanes: vec![TerminalMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "staged".to_owned(),
+                        controller_config: None,
+                    }],
+                    seed_tier: TerminalSeedTier::Smoke,
+                    condition_set: "clean".to_owned(),
+                    vehicle_variant: "nominal".to_owned(),
+                    expectation_tier: "core".to_owned(),
+                    adjustments: vec![NumericAdjustmentSpec {
+                        id: "invalid".to_owned(),
+                        path: path.to_owned(),
+                        mode: NumericPerturbationMode::Offset,
+                        value: 1.0,
+                    }],
+                    tags: Vec::new(),
+                    metadata: BTreeMap::new(),
+                })],
+            };
+
+            let err = validate_pack(&pack).expect_err("path should be rejected");
+            assert!(err
+                .to_string()
+                .contains("uses unsupported path"), "{err}");
+        }
     }
 }

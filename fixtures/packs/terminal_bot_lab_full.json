@@ -1,7 +1,7 @@
 {
-  "id": "terminal_bot_lab_suite",
-  "name": "Terminal bot-lab suite",
-  "description": "Smoke-tier half-arc terminal guidance matrix on the maintained Earth baseline, comparing baseline and current controller lanes across clean nominal and low-margin variants.",
+  "id": "terminal_bot_lab_full",
+  "name": "Terminal bot-lab full suite",
+  "description": "Full-tier half-arc terminal guidance matrix on the maintained Earth baseline, comparing baseline and current controller lanes across clean nominal and low-margin variants.",
   "entries": [
     {
       "id": "terminal_guidance_clean_nominal",
@@ -17,7 +17,7 @@
           "controller": "staged"
         }
       ],
-      "seed_tier": "smoke",
+      "seed_tier": "full",
       "condition_set": "clean",
       "vehicle_variant": "nominal",
       "expectation_tier": "core",
@@ -46,7 +46,7 @@
           "controller": "staged"
         }
       ],
-      "seed_tier": "smoke",
+      "seed_tier": "full",
       "condition_set": "clean",
       "vehicle_variant": "low_margin",
       "expectation_tier": "stress",

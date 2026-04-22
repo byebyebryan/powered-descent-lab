@@ -1,5 +1,61 @@
 # Progress
 
+## 2026-04-22
+
+### Current status
+
+- The terminal suite is no longer only a maintained design target.
+- `pd-eval` now expands a real terminal matrix entry type:
+  - selector hierarchy:
+    - `mission`
+    - `arrival_family`
+    - `condition_set`
+    - `vehicle_variant`
+  - matrix axes:
+    - `arc_point`
+    - `velocity_band`
+  - controller lane separated from the physical case
+- `half_arc_terminal_v1` is now executable as the Earth baseline family.
+- The main controller workbench packs are now:
+  - `fixtures/packs/terminal_bot_lab_suite.json`
+    - smoke tier
+  - `fixtures/packs/terminal_bot_lab_full.json`
+    - full tier
+- Batch reports now surface the terminal matrix directly in the review tree:
+  - `mission -> arrival_family -> condition_set -> vehicle_variant`
+  - `arc_point -> velocity_band -> lane -> seed`
+
+### First matrix results
+
+- The first real Earth matrix run is intentionally revealing:
+  - `terminal_bot_lab_suite`
+    - `252` runs total
+    - `12` successes
+    - all `12` successes come from the `baseline` lane
+    - `current` has `0` successes
+  - `terminal_bot_lab_full`
+    - `1008` runs total
+    - `42` successes
+    - all `42` successes come from the `baseline` lane
+    - `current` again has `0` successes
+- The clean matrix is therefore doing its job:
+  - it is no longer a vague smoke pack
+  - it is already exposing a real controller gap
+
+### Active implementation focus
+
+1. Improve controller robustness on the real Earth terminal matrix:
+   - recover nominal coverage first
+   - then low-margin coverage
+2. Expand the now-real matrix corpus carefully:
+   - `traj_err_small`
+   - `traj_err_large`
+   - later terrain and obstacle conditions
+3. Only after controller signal is meaningful on the matrix:
+   - add thresholded regression policy
+   - add compare cache / promotion / invalidation semantics
+   - consider matrix-specific batch-report affordances
+
 ## 2026-04-21
 
 ### Current status
@@ -24,25 +80,21 @@
   primary blocker.
 - Terminal-suite design now has a dedicated maintained doc:
   - `docs/terminal_suite.md`
-- The biggest remaining structural gap is the terminal-guidance corpus model:
-  - the selector hierarchy is now documented
-  - metadata carries the selector fields
-  - but execution still approximates the space with seeded perturbations rather
-    than a real `arc_point x velocity_band` arrival matrix
+- The biggest remaining structural gap is no longer “make the terminal matrix
+  real.”
+- That work is now in place. The next gap is controller performance and corpus
+  expansion on top of the real matrix.
 
 ### Active implementation focus
 
-1. Replace the current pre-matrix terminal families with a real terminal
-   arrival-space model:
-   - explicit selector hierarchy
-   - explicit arrival matrix
-   - seed as small local variation rather than the main case definition
-2. Build the first real terminal corpus on top of that model:
+1. Improve controller behavior on the real terminal matrix:
    - clean nominal
    - low-margin / stress
+2. Expand the real terminal corpus with:
    - trajectory-error conditions
    - later terrain and obstacle conditions
-3. Once the corpus is real, tighten eval semantics around:
+3. Once the corpus and controller signal are stable, tighten eval semantics
+   around:
    - representative runs
    - thresholds and regression policy
    - compare cache / promotion / invalidation
@@ -51,16 +103,48 @@
 
 ### Current open gaps
 
-- Terminal selector metadata is richer than the actual run-expansion model.
-- The current terminal bot-lab suite is still a provisional approximation of
-  the intended arrival matrix.
+- The terminal matrix is now real, but the current lane is still far from
+  competitive on it.
+- The current bot-lab corpus only covers:
+  - `clean`
+  - `nominal`
+  - `low_margin`
+  and still needs trajectory-error and later terrain conditions.
 - Compare provenance is explicit in the report, but compare cache / promote /
   invalidate semantics are not implemented yet.
-- Reporting is in much better shape, but future report work should now be
-  driven by real scenarios and corpus needs rather than generic layout tuning.
+- Reporting is now being driven by real matrix scenarios, but should continue
+  to follow corpus/controller needs rather than generic layout tuning.
 - Terminal/eval suite design should now be treated as a maintained design
   surface, not only as ad hoc planning notes attached to one implementation
   pass.
+
+#### Checkpoint 22: real terminal matrix execution and full bot-lab suite
+
+- Added a first-class terminal-matrix entry type to `pd-eval`:
+  - explicit selector hierarchy
+  - explicit `arc_point x velocity_band` matrix expansion
+  - deterministic seed policy with documented side resolution
+  - lane-aware execution over the same resolved physical cases
+- Implemented `half_arc_terminal_v1` directly in the evaluator as the
+  maintained Earth baseline family:
+  - `radius_nominal = 800m`
+  - `7` arc points
+  - `3` velocity bands
+  - `smoke` and `full` seed tiers
+- Replaced the old provisional bot-lab pack with a real matrix smoke suite:
+  - `fixtures/packs/terminal_bot_lab_suite.json`
+- Added the matching full-tier pack:
+  - `fixtures/packs/terminal_bot_lab_full.json`
+- Extended the batch report tree so terminal review now exposes:
+  - `arc_point`
+  - `velocity_band`
+  between the vehicle bucket and lane/seed detail
+- The first real Earth runs are already informative:
+  - baseline only succeeds on a narrow slice of the matrix
+  - current has zero successes on both smoke and full tiers
+- That is a good outcome for the framework even though it is bad for the
+  current controller. The suite is now doing real discriminating work instead
+  of only approximating the intended corpus.
 
 ## 2026-04-17
 

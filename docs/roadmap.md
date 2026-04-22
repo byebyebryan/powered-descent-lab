@@ -141,23 +141,30 @@ Status:
     - lane-compare and external-compare views
     - explicit report context/provenance near the top of the page
   - first-class candidate-vs-baseline comparison for batch outputs
-  - a curated terminal bot-lab pack that currently exercises clean nominal and
-    low-margin controller cases while the explicit arrival-profile matrix is
-    still being designed
-- still missing:
-  - first-class terminal-guidance selector support in the execution model, not
-    only in metadata:
+  - first-class terminal-guidance selector support in the execution model:
     - hierarchy axes such as mission, arrival family, condition set, and
       vehicle variant
-    - a real `arc_point x velocity_band` arrival matrix
-  - a broader curated terminal corpus built on top of that selector model,
-    rather than the current pre-matrix clean nominal / low-margin approximation
+    - matrix axes such as arc point and velocity band
+    - lane-aware expansion over the same resolved physical cases
+  - a real Earth `half_arc_terminal_v1` bot-lab corpus:
+    - `terminal_bot_lab_suite` as the smoke matrix
+    - `terminal_bot_lab_full` as the full-seed matrix
+  - batch review trees that surface the terminal matrix directly:
+    - `mission -> arrival_family -> condition_set -> vehicle_variant`
+    - `arc_point -> velocity_band -> lane -> seed`
+- still missing:
+  - controller robustness on the new Earth matrix:
+    - the first real matrix run shows sparse baseline successes and zero
+      current-lane successes
+  - a broader curated terminal corpus built on top of that selector model:
+    - trajectory-error conditions
+    - later terrain and obstacle conditions
   - explicit compare cache / promotion / invalidation workflow over the new
     batch identities
   - thresholded regression policy once the corpus and metrics are stable enough
     to support it
-  - deeper report polish that depends on real matrix scenarios instead of the
-    current provisional corpus
+  - deeper report polish that depends on real matrix scenarios and controller
+    signal rather than the old provisional corpus
 
 ### Phase 3: Transfer guidance
 

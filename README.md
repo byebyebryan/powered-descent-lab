@@ -148,6 +148,12 @@ Example:
 cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 4
 ```
 
+Run the same matrix with the full seed tier:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_full.json --workers 8
+```
+
 Compare a candidate batch against a recorded baseline:
 
 ```bash
@@ -155,9 +161,18 @@ cargo run -p pd-eval -- run-pack fixtures/packs/terminal_compare_baseline_fixtur
 cargo run -p pd-eval -- run-pack fixtures/packs/terminal_compare_regression_fixture.json --workers 4 --baseline-dir outputs/eval/terminal_compare_baseline_fixture
 ```
 
-Use `terminal_bot_lab_suite` as the primary controller workbench. The
-`terminal_compare_*_fixture` packs are only for smoke-testing pack-vs-pack
-compare output.
+Use `terminal_bot_lab_suite` as the primary controller workbench. It is the
+smoke-tier Earth `half_arc_terminal_v1` matrix over:
+
+- `condition_set = clean`
+- `vehicle_variant = nominal`
+- `vehicle_variant = low_margin`
+- `arc_point x velocity_band`
+- `baseline` and `current` controller lanes
+
+Use `terminal_bot_lab_full` when the same matrix should run with the full
+seed tier for spread measurement. The `terminal_compare_*_fixture` packs are
+only for smoke-testing pack-vs-pack compare output.
 
 That writes:
 
@@ -186,4 +201,5 @@ The batch report is intentionally compare-friendly:
 
 At this point the batch/single-run reporting stack is good enough for real
 controller iteration. The main next bottleneck is no longer “basic reports
-exist,” but “the scenario corpus and selector model are still too provisional.”
+exist,” but “the terminal corpus is now real enough to expose controller gaps,
+and the controllers need to catch up before the suite expands further.”

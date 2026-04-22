@@ -489,21 +489,57 @@ is real.
 
 ## Current Status
 
-Right now the terminal bot-lab suite is still provisional:
+The terminal suite is now real in the evaluator and reports.
 
-- it approximates the intended selector model with seeded perturbation families
-- metadata already carries the selector fields
-- the next real step is to make the execution model match the documented suite
-  design
+Current implementation:
 
-## Next Implementation Target
+- `pd-eval` expands a first-class terminal matrix entry type
+- `half_arc_terminal_v1` is implemented as the maintained Earth baseline family
+- `terminal_bot_lab_suite` is the smoke-tier matrix pack
+- `terminal_bot_lab_full` is the full-tier matrix pack
+- the batch report tree surfaces:
+  - `mission`
+  - `arrival_family`
+  - `condition_set`
+  - `vehicle_variant`
+  - `arc_point`
+  - `velocity_band`
+  - `lane`
+  - `seed`
 
-The next concrete milestone for the terminal suite is:
+This means the suite is no longer a provisional seeded approximation of the
+intended selector model. The selector model is now the execution model.
 
-1. implement `half_arc_terminal_v1` in `pd-eval`
-2. make `terminal_bot_lab_suite` the smoke matrix
-3. add `terminal_bot_lab_full` with the same matrix and a larger seed count
-4. thread `arc_point` and `velocity_band` through the batch report tree
+First results from the Earth baseline are already useful:
 
-Only after that should the suite expand into richer condition sets or more
-polished report UX.
+- `terminal_bot_lab_suite`
+  - `252` total runs
+  - `12` successes
+  - all `12` successes come from `baseline`
+  - `current` has `0` successes
+- `terminal_bot_lab_full`
+  - `1008` total runs
+  - `42` successes
+  - all `42` successes come from `baseline`
+  - `current` has `0` successes
+
+That is a healthy framework result. The suite is already discriminating between
+controllers rather than only exercising plumbing.
+
+## Next Expansion Targets
+
+Now that the core matrix is real, the next concrete milestones are:
+
+1. improve controller robustness on the existing Earth matrix:
+   - nominal first
+   - then low-margin
+2. expand the physical case space above seed:
+   - `traj_err_small`
+   - `traj_err_large`
+3. only after the matrix produces stable controller signal:
+   - add thresholded regression policy
+   - add compare cache / promotion / invalidation semantics
+   - consider more specialized matrix-review UI
+
+Only after that should the suite broaden into richer terrain-driven condition
+sets or more specialized report affordances.
