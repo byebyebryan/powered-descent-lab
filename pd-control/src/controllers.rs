@@ -132,9 +132,7 @@ impl ControllerSpec {
             Self::StagedDescentV1 { config } => {
                 Box::new(StagedDescentController::new(config.clone()))
             }
-            Self::TerminalPdgV1 { config } => {
-                Box::new(TerminalPdgController::new(config.clone()))
-            }
+            Self::TerminalPdgV1 { config } => Box::new(TerminalPdgController::new(config.clone())),
         }
     }
 }

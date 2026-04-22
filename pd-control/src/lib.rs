@@ -262,8 +262,7 @@ mod tests {
         let mut scenario = flat_scenario();
         scenario.id = "terminal_pdg_earth_reference".to_owned();
         scenario.name = "Terminal PDG Earth reference".to_owned();
-        scenario.description =
-            "Representative Earth half-arc terminal reference case".to_owned();
+        scenario.description = "Representative Earth half-arc terminal reference case".to_owned();
         scenario.seed = 0;
         scenario.world.gravity_mps2 = 9.81;
         scenario.initial_state.position_m = Vec2::new(-574.1707063234766, 574.1707063234767);
@@ -427,9 +426,14 @@ mod tests {
             Some(&TelemetryValue::from("nominal pending"))
         );
         assert!(frame.metrics.contains_key(metric::GUIDANCE_BURN_TIME_S));
-        assert!(frame.metrics.contains_key(metric::GUIDANCE_REQUIRED_ACCEL_RATIO));
         assert!(
-            frame.markers
+            frame
+                .metrics
+                .contains_key(metric::GUIDANCE_REQUIRED_ACCEL_RATIO)
+        );
+        assert!(
+            frame
+                .markers
                 .iter()
                 .any(|marker| marker.id == marker::TERMINAL_GATE)
         );

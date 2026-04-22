@@ -256,13 +256,12 @@ impl TerminalPdgController {
             gravity_mps2,
             view.observation.target_pad_half_width_m,
         );
-        let desired_vertical_speed_mps =
-            self.desired_terminal_vertical_speed(
-                touchdown_clearance_m,
-                max_thrust_accel_mps2,
-                max_tilt_rad,
-                gravity_mps2,
-            );
+        let desired_vertical_speed_mps = self.desired_terminal_vertical_speed(
+            touchdown_clearance_m,
+            max_thrust_accel_mps2,
+            max_tilt_rad,
+            gravity_mps2,
+        );
         let (ax_req, ay_req) = required_control_accel(
             dx_m,
             dy_m,
@@ -273,12 +272,8 @@ impl TerminalPdgController {
             selected.burn_time_s,
             view.observation.gravity_mps2,
         );
-        let (throttle_frac, target_attitude_rad) = self.allocate_command(
-            ax_req,
-            ay_req,
-            max_thrust_accel_mps2,
-            max_tilt_rad,
-        );
+        let (throttle_frac, target_attitude_rad) =
+            self.allocate_command(ax_req, ay_req, max_thrust_accel_mps2, max_tilt_rad);
 
         TerminalCommandState {
             mode: guidance_mode,
@@ -339,7 +334,12 @@ impl TerminalPdgController {
         -vy_mag.max(self.config.braking_min_speed_mps)
     }
 
-    fn terminal_lateral_correction_time(&self, dx_m: f64, vx_mps: f64, lateral_accel_mps2: f64) -> f64 {
+    fn terminal_lateral_correction_time(
+        &self,
+        dx_m: f64,
+        vx_mps: f64,
+        lateral_accel_mps2: f64,
+    ) -> f64 {
         let accel = lateral_accel_mps2.max(1e-3);
         if dx_m.abs() <= 1e-6 && vx_mps.abs() <= 1e-6 {
             return 0.0;
@@ -383,11 +383,8 @@ impl TerminalPdgController {
             return false;
         }
         let lateral_accel = (max_thrust_accel_mps2 * tilt_rad.sin()).max(0.5);
-        let side_burn_time = self.terminal_lateral_correction_time(
-            lateral_dx_m,
-            vx_mps,
-            lateral_accel,
-        );
+        let side_burn_time =
+            self.terminal_lateral_correction_time(lateral_dx_m, vx_mps, lateral_accel);
         let upward_accel = max_thrust_accel_mps2 * tilt_rad.cos();
         let net_vertical_accel = upward_accel - gravity_mps2;
         let height_after = height_to_target_m
@@ -443,8 +440,9 @@ impl TerminalPdgController {
         if overshoot_cap <= base_cap + 1e-6 {
             return None;
         }
-        let severity = ((projected_dx_abs - projected_dx_threshold) / projected_dx_threshold.max(1e-3))
-            .clamp(0.0, 1.0);
+        let severity = ((projected_dx_abs - projected_dx_threshold)
+            / projected_dx_threshold.max(1e-3))
+        .clamp(0.0, 1.0);
         Some(base_cap + (severity * (overshoot_cap - base_cap)))
     }
 
@@ -552,8 +550,7 @@ impl TerminalPdgController {
         );
         let down_speed = (-vy_up_mps).max(0.0);
         let target_down_speed = (-target_vy_up).max(0.0);
-        let vertical_up_accel = ((thrust_accel_mps2 * max_tilt.cos()) - gravity_mps2)
-            .max(0.1);
+        let vertical_up_accel = ((thrust_accel_mps2 * max_tilt.cos()) - gravity_mps2).max(0.1);
         let lateral_accel = (thrust_accel_mps2 * max_tilt.sin()).max(0.5);
         let t_v_nom = (down_speed - target_down_speed).max(0.0) / vertical_up_accel;
         let t_x_nom = vx_mps.abs() / lateral_accel;
@@ -572,7 +569,10 @@ impl TerminalPdgController {
                 self.config.terminal_gate_burn_time_min_s,
                 self.config.terminal_gate_burn_time_max_s,
             );
-            if !candidate_times.iter().any(|existing| (existing - t).abs() <= 1e-6) {
+            if !candidate_times
+                .iter()
+                .any(|existing| (existing - t).abs() <= 1e-6)
+            {
                 candidate_times.push(t);
             }
         }
@@ -617,9 +617,8 @@ impl TerminalPdgController {
         let required_ratio = required_norm / thrust_accel_mps2.max(1e-6);
         let tilt_tan = max_tilt_rad.max(0.02).tan();
         let tilt_feasible = ay_req > 0.0 && ax_req.abs() <= (tilt_tan * ay_req);
-        let ready = ay_req >= min_upward_accel_mps2
-            && tilt_feasible
-            && required_ratio <= ratio_limit;
+        let ready =
+            ay_req >= min_upward_accel_mps2 && tilt_feasible && required_ratio <= ratio_limit;
         TerminalGateCandidate {
             burn_time_s,
             required_accel_ratio: required_ratio,
@@ -654,14 +653,10 @@ impl TerminalPdgController {
             gravity_mps2,
             target_half_width_m,
         );
-        let vertical_up_accel = ((max_thrust_accel_mps2 * max_tilt.cos()) - gravity_mps2)
-            .max(0.1);
+        let vertical_up_accel = ((max_thrust_accel_mps2 * max_tilt.cos()) - gravity_mps2).max(0.1);
         let lateral_accel = (max_thrust_accel_mps2 * max_tilt.sin()).max(0.5);
-        let time_to_impact = estimate_ground_time_to_impact(
-            height_to_target_m,
-            vy_up_mps,
-            gravity_mps2,
-        );
+        let time_to_impact =
+            estimate_ground_time_to_impact(height_to_target_m, vy_up_mps, gravity_mps2);
         let (candidate_times, max_tilt, target_vy_up) = self.candidate_times(
             dx_m,
             dy_m,
@@ -676,8 +671,7 @@ impl TerminalPdgController {
             true,
         );
         let t_brake_v = down_speed / vertical_up_accel;
-        let t_brake_x =
-            self.terminal_lateral_correction_time(lateral_dx_m, vx_mps, lateral_accel);
+        let t_brake_x = self.terminal_lateral_correction_time(lateral_dx_m, vx_mps, lateral_accel);
 
         let mut candidates: Vec<TerminalGateCandidate> = candidate_times
             .into_iter()
@@ -801,8 +795,7 @@ impl TerminalPdgController {
         }
 
         let down_speed = (-vy_up_mps).max(0.0);
-        let low_clearance =
-            touchdown_clearance_m <= self.config.touchdown_low_clearance_trigger_m;
+        let low_clearance = touchdown_clearance_m <= self.config.touchdown_low_clearance_trigger_m;
         let rescue_limit = self.braking_speed_limit(
             touchdown_clearance_m,
             view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(1.0),
@@ -838,8 +831,8 @@ impl TerminalPdgController {
             let required_net_brake = (v_excess * v_excess) / (2.0 * alt_eff.max(1e-6));
             let required_ay = view.observation.gravity_mps2 + required_net_brake;
             let required_accel = required_ay / rescue_angle_target.cos().max(0.2);
-            let throttle_frac = (required_accel / (view.ctx.vehicle.max_thrust_n / mass).max(1e-6))
-                .clamp(0.0, 1.0);
+            let throttle_frac =
+                (required_accel / (view.ctx.vehicle.max_thrust_n / mass).max(1e-6)).clamp(0.0, 1.0);
             return Some(Command {
                 throttle_frac,
                 target_attitude_rad: rescue_angle_target,
@@ -883,19 +876,34 @@ impl Controller for TerminalPdgController {
             .standard_kinematics(&view)
             .phase_transition_marker(self.last_phase.as_deref(), &phase, &view)
             .metric(metric::GUIDANCE_ACTIVE, true)
-            .metric(metric::DESIRED_VERTICAL_SPEED_MPS, command_state.desired_vertical_speed_mps)
-            .metric(metric::DESIRED_ATTITUDE_RAD, command_state.target_attitude_rad)
+            .metric(
+                metric::DESIRED_VERTICAL_SPEED_MPS,
+                command_state.desired_vertical_speed_mps,
+            )
+            .metric(
+                metric::DESIRED_ATTITUDE_RAD,
+                command_state.target_attitude_rad,
+            )
             .metric(metric::PROJECTED_DX_M, command_state.projected_dx_m)
             .metric(metric::PROJECTED_TIME_S, command_state.projected_time_s)
             .metric(metric::GUIDANCE_MODE, command_state.mode.label())
-            .metric(metric::GUIDANCE_BURN_TIME_S, command_state.candidate.burn_time_s)
+            .metric(
+                metric::GUIDANCE_BURN_TIME_S,
+                command_state.candidate.burn_time_s,
+            )
             .metric(
                 metric::GUIDANCE_REQUIRED_ACCEL_RATIO,
                 command_state.candidate.required_accel_ratio,
             )
             .metric(metric::GUIDANCE_MAX_TILT_RAD, command_state.max_tilt_rad)
-            .metric(metric::GUIDANCE_LATEST_SAFE_MARGIN_S, command_state.latest_safe_margin_s)
-            .metric(metric::VERTICAL_ERROR_MPS, command_state.desired_vertical_speed_mps - view.vertical_speed_mps())
+            .metric(
+                metric::GUIDANCE_LATEST_SAFE_MARGIN_S,
+                command_state.latest_safe_margin_s,
+            )
+            .metric(
+                metric::VERTICAL_ERROR_MPS,
+                command_state.desired_vertical_speed_mps - view.vertical_speed_mps(),
+            )
             .metric(metric::LATERAL_ERROR_MPS, -view.observation.velocity_mps.x)
             .metric(metric::HOVER_THROTTLE, view.hover_throttle_frac());
 
@@ -940,7 +948,10 @@ struct NominalState {
     ready: bool,
 }
 
-fn candidate_preference_order(lhs: &TerminalGateCandidate, rhs: &TerminalGateCandidate) -> std::cmp::Ordering {
+fn candidate_preference_order(
+    lhs: &TerminalGateCandidate,
+    rhs: &TerminalGateCandidate,
+) -> std::cmp::Ordering {
     (
         !lhs.tilt_feasible,
         OrderedF64(lhs.required_accel_ratio),
@@ -1027,8 +1038,7 @@ fn estimate_target_y_projection(
         };
     }
 
-    if let Some(time_to_cross_s) = time_to_target_y_crossing(dy_m, vy_up_mps, gravity_mps2, true)
-    {
+    if let Some(time_to_cross_s) = time_to_target_y_crossing(dy_m, vy_up_mps, gravity_mps2, true) {
         return BallisticProjection {
             projected_dx_m: dx_m - (vx_mps * time_to_cross_s),
             time_to_cross_s,
@@ -1100,7 +1110,11 @@ fn time_to_target_y_crossing(
         .or_else(|| positive.first().copied())
 }
 
-fn estimate_ground_time_to_impact(height_to_target_m: f64, vy_up_mps: f64, gravity_mps2: f64) -> f64 {
+fn estimate_ground_time_to_impact(
+    height_to_target_m: f64,
+    vy_up_mps: f64,
+    gravity_mps2: f64,
+) -> f64 {
     let altitude = height_to_target_m.max(0.0);
     let disc = (vy_up_mps * vy_up_mps) + (2.0 * gravity_mps2 * altitude);
     if disc <= 0.0 || gravity_mps2 <= 1e-6 {
