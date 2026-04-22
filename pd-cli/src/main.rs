@@ -1,5 +1,3 @@
-mod report;
-
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -16,6 +14,7 @@ use pd_core::{
     ActionLogEntry, EventRecord, RunArtifacts, RunContext, RunManifest, SampleRecord, ScenarioSpec,
     replay_simulation,
 };
+use pd_report::write_run_report;
 use serde::{Serialize, de::DeserializeOwned};
 
 #[cfg(unix)]
@@ -158,7 +157,7 @@ fn render_report(args: ReportArgs) -> Result<()> {
     let output = args
         .output
         .unwrap_or_else(|| default_report_site_output(&args.bundle_dir));
-    report::write_run_report(
+    write_run_report(
         &output,
         &bundle.scenario,
         bundle.controller_spec.as_ref(),
@@ -284,7 +283,7 @@ fn write_artifact_bundle(
         write_json(&path.join("performance.json"), performance)?;
     }
     if let Some(scenario) = scenario {
-        report::write_run_report(
+        write_run_report(
             &path.join("report.html"),
             scenario,
             controller_spec,
@@ -295,7 +294,7 @@ fn write_artifact_bundle(
             performance,
         )?;
         if let Some(report_site_output) = default_report_site_output_for_bundle(path) {
-            report::write_run_report(
+            write_run_report(
                 &report_site_output,
                 scenario,
                 controller_spec,

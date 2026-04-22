@@ -795,6 +795,7 @@ fn render_batch_report(
           <span class="chip"><strong>pack</strong> <span class="mono">{pack_id}</span></span>
           <span class="chip"><strong>runs</strong> {total_runs}</span>
           <span class="chip"><strong>workers</strong> {workers_used}/{workers_requested}</span>
+          {wall_clock_chip_html}
           <span class="chip"><strong>spec</strong> <span class="mono">{pack_digest}</span></span>
           <span class="chip"><strong>resolved</strong> <span class="mono">{resolved_digest}</span></span>
         </div>
@@ -964,6 +965,7 @@ fn render_batch_report(
         total_runs = candidate.total_runs,
         workers_used = candidate.workers_used,
         workers_requested = candidate.workers_requested,
+        wall_clock_chip_html = render_wall_clock_chip(candidate),
         pack_digest = escape_html(&candidate.identity.pack_spec_digest),
         resolved_digest = escape_html(&candidate.identity.resolved_run_digest),
         compare_json_link = if comparison.is_some() {
@@ -1131,11 +1133,13 @@ fn render_overview_timing_cell(
 ) -> String {
     let main = format!("{mean_sim_time_s:.2}s mean");
     let sub_html = match deltas {
-        Some((mean_delta, max_delta)) => format!(
-            r#"<span class="compare-toggle-target">{} mean · {} max</span><span class="standalone-toggle-target">{max_sim_time_s:.2}s max</span>"#,
-            escape_html(&format_signed_seconds(mean_delta)),
-            escape_html(&format_signed_seconds(max_delta))
-        ),
+        Some((mean_delta, max_delta)) => {
+            format!(
+                r#"<span class="compare-toggle-target">{} mean · {} max</span><span class="standalone-toggle-target">{max_sim_time_s:.2}s max</span>"#,
+                escape_html(&format_signed_seconds(mean_delta)),
+                escape_html(&format_signed_seconds(max_delta))
+            )
+        }
         None => escape_html(&format!("{max_sim_time_s:.2}s max")),
     };
     format!(
@@ -1283,6 +1287,13 @@ fn overview_timing_from_records(records: &[&crate::BatchRunRecord]) -> (f64, f64
     (mean, max)
 }
 
+fn render_wall_clock_chip(candidate: &BatchReport) -> String {
+    format!(
+        r#"<span class="chip"><strong>wall</strong> {}</span>"#,
+        escape_html(&format!("{:.2}s", candidate.wall_clock_s)),
+    )
+}
+
 fn success_rate_ratio(success_runs: usize, total_runs: usize) -> f64 {
     if total_runs == 0 {
         0.0
@@ -1328,7 +1339,7 @@ fn batch_report_subtitle(
                 "reference runs"
             };
             return format!(
-                "{}. {} total runs captured for this batch; overview below compares {} current vs {} baseline lane runs and leaves {} {} outside the lane summary.",
+                "{}. {} total runs captured for this batch; overview below compares {} current vs {} baseline controller-lane runs and leaves {} {} outside the lane summary.",
                 candidate.pack_name,
                 candidate.total_runs,
                 current_runs,
@@ -1338,7 +1349,7 @@ fn batch_report_subtitle(
             );
         }
         return format!(
-            "{}. {} total runs captured for this batch; overview below compares {} current vs {} baseline lane runs.",
+            "{}. {} total runs captured for this batch; overview below compares {} current vs {} baseline controller-lane runs.",
             candidate.pack_name, candidate.total_runs, current_runs, baseline_runs
         );
     }
@@ -1355,10 +1366,19 @@ fn render_context_table(
     comparison: Option<&BatchComparison>,
 ) -> String {
     let candidate_records = candidate.records.iter().collect::<Vec<_>>();
-    let current_lane_id = preferred_current_lane_id(candidate_records.as_slice()).unwrap_or("current");
+    let current_lane_id =
+        preferred_current_lane_id(candidate_records.as_slice()).unwrap_or("current");
     let lane_split = overview_lane_split_counts(candidate, baseline, comparison);
-    let (mode, current_source, baseline_source, compare_basis, scope_resolution) =
-        if let Some(comparison) = comparison {
+    let current_lane_records = preferred_current_lane_records(candidate_records.as_slice());
+    let baseline_lane_records = controller_lane_records(candidate_records.as_slice(), "baseline");
+    let current_lane_controller_html =
+        render_controller_summary_inline(current_lane_records.as_slice());
+    let baseline_lane_controller_html =
+        render_controller_summary_inline(baseline_lane_records.as_slice());
+    let (mode, current_source, baseline_source, compare_basis, scope_resolution) = if let Some(
+        comparison,
+    ) = comparison
+    {
         let scope_resolution = if comparison.basis.shared_runs == 0 {
             "no shared scope"
         } else if comparison.basis.candidate_only_runs == 0
@@ -1368,7 +1388,7 @@ fn render_context_table(
         } else {
             "shared intersection"
         };
-            (
+        (
                 "external compare",
                 format!(
                     r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
@@ -1412,66 +1432,68 @@ fn render_context_table(
                     },
                 ),
             )
-        } else if let Some((current_runs, baseline_runs, other_runs)) = lane_split {
-            (
-                "lane compare",
-                format!(
-                    r#"<div class="context-value"><div class="context-main">current lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs</div></div>"#,
-                    escape_html(current_lane_id),
-                    escape_html(&candidate.pack_id),
-                    escape_html(&candidate.pack_name),
+    } else if let Some((current_runs, baseline_runs, other_runs)) = lane_split {
+        (
+            "lane compare",
+            format!(
+                r#"<div class="context-value"><div class="context-main">current controller lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs · {}</div></div>"#,
+                escape_html(current_lane_id),
+                escape_html(&candidate.pack_id),
+                escape_html(&candidate.pack_name),
+                current_runs,
+                current_lane_controller_html,
+            ),
+            format!(
+                r#"<div class="context-value"><div class="context-main">baseline controller lane <code>baseline</code> within <code>{}</code></div><div class="context-sub">{} baseline runs{} · {} · Baseline Resolution: internal lane pairing · current and baseline are controller lanes inside the same pack</div></div>"#,
+                escape_html(&candidate.pack_id),
+                baseline_runs,
+                if other_runs > 0 {
+                    format!(" · {} reference runs excluded", other_runs)
+                } else {
+                    String::new()
+                },
+                baseline_lane_controller_html,
+            ),
+            context_value(
+                &format!(
+                    "lane_id within pack · same physical selector cells · current {} {} · baseline {}{}",
+                    current_lane_id,
                     current_runs,
-                ),
-                format!(
-                    r#"<div class="context-value"><div class="context-main">baseline lane <code>baseline</code> within <code>{}</code></div><div class="context-sub">{} baseline runs{} · Baseline Resolution: internal lane pairing · current and baseline are lanes inside the same pack</div></div>"#,
-                    escape_html(&candidate.pack_id),
                     baseline_runs,
                     if other_runs > 0 {
-                        format!(" · {} reference runs excluded", other_runs)
+                        format!(" · other {}", other_runs)
                     } else {
                         String::new()
-                    },
+                    }
                 ),
-                context_value(
-                    &format!(
-                        "lane_id within pack · current lane {} {} · baseline {}{}",
-                        current_lane_id,
-                        current_runs,
-                        baseline_runs,
-                        if other_runs > 0 {
-                            format!(" · other {}", other_runs)
-                        } else {
-                            String::new()
-                        }
-                    ),
-                    "lane rows are compared within the shared selector space of this pack",
-                ),
-                context_value(
-                    "internal lane",
-                    "this is a within-pack lane comparison, not an external baseline",
-                ),
-            )
-        } else {
-            (
-                "standalone",
-                format!(
-                    r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
-                    escape_html(&candidate.pack_id),
-                    escape_html(&candidate.pack_name),
-                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
-                    escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
-                ),
-                context_value(
-                    "none",
-                    "Baseline Resolution: none · not applicable for this batch page",
-                ),
-                context_none_value("none"),
-                context_value(
-                    "full pack",
-                    "the overview and tree reflect the full batch without a comparison basis",
-                ),
-            )
-        };
+                "controller lanes are compared within the shared selector space of this pack",
+            ),
+            context_value(
+                "internal controller lanes",
+                "this is a within-pack controller comparison; the physical case stays the same and only the controller lane differs",
+            ),
+        )
+    } else {
+        (
+            "standalone",
+            format!(
+                r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
+                escape_html(&candidate.pack_id),
+                escape_html(&candidate.pack_name),
+                escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
+            ),
+            context_value(
+                "none",
+                "Baseline Resolution: none · not applicable for this batch page",
+            ),
+            context_none_value("none"),
+            context_value(
+                "full pack",
+                "the overview and tree reflect the full batch without a comparison basis",
+            ),
+        )
+    };
 
     let (compare_status_label, compare_status_class, compare_status_note) =
         if let Some(comparison) = comparison {
@@ -1608,6 +1630,10 @@ fn render_overview_table(
         let current_scope = selector_scope_counts_from_records(lane_current_records.as_slice());
         let baseline_lane_scope =
             selector_scope_counts_from_records(lane_baseline_records.as_slice());
+        let current_lane_controller_html =
+            render_controller_summary_inline(lane_current_records.as_slice());
+        let baseline_lane_controller_html =
+            render_controller_summary_inline(lane_baseline_records.as_slice());
         let current_review = lane_current_aggregate
             .as_ref()
             .expect("current lane aggregate");
@@ -1629,9 +1655,10 @@ fn render_overview_table(
             render_overview_row(
                 "current-summary-row",
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{} · lane current</div></div>"#,
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
                     escape_html(&candidate.pack_id),
-                    escape_html(&candidate.pack_name)
+                    escape_html(&candidate.pack_name),
+                    current_lane_controller_html,
                 ),
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
@@ -1659,9 +1686,10 @@ fn render_overview_table(
             render_overview_row(
                 "baseline-summary-row baseline-row",
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag baseline">baseline</span><code>{}</code></div><div class="overview-sub">{} · lane baseline</div></div>"#,
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag baseline">baseline</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
                     escape_html(&candidate.pack_id),
-                    escape_html(&candidate.pack_name)
+                    escape_html(&candidate.pack_name),
+                    baseline_lane_controller_html,
                 ),
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
@@ -1686,14 +1714,14 @@ fn render_overview_table(
             render_overview_row(
                 "diff-summary-row",
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>lane compare</div><div class="overview-sub">current - baseline within pack</div></div>"#
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>controller compare</div><div class="overview-sub">same pack physical cases · current - baseline controller lanes</div></div>"#
                 ),
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">shared selector space</div></div>"#,
                     escape_html(&candidate.pack_id)
                 ),
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main">{} groups · {} missions</div><div class="overview-sub">workers {} · same pack lanes</div></div>"#,
+                    r#"<div class="overview-stack"><div class="overview-main">{} groups · {} missions</div><div class="overview-sub">workers {} · same pack physical cases</div></div>"#,
                     current_scope.case_groups, current_scope.missions, candidate.workers_used
                 ),
                 format!(
@@ -2339,8 +2367,7 @@ fn render_vehicle_review_section(
         .then(|| review_aggregate_from_records(candidate_records.as_slice()));
     let baseline_aggregate = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
-    let lane_current_aggregate =
-        preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
     let lane_baseline_aggregate =
         controller_lane_aggregate(candidate_records.as_slice(), "baseline");
     let split_by_lane = comparison.is_none()
@@ -2409,10 +2436,10 @@ fn render_vehicle_review_section(
     } else {
         let empty_candidate_lanes = LaneRecordGroups::new();
         let empty_baseline_lanes = LaneRecordGroups::new();
-        let candidate_lanes =
-            extract_default_lane_groups_from_arcs(Some(candidate_arcs)).unwrap_or(&empty_candidate_lanes);
-        let baseline_lanes =
-            extract_default_lane_groups_from_arcs(Some(baseline_arcs)).unwrap_or(&empty_baseline_lanes);
+        let candidate_lanes = extract_default_lane_groups_from_arcs(Some(candidate_arcs))
+            .unwrap_or(&empty_candidate_lanes);
+        let baseline_lanes = extract_default_lane_groups_from_arcs(Some(baseline_arcs))
+            .unwrap_or(&empty_baseline_lanes);
         let mut lane_keys = merged_map_keys(candidate_lanes, Some(baseline_lanes));
         sort_lane_keys(&mut lane_keys);
         lane_keys
@@ -2489,8 +2516,7 @@ fn render_arc_review_section(
         .then(|| review_aggregate_from_records(candidate_records.as_slice()));
     let baseline_aggregate = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
-    let lane_current_aggregate =
-        preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
     let lane_baseline_aggregate =
         controller_lane_aggregate(candidate_records.as_slice(), "baseline");
     let split_by_lane = comparison.is_none()
@@ -2641,8 +2667,7 @@ fn render_velocity_review_section(
         .then(|| review_aggregate_from_records(candidate_records.as_slice()));
     let baseline_aggregate = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
-    let lane_current_aggregate =
-        preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
     let lane_baseline_aggregate =
         controller_lane_aggregate(candidate_records.as_slice(), "baseline");
     let split_by_lane = comparison.is_none()
@@ -2887,7 +2912,6 @@ fn render_entry_run_table(
             record,
             depth,
             parent_group_id,
-            show_baseline.then_some("cur"),
             TreeRowTone::Current,
             run_change_map,
             output_dir,
@@ -2901,7 +2925,6 @@ fn render_entry_run_table(
                 baseline_record,
                 depth,
                 parent_group_id,
-                Some("base"),
                 TreeRowTone::Baseline,
                 run_change_map,
                 output_dir,
@@ -2924,7 +2947,6 @@ fn render_entry_run_table(
                 record,
                 depth,
                 parent_group_id,
-                Some("base"),
                 TreeRowTone::Baseline,
                 run_change_map,
                 output_dir,
@@ -3073,23 +3095,24 @@ fn render_summary_row(
         r#"<span class="expander muted">·</span>"#.to_owned()
     };
     let tag_html = compare_tag
-        .map(|tag| {
-            let tag_class = match (kind, tone) {
-                ("lane", TreeRowTone::Current) => "row-tag lane-current",
-                ("lane", TreeRowTone::Baseline) => "row-tag lane-baseline",
-                (_, TreeRowTone::Current) => "row-tag current",
-                (_, TreeRowTone::Baseline) => "row-tag baseline",
+        .and_then(|tag| {
+            if kind != "lane" {
+                return None;
+            }
+            let tag_class = match tone {
+                TreeRowTone::Current => "row-tag lane-current",
+                TreeRowTone::Baseline => "row-tag lane-baseline",
             };
             let tag_text = match tag {
-                "cur" => "current",
-                "base" => "baseline",
+                "cur" => "CURR",
+                "base" => "BASE",
                 other => other,
             };
-            format!(
+            Some(format!(
                 r#"<span class="{}">{}</span>"#,
                 tag_class,
                 escape_html(tag_text)
-            )
+            ))
         })
         .or_else(|| {
             if kind == "lane" {
@@ -3101,7 +3124,11 @@ fn render_summary_row(
                 Some(format!(
                     r#"<span class="{}">{}</span>"#,
                     class,
-                    escape_html(label)
+                    escape_html(match label {
+                        "current" => "CURR",
+                        "baseline" => "BASE",
+                        other => other,
+                    })
                 ))
             } else {
                 None
@@ -3168,7 +3195,6 @@ fn render_seed_run_row(
     record: &crate::BatchRunRecord,
     depth: usize,
     parent_group_id: &str,
-    compare_tag: Option<&str>,
     tone: TreeRowTone,
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     output_dir: &Path,
@@ -3197,34 +3223,7 @@ fn render_seed_run_row(
         "unchanged"
     });
 
-    let tag_html = compare_tag
-        .map(|tag| {
-            let class = match tone {
-                TreeRowTone::Current => "row-tag current",
-                TreeRowTone::Baseline => "row-tag baseline",
-            };
-            let label = match tag {
-                "cur" => "current",
-                "base" => "baseline",
-                other => other,
-            };
-            format!(r#"<span class="{}">{}</span>"#, class, escape_html(label))
-        })
-        .or_else(|| {
-            if tone == TreeRowTone::Current {
-                let (class, label) = match record.resolved.lane_id.as_str() {
-                    "current" | "staged" => ("row-tag lane-current", Some("current")),
-                    "baseline" => ("row-tag lane-baseline", Some("baseline")),
-                    _ => ("", None),
-                };
-                label.map(|label| {
-                    format!(r#"<span class="{}">{}</span>"#, class, escape_html(label))
-                })
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default();
+    let tag_html = String::new();
     let seed_label = format!("seed {:04}", record.resolved.resolved_seed);
     let outcome = enum_label(&record.manifest.mission_outcome);
     let fuel = record
@@ -3374,6 +3373,36 @@ fn display_lane_label(lane_id: &str) -> String {
         "current" | "staged" => "current".to_owned(),
         "baseline" => "baseline".to_owned(),
         _ => lane_id.to_owned(),
+    }
+}
+
+fn controller_ids_for_records(records: &[&crate::BatchRunRecord]) -> Vec<String> {
+    let mut ids = records
+        .iter()
+        .map(|record| record.resolved.controller_id.trim())
+        .filter(|controller_id| !controller_id.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    ids.sort();
+    ids
+}
+
+fn render_controller_summary_inline(records: &[&crate::BatchRunRecord]) -> String {
+    let controller_ids = controller_ids_for_records(records);
+    if controller_ids.is_empty() {
+        return "controller <code>unspecified</code>".to_owned();
+    }
+    let rendered = controller_ids
+        .iter()
+        .map(|controller_id| format!(r#"<code>{}</code>"#, escape_html(controller_id)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if controller_ids.len() == 1 {
+        format!("controller {}", rendered)
+    } else {
+        format!("controllers {}", rendered)
     }
 }
 
@@ -3559,7 +3588,8 @@ fn controller_lane_aggregate(
 }
 
 fn preferred_current_lane_aggregate(records: &[&crate::BatchRunRecord]) -> Option<ReviewAggregate> {
-    preferred_current_lane_id(records).and_then(|lane_id| controller_lane_aggregate(records, lane_id))
+    preferred_current_lane_id(records)
+        .and_then(|lane_id| controller_lane_aggregate(records, lane_id))
 }
 
 fn extract_default_lane_groups_from_arcs<'a>(
@@ -3717,9 +3747,7 @@ fn format_metric_cell(
         return "-".to_owned();
     };
     match style {
-        SummaryMetricStyle::MeanStddev => {
-            escape_html(&format_metric_summary(Some(summary), kind))
-        }
+        SummaryMetricStyle::MeanStddev => escape_html(&format_metric_summary(Some(summary), kind)),
         SummaryMetricStyle::MeanDelta => {
             let value = escape_html(&format_metric_value(summary, kind));
             match metric_delta_value(Some(summary), baseline) {
@@ -4890,8 +4918,8 @@ mod report_tests {
     use crate::{
         ConcreteScenarioPackEntry, NumericPerturbationMode, NumericPerturbationSpec,
         ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec, SeedRangeSpec,
-        TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier,
-        compare_batch_reports, run_pack_with_workers,
+        TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier, compare_batch_reports,
+        run_pack_with_workers,
     };
 
     use super::render_batch_report;
@@ -5003,14 +5031,17 @@ mod report_tests {
         assert!(html.contains("<h2>Context</h2>"));
         assert!(html.contains("Report Mode"));
         assert!(html.contains("lane compare"));
-        assert!(html.contains("current lane <code>staged</code>"));
+        assert!(html.contains("current controller lane <code>staged</code>"));
+        assert!(html.contains("baseline controller lane <code>baseline</code>"));
+        assert!(html.contains("controller <code>staged_descent_v1</code>"));
+        assert!(html.contains("controller <code>baseline_v1</code>"));
         assert!(html.contains("data-view-mode=\"compare\""));
         assert!(html.contains("data-view-mode=\"current-only\""));
         assert!(html.contains("Compare Basis"));
-        assert!(html.contains("current lane staged"));
+        assert!(html.contains("same physical selector cells"));
         assert!(html.contains("lane_id within pack"));
         assert!(html.contains("Scope Resolution"));
-        assert!(html.contains("internal lane"));
+        assert!(html.contains("internal controller lanes"));
         assert!(html.contains("Compare Status"));
         assert!(html.contains("available"));
         assert!(html.contains("Cache / Promotion"));

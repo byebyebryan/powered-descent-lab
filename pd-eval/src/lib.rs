@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
+    time::Instant,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -19,7 +20,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 6;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 7;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct BatchMetricSummary {
@@ -327,6 +328,8 @@ pub struct BatchReport {
     pub pack_id: String,
     pub pack_name: String,
     pub total_runs: usize,
+    #[serde(default)]
+    pub wall_clock_s: f64,
     pub workers_requested: usize,
     pub workers_used: usize,
     pub identity: BatchIdentity,
@@ -590,12 +593,14 @@ pub fn run_pack_with_workers(
         )?,
     };
 
+    let started = Instant::now();
     let records = execute_resolved_runs(&resolved_runs, output_dir, workers_used)?;
     let report = BatchReport {
         schema_version: BATCH_REPORT_SCHEMA_VERSION,
         pack_id: pack.id.clone(),
         pack_name: pack.name.clone(),
         total_runs: records.len(),
+        wall_clock_s: started.elapsed().as_secs_f64(),
         workers_requested: requested_workers,
         workers_used,
         identity,
@@ -1196,16 +1201,17 @@ fn resolve_terminal_matrix_runs(
                         seed_spec.index,
                         &lane.id,
                     );
-                    let (scenario, resolved_parameters, selector) = resolve_terminal_matrix_scenario(
-                        entry,
-                        &base_scenario,
-                        family_spec,
-                        arc,
-                        band,
-                        seed_spec,
-                        &lane.id,
-                        &run_id,
-                    )?;
+                    let (scenario, resolved_parameters, selector) =
+                        resolve_terminal_matrix_scenario(
+                            entry,
+                            &base_scenario,
+                            family_spec,
+                            arc,
+                            band,
+                            seed_spec,
+                            &lane.id,
+                            &run_id,
+                        )?;
                     let descriptor = ResolvedRunDescriptor {
                         run_id,
                         entry_id: entry.id.clone(),
@@ -1367,22 +1373,19 @@ fn resolve_terminal_matrix_scenario(
     resolved_parameters.insert("radial_jitter_m".to_owned(), radial_jitter_m);
     resolved_parameters.insert("radius_m".to_owned(), resolved_radius_m);
     if let Some(radial_pct) = seed_spec.radial_pct {
-        scenario.metadata.insert(
-            "resolved.seed_variation".to_owned(),
-            "radial".to_owned(),
-        );
-        scenario.metadata.insert(
-            "resolved.radial_pct".to_owned(),
-            format!("{radial_pct:.6}"),
-        );
+        scenario
+            .metadata
+            .insert("resolved.seed_variation".to_owned(), "radial".to_owned());
+        scenario
+            .metadata
+            .insert("resolved.radial_pct".to_owned(), format!("{radial_pct:.6}"));
     } else if let Some(speed_pct) = seed_spec.speed_pct {
         scenario
             .metadata
             .insert("resolved.seed_variation".to_owned(), "speed".to_owned());
-        scenario.metadata.insert(
-            "resolved.speed_pct".to_owned(),
-            format!("{speed_pct:.6}"),
-        );
+        scenario
+            .metadata
+            .insert("resolved.speed_pct".to_owned(), format!("{speed_pct:.6}"));
     } else {
         scenario
             .metadata
@@ -2668,6 +2671,16 @@ fn write_artifact_bundle(
     write_json(&path.join("actions.json"), &artifacts.run.actions)?;
     write_json(&path.join("events.json"), &artifacts.run.events)?;
     write_json(&path.join("samples.json"), &artifacts.run.samples)?;
+    pd_report::write_run_report(
+        &path.join("report.html"),
+        scenario,
+        Some(controller_spec),
+        &artifacts.run.manifest,
+        &artifacts.run.events,
+        &artifacts.run.samples,
+        &artifacts.controller_updates,
+        Some(&artifacts.performance),
+    )?;
     Ok(())
 }
 
@@ -3084,18 +3097,26 @@ mod tests {
             })
             .expect("matrix record present");
 
-        assert_eq!(record.resolved.source_kind, ResolvedRunSourceKind::TerminalMatrix);
+        assert_eq!(
+            record.resolved.source_kind,
+            ResolvedRunSourceKind::TerminalMatrix
+        );
         assert_eq!(record.resolved.selector.mission, "terminal_guidance");
-        assert_eq!(record.resolved.selector.arrival_family, "half_arc_terminal_v1");
+        assert_eq!(
+            record.resolved.selector.arrival_family,
+            "half_arc_terminal_v1"
+        );
         assert_eq!(record.resolved.selector.condition_set, "clean");
         assert_eq!(record.resolved.selector.vehicle_variant, "nominal");
         assert_eq!(record.resolved.selector.arc_point, "a80");
         assert_eq!(record.resolved.selector.velocity_band, "high");
         assert_eq!(record.resolved.lane_id, "current");
-        assert!(record
-            .resolved
-            .resolved_scenario_name
-            .contains("a80 high seed 6 current"));
+        assert!(
+            record
+                .resolved
+                .resolved_scenario_name
+                .contains("a80 high seed 6 current")
+        );
         assert_eq!(
             record.resolved.selector.expectation_tier.as_deref(),
             Some("core")
@@ -3147,9 +3168,7 @@ mod tests {
             };
 
             let err = validate_pack(&pack).expect_err("path should be rejected");
-            assert!(err
-                .to_string()
-                .contains("uses unsupported path"), "{err}");
+            assert!(err.to_string().contains("uses unsupported path"), "{err}");
         }
     }
 }

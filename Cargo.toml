@@ -2,6 +2,7 @@
 members = [
   "pd-core",
   "pd-control",
+  "pd-report",
   "pd-cli",
   "pd-eval",
 ]
