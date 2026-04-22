@@ -131,8 +131,8 @@ Recommended first arc-point set:
 - `a30`
 - `a45`
 - `a60`
-- `a72`
-- `a84`
+- `a70`
+- `a80`
 
 This intentionally reduces the clean half-arc suite to seven one-sided points.
 That is dense enough to expose controller shape without turning the first matrix
@@ -142,7 +142,9 @@ These represent angle-from-vertical magnitudes, not full signed left/right
 positions.
 
 Exact `90°` should be avoided in the first suite because it behaves more like a
-pathological edge than a useful core coverage point.
+pathological edge than a useful core coverage point. The first maintained set
+should also stop at `a80` rather than `a84`, which keeps the shallow end in a
+more practical range while still covering very flat arrivals.
 
 `a00` is a deliberate vertical reference case. It should remain in the first
 suite, but it is the one cell where side resolution is ignored because left and
@@ -156,6 +158,7 @@ not radius as another top-level matrix axis.
 Recommended first policy:
 
 - `radius_nominal = 800m`
+- `gravity_mps2 = 9.81`
 
 Rationale:
 
@@ -175,6 +178,63 @@ So the first `half_arc_terminal_v1` family should:
 
 That keeps `arc_point x velocity_band` readable while still leaving enough
 reaction room for the controller.
+
+### Gravity families
+
+For comparison, it is useful to think about terminal guidance in three gravity
+families:
+
+- `earth`
+  - `gravity_mps2 = 9.81`
+  - use for the first maintained family
+  - more interesting and decision-dense as the default terminal workbench
+  - aligns better with prior `pylander` intuition once practical flight-time
+    tuning is restored
+- `mars`
+  - `gravity_mps2 = 3.71`
+  - useful as a softer comparison against the Earth baseline
+  - should reuse the same selector model but with its own tuned
+    `nominal_ttg_by_arc_point` table
+- `lunar`
+  - `gravity_mps2 = 1.62`
+  - useful as a wide-margin low-gravity reference
+  - should remain available for comparison, not as the maintained default
+
+So the first family should remain:
+
+- `half_arc_terminal_v1`
+  - earth gravity baseline
+
+Later comparison families can include:
+
+- `half_arc_terminal_mars_v1`
+- `half_arc_terminal_lunar_v1`
+
+but each should be tuned as its own family rather than inheriting the Earth
+`ttg` table unchanged.
+
+Reference comparison charts:
+
+Earth baseline:
+
+![Half Arc Terminal V1 Earth](assets/terminal_suite/half_arc_terminal_v1.svg)
+
+Mars comparison reference:
+
+![Half Arc Terminal Mars Reference](assets/terminal_suite/half_arc_terminal_mars_reference.svg)
+
+Lunar comparison reference:
+
+![Half Arc Terminal Lunar Reference](assets/terminal_suite/half_arc_terminal_lunar_reference.svg)
+
+The Mars and Lunar charts are comparison references only. They are useful for
+visualizing how the same broad half-arc geometry changes across gravity
+families, but they should not yet be treated as locked maintained family specs.
+
+The maintained Earth baseline intentionally leans more toward the older
+`pylander` philosophy of practical/stable flight time, especially at the
+shallow end, instead of forcing every shallow entry back into a descending-only
+shape.
 
 ### Velocity bands
 
@@ -206,9 +266,8 @@ Recommended interpretation:
 Suggested first policy:
 
 - `mid`: the exact nominal time-to-go from the family table for that arc point
-- `low`: `+12.5%` time-to-go from nominal, unless that would force an
-  upward-starting vertical velocity for the cell
-- `high`: `-12.5%` time-to-go from nominal
+- `low`: `+25%` time-to-go from nominal
+- `high`: `-25%` time-to-go from nominal
 
 To keep the family implementation unambiguous, `half_arc_terminal_v1` should
 carry an explicit `nominal_ttg_by_arc_point` table. `mid` means that exact
@@ -216,16 +275,17 @@ table entry, not an implementation-specific heuristic.
 
 Recommended first `nominal_ttg_by_arc_point` table:
 
-- `a00 = 10.50s`
-- `a15 = 10.50s`
-- `a30 = 10.25s`
-- `a45 = 10.00s`
-- `a60 = 9.75s`
-- `a72 = 9.50s`
-- `a84 = 9.00s`
+- `a00 = 8.50s`
+- `a15 = 8.50s`
+- `a30 = 8.25s`
+- `a45 = 8.00s`
+- `a60 = 7.75s`
+- `a70 = 7.50s`
+- `a80 = 7.00s`
 
-These values are deliberately conservative at the shallow end so the `low` band
-still represents a descending arrival, not an upward-starting lob.
+These values are deliberately tuned for a more practical and stable flight
+shape, especially at the shallow end, so the baseline family keeps a steadier
+and more readable terminal arc instead of collapsing into a flat dash.
 
 Band derivation rule:
 
@@ -236,8 +296,8 @@ Band derivation rule:
   to the target height under gravity
 - derive:
   - `mid = nominal_ttg_by_arc_point[arc_point]`
-  - `low = min(mid * 1.125, t_flat * 0.98)`
-  - `high = mid * 0.875`
+  - `low = mid * 1.25`
+  - `high = mid * 0.75`
 
 The key is that the band should preserve the same arrival geometry while
 changing the margin.
