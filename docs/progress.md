@@ -22,6 +22,8 @@
   - external compare
 - Reporting is now good enough to support real iteration; it is no longer the
   primary blocker.
+- Terminal-suite design now has a dedicated maintained doc:
+  - `docs/terminal_suite.md`
 - The biggest remaining structural gap is the terminal-guidance corpus model:
   - the selector hierarchy is now documented
   - metadata carries the selector fields
@@ -56,6 +58,9 @@
   invalidate semantics are not implemented yet.
 - Reporting is in much better shape, but future report work should now be
   driven by real scenarios and corpus needs rather than generic layout tuning.
+- Terminal/eval suite design should now be treated as a maintained design
+  surface, not only as ad hoc planning notes attached to one implementation
+  pass.
 
 ## 2026-04-17
 

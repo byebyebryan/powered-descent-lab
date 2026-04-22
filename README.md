@@ -91,6 +91,7 @@ without treating the old scenario files as fixtures to transliterate directly.
 
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
+- [Terminal Suite Design](docs/terminal_suite.md)
 - [Early Design Scratchpad](docs/early_design.md)
 
 ## Report Serving

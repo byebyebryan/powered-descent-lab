@@ -759,8 +759,8 @@ Example resolved selector:
 - `arrival_family=half_arc_terminal_v1`
 - `condition_set=clean`
 - `vehicle_variant=nominal`
-- `arc_point=p07`
-- `velocity_band=v03`
+- `arc_point=a30`
+- `velocity_band=mid`
 - `seed=0042`
 - `controller=baseline_v1`
 
