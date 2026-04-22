@@ -1,5 +1,62 @@
 # Progress
 
+## 2026-04-21
+
+### Current status
+
+- The repo is now past the first “does the scaffold work?” stage.
+- A real bot-lab workflow exists end to end:
+  - deterministic sim and replay
+  - shared controller kit
+  - multiple built-in controller lanes
+  - seeded packs and native multithreaded eval
+  - single-run and batch report generation
+  - report-site navigation under `outputs/reports/`
+- `terminal_bot_lab_suite` is now the main controller workbench.
+- External pack-vs-pack compare still exists, but only as explicit fixtures:
+  - `terminal_compare_baseline_fixture`
+  - `terminal_compare_regression_fixture`
+- Batch reports now explicitly state their provenance and comparison mode:
+  - standalone
+  - lane compare
+  - external compare
+- Reporting is now good enough to support real iteration; it is no longer the
+  primary blocker.
+- The biggest remaining structural gap is the terminal-guidance corpus model:
+  - the selector hierarchy is now documented
+  - metadata carries the selector fields
+  - but execution still approximates the space with seeded perturbations rather
+    than a real `arc_point x velocity_band` arrival matrix
+
+### Active implementation focus
+
+1. Replace the current pre-matrix terminal families with a real terminal
+   arrival-space model:
+   - explicit selector hierarchy
+   - explicit arrival matrix
+   - seed as small local variation rather than the main case definition
+2. Build the first real terminal corpus on top of that model:
+   - clean nominal
+   - low-margin / stress
+   - trajectory-error conditions
+   - later terrain and obstacle conditions
+3. Once the corpus is real, tighten eval semantics around:
+   - representative runs
+   - thresholds and regression policy
+   - compare cache / promotion / invalidation
+4. After terminal guidance is structurally solid, start the smallest true
+   Phase 3 transfer slice.
+
+### Current open gaps
+
+- Terminal selector metadata is richer than the actual run-expansion model.
+- The current terminal bot-lab suite is still a provisional approximation of
+  the intended arrival matrix.
+- Compare provenance is explicit in the report, but compare cache / promote /
+  invalidate semantics are not implemented yet.
+- Reporting is in much better shape, but future report work should now be
+  driven by real scenarios and corpus needs rather than generic layout tuning.
+
 ## 2026-04-17
 
 ### Current status

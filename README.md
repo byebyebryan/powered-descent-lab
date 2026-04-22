@@ -172,7 +172,17 @@ recording stable digests for the resolved pack and resolved run set.
 
 The batch report is intentionally compare-friendly:
 
-- candidate summary and grouped family/entry tables
-- direct links back to failed and representative run bundles
+- a selector-aware review tree as the main drill-down surface
+- explicit report context near the top of the page:
+  - standalone
+  - lane compare
+  - external compare
+  - compare basis
+  - scope resolution
+  - compare status
 - optional candidate-vs-baseline deltas over shared run IDs
-- regression, recovery, and outcome-change lists
+- stable links back to per-run detail reports and bundles
+
+At this point the batch/single-run reporting stack is good enough for real
+controller iteration. The main next bottleneck is no longer “basic reports
+exist,” but “the scenario corpus and selector model are still too provisional.”

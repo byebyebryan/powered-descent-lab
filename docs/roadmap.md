@@ -22,9 +22,13 @@ Current implementation status:
 
 - Phase 0 is complete.
 - Phase 1 is functionally complete for the first usable landing slice.
-- Phase 2 has started with a minimal `pd-eval` pack runner and aggregate JSON
-  summaries, but the phase is now explicitly framed around building a proper bot
-  workflow rather than only adding more packs.
+- Phase 2 is now well underway and has crossed the line from scaffolding into a
+  usable bot workflow:
+  - shared controller kit and multiple built-in controller styles
+  - seeded packs and native multithreaded batch execution
+  - single-run and batch static reports
+  - lane-compare and external compare reporting
+  - a curated terminal bot-lab suite as the main controller workbench
 - One Phase 3 contract probe has been pulled forward intentionally:
   `timed_checkpoint`, to validate early-termination mission evaluation without
   committing to the full transfer stack yet.
@@ -119,34 +123,41 @@ Exit criteria:
 
 Status:
 
-- started
+- late in the phase, but not closed yet
 - current implementation includes:
-  - a first named pack runner and summary counts
+  - a real named pack runner and summary path in `pd-eval`
   - controller config/spec plumbing for built-in controllers
   - controller-local status, phase, metrics, and markers
   - a shared controller helper kit over target-relative state and terrain
   - a second built-in controller style to keep the framework from collapsing
     into one heuristic path
-  - a first static single-run inspection report in `pd-cli`
+  - static single-run inspection reports in `pd-cli`
   - scenario-family expansion with explicit seeds and seed ranges
   - deterministic perturbation resolution recorded per run
   - native multithreaded execution in `pd-eval`
-  - richer batch summaries grouped by entry and family, including failed seeds
-    and slowest runs
-  - a first static batch report page
+  - richer batch summaries and review metrics over generated artifacts
+  - static batch reports with:
+    - selector-aware review trees
+    - lane-compare and external-compare views
+    - explicit report context/provenance near the top of the page
   - first-class candidate-vs-baseline comparison for batch outputs
   - a curated terminal bot-lab pack that currently exercises clean nominal and
     low-margin controller cases while the explicit arrival-profile matrix is
     still being designed
 - still missing:
-  - stronger comparison/regression reporting
-  - a real digest-backed compare/cache workflow over the new batch identities
-  - polished batch-level report UX
-  - first-class terminal-guidance selector support:
+  - first-class terminal-guidance selector support in the execution model, not
+    only in metadata:
     - hierarchy axes such as mission, arrival family, condition set, and
       vehicle variant
-    - `arc_point x velocity_band` matrix coverage instead of one flat family
-      name plus lane-specific entry IDs
+    - a real `arc_point x velocity_band` arrival matrix
+  - a broader curated terminal corpus built on top of that selector model,
+    rather than the current pre-matrix clean nominal / low-margin approximation
+  - explicit compare cache / promotion / invalidation workflow over the new
+    batch identities
+  - thresholded regression policy once the corpus and metrics are stable enough
+    to support it
+  - deeper report polish that depends on real matrix scenarios instead of the
+    current provisional corpus
 
 ### Phase 3: Transfer guidance
 
@@ -207,7 +218,9 @@ Planned scope:
 - generated summary charts built on top of the owned artifact schema
 
 This phase is for richer and more polished report UX after a minimal inspection
-path already exists in Phase 2.
+path already exists in Phase 2. The current state is enough for real
+controller/batch iteration; this phase is about deeper visualization and
+workflow polish after the scenario corpus is more mature.
 
 Exit criteria:
 
