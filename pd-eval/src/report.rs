@@ -91,6 +91,9 @@ fn render_batch_report(
     } else {
         format!("{} batch report", candidate.pack_name)
     };
+    let has_compare_view = comparison.is_some()
+        || overview_lane_split_counts(candidate, baseline.map(|(_, report)| report), comparison)
+            .is_some();
 
     format!(
         r#"<!DOCTYPE html>
@@ -466,6 +469,47 @@ fn render_batch_report(
       border-color: var(--accent);
       color: var(--accent);
     }}
+    .view-mode-controls {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }}
+    .view-mode-controls button {{
+      border: 1px solid var(--line);
+      background: rgba(248,243,234,0.92);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 7px 11px;
+      font: inherit;
+      font-size: 0.84rem;
+      cursor: pointer;
+    }}
+    .view-mode-controls button:hover {{
+      border-color: var(--accent);
+      color: var(--accent);
+    }}
+    .view-mode-controls button.active {{
+      border-color: rgba(14, 107, 96, 0.38);
+      background: rgba(14, 107, 96, 0.12);
+    }}
+    .standalone-toggle-target {{
+      display: none;
+    }}
+    #report-page.current-standalone .compare-toggle-target {{
+      display: none !important;
+    }}
+    #report-page.current-standalone .standalone-toggle-target {{
+      display: inline;
+    }}
+    #report-page.current-standalone .baseline-summary-row,
+    #report-page.current-standalone .diff-summary-row,
+    #report-page.current-standalone .baseline-row,
+    #report-page.current-standalone .lane-controller-baseline,
+    #report-page.current-standalone .compare-sections,
+    #report-page.current-standalone .compare-only-control {{
+      display: none !important;
+    }}
     .scenario-table {{
       width: 100%;
       min-width: 980px;
@@ -742,7 +786,7 @@ fn render_batch_report(
   </style>
 </head>
 <body>
-  <div class="page">
+  <div id="report-page" class="page">
     <header class="hero">
       <div>
         <h1>{title_html}</h1>
@@ -770,16 +814,18 @@ fn render_batch_report(
 	    <section class="panel">
 	      <h2>Review Tree</h2>
 	      <p>Start here. The selector hierarchy is rendered as a dense tree table, with aggregate rows up top and exact seeded runs hidden underneath the lane rows.</p>
+	      {view_controls}
 	      {tree_controls}
 	      <div id="review-tree-root" class="review-tree-root">{review_tree}</div>
 	    </section>
 
-	    {comparison_sections}
+	    <div class="compare-sections">{comparison_sections}</div>
 	  </div>
   <script>
     (() => {{
+      const page = document.getElementById("report-page");
       const root = document.getElementById("review-tree-root");
-      if (!root) return;
+      if (!root || !page) return;
       const tables = () => Array.from(root.querySelectorAll("table[data-tree-table]"));
       const childRows = (table, group) =>
         Array.from(table.querySelectorAll(`tr[data-parent="${{group}}"]`));
@@ -888,6 +934,21 @@ fn render_batch_report(
           }}
         }});
       }});
+      const modeButtons = Array.from(document.querySelectorAll("[data-view-mode]"));
+      const setViewMode = (mode) => {{
+        page.classList.toggle("current-standalone", mode === "current-only");
+        modeButtons.forEach((button) => {{
+          button.classList.toggle("active", button.getAttribute("data-view-mode") === mode);
+        }});
+      }};
+      modeButtons.forEach((button) => {{
+        button.addEventListener("click", () => {{
+          const mode = button.getAttribute("data-view-mode");
+          if (!mode) return;
+          setViewMode(mode);
+        }});
+      }});
+      setViewMode("compare");
     }})();
   </script>
 </body>
@@ -918,6 +979,7 @@ fn render_batch_report(
             render_context_table(candidate, baseline.map(|(_, report)| report), comparison),
         overview_html =
             render_overview_table(candidate, baseline.map(|(_, report)| report), comparison,),
+        view_controls = render_view_controls(has_compare_view),
         tree_controls = render_tree_controls(comparison.is_some()),
         review_tree = render_review_tree(
             candidate,
@@ -1019,9 +1081,11 @@ fn render_overview_result_cell(
     let main = format!("{:.1}%", percentage(success_runs, total_runs));
     let sub = match success_delta {
         Some(delta) => format!(
-            r#"<span class="{}">{}</span> · {} fail"#,
+            r#"<span class="compare-toggle-target"><span class="{}">{}</span> · {} fail</span><span class="standalone-toggle-target">{} success · {} fail</span>"#,
             delta_class(-delta),
             escape_html(&format_percent_delta(delta)),
+            failure_runs,
+            success_runs,
             failure_runs
         ),
         None => format!("{success_runs}/{total_runs} success · {failure_runs} fail"),
@@ -1066,18 +1130,18 @@ fn render_overview_timing_cell(
     deltas: Option<(f64, f64)>,
 ) -> String {
     let main = format!("{mean_sim_time_s:.2}s mean");
-    let sub = match deltas {
+    let sub_html = match deltas {
         Some((mean_delta, max_delta)) => format!(
-            "{} mean · {} max",
-            format_signed_seconds(mean_delta),
-            format_signed_seconds(max_delta)
+            r#"<span class="compare-toggle-target">{} mean · {} max</span><span class="standalone-toggle-target">{max_sim_time_s:.2}s max</span>"#,
+            escape_html(&format_signed_seconds(mean_delta)),
+            escape_html(&format_signed_seconds(max_delta))
         ),
-        None => format!("{max_sim_time_s:.2}s max"),
+        None => escape_html(&format!("{max_sim_time_s:.2}s max")),
     };
     format!(
         r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
         escape_html(&main),
-        escape_html(&sub)
+        sub_html
     )
 }
 
@@ -1097,7 +1161,7 @@ fn render_overview_efficiency_cell(
         .map(|summary| format_metric_value(summary, MetricDisplayKind::Meters))
         .unwrap_or_else(|| "-".to_owned());
     let main = format!("fuel {fuel}");
-    let sub = if show_delta {
+    let sub_html = if show_delta {
         let fuel_delta = metric_delta_value(
             review.fuel_used_pct_of_max.as_ref(),
             baseline.and_then(|item| item.fuel_used_pct_of_max.as_ref()),
@@ -1110,14 +1174,16 @@ fn render_overview_efficiency_cell(
         )
         .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Meters))
         .unwrap_or_else(|| "-".to_owned());
-        format!("offset {offset} · {fuel_delta} fuel · {offset_delta} off")
+        format!(
+            r#"<span class="compare-toggle-target">offset {offset} · {fuel_delta} fuel · {offset_delta} off</span><span class="standalone-toggle-target">offset {offset}</span>"#
+        )
     } else {
-        format!("offset {offset}")
+        escape_html(&format!("offset {offset}"))
     };
     format!(
         r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
         escape_html(&main),
-        escape_html(&sub)
+        sub_html
     )
 }
 
@@ -1131,25 +1197,28 @@ fn render_overview_tracking_cell(
         .as_ref()
         .map(|summary| format_metric_value(summary, MetricDisplayKind::Meters))
         .unwrap_or_else(|| "-".to_owned());
-    let sub = if show_delta {
+    let sub_html = if show_delta {
         metric_delta_value(
             review.reference_gap_mean_m.as_ref(),
             baseline.and_then(|item| item.reference_gap_mean_m.as_ref()),
         )
         .map(|delta| {
             format!(
-                "Δ {}",
-                format_metric_delta_value(delta, MetricDisplayKind::Meters)
+                r#"<span class="compare-toggle-target">Δ {}</span><span class="standalone-toggle-target">mean ref deviation</span>"#,
+                escape_html(&format_metric_delta_value(delta, MetricDisplayKind::Meters))
             )
         })
-        .unwrap_or_else(|| "Δ -".to_owned())
+        .unwrap_or_else(|| {
+            r#"<span class="compare-toggle-target">Δ -</span><span class="standalone-toggle-target">mean ref deviation</span>"#
+                .to_owned()
+        })
     } else {
-        "mean ref deviation".to_owned()
+        escape_html("mean ref deviation")
     };
     format!(
         r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
         escape_html(&reference),
-        escape_html(&sub)
+        sub_html
     )
 }
 
@@ -1814,15 +1883,26 @@ fn render_tree_controls(has_compare: bool) -> String {
     ];
     if has_compare {
         buttons.push(
-            r#"<button type="button" data-tree-action="toggle-baseline">Hide Baseline</button>"#
+            r#"<button type="button" class="compare-only-control" data-tree-action="toggle-baseline">Hide Baseline</button>"#
                 .to_owned(),
         );
         buttons.push(
-            r#"<button type="button" data-tree-action="toggle-diff">Show Changed Only</button>"#
+            r#"<button type="button" class="compare-only-control" data-tree-action="toggle-diff">Show Changed Only</button>"#
                 .to_owned(),
         );
     }
     format!(r#"<div class="tree-controls">{}</div>"#, buttons.join(""))
+}
+
+fn render_view_controls(has_compare_view: bool) -> String {
+    if !has_compare_view {
+        return String::new();
+    }
+    r#"<div class="view-mode-controls">
+  <button type="button" class="active" data-view-mode="compare">Compare View</button>
+  <button type="button" data-view-mode="current-only">Current Only</button>
+</div>"#
+        .to_owned()
 }
 
 const UNSPECIFIED_SELECTOR_VALUE: &str = "unspecified";
@@ -2927,7 +3007,7 @@ fn render_summary_note(
     {
         let suffix = if regression_count == 1 { "" } else { "s" };
         items.push(format!(
-            r#"<span class="bad">{} regression{}</span>"#,
+            r#"<span class="compare-toggle-target"><span class="bad">{} regression{}</span></span>"#,
             regression_count, suffix
         ));
     }
@@ -3075,11 +3155,11 @@ fn render_summary_row(
         tag_html = tag_html,
         kind = escape_html(kind),
         label = escape_html(label),
-        outcome = escape_html(&outcome_html),
-        fuel = escape_html(&fuel_html),
-        flight = escape_html(&flight_html),
-        offset = escape_html(&offset_html),
-        reference = escape_html(&ref_html),
+        outcome = outcome_html,
+        fuel = fuel_html,
+        flight = flight_html,
+        offset = offset_html,
+        reference = ref_html,
         note = note_html,
     )
 }
@@ -3637,11 +3717,16 @@ fn format_metric_cell(
         return "-".to_owned();
     };
     match style {
-        SummaryMetricStyle::MeanStddev => format_metric_summary(Some(summary), kind),
+        SummaryMetricStyle::MeanStddev => {
+            escape_html(&format_metric_summary(Some(summary), kind))
+        }
         SummaryMetricStyle::MeanDelta => {
-            let value = format_metric_value(summary, kind);
+            let value = escape_html(&format_metric_value(summary, kind));
             match metric_delta_value(Some(summary), baseline) {
-                Some(delta) => format!("{value} ({})", format_metric_delta_value(delta, kind)),
+                Some(delta) => format!(
+                    r#"{value}<span class="compare-toggle-target"> ({})</span>"#,
+                    escape_html(&format_metric_delta_value(delta, kind))
+                ),
                 None => value,
             }
         }
@@ -3659,15 +3744,18 @@ fn format_summary_rate(
         aggregate.failure_runs
     );
     match style {
-        SummaryMetricStyle::MeanStddev => base,
+        SummaryMetricStyle::MeanStddev => escape_html(&base),
         SummaryMetricStyle::MeanDelta => {
             let Some(baseline) = baseline else {
-                return base;
+                return escape_html(&base);
             };
             let delta = (crate::success_rate(aggregate.success_runs, aggregate.total_runs)
                 - crate::success_rate(baseline.success_runs, baseline.total_runs))
                 * 100.0;
-            format!("{base} ({delta:+.1}pt)")
+            format!(
+                r#"{}<span class="compare-toggle-target"> ({delta:+.1}pt)</span>"#,
+                escape_html(&base)
+            )
         }
     }
 }
@@ -4916,6 +5004,8 @@ mod report_tests {
         assert!(html.contains("Report Mode"));
         assert!(html.contains("lane compare"));
         assert!(html.contains("current lane <code>staged</code>"));
+        assert!(html.contains("data-view-mode=\"compare\""));
+        assert!(html.contains("data-view-mode=\"current-only\""));
         assert!(html.contains("Compare Basis"));
         assert!(html.contains("current lane staged"));
         assert!(html.contains("lane_id within pack"));
@@ -4974,6 +5064,8 @@ mod report_tests {
         assert!(html.contains("<h2>Context</h2>"));
         assert!(html.contains("Report Mode"));
         assert!(html.contains("external compare"));
+        assert!(html.contains("data-view-mode=\"compare\""));
+        assert!(html.contains("data-view-mode=\"current-only\""));
         assert!(html.contains("Baseline Source"));
         assert!(html.contains("compare_baseline_unit"));
         assert!(html.contains("Compare Basis"));
