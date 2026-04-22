@@ -29,6 +29,13 @@ pub mod metric {
     pub const DESIRED_ATTITUDE_RAD: &str = "guidance.desired_attitude_rad";
     pub const VERTICAL_ERROR_MPS: &str = "guidance.vertical_error_mps";
     pub const LATERAL_ERROR_MPS: &str = "guidance.lateral_error_mps";
+    pub const PROJECTED_DX_M: &str = "guidance.projected_dx_m";
+    pub const PROJECTED_TIME_S: &str = "guidance.projected_time_s";
+    pub const GUIDANCE_MODE: &str = "guidance.mode";
+    pub const GUIDANCE_BURN_TIME_S: &str = "guidance.burn_time_s";
+    pub const GUIDANCE_REQUIRED_ACCEL_RATIO: &str = "guidance.required_accel_ratio";
+    pub const GUIDANCE_MAX_TILT_RAD: &str = "guidance.max_tilt_rad";
+    pub const GUIDANCE_LATEST_SAFE_MARGIN_S: &str = "guidance.latest_safe_margin_s";
 }
 
 pub mod marker {
@@ -59,6 +66,10 @@ impl<'a> ControllerView<'a> {
     }
 
     pub fn altitude_m(&self) -> f64 {
+        self.observation.touchdown_clearance_m.max(0.0)
+    }
+
+    pub fn touchdown_clearance_m(&self) -> f64 {
         self.observation.touchdown_clearance_m.max(0.0)
     }
 

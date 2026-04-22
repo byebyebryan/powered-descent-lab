@@ -14,7 +14,7 @@
         },
         {
           "id": "current",
-          "controller": "staged"
+          "controller": "terminal_pdg"
         }
       ],
       "seed_tier": "full",
@@ -43,7 +43,7 @@
         },
         {
           "id": "current",
-          "controller": "staged"
+          "controller": "terminal_pdg"
         }
       ],
       "seed_tier": "full",

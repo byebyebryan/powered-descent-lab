@@ -153,9 +153,11 @@ Status:
     - `mission -> arrival_family -> condition_set -> vehicle_variant`
     - `arc_point -> velocity_band -> lane -> seed`
 - still missing:
-  - controller robustness on the new Earth matrix:
-    - the first real matrix run shows sparse baseline successes and zero
-      current-lane successes
+  - controller robustness on the shallow tail of the new Earth matrix:
+    - `terminal_pdg_v1` now materially beats the old baseline over most of the
+      matrix
+    - the remaining weakness is concentrated in `a60` through `a80`,
+      especially the `high` band
   - a broader curated terminal corpus built on top of that selector model:
     - trajectory-error conditions
     - later terrain and obstacle conditions

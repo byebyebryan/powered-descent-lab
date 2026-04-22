@@ -5,6 +5,12 @@
 ### Current status
 
 - The terminal suite is no longer only a maintained design target.
+- `terminal_pdg_v1` now exists as the first serious native Rust terminal
+  controller lane:
+  - terminal-only PDG-shaped guidance
+  - latest-safe and nominal gate evaluation
+  - braking-envelope vertical schedule
+  - touchdown-clearance-aware rescue logic
 - `pd-eval` now expands a real terminal matrix entry type:
   - selector hierarchy:
     - `mission`
@@ -21,32 +27,40 @@
     - smoke tier
   - `fixtures/packs/terminal_bot_lab_full.json`
     - full tier
+- The bot-lab `current` lane now points at `terminal_pdg_v1`, not the older
+  staged heuristic.
 - Batch reports now surface the terminal matrix directly in the review tree:
   - `mission -> arrival_family -> condition_set -> vehicle_variant`
   - `arc_point -> velocity_band -> lane -> seed`
 
 ### First matrix results
 
-- The first real Earth matrix run is intentionally revealing:
+- The first real Earth matrix run did its job:
+  - it exposed that the old `current` lane was not viable on the real matrix
+  - that result directly forced the new controller pass
+- After the `terminal_pdg_v1` implementation pass:
   - `terminal_bot_lab_suite`
-    - `252` runs total
-    - `12` successes
-    - all `12` successes come from the `baseline` lane
-    - `current` has `0` successes
+    - `baseline`: `12 / 126`
+    - `current`: `100 / 126`
   - `terminal_bot_lab_full`
-    - `1008` runs total
-    - `42` successes
-    - all `42` successes come from the `baseline` lane
-    - `current` again has `0` successes
-- The clean matrix is therefore doing its job:
-  - it is no longer a vague smoke pack
-  - it is already exposing a real controller gap
+    - `baseline`: `42 / 504`
+    - `current`: `403 / 504`
+- The new controller now sweeps the steeper core of the matrix:
+  - smoke: perfect across `a00` through `a45`
+  - full: perfect across `a00` through `a45`
+- The remaining weakness is concentrated in the shallow tail:
+  - `a60` still has some misses
+  - `a70` and `a80` are the main remaining weak cells
+  - `high` remains the hardest velocity band even after the latest-safe fix
 
 ### Active implementation focus
 
-1. Improve controller robustness on the real Earth terminal matrix:
-   - recover nominal coverage first
-   - then low-margin coverage
+1. Improve `terminal_pdg_v1` robustness on the shallow tail of the Earth
+   terminal matrix:
+   - `a60`
+   - `a70`
+   - `a80`
+   - especially `high`
 2. Expand the now-real matrix corpus carefully:
    - `traj_err_small`
    - `traj_err_large`
@@ -103,8 +117,8 @@
 
 ### Current open gaps
 
-- The terminal matrix is now real, but the current lane is still far from
-  competitive on it.
+- The terminal matrix is now real, and the current lane is finally
+  competitive on it, but the shallow-tail cells still need more work.
 - The current bot-lab corpus only covers:
   - `clean`
   - `nominal`
@@ -117,6 +131,29 @@
 - Terminal/eval suite design should now be treated as a maintained design
   surface, not only as ad hoc planning notes attached to one implementation
   pass.
+
+#### Checkpoint 23: `terminal_pdg_v1` replaces the staged current lane
+
+- Added a new native Rust controller in `pd-control`:
+  - `terminal_pdg_v1`
+  - terminal-only PDG-shaped guidance
+  - latest-safe and nominal gate evaluation
+  - braking-envelope vertical schedule
+  - touchdown-clearance-aware rescue and touchdown cut logic
+- Added focused `pd-control` tests for the new controller:
+  - flat-fixture success
+  - guidance metrics and gate-marker emission
+- Switched both bot-lab packs so `current` now means `terminal_pdg_v1`:
+  - `terminal_bot_lab_suite`
+  - `terminal_bot_lab_full`
+- The new controller is not only “alive”; it materially outperforms the old
+  baseline on the real Earth matrix:
+  - smoke: `100 / 126` vs `12 / 126`
+  - full: `403 / 504` vs `42 / 504`
+- The shallow tail is now the real remaining problem:
+  - `a70`
+  - `a80`
+  - and especially the `high` velocity band
 
 #### Checkpoint 22: real terminal matrix execution and full bot-lab suite
 

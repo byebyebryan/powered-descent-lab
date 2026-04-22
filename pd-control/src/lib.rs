@@ -6,12 +6,14 @@ use serde::{Deserialize, Serialize};
 
 mod controllers;
 pub mod kit;
+mod terminal_pdg;
 
 pub use controllers::{
     BaselineController, BaselineControllerConfig, ControllerSpec, IdleController,
     StagedDescentController, StagedDescentControllerConfig, built_in_controller_spec,
 };
 pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, standard_marker};
+pub use terminal_pdg::{TerminalPdgController, TerminalPdgControllerConfig};
 
 pub trait Controller {
     fn id(&self) -> &str;
@@ -256,6 +258,19 @@ mod tests {
         }
     }
 
+    fn earth_terminal_reference_scenario() -> ScenarioSpec {
+        let mut scenario = flat_scenario();
+        scenario.id = "terminal_pdg_earth_reference".to_owned();
+        scenario.name = "Terminal PDG Earth reference".to_owned();
+        scenario.description =
+            "Representative Earth half-arc terminal reference case".to_owned();
+        scenario.seed = 0;
+        scenario.world.gravity_mps2 = 9.81;
+        scenario.initial_state.position_m = Vec2::new(-574.1707063234766, 574.1707063234767);
+        scenario.initial_state.velocity_mps = Vec2::new(71.77133829043457, -32.53133829043458);
+        scenario
+    }
+
     #[test]
     fn baseline_controller_emits_bounded_commands() {
         let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
@@ -357,6 +372,64 @@ mod tests {
         assert!(
             third
                 .markers
+                .iter()
+                .any(|marker| marker.id == marker::TERMINAL_GATE)
+        );
+    }
+
+    #[test]
+    fn terminal_pdg_controller_lands_flat_fixture() {
+        let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        ));
+    }
+
+    #[test]
+    fn terminal_pdg_controller_lands_earth_terminal_reference_fixture() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        ));
+    }
+
+    #[test]
+    fn terminal_pdg_controller_emits_guidance_metrics_and_gate_markers() {
+        let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
+        let observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        let mut controller = TerminalPdgController::default();
+
+        let frame = controller.update(&ctx, &observation);
+
+        assert_eq!(frame.phase.as_deref(), Some(phase::DESCENT));
+        assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_MODE),
+            Some(&TelemetryValue::from("nominal pending"))
+        );
+        assert!(frame.metrics.contains_key(metric::GUIDANCE_BURN_TIME_S));
+        assert!(frame.metrics.contains_key(metric::GUIDANCE_REQUIRED_ACCEL_RATIO));
+        assert!(
+            frame.markers
                 .iter()
                 .any(|marker| marker.id == marker::TERMINAL_GATE)
         );

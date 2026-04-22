@@ -170,6 +170,12 @@ smoke-tier Earth `half_arc_terminal_v1` matrix over:
 - `arc_point x velocity_band`
 - `baseline` and `current` controller lanes
 
+At the moment:
+
+- `baseline` means the older heuristic baseline controller
+- `current` means `terminal_pdg_v1`, the first serious terminal-only PDG-shaped
+  native Rust controller lane
+
 Use `terminal_bot_lab_full` when the same matrix should run with the full
 seed tier for spread measurement. The `terminal_compare_*_fixture` packs are
 only for smoke-testing pack-vs-pack compare output.
@@ -201,5 +207,6 @@ The batch report is intentionally compare-friendly:
 
 At this point the batch/single-run reporting stack is good enough for real
 controller iteration. The main next bottleneck is no longer “basic reports
-exist,” but “the terminal corpus is now real enough to expose controller gaps,
-and the controllers need to catch up before the suite expands further.”
+exist,” but “the Earth terminal matrix is now real, `terminal_pdg_v1` is the
+current serious lane, and the remaining controller work is concentrated in the
+shallow tail before the suite expands further.”

@@ -1,4 +1,5 @@
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
+use crate::terminal_pdg::{TerminalPdgController, TerminalPdgControllerConfig};
 use crate::{Controller, ControllerFrame, TelemetryValue};
 use pd_core::{Command, Observation, RunContext};
 use serde::{Deserialize, Serialize};
@@ -108,6 +109,10 @@ pub enum ControllerSpec {
         #[serde(flatten)]
         config: StagedDescentControllerConfig,
     },
+    TerminalPdgV1 {
+        #[serde(flatten)]
+        config: TerminalPdgControllerConfig,
+    },
 }
 
 impl ControllerSpec {
@@ -116,6 +121,7 @@ impl ControllerSpec {
             Self::Idle => "idle",
             Self::BaselineV1 { .. } => "baseline_v1",
             Self::StagedDescentV1 { .. } => "staged_descent_v1",
+            Self::TerminalPdgV1 { .. } => "terminal_pdg_v1",
         }
     }
 
@@ -125,6 +131,9 @@ impl ControllerSpec {
             Self::BaselineV1 { config } => Box::new(BaselineController::new(config.clone())),
             Self::StagedDescentV1 { config } => {
                 Box::new(StagedDescentController::new(config.clone()))
+            }
+            Self::TerminalPdgV1 { config } => {
+                Box::new(TerminalPdgController::new(config.clone()))
             }
         }
     }
@@ -141,6 +150,9 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
                 config: StagedDescentControllerConfig::default(),
             })
         }
+        "terminal_pdg" | "terminal_pdg_v1" | "tpdg" => Some(ControllerSpec::TerminalPdgV1 {
+            config: TerminalPdgControllerConfig::default(),
+        }),
         _ => None,
     }
 }
