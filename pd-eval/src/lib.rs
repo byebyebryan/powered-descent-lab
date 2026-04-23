@@ -21,7 +21,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 8;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 9;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -110,6 +110,40 @@ pub struct BatchRunReviewMetrics {
     pub reference_gap_mean_m: Option<f64>,
     #[serde(default)]
     pub reference_gap_max_m: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchRunAnalyticClass {
+    #[default]
+    Scored,
+    Impossible,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchRunAnalyticReason {
+    VerticalStopHeight,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchRunAnalyticFeasibility {
+    #[serde(default)]
+    pub class: BatchRunAnalyticClass,
+    #[serde(default)]
+    pub reason: Option<BatchRunAnalyticReason>,
+    #[serde(default)]
+    pub available_stop_height_m: Option<f64>,
+    #[serde(default)]
+    pub required_stop_height_m: Option<f64>,
+    #[serde(default)]
+    pub stop_height_margin_m: Option<f64>,
+}
+
+impl BatchRunAnalyticFeasibility {
+    fn is_scored(&self) -> bool {
+        matches!(self.class, BatchRunAnalyticClass::Scored)
+    }
 }
 
 fn default_selector_value() -> String {
@@ -304,6 +338,8 @@ pub struct BatchRunRecord {
     pub manifest: RunManifest,
     #[serde(default)]
     pub review: BatchRunReviewMetrics,
+    #[serde(default)]
+    pub analytic: BatchRunAnalyticFeasibility,
     pub bundle_dir: Option<String>,
 }
 
@@ -320,6 +356,8 @@ pub struct BatchGroupSummary {
     pub total_runs: usize,
     pub success_runs: usize,
     pub failure_runs: usize,
+    #[serde(default)]
+    pub invalidated_runs: usize,
     pub mean_sim_time_s: f64,
     #[serde(default)]
     pub sim_time_stats: Option<BatchMetricSummary>,
@@ -366,6 +404,8 @@ pub struct BatchRunPointer {
     #[serde(default)]
     pub review: BatchRunReviewMetrics,
     #[serde(default)]
+    pub analytic: BatchRunAnalyticFeasibility,
+    #[serde(default)]
     pub summary: RunSummary,
 }
 
@@ -374,6 +414,8 @@ pub struct BatchSummary {
     pub total_runs: usize,
     pub success_runs: usize,
     pub failure_runs: usize,
+    #[serde(default)]
+    pub invalidated_runs: usize,
     pub mean_sim_time_s: f64,
     pub max_sim_time_s: f64,
     pub mission_outcomes: BTreeMap<String, usize>,
@@ -441,6 +483,12 @@ pub struct BatchSummaryDelta {
     pub candidate_failure_runs: usize,
     pub baseline_failure_runs: usize,
     pub failure_runs_delta: i64,
+    #[serde(default)]
+    pub candidate_invalidated_runs: usize,
+    #[serde(default)]
+    pub baseline_invalidated_runs: usize,
+    #[serde(default)]
+    pub invalidated_runs_delta: i64,
     pub candidate_mean_sim_time_s: f64,
     pub baseline_mean_sim_time_s: f64,
     pub mean_sim_time_delta_s: f64,
@@ -460,6 +508,12 @@ pub struct BatchGroupComparison {
     pub candidate_failure_runs: Option<usize>,
     pub baseline_failure_runs: Option<usize>,
     pub failure_runs_delta: Option<i64>,
+    #[serde(default)]
+    pub candidate_invalidated_runs: Option<usize>,
+    #[serde(default)]
+    pub baseline_invalidated_runs: Option<usize>,
+    #[serde(default)]
+    pub invalidated_runs_delta: Option<i64>,
     pub candidate_mean_sim_time_s: Option<f64>,
     pub baseline_mean_sim_time_s: Option<f64>,
     pub mean_sim_time_delta_s: Option<f64>,
@@ -2106,6 +2160,63 @@ fn execute_resolved_runs(
     results.into_iter().collect()
 }
 
+fn analytic_feasibility_for_run(resolved_run: &ResolvedBatchRun) -> BatchRunAnalyticFeasibility {
+    if !matches!(
+        resolved_run.descriptor.source_kind,
+        ResolvedRunSourceKind::TerminalMatrix
+    ) {
+        return BatchRunAnalyticFeasibility::default();
+    }
+
+    let scenario = &resolved_run.scenario;
+    let Some(target_pad) = scenario
+        .world
+        .landing_pads
+        .iter()
+        .find(|pad| pad.id == scenario.mission.goal.target_pad_id())
+    else {
+        return BatchRunAnalyticFeasibility::default();
+    };
+
+    let mass_kg = scenario.vehicle.dry_mass_kg + scenario.vehicle.initial_fuel_kg;
+    let gravity_mps2 = scenario.world.gravity_mps2.abs().max(1e-6);
+    let max_upward_accel_mps2 = (scenario.vehicle.max_thrust_n / mass_kg.max(1.0)) - gravity_mps2;
+    let downward_speed_mps = (-scenario.initial_state.velocity_mps.y).max(0.0);
+    let safe_touchdown_speed_mps = scenario.vehicle.safe_touchdown_normal_speed_mps;
+    let available_stop_height_m = scenario.initial_state.position_m.y
+        - target_pad.surface_y_m
+        - scenario.vehicle.geometry.touchdown_base_offset_m;
+
+    let required_stop_height_m = if downward_speed_mps <= safe_touchdown_speed_mps {
+        0.0
+    } else if max_upward_accel_mps2 <= 0.0 {
+        f64::INFINITY
+    } else {
+        ((downward_speed_mps * downward_speed_mps)
+            - (safe_touchdown_speed_mps * safe_touchdown_speed_mps))
+            / (2.0 * max_upward_accel_mps2)
+    };
+    let stop_height_margin_m = available_stop_height_m - required_stop_height_m;
+
+    if stop_height_margin_m < 0.0 {
+        BatchRunAnalyticFeasibility {
+            class: BatchRunAnalyticClass::Impossible,
+            reason: Some(BatchRunAnalyticReason::VerticalStopHeight),
+            available_stop_height_m: Some(available_stop_height_m),
+            required_stop_height_m: Some(required_stop_height_m),
+            stop_height_margin_m: Some(stop_height_margin_m),
+        }
+    } else {
+        BatchRunAnalyticFeasibility {
+            class: BatchRunAnalyticClass::Scored,
+            reason: None,
+            available_stop_height_m: Some(available_stop_height_m),
+            required_stop_height_m: Some(required_stop_height_m),
+            stop_height_margin_m: Some(stop_height_margin_m),
+        }
+    }
+}
+
 fn execute_resolved_run(
     resolved_run: &ResolvedBatchRun,
     output_dir: Option<&Path>,
@@ -2137,22 +2248,47 @@ fn execute_resolved_run(
     }
 
     let review = derive_run_review_metrics(&resolved_run.scenario, &artifacts.run);
+    let analytic = analytic_feasibility_for_run(resolved_run);
 
     Ok(BatchRunRecord {
         resolved: resolved_run.descriptor.clone(),
         manifest: artifacts.run.manifest,
         review,
+        analytic,
         bundle_dir: bundle_dir.map(|path| path.to_string_lossy().into_owned()),
     })
 }
 
+fn record_scored(record: &BatchRunRecord) -> bool {
+    record.analytic.is_scored()
+}
+
+fn record_invalidated(record: &BatchRunRecord) -> bool {
+    !record_scored(record)
+}
+
+fn record_success(record: &BatchRunRecord) -> bool {
+    record_scored(record) && matches!(record.manifest.mission_outcome, MissionOutcome::Success)
+}
+
+fn record_failure(record: &BatchRunRecord) -> bool {
+    record_scored(record) && !matches!(record.manifest.mission_outcome, MissionOutcome::Success)
+}
+
 fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
     let total_runs = records.len();
+    let invalidated_runs = records
+        .iter()
+        .filter(|record| record_invalidated(record))
+        .count();
     let success_runs = records
         .iter()
-        .filter(|record| matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .filter(|record| record_success(record))
         .count();
-    let failure_runs = total_runs.saturating_sub(success_runs);
+    let failure_runs = records
+        .iter()
+        .filter(|record| record_failure(record))
+        .count();
     let mean_sim_time_s = if total_runs == 0 {
         0.0
     } else {
@@ -2205,7 +2341,7 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut failed_runs = records
         .iter()
-        .filter(|record| !matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .filter(|record| record_failure(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
     failed_runs.sort_by(|lhs, rhs| {
@@ -2226,7 +2362,7 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut closest_failures = records
         .iter()
-        .filter(|record| !matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .filter(|record| record_failure(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
     closest_failures.sort_by(closest_failure_sort_key);
@@ -2234,7 +2370,7 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut worst_failures = records
         .iter()
-        .filter(|record| !matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .filter(|record| record_failure(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
     worst_failures.sort_by(worst_failure_sort_key);
@@ -2242,7 +2378,7 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut weakest_successes = records
         .iter()
-        .filter(|record| matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .filter(|record| record_success(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
     weakest_successes.sort_by(weakest_success_sort_key);
@@ -2250,7 +2386,7 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut lowest_fuel_successes = records
         .iter()
-        .filter(|record| matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .filter(|record| record_success(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
     lowest_fuel_successes.sort_by(lowest_fuel_success_sort_key);
@@ -2260,6 +2396,7 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
         total_runs,
         success_runs,
         failure_runs,
+        invalidated_runs,
         mean_sim_time_s,
         max_sim_time_s,
         mission_outcomes,
@@ -2278,16 +2415,39 @@ fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
 fn compare_summary_delta(candidate: &BatchSummary, baseline: &BatchSummary) -> BatchSummaryDelta {
     BatchSummaryDelta {
-        candidate_success_rate: success_rate(candidate.success_runs, candidate.total_runs),
-        baseline_success_rate: success_rate(baseline.success_runs, baseline.total_runs),
-        success_rate_delta: success_rate(candidate.success_runs, candidate.total_runs)
-            - success_rate(baseline.success_runs, baseline.total_runs),
+        candidate_success_rate: success_rate(
+            candidate.success_runs,
+            candidate
+                .total_runs
+                .saturating_sub(candidate.invalidated_runs),
+        ),
+        baseline_success_rate: success_rate(
+            baseline.success_runs,
+            baseline
+                .total_runs
+                .saturating_sub(baseline.invalidated_runs),
+        ),
+        success_rate_delta: success_rate(
+            candidate.success_runs,
+            candidate
+                .total_runs
+                .saturating_sub(candidate.invalidated_runs),
+        ) - success_rate(
+            baseline.success_runs,
+            baseline
+                .total_runs
+                .saturating_sub(baseline.invalidated_runs),
+        ),
         candidate_success_runs: candidate.success_runs,
         baseline_success_runs: baseline.success_runs,
         success_runs_delta: candidate.success_runs as i64 - baseline.success_runs as i64,
         candidate_failure_runs: candidate.failure_runs,
         baseline_failure_runs: baseline.failure_runs,
         failure_runs_delta: candidate.failure_runs as i64 - baseline.failure_runs as i64,
+        candidate_invalidated_runs: candidate.invalidated_runs,
+        baseline_invalidated_runs: baseline.invalidated_runs,
+        invalidated_runs_delta: candidate.invalidated_runs as i64
+            - baseline.invalidated_runs as i64,
         candidate_mean_sim_time_s: candidate.mean_sim_time_s,
         baseline_mean_sim_time_s: baseline.mean_sim_time_s,
         mean_sim_time_delta_s: candidate.mean_sim_time_s - baseline.mean_sim_time_s,
@@ -2323,14 +2483,31 @@ fn compare_group_sets(
                 key,
                 candidate_total_runs: candidate.map(|group| group.total_runs),
                 baseline_total_runs: baseline.map(|group| group.total_runs),
-                candidate_success_rate: candidate
-                    .map(|group| success_rate(group.success_runs, group.total_runs)),
-                baseline_success_rate: baseline
-                    .map(|group| success_rate(group.success_runs, group.total_runs)),
+                candidate_success_rate: candidate.map(|group| {
+                    success_rate(
+                        group.success_runs,
+                        group.total_runs.saturating_sub(group.invalidated_runs),
+                    )
+                }),
+                baseline_success_rate: baseline.map(|group| {
+                    success_rate(
+                        group.success_runs,
+                        group.total_runs.saturating_sub(group.invalidated_runs),
+                    )
+                }),
                 success_rate_delta: match (candidate, baseline) {
                     (Some(candidate), Some(baseline)) => Some(
-                        success_rate(candidate.success_runs, candidate.total_runs)
-                            - success_rate(baseline.success_runs, baseline.total_runs),
+                        success_rate(
+                            candidate.success_runs,
+                            candidate
+                                .total_runs
+                                .saturating_sub(candidate.invalidated_runs),
+                        ) - success_rate(
+                            baseline.success_runs,
+                            baseline
+                                .total_runs
+                                .saturating_sub(baseline.invalidated_runs),
+                        ),
                     ),
                     _ => None,
                 },
@@ -2339,6 +2516,14 @@ fn compare_group_sets(
                 failure_runs_delta: match (candidate, baseline) {
                     (Some(candidate), Some(baseline)) => {
                         Some(candidate.failure_runs as i64 - baseline.failure_runs as i64)
+                    }
+                    _ => None,
+                },
+                candidate_invalidated_runs: candidate.map(|group| group.invalidated_runs),
+                baseline_invalidated_runs: baseline.map(|group| group.invalidated_runs),
+                invalidated_runs_delta: match (candidate, baseline) {
+                    (Some(candidate), Some(baseline)) => {
+                        Some(candidate.invalidated_runs as i64 - baseline.invalidated_runs as i64)
                     }
                     _ => None,
                 },
@@ -2434,11 +2619,18 @@ fn compare_run_pair(
 
 fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary {
     let total_runs = records.len();
+    let invalidated_runs = records
+        .iter()
+        .filter(|record| record_invalidated(record))
+        .count();
     let success_runs = records
         .iter()
-        .filter(|record| matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+        .filter(|record| record_success(record))
         .count();
-    let failure_runs = total_runs.saturating_sub(success_runs);
+    let failure_runs = records
+        .iter()
+        .filter(|record| record_failure(record))
+        .count();
     let mean_sim_time_s = if total_runs == 0 {
         0.0
     } else {
@@ -2469,10 +2661,10 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             .entry(enum_label(&record.manifest.end_reason))
             .or_insert(0) += 1;
         let pointer = run_pointer(record);
-        if !matches!(record.manifest.mission_outcome, MissionOutcome::Success) {
+        if record_failure(record) {
             failed_seeds.insert(record.resolved.resolved_seed);
             failure_pointers.push(pointer);
-        } else {
+        } else if record_success(record) {
             success_fuel_remaining.push(record.manifest.summary.fuel_remaining_kg);
             success_sim_time_s.push(record.manifest.sim_time_s);
             if let Some(value) = record.review.fuel_used_pct_of_max {
@@ -2510,6 +2702,7 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         total_runs,
         success_runs,
         failure_runs,
+        invalidated_runs,
         mean_sim_time_s,
         sim_time_stats: metric_summary(&success_sim_time_s),
         mean_success_fuel_remaining_kg,
@@ -2545,6 +2738,7 @@ fn run_pointer(record: &BatchRunRecord) -> BatchRunPointer {
         margin_ratio: summary_margin_ratio(&record.manifest.summary),
         fuel_remaining_kg: record.manifest.summary.fuel_remaining_kg,
         review: record.review.clone(),
+        analytic: record.analytic.clone(),
         summary: record.manifest.summary.clone(),
     }
 }
@@ -4147,6 +4341,73 @@ mod tests {
                 .get("gravity_mps2")
                 .copied(),
             Some(9.81)
+        );
+    }
+
+    #[test]
+    fn analytic_vertical_bound_invalidates_heavy_cargo_vertical_high_cases() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_heavy_cargo_full".to_owned(),
+            name: "Terminal matrix heavy cargo full".to_owned(),
+            description: "terminal matrix heavy cargo full".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_clean_heavy_cargo".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "terminal_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Full,
+                condition_set: "clean".to_owned(),
+                vehicle_variant: "heavy_cargo".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: vec![NumericAdjustmentSpec {
+                    id: "payload_full_mass_kg".to_owned(),
+                    path: "vehicle.dry_mass_kg".to_owned(),
+                    mode: NumericPerturbationMode::Offset,
+                    value: 4500.0,
+                }],
+                tags: vec!["terminal".to_owned(), "analytic".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &base_dir, None, 1).unwrap();
+        let record = report
+            .records
+            .iter()
+            .find(|record| {
+                record.resolved.selector.arc_point == "a00"
+                    && record.resolved.selector.velocity_band == "high"
+                    && record.resolved.resolved_seed == 0
+            })
+            .expect("heavy cargo a00 high seed 0 should be present");
+
+        assert_eq!(record.analytic.class, BatchRunAnalyticClass::Impossible);
+        assert_eq!(
+            record.analytic.reason,
+            Some(BatchRunAnalyticReason::VerticalStopHeight)
+        );
+        assert!(
+            record
+                .analytic
+                .stop_height_margin_m
+                .expect("vertical stop margin should be present")
+                < 0.0
+        );
+        assert!(report.summary.invalidated_runs >= 24);
+        assert!(
+            report
+                .summary
+                .by_entry
+                .iter()
+                .find(|group| group.key == "terminal_guidance_clean_heavy_cargo")
+                .expect("entry summary should exist")
+                .invalidated_runs
+                >= 24
         );
     }
 

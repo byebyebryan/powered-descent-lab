@@ -1276,19 +1276,40 @@ fn render_overview_result_cell(
     success_runs: usize,
     total_runs: usize,
     failure_runs: usize,
+    invalidated_runs: usize,
     success_delta: Option<f64>,
 ) -> String {
-    let main = format!("{:.1}%", percentage(success_runs, total_runs));
+    let scored_runs = total_runs.saturating_sub(invalidated_runs);
+    let main = if scored_runs == 0 {
+        "n/a".to_owned()
+    } else {
+        format!("{:.1}%", percentage(success_runs, scored_runs))
+    };
+    let invalidated_html = if invalidated_runs > 0 {
+        format!(r#" · <span class="warn">{invalidated_runs} impossible</span>"#)
+    } else {
+        String::new()
+    };
     let sub = match success_delta {
-        Some(delta) => format!(
-            r#"<span class="compare-toggle-target"><span class="{}">{}</span> · {} fail</span><span class="standalone-toggle-target">{} success · {} fail</span>"#,
-            delta_class(-delta),
-            escape_html(&format_percent_delta(delta)),
-            failure_runs,
-            success_runs,
-            failure_runs
-        ),
-        None => format!("{success_runs}/{total_runs} success · {failure_runs} fail"),
+        Some(delta) => {
+            let compare_html = format!(
+                r#"<span class="{}">{}</span> · {} fail{}"#,
+                delta_class(-delta),
+                escape_html(&format_percent_delta(delta)),
+                failure_runs,
+                invalidated_html
+            );
+            let standalone_html = format!(
+                "{} success · {} fail{}",
+                success_runs, failure_runs, invalidated_html
+            );
+            format!(
+                r#"<span class="compare-toggle-target">{compare_html}</span><span class="standalone-toggle-target">{standalone_html}</span>"#
+            )
+        }
+        None => {
+            format!("{success_runs}/{scored_runs} success · {failure_runs} fail{invalidated_html}")
+        }
     };
     format!(
         r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
@@ -1952,10 +1973,16 @@ fn render_overview_table(
         );
         let success_rate_delta = success_rate_ratio(
             candidate_summary.review.success_runs,
-            candidate_summary.review.total_runs,
+            candidate_summary
+                .review
+                .total_runs
+                .saturating_sub(candidate_summary.review.invalidated_runs),
         ) - success_rate_ratio(
             baseline_summary.review.success_runs,
-            baseline_summary.review.total_runs,
+            baseline_summary
+                .review
+                .total_runs
+                .saturating_sub(baseline_summary.review.invalidated_runs),
         );
 
         vec![
@@ -1982,6 +2009,7 @@ fn render_overview_table(
                     candidate_summary.review.success_runs,
                     candidate_summary.review.total_runs,
                     candidate_summary.review.failure_runs,
+                    candidate_summary.review.invalidated_runs,
                     Some(success_rate_delta),
                 ),
                 render_overview_timing_cell(
@@ -2026,6 +2054,7 @@ fn render_overview_table(
                     baseline_summary.review.success_runs,
                     baseline_summary.review.total_runs,
                     baseline_summary.review.failure_runs,
+                    baseline_summary.review.invalidated_runs,
                     None,
                 ),
                 render_overview_timing_cell(
@@ -2114,6 +2143,7 @@ fn render_overview_table(
                 candidate_summary.review.success_runs,
                 candidate_summary.review.total_runs,
                 candidate_summary.review.failure_runs,
+                candidate_summary.review.invalidated_runs,
                 None,
             ),
             render_overview_timing_cell(
@@ -2146,6 +2176,7 @@ fn render_overview_table(
                 candidate.summary.success_runs,
                 candidate.summary.total_runs,
                 candidate.summary.failure_runs,
+                candidate.summary.invalidated_runs,
                 comparison.map(|cmp| cmp.summary.success_rate_delta),
             ),
             render_overview_timing_cell(
@@ -2190,6 +2221,7 @@ fn render_overview_table(
                     baseline.summary.success_runs,
                     baseline.summary.total_runs,
                     baseline.summary.failure_runs,
+                    baseline.summary.invalidated_runs,
                     None,
                 ),
                 render_overview_timing_cell(
@@ -2318,6 +2350,7 @@ struct ReviewAggregate {
     total_runs: usize,
     success_runs: usize,
     failure_runs: usize,
+    invalidated_runs: usize,
     sim_time_stats: Option<crate::BatchMetricSummary>,
     fuel_used_pct_of_max: Option<crate::BatchMetricSummary>,
     landing_offset_abs_m: Option<crate::BatchMetricSummary>,
@@ -3238,7 +3271,8 @@ fn render_lane_review_section(
         baseline_record_map,
     );
     let mut rows = String::new();
-    let current_lane_label = display_compare_role_label(comparison.is_some(), lane_id, TreeRowTone::Current);
+    let current_lane_label =
+        display_compare_role_label(comparison.is_some(), lane_id, TreeRowTone::Current);
     let current_note = render_summary_note(
         comparison.is_some(),
         TreeRowTone::Current,
@@ -3266,8 +3300,7 @@ fn render_lane_review_section(
         TreeRowTone::Current,
     ));
     if comparison.is_some() && baseline_aggregate.is_some() {
-        let baseline_lane_label =
-            display_compare_role_label(true, lane_id, TreeRowTone::Baseline);
+        let baseline_lane_label = display_compare_role_label(true, lane_id, TreeRowTone::Baseline);
         let baseline_group = (candidate_records.is_empty() && !baseline_records.is_empty())
             .then_some(group_id.as_str());
         let baseline_note = render_summary_note(
@@ -3592,10 +3625,27 @@ fn render_seed_run_row(
     let tag_html = String::new();
     let seed_label = format!("seed {:04}", record.resolved.resolved_seed);
     let outcome_label = enum_label(&record.manifest.mission_outcome);
-    let outcome = if matches!(record.manifest.mission_outcome, pd_core::MissionOutcome::Success) {
+    let analytic_note = analytic_reason_note(&record.analytic);
+    let outcome = if matches!(
+        record.analytic.class,
+        crate::BatchRunAnalyticClass::Impossible
+    ) {
+        let label = if let Some(note) = analytic_note.as_deref() {
+            format!("{outcome_label} · {note}")
+        } else {
+            format!("{outcome_label} · impossible")
+        };
+        format!(r#"<span class="warn">{}</span>"#, escape_html(&label))
+    } else if matches!(
+        record.manifest.mission_outcome,
+        pd_core::MissionOutcome::Success
+    ) {
         escape_html(&outcome_label)
     } else {
-        format!(r#"<span class="outcome-bad">{}</span>"#, escape_html(&outcome_label))
+        format!(
+            r#"<span class="outcome-bad">{}</span>"#,
+            escape_html(&outcome_label)
+        )
     };
     let fuel = record
         .review
@@ -3627,10 +3677,17 @@ fn render_seed_run_row(
             )
         })
         .unwrap_or_default();
-    let detail_note = if change_note.is_empty() {
-        String::new()
-    } else {
-        format!(r#"<span class="row-note">{change_note}</span>"#)
+    let detail_note = match (change_note.is_empty(), analytic_note.as_deref()) {
+        (false, Some(analytic_note)) => format!(
+            r#"<span class="row-note">{change_note} · <span class="warn">{}</span></span>"#,
+            escape_html(analytic_note)
+        ),
+        (false, None) => format!(r#"<span class="row-note">{change_note}</span>"#),
+        (true, Some(analytic_note)) => format!(
+            r#"<span class="row-note"><span class="warn">{}</span></span>"#,
+            escape_html(analytic_note)
+        ),
+        (true, None) => String::new(),
     };
     let details = format!(
         r#"{detail_note}<div class="preview-cell">{preview}</div>"#,
@@ -3764,11 +3821,7 @@ fn display_lane_label(lane_id: &str) -> String {
     }
 }
 
-fn display_compare_role_label(
-    comparison_mode: bool,
-    lane_id: &str,
-    tone: TreeRowTone,
-) -> String {
+fn display_compare_role_label(comparison_mode: bool, lane_id: &str, tone: TreeRowTone) -> String {
     if comparison_mode {
         match tone {
             TreeRowTone::Current => "current".to_owned(),
@@ -4017,20 +4070,35 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
     let success_runs = records
         .iter()
         .filter(|record| {
-            matches!(
-                record.manifest.mission_outcome,
-                pd_core::MissionOutcome::Success
-            )
+            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+                && matches!(
+                    record.manifest.mission_outcome,
+                    pd_core::MissionOutcome::Success
+                )
         })
         .count();
-    let failure_runs = total_runs.saturating_sub(success_runs);
+    let invalidated_runs = records
+        .iter()
+        .filter(|record| !matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored))
+        .count();
+    let failure_runs = records
+        .iter()
+        .filter(|record| {
+            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+                && !matches!(
+                    record.manifest.mission_outcome,
+                    pd_core::MissionOutcome::Success
+                )
+        })
+        .count();
     let failed_seeds = records
         .iter()
         .filter(|record| {
-            !matches!(
-                record.manifest.mission_outcome,
-                pd_core::MissionOutcome::Success
-            )
+            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+                && !matches!(
+                    record.manifest.mission_outcome,
+                    pd_core::MissionOutcome::Success
+                )
         })
         .map(|record| record.resolved.resolved_seed)
         .collect::<BTreeSet<_>>()
@@ -4039,10 +4107,11 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
     let success_records = records
         .iter()
         .filter(|record| {
-            matches!(
-                record.manifest.mission_outcome,
-                pd_core::MissionOutcome::Success
-            )
+            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+                && matches!(
+                    record.manifest.mission_outcome,
+                    pd_core::MissionOutcome::Success
+                )
         })
         .copied()
         .collect::<Vec<_>>();
@@ -4066,6 +4135,7 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
         total_runs,
         success_runs,
         failure_runs,
+        invalidated_runs,
         sim_time_stats: crate::metric_summary(&sim_time_values),
         fuel_used_pct_of_max: crate::metric_summary(&fuel_values),
         landing_offset_abs_m: crate::metric_summary(&landing_offset_values),
@@ -4075,8 +4145,11 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
 }
 
 fn inline_rate_text(success_runs: usize, total_runs: usize) -> String {
+    if total_runs == 0 {
+        return "n/a of 0 scored".to_owned();
+    }
     format!(
-        "{:.1}% of {}",
+        "{:.1}% of {} scored",
         crate::success_rate(success_runs, total_runs) * 100.0,
         total_runs
     )
@@ -4155,11 +4228,23 @@ fn format_metric_cell(
     }
 }
 
+fn analytic_reason_note(analytic: &crate::BatchRunAnalyticFeasibility) -> Option<&'static str> {
+    match analytic.reason {
+        Some(crate::BatchRunAnalyticReason::VerticalStopHeight) => {
+            Some("impossible vertical brake")
+        }
+        None => None,
+    }
+}
+
 fn format_summary_rate(
     aggregate: &ReviewAggregate,
     baseline: Option<&ReviewAggregate>,
     style: SummaryMetricStyle,
 ) -> String {
+    let scored_runs = aggregate
+        .total_runs
+        .saturating_sub(aggregate.invalidated_runs);
     let failure_html = if aggregate.failure_runs > 0 {
         format!(
             r#"<span class="outcome-bad">{} fail</span>"#,
@@ -4168,10 +4253,19 @@ fn format_summary_rate(
     } else {
         "0 fail".to_owned()
     };
+    let invalidated_html = if aggregate.invalidated_runs > 0 {
+        format!(
+            r#" · <span class="warn">{} impossible</span>"#,
+            aggregate.invalidated_runs
+        )
+    } else {
+        String::new()
+    };
     let base = format!(
-        "{} · {}",
-        escape_html(&inline_rate_text(aggregate.success_runs, aggregate.total_runs)),
-        failure_html
+        "{} · {}{}",
+        escape_html(&inline_rate_text(aggregate.success_runs, scored_runs)),
+        failure_html,
+        invalidated_html
     );
     match style {
         SummaryMetricStyle::MeanStddev => base,
@@ -4179,9 +4273,17 @@ fn format_summary_rate(
             let Some(baseline) = baseline else {
                 return base;
             };
-            let delta = (crate::success_rate(aggregate.success_runs, aggregate.total_runs)
-                - crate::success_rate(baseline.success_runs, baseline.total_runs))
-                * 100.0;
+            let delta = (crate::success_rate(
+                aggregate.success_runs,
+                aggregate
+                    .total_runs
+                    .saturating_sub(aggregate.invalidated_runs),
+            ) - crate::success_rate(
+                baseline.success_runs,
+                baseline
+                    .total_runs
+                    .saturating_sub(baseline.invalidated_runs),
+            )) * 100.0;
             format!(
                 r#"{}<span class="compare-toggle-target"> ({delta:+.1}pt)</span>"#,
                 base
@@ -4210,6 +4312,7 @@ fn aggregate_changed(
     if candidate.total_runs != baseline.total_runs
         || candidate.success_runs != baseline.success_runs
         || candidate.failure_runs != baseline.failure_runs
+        || candidate.invalidated_runs != baseline.invalidated_runs
         || candidate.failed_seeds != baseline.failed_seeds
     {
         return true;
@@ -5639,6 +5742,49 @@ mod report_tests {
     }
 
     #[test]
+    fn terminal_matrix_report_surfaces_impossible_runs_as_warnings() {
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_heavy_cargo_unit".to_owned(),
+            name: "Terminal matrix heavy cargo unit".to_owned(),
+            description: "terminal matrix heavy cargo unit".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_clean_heavy_cargo".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "terminal_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Full,
+                condition_set: "clean".to_owned(),
+                vehicle_variant: "heavy_cargo".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: vec![crate::NumericAdjustmentSpec {
+                    id: "payload_full_mass_kg".to_owned(),
+                    path: "vehicle.dry_mass_kg".to_owned(),
+                    mode: crate::NumericPerturbationMode::Offset,
+                    value: 4500.0,
+                }],
+                tags: vec!["terminal".to_owned(), "analytic".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
+        let html = render_batch_report(
+            Path::new("outputs/eval/terminal_matrix_heavy_cargo_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("impossible"));
+        assert!(html.contains("impossible vertical brake"));
+        assert!(html.contains("0 fail · <span class=\"warn\">12 impossible</span>"));
+    }
+
+    #[test]
     fn selector_keys_use_semantic_velocity_band_order() {
         let mut keys = vec![
             "high".to_owned(),
@@ -5677,5 +5823,4 @@ mod report_tests {
             ]
         );
     }
-
 }
