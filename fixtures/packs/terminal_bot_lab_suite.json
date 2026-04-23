@@ -1,10 +1,10 @@
 {
   "id": "terminal_bot_lab_suite",
   "name": "Terminal bot-lab suite",
-  "description": "Smoke-tier half-arc terminal guidance matrix on the maintained Earth baseline, comparing baseline and current controller lanes across clean nominal and heavy-cargo variants.",
+  "description": "Smoke-tier half-arc terminal guidance matrix on the maintained Earth baseline, comparing baseline and current controller lanes across clean empty, half, and full payload variants.",
   "entries": [
     {
-      "id": "terminal_guidance_clean_nominal",
+      "id": "terminal_guidance_clean_empty",
       "terminal_matrix": "half_arc_terminal_v1",
       "base_scenario": "../scenarios/flat_terminal_descent.json",
       "lanes": [
@@ -19,7 +19,37 @@
       ],
       "seed_tier": "smoke",
       "condition_set": "clean",
-      "vehicle_variant": "nominal",
+      "vehicle_variant": "empty",
+      "expectation_tier": "reference",
+      "adjustments": [],
+      "tags": [
+        "terminal_guidance",
+        "clean",
+        "empty",
+        "bot_lab",
+        "reference"
+      ],
+      "metadata": {
+        "difficulty": "empty"
+      }
+    },
+    {
+      "id": "terminal_guidance_clean_half",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "baseline",
+          "controller": "baseline"
+        },
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "smoke",
+      "condition_set": "clean",
+      "vehicle_variant": "half",
       "expectation_tier": "core",
       "adjustments": [
         {
@@ -32,16 +62,16 @@
       "tags": [
         "terminal_guidance",
         "clean",
-        "nominal",
+        "half",
         "bot_lab",
         "core"
       ],
       "metadata": {
-        "difficulty": "nominal"
+        "difficulty": "half"
       }
     },
     {
-      "id": "terminal_guidance_clean_heavy_cargo",
+      "id": "terminal_guidance_clean_full",
       "terminal_matrix": "half_arc_terminal_v1",
       "base_scenario": "../scenarios/flat_terminal_descent.json",
       "lanes": [
@@ -56,7 +86,7 @@
       ],
       "seed_tier": "smoke",
       "condition_set": "clean",
-      "vehicle_variant": "heavy_cargo",
+      "vehicle_variant": "full",
       "expectation_tier": "stress",
       "adjustments": [
         {
@@ -69,12 +99,12 @@
       "tags": [
         "terminal_guidance",
         "clean",
-        "heavy_cargo",
+        "full",
         "bot_lab",
         "stress"
       ],
       "metadata": {
-        "difficulty": "heavy_cargo"
+        "difficulty": "full"
       }
     }
   ]

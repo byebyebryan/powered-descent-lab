@@ -82,7 +82,7 @@ The intended resolved selector shape is:
 - `mission=terminal_guidance`
 - `arrival_family=half_arc_terminal_v1`
 - `condition_set=clean`
-- `vehicle_variant=nominal`
+- `vehicle_variant=half`
 - `arc_point=a30`
 - `velocity_band=mid`
 - `seed=0042`
@@ -469,16 +469,19 @@ mass, thrust, and control-authority picture from `pylander`.
 
 The first vehicle variants should be:
 
-- `nominal`
-- `heavy_cargo`
+- `empty`
+- `half`
+- `full`
 
-`heavy_cargo` should be modeled as a fixed payload-style dry-mass addition, not
-as a fuel cut. The maintained first payload tiers should follow the useful
+These should be modeled as fixed payload-style dry-mass additions, not as fuel
+cuts. The maintained first payload tiers should follow the useful
 `pylander` `plunge` precedent:
 
-- `nominal`
+- `empty`
+  - no payload dry-mass adjustment
+- `half`
   - `vehicle.dry_mass_kg += 2250`
-- `heavy_cargo`
+- `full`
   - `vehicle.dry_mass_kg += 4500`
 
 Rationale:

@@ -36,9 +36,11 @@
   - `25%` ignited minimum throttle
   - `90 deg/s` max rotation rate
 - The main vehicle variants are now payload tiers, not fuel-margin tiers:
-  - `nominal`
+  - `empty`
+    - empty payload
+  - `half`
     - half payload
-  - `heavy_cargo`
+  - `full`
     - full payload
 - `pd-lab` still intentionally simplifies one engine detail:
   - no `pylander` overdrive path yet

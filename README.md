@@ -184,9 +184,11 @@ Use `terminal_bot_lab_suite` as the primary controller workbench. It is the
 smoke-tier Earth `half_arc_terminal_v1` matrix over:
 
 - `condition_set = clean`
-- `vehicle_variant = nominal`
-  - `pylander`-aligned Earth baseline hardware with half payload
-- `vehicle_variant = heavy_cargo`
+- `vehicle_variant = empty`
+  - `pylander`-aligned Earth baseline hardware with empty payload
+- `vehicle_variant = half`
+  - the same hardware with half payload
+- `vehicle_variant = full`
   - the same hardware with full payload
 - `arc_point x velocity_band`
 - `baseline` and `current` controller lanes

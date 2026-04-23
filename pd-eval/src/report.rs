@@ -3785,6 +3785,9 @@ fn selector_sort_rank(key: &str) -> u8 {
         "low" => 0,
         "mid" => 1,
         "high" => 2,
+        "empty" => 10,
+        "half" => 11,
+        "full" => 12,
         "nominal" => 10,
         "low_margin" => 11,
         "low_fuel" => 12,
@@ -5807,18 +5810,18 @@ mod report_tests {
     #[test]
     fn selector_keys_use_semantic_vehicle_variant_order() {
         let mut keys = vec![
-            "low_margin".to_owned(),
-            "heavy_cargo".to_owned(),
-            "nominal".to_owned(),
+            "full".to_owned(),
+            "empty".to_owned(),
+            "half".to_owned(),
             "unspecified".to_owned(),
         ];
         sort_selector_keys(&mut keys);
         assert_eq!(
             keys,
             vec![
-                "nominal".to_owned(),
-                "low_margin".to_owned(),
-                "heavy_cargo".to_owned(),
+                "empty".to_owned(),
+                "half".to_owned(),
+                "full".to_owned(),
                 "unspecified".to_owned(),
             ]
         );
