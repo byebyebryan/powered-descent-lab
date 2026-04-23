@@ -4441,7 +4441,7 @@ fn render_run_preview(record: &crate::BatchRunRecord, output_dir: &Path) -> Stri
     let detail_href = best_bundle_href(&bundle_dir, output_dir);
     if preview_path.is_file() {
         return format!(
-            r#"<a class="run-preview" href="{href}"><img src="{img}" alt="{alt}"></a>"#,
+            r#"<a class="run-preview" href="{href}"><img src="{img}" alt="{alt}" loading="lazy" decoding="async" fetchpriority="low"></a>"#,
             href = escape_html(&detail_href),
             img = escape_html(&relative_href(output_dir, &preview_path)),
             alt = escape_html(&record.resolved.run_id),
