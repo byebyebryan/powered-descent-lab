@@ -1512,7 +1512,7 @@ fn batch_report_subtitle(
             baseline_focus.records.as_slice(),
         );
         return format!(
-            "{}. {} total runs captured for this batch; overview below compares {} current controller-lane runs against {} cached history runs.",
+            "{}. {} total runs captured for this batch; overview below compares {} current runs against {} cached baseline runs.",
             candidate.pack_name,
             candidate.total_runs,
             basis.shared_runs + basis.candidate_only_runs,
@@ -1566,7 +1566,7 @@ fn render_context_table(
             (
                 "current-lane history compare",
                 format!(
-                    r#"<div class="context-value"><div class="context-main">current controller lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs · {}</div></div>"#,
+                    r#"<div class="context-value"><div class="context-main">current results from lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs · {}</div></div>"#,
                     escape_html(candidate_summary.lane_id),
                     escape_html(&candidate.pack_id),
                     escape_html(&candidate.pack_name),
@@ -1574,7 +1574,7 @@ fn render_context_table(
                     candidate_summary.controller_html,
                 ),
                 format!(
-                    r#"<div class="context-value"><div class="context-main">history baseline lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} baseline runs · {} · {}</div></div>"#,
+                    r#"<div class="context-value"><div class="context-main">compare baseline from lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} baseline runs · {} · {}</div></div>"#,
                     escape_html(baseline_summary.lane_id),
                     escape_html(&baseline_report.pack_id),
                     escape_html(&baseline_report.pack_name),
@@ -1584,14 +1584,14 @@ fn render_context_table(
                 ),
                 context_value(
                     &format!(
-                        "lane_id {} -> {} · shared {} · current-only {} · baseline-only {}",
+                        "current lane_id {} -> compare baseline lane_id {} · shared {} · current-only {} · baseline-only {}",
                         candidate_summary.lane_id,
                         baseline_summary.lane_id,
                         basis.shared_runs,
                         basis.candidate_only_runs,
                         basis.baseline_only_runs
                     ),
-                    "current controller history is compared against the resolved cached baseline lane",
+                    "baseline here means the compare target, not the built-in baseline controller",
                 ),
                 context_value(scope_label, scope_note),
             )
@@ -2045,7 +2045,7 @@ fn render_overview_table(
                     escape_html(&short_digest(&baseline_report.identity.pack_spec_digest))
                 ),
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">current lane <code>{}</code> -> baseline lane <code>{}</code></div></div>"#,
+                    r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">current results lane <code>{}</code> -> compare baseline lane <code>{}</code></div></div>"#,
                     escape_html(&format!("shared {}", basis.shared_runs)),
                     escape_html(candidate_summary.lane_id),
                     escape_html(baseline_summary.lane_id),
@@ -3234,7 +3234,7 @@ fn render_lane_review_section(
         baseline_record_map,
     );
     let mut rows = String::new();
-    let lane_label = display_lane_label(lane_id);
+    let current_lane_label = display_compare_role_label(comparison.is_some(), lane_id, TreeRowTone::Current);
     let current_note = render_summary_note(
         comparison.is_some(),
         TreeRowTone::Current,
@@ -3248,7 +3248,7 @@ fn render_lane_review_section(
         render_lane_preview(candidate_records.as_slice()).as_deref(),
     );
     rows.push_str(&render_summary_row(
-        lane_label.as_str(),
+        current_lane_label.as_str(),
         depth,
         parent_group_id,
         (!candidate_records.is_empty()).then_some(group_id.as_str()),
@@ -3262,6 +3262,8 @@ fn render_lane_review_section(
         TreeRowTone::Current,
     ));
     if comparison.is_some() && baseline_aggregate.is_some() {
+        let baseline_lane_label =
+            display_compare_role_label(true, lane_id, TreeRowTone::Baseline);
         let baseline_group = (candidate_records.is_empty() && !baseline_records.is_empty())
             .then_some(group_id.as_str());
         let baseline_note = render_summary_note(
@@ -3277,7 +3279,7 @@ fn render_lane_review_section(
             render_lane_preview(baseline_records.as_slice()).as_deref(),
         );
         rows.push_str(&render_summary_row(
-            lane_label.as_str(),
+            baseline_lane_label.as_str(),
             depth,
             parent_group_id,
             baseline_group,
@@ -3750,6 +3752,21 @@ fn display_lane_label(lane_id: &str) -> String {
         "current" | "staged" => "current".to_owned(),
         "baseline" => "baseline".to_owned(),
         _ => lane_id.to_owned(),
+    }
+}
+
+fn display_compare_role_label(
+    comparison_mode: bool,
+    lane_id: &str,
+    tone: TreeRowTone,
+) -> String {
+    if comparison_mode {
+        match tone {
+            TreeRowTone::Current => "current".to_owned(),
+            TreeRowTone::Baseline => "baseline".to_owned(),
+        }
+    } else {
+        display_lane_label(lane_id)
     }
 }
 
@@ -5545,7 +5562,10 @@ mod report_tests {
         assert!(html.contains("Baseline Source"));
         assert!(html.contains("compare_baseline_unit"));
         assert!(html.contains("Compare Basis"));
-        assert!(html.contains("current controller history"));
+        assert!(html.contains("compare baseline from lane"));
+        assert!(html.contains(
+            "baseline here means the compare target, not the built-in baseline controller"
+        ));
         assert!(html.contains("lane <code>staged</code>"));
         assert!(html.contains("shared 2"));
         assert!(html.contains("Scope Resolution"));
