@@ -1359,37 +1359,37 @@ const HALF_ARC_TERMINAL_V1_ARC_POINTS: [TerminalArcPointSpec; 7] = [
     TerminalArcPointSpec {
         id: "a00",
         angle_deg: 0.0,
-        nominal_ttg_s: 8.50,
+        nominal_ttg_s: 9.00,
     },
     TerminalArcPointSpec {
         id: "a15",
         angle_deg: 15.0,
-        nominal_ttg_s: 8.50,
+        nominal_ttg_s: 9.00,
     },
     TerminalArcPointSpec {
         id: "a30",
         angle_deg: 30.0,
-        nominal_ttg_s: 8.25,
+        nominal_ttg_s: 8.75,
     },
     TerminalArcPointSpec {
         id: "a45",
         angle_deg: 45.0,
-        nominal_ttg_s: 8.00,
+        nominal_ttg_s: 8.50,
     },
     TerminalArcPointSpec {
         id: "a60",
         angle_deg: 60.0,
-        nominal_ttg_s: 7.75,
+        nominal_ttg_s: 8.25,
     },
     TerminalArcPointSpec {
         id: "a70",
         angle_deg: 70.0,
-        nominal_ttg_s: 7.50,
+        nominal_ttg_s: 8.00,
     },
     TerminalArcPointSpec {
         id: "a80",
         angle_deg: 80.0,
-        nominal_ttg_s: 7.00,
+        nominal_ttg_s: 8.00,
     },
 ];
 

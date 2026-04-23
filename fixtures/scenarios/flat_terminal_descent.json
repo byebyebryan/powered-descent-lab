@@ -20,7 +20,7 @@
   "sim": {
     "physics_hz": 120,
     "controller_hz": 60,
-    "max_time_s": 45.0,
+    "max_time_s": 60.0,
     "sample_hz": 10
   },
   "world": {

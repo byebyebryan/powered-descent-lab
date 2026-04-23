@@ -275,13 +275,13 @@ table entry, not an implementation-specific heuristic.
 
 Recommended first `nominal_ttg_by_arc_point` table:
 
-- `a00 = 8.50s`
-- `a15 = 8.50s`
-- `a30 = 8.25s`
-- `a45 = 8.00s`
-- `a60 = 7.75s`
-- `a70 = 7.50s`
-- `a80 = 7.00s`
+- `a00 = 9.00s`
+- `a15 = 9.00s`
+- `a30 = 8.75s`
+- `a45 = 8.50s`
+- `a60 = 8.25s`
+- `a70 = 8.00s`
+- `a80 = 8.00s`
 
 These values are deliberately tuned for a more practical and stable flight
 shape, especially at the shallow end, so the baseline family keeps a steadier

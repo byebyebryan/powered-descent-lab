@@ -82,7 +82,7 @@ FAMILY_SPECS: tuple[FamilySpec, ...] = (
         gravity_mps2=9.81,
         subtitle="One-sided terminal arrival geometry · radius = 800m · gravity = 9.81m/s² (earth baseline)",
         output_svg_name="half_arc_terminal_v1.svg",
-        arc_points=build_arc_points((8.50, 8.50, 8.25, 8.00, 7.75, 7.50, 7.00)),
+        arc_points=build_arc_points((9.00, 9.00, 8.75, 8.50, 8.25, 8.00, 8.00)),
         clamp_low_to_descending=False,
     ),
     FamilySpec(
