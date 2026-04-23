@@ -124,6 +124,8 @@ Exit criteria:
 Status:
 
 - late in the phase, but not closed yet
+- the tooling/reporting side is largely in place now; the remaining work is
+  mostly controller robustness, corpus expansion, and evaluation policy
 - current implementation includes:
   - a real named pack runner and summary path in `pd-eval`
   - controller config/spec plumbing for built-in controllers
@@ -141,6 +143,8 @@ Status:
     - lane-compare and external-compare views
     - explicit report context/provenance near the top of the page
   - first-class candidate-vs-baseline comparison for batch outputs
+  - cache reuse, promotion, and current-lane history compare over stable batch
+    identities
   - first-class terminal-guidance selector support in the execution model:
     - hierarchy axes such as mission, arrival family, condition set, and
       vehicle variant
@@ -149,20 +153,26 @@ Status:
   - a real Earth `half_arc_terminal_v1` bot-lab corpus:
     - `terminal_bot_lab_suite` as the smoke matrix
     - `terminal_bot_lab_full` as the full-seed matrix
+    - maintained payload tiers:
+      - `empty`
+      - `half`
+      - `full`
   - batch review trees that surface the terminal matrix directly:
     - `mission -> arrival_family -> condition_set -> vehicle_variant`
     - `arc_point -> velocity_band -> lane -> seed`
+  - analytic impossible-run classification for clearly unrecoverable terminal
+    cells based on controller-independent vertical braking bounds
 - still missing:
-  - controller robustness on the shallow tail of the new Earth matrix:
-    - `terminal_pdg_v1` now materially beats the old baseline over most of the
-      matrix
-    - the remaining weakness is concentrated in `a60` through `a80`,
-      especially the `high` band
+  - controller robustness on the shallow tail of the maintained Earth matrix:
+    - `terminal_pdg_v1` now solves the full `empty` tier and most of `half`
+      and `full`
+    - the remaining weakness is concentrated in the shallow `a80` tail for
+      `half`, plus the still-scored `full` high-band cells
   - a broader curated terminal corpus built on top of that selector model:
     - trajectory-error conditions
     - later terrain and obstacle conditions
-  - explicit compare cache / promotion / invalidation workflow over the new
-    batch identities
+  - broader feasibility/frontier classification beyond the current 1D vertical
+    bound
   - thresholded regression policy once the corpus and metrics are stable enough
     to support it
   - deeper report polish that depends on real matrix scenarios and controller

@@ -17,8 +17,8 @@ It should answer:
 - can a controller land reliably across the intended terminal arrival space?
 - where inside that space does it become fragile?
 - how much spread exists between seeds within the same physical case?
-- how does a new controller compare against the current baseline on the exact
-  same resolved runs?
+- how does the latest current lane compare against the chosen baseline on the
+  exact same resolved runs?
 
 This is why suite design is a first-class artifact, not just a byproduct of
 implementation.
@@ -42,6 +42,15 @@ That way the same resolved case can be run through:
 - future controller lanes
 
 without inventing different scenario identities for each controller.
+
+The compare target shown in reports is separate again:
+
+- a report may compare the latest `current` lane against a cached prior
+  `current` baseline
+- or against the internal heuristic `baseline` lane
+
+but that compare basis is report provenance, not part of the physical-case
+selector model.
 
 ### Matrix for arrival space, hierarchy for scenario class
 
@@ -537,7 +546,7 @@ is real.
 
 ## Current Status
 
-The terminal suite is now real in the evaluator and reports.
+The terminal suite is now real in the evaluator, reports, and cache workflow.
 
 Current implementation:
 
@@ -545,6 +554,15 @@ Current implementation:
 - `half_arc_terminal_v1` is implemented as the maintained Earth baseline family
 - `terminal_bot_lab_suite` is the smoke-tier matrix pack
 - `terminal_bot_lab_full` is the full-tier matrix pack
+- the maintained clean payload tiers are:
+  - `empty`
+  - `half`
+  - `full`
+- `pd-eval` now supports:
+  - cache reuse and promotion
+  - default current-lane history compare against cached clean checkpoints
+  - analytic impossible-run classification for clearly unrecoverable terminal
+    cells
 - the batch report tree surfaces:
   - `mission`
   - `arrival_family`
@@ -558,21 +576,30 @@ Current implementation:
 This means the suite is no longer a provisional seeded approximation of the
 intended selector model. The selector model is now the execution model.
 
-First results from the Earth baseline are already useful:
+Current checkpoint on the maintained Earth baseline:
 
 - `terminal_bot_lab_suite`
-  - `252` total runs
-  - `0` successes
-  - both `baseline` and `current` are currently `0 / 126`
+  - `378` total runs across `empty / half / full` and two lanes
+  - `current`: `161 / 180` scored successes, `19` scored failures,
+    `9` impossible
 - `terminal_bot_lab_full`
-  - `1008` total runs
-  - `0` successes
-  - both `baseline` and `current` are currently `0 / 504`
+  - `1512` total runs across `empty / half / full` and two lanes
+  - `current`: `643 / 720` scored successes, `77` scored failures,
+    `36` impossible
 
-That is still a useful framework result. The suite is now aligned closely
-enough to the heavier `pylander` Earth vehicle that it exposed a real gap:
-the current terminal controllers were implicitly tuned against an easier
-vehicle model and now need to be retuned before the suite expands further.
+Full-tier current-lane split:
+
+- `empty`: `252 / 252`
+- `half`: `228 / 252`
+- `full`: `163 / 216` scored, `36` impossible
+
+So the suite is no longer proving only that the aligned Earth baseline is
+harder. It is now a real workbench with a clear controller frontier:
+
+- `empty` is effectively solved on the clean corpus
+- `half` is mostly solved, with the remaining weakness concentrated in
+  `a80 mid/high`
+- `full` still exposes genuine control-authority and frontier pressure
 
 ## Next Expansion Targets
 
@@ -580,14 +607,16 @@ Now that the core matrix is real and the maintained vehicle baseline is
 aligned, the next concrete milestones are:
 
 1. improve controller robustness on the existing Earth matrix:
-   - nominal first
-   - then heavy-cargo
+   - close the remaining `half a80 mid/high` gap
+   - then work the still-scored `full` high-band failures
 2. expand the physical case space above seed:
    - `traj_err_small`
    - `traj_err_large`
-3. only after the matrix produces stable controller signal:
+3. deepen feasibility/frontier semantics beyond the current vertical-only
+   invalidation:
+   - relaxed reachability or broader frontier classification
+4. only after the matrix produces stable controller signal:
    - add thresholded regression policy
-   - add compare cache / promotion / invalidation semantics
    - consider more specialized matrix-review UI
 
 Only after that should the suite broaden into richer terrain-driven condition

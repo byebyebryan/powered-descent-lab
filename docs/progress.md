@@ -1,5 +1,65 @@
 # Progress
 
+## 2026-04-23
+
+### Current status
+
+- Phase 2 is now primarily a controller-and-corpus phase, not a scaffolding
+  phase.
+- The terminal bot-lab workflow is in place end to end:
+  - executable Earth `half_arc_terminal_v1` matrix
+  - payload tiers `empty / half / full`
+  - `terminal_pdg_v1` as the serious current lane
+  - cache reuse / promotion / current-lane history compare in `pd-eval`
+  - impossible-run classification for analytically unrecoverable terminal
+    cases
+- The maintained Earth terminal baseline now uses:
+  - `60s` timeout headroom
+  - relaxed `nominal_ttg_by_arc_point`
+  - `a80 = 8.00s`
+- The internal heuristic baseline lane is still useful as a reference
+  controller, but it is no longer the main progress metric.
+
+### Current controller checkpoint
+
+- `terminal_bot_lab_suite`
+  - `current`: `161 / 180` scored successes, `19` scored failures,
+    `9` impossible
+  - `baseline`: `33 / 180` scored successes, `147` scored failures,
+    `9` impossible
+- `terminal_bot_lab_full`
+  - `current`: `643 / 720` scored successes, `77` scored failures,
+    `36` impossible
+  - `baseline`: `135 / 720` scored successes, `585` scored failures,
+    `36` impossible
+
+Full-tier current-lane split by payload tier:
+
+- `empty`: `252 / 252`
+- `half`: `228 / 252`
+- `full`: `163 / 216` scored, `36` impossible
+
+This means the maintained Earth matrix is now doing the intended job:
+
+- `empty` is effectively solved on the current clean corpus
+- `half` is mostly solved, with the remaining gap concentrated in `a80`
+- `full` still exposes real control-authority limits and frontier cells
+
+### Active implementation focus
+
+1. Close the shallow-tail controller gap on the maintained Earth matrix:
+   - `half a80 mid/high`
+   - the remaining scored `full` high-band failures
+2. Expand the terminal corpus above the clean payload tiers:
+   - `traj_err_small`
+   - `traj_err_large`
+   - later terrain and obstacle conditions
+3. Tighten evaluation semantics now that the workflow is real:
+   - broader frontier / infeasible classification beyond the current vertical
+     brake bound
+   - thresholded regression policy
+   - only then more specialized report affordances
+
 ## 2026-04-22
 
 ### Current status

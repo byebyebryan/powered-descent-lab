@@ -215,6 +215,10 @@ At the moment:
 - `current` means `terminal_pdg_v1`, the first serious terminal-only PDG-shaped
   native Rust controller lane
 
+Batch reports now prefer cached current-lane history compare when a promoted
+clean cache exists. The internal `baseline` lane is still useful as a
+reference-controller check, but it is no longer the primary progress signal.
+
 Use `terminal_bot_lab_full` when the same matrix should run with the full
 seed tier for spread measurement. The `terminal_compare_*_fixture` packs are
 only for smoke-testing pack-vs-pack compare output.
@@ -244,9 +248,28 @@ The batch report is intentionally compare-friendly:
 - optional candidate-vs-baseline deltas over shared run IDs
 - stable links back to per-run detail reports and bundles
 
-At this point the batch/single-run reporting stack is good enough for real
-controller iteration. The main next bottleneck is now controller viability on
-the fully aligned Earth baseline: once the terminal suite was moved onto the
-heavier `pylander`-style vehicle/engine envelope, both current bot-lab lanes
-regressed to `0` successes on the smoke and full matrices, so controller
-retuning is again the main job before the suite expands further.
+At this point the batch/single-run reporting stack and cache workflow are good
+enough for real controller iteration. The evaluator can now:
+
+- reuse and promote batch caches
+- prefer cached current-lane history compare by default
+- classify analytically impossible terminal runs separately from scored
+  failures
+
+Current checkpoint on the maintained Earth payload tiers:
+
+- `terminal_bot_lab_suite`
+  - `current`: `161 / 180` scored successes, `19` scored failures,
+    `9` impossible
+- `terminal_bot_lab_full`
+  - `current`: `643 / 720` scored successes, `77` scored failures,
+    `36` impossible
+  - by vehicle tier:
+    - `empty`: `252 / 252`
+    - `half`: `228 / 252`
+    - `full`: `163 / 216` scored, `36` impossible
+
+So the main next bottleneck is no longer basic controller viability on the
+Earth-aligned workbench. The remaining gap is concentrated in the shallow tail,
+especially `half/full a80 mid/high`, plus broader corpus expansion and a real
+thresholded regression policy.
