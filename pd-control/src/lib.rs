@@ -465,7 +465,7 @@ mod tests {
         let mut controller = TerminalPdgController::default();
         let frame = controller.update(&ctx, &observation);
 
-        assert!(frame.command.target_attitude_rad.abs() < 0.05);
+        assert!(frame.command.target_attitude_rad.abs() < 0.08);
         assert!(frame.command.throttle_frac > 0.0);
     }
 
@@ -486,6 +486,27 @@ mod tests {
         let frame = controller.update(&ctx, &observation);
 
         assert!(frame.command.target_attitude_rad < -0.015);
+        assert!(frame.command.throttle_frac > 0.0);
+    }
+
+    #[test]
+    fn terminal_pdg_touchdown_rescue_keeps_small_latest_safe_tilt_on_pad() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        observation.position_m = Vec2::new(0.18, 5.11);
+        observation.velocity_mps = Vec2::new(0.10, -0.63);
+        observation.target_dx_m = -0.18;
+        observation.height_above_target_m = 5.11;
+        observation.touchdown_clearance_m = 0.11;
+        observation.min_hull_clearance_m = 0.11;
+
+        let mut controller = TerminalPdgController::default();
+        let frame = controller.update(&ctx, &observation);
+
+        assert!(frame.command.target_attitude_rad < -0.01);
+        assert!(frame.command.target_attitude_rad > -0.08);
         assert!(frame.command.throttle_frac > 0.0);
     }
 

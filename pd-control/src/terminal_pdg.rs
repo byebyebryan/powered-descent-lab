@@ -858,7 +858,14 @@ impl TerminalPdgController {
             } else {
                 dx_term.max(0.25 * vx_term)
             };
-            let rescue_angle_target = rescue_sign * rescue_tilt_limit * rescue_weight;
+            let rescue_angle_target = if rescue_sign == 0.0 {
+                let keep_tilt_limit = rescue_tilt_limit.min(0.06);
+                current_state
+                    .target_attitude_rad
+                    .clamp(-keep_tilt_limit, keep_tilt_limit)
+            } else {
+                rescue_sign * rescue_tilt_limit * rescue_weight
+            };
             let mass = view.observation.mass_kg.max(0.5);
             let alt_eff = if low_clearance {
                 touchdown_clearance_m.max(self.config.touchdown_rescue_alt_floor_m)
