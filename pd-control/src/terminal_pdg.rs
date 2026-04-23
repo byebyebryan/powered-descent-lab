@@ -47,6 +47,8 @@ pub struct TerminalPdgControllerConfig {
     pub terminal_gate_burn_time_offset_short_s: f64,
     pub terminal_gate_burn_time_offset_long_s: f64,
     pub terminal_gate_latest_safe_buffer_s: f64,
+    pub terminal_gate_latest_safe_aggressive_dx_abs_m: f64,
+    pub terminal_gate_latest_safe_aggressive_dx_ratio: f64,
     pub terminal_overshoot_tilt_altitude_min_m: f64,
     pub terminal_overshoot_tilt_projected_dx_abs_m: f64,
     pub terminal_overshoot_tilt_projected_dx_ratio: f64,
@@ -94,6 +96,8 @@ impl Default for TerminalPdgControllerConfig {
             terminal_gate_burn_time_offset_short_s: 0.8,
             terminal_gate_burn_time_offset_long_s: 0.8,
             terminal_gate_latest_safe_buffer_s: 0.6,
+            terminal_gate_latest_safe_aggressive_dx_abs_m: 24.0,
+            terminal_gate_latest_safe_aggressive_dx_ratio: 1.25,
             terminal_overshoot_tilt_altitude_min_m: 35.0,
             terminal_overshoot_tilt_projected_dx_abs_m: 28.0,
             terminal_overshoot_tilt_projected_dx_ratio: 2.0,
@@ -697,12 +701,8 @@ impl TerminalPdgController {
                 )
             })
             .collect();
-        candidates.sort_by(latest_safe_preference_order);
-        let best_candidate = candidates
-            .iter()
-            .copied()
-            .find(|candidate| candidate.tilt_feasible && candidate.required_accel_ratio <= 1.0)
-            .unwrap_or_else(|| candidates[0]);
+        let best_candidate =
+            self.select_latest_safe_candidate(&mut candidates, lateral_dx_m, target_half_width_m);
 
         LatestSafeState {
             latest_safe_margin_s: time_to_impact
@@ -884,6 +884,34 @@ impl TerminalPdgController {
         }
         None
     }
+
+    fn select_latest_safe_candidate(
+        &self,
+        candidates: &mut [TerminalGateCandidate],
+        lateral_dx_m: f64,
+        target_half_width_m: f64,
+    ) -> TerminalGateCandidate {
+        let aggressive_dx_threshold = self
+            .config
+            .terminal_gate_latest_safe_aggressive_dx_abs_m
+            .max(self.config.terminal_gate_latest_safe_aggressive_dx_ratio * target_half_width_m);
+        let urgent_lateral_recovery = lateral_dx_m.abs() > aggressive_dx_threshold;
+        if urgent_lateral_recovery {
+            candidates.sort_by(aggressive_latest_safe_preference_order);
+            candidates
+                .iter()
+                .copied()
+                .find(|candidate| candidate.tilt_feasible)
+                .unwrap_or_else(|| candidates[0])
+        } else {
+            candidates.sort_by(latest_safe_preference_order);
+            candidates
+                .iter()
+                .copied()
+                .find(|candidate| candidate.tilt_feasible && candidate.required_accel_ratio <= 1.0)
+                .unwrap_or_else(|| candidates[0])
+        }
+    }
 }
 
 impl Controller for TerminalPdgController {
@@ -1026,6 +1054,22 @@ fn latest_safe_preference_order(
         ))
 }
 
+fn aggressive_latest_safe_preference_order(
+    lhs: &TerminalGateCandidate,
+    rhs: &TerminalGateCandidate,
+) -> std::cmp::Ordering {
+    (
+        !lhs.tilt_feasible,
+        OrderedF64(lhs.burn_time_s),
+        OrderedF64(lhs.required_accel_ratio),
+    )
+        .cmp(&(
+            !rhs.tilt_feasible,
+            OrderedF64(rhs.burn_time_s),
+            OrderedF64(rhs.required_accel_ratio),
+        ))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct OrderedF64(f64);
 
@@ -1040,6 +1084,37 @@ impl Ord for OrderedF64 {
 impl PartialOrd for OrderedF64 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.0.partial_cmp(&other.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn urgent_lateral_latest_safe_prefers_shorter_candidate() {
+        let controller = TerminalPdgController::default();
+        let mut candidates = vec![
+            TerminalGateCandidate {
+                burn_time_s: 14.0,
+                required_accel_ratio: 0.9,
+                upward_accel_mps2: 3.0,
+                tilt_feasible: true,
+                ready: true,
+            },
+            TerminalGateCandidate {
+                burn_time_s: 6.0,
+                required_accel_ratio: 1.2,
+                upward_accel_mps2: 5.0,
+                tilt_feasible: true,
+                ready: false,
+            },
+        ];
+
+        let selected = controller.select_latest_safe_candidate(&mut candidates, 32.0, 18.0);
+
+        assert_eq!(selected.burn_time_s, 6.0);
+        assert_eq!(selected.required_accel_ratio, 1.2);
     }
 }
 
