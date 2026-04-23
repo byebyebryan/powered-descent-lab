@@ -2681,6 +2681,12 @@ fn write_artifact_bundle(
         &artifacts.controller_updates,
         Some(&artifacts.performance),
     )?;
+    pd_report::write_run_preview_svg(
+        &path.join("preview.svg"),
+        scenario,
+        &artifacts.run.manifest,
+        &artifacts.run.samples,
+    )?;
     Ok(())
 }
 

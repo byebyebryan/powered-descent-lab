@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, fmt::Write as _, fs, path::Path};
 
 use anyhow::{Context, Result};
 use pd_control::{ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue};
@@ -44,6 +44,36 @@ pub fn write_run_report(
     fs::write(path, html)
         .with_context(|| format!("failed to write report file {}", path.display()))?;
     Ok(())
+}
+
+pub fn write_run_preview_svg(
+    path: &Path,
+    scenario: &ScenarioSpec,
+    manifest: &RunManifest,
+    samples: &[SampleRecord],
+) -> Result<()> {
+    let svg = build_run_preview_svg(scenario, manifest, samples);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create preview output directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::write(path, svg)
+        .with_context(|| format!("failed to write preview file {}", path.display()))?;
+    Ok(())
+}
+
+pub struct PreviewSeries<'a> {
+    pub scenario: &'a ScenarioSpec,
+    pub manifest: &'a RunManifest,
+    pub samples: &'a [SampleRecord],
+}
+
+pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
+    build_preview_svg(series)
 }
 
 fn build_report_data(
@@ -116,6 +146,434 @@ fn build_report_data(
         bot_stats: build_bot_stats(manifest, controller_updates),
         mission_details: build_mission_details(scenario),
     }
+}
+
+fn build_run_preview_svg(
+    scenario: &ScenarioSpec,
+    manifest: &RunManifest,
+    samples: &[SampleRecord],
+) -> String {
+    build_preview_svg(&[PreviewSeries {
+        scenario,
+        manifest,
+        samples,
+    }])
+}
+
+fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
+    const WIDTH_PX: f64 = 156.0;
+    const HEIGHT_PX: f64 = 92.0;
+    const PADDING_PX: f64 = 6.0;
+    let multi_run = series.len() > 1;
+
+    let pad_world = series.iter().find_map(|series| {
+        series
+            .scenario
+            .world
+            .landing_pad(series.scenario.mission.goal.target_pad_id())
+            .map(|pad| (pad.center_x_m, pad.surface_y_m, pad.width_m.max(1.0)))
+    });
+    let normalize_center_x = pad_world
+        .map(|(center_x_m, _, _)| center_x_m)
+        .unwrap_or(0.0);
+    let first_flip_sign = series
+        .first()
+        .map(|series| {
+            preview_flip_sign(series.scenario.initial_state.position_m.x - normalize_center_x)
+        })
+        .unwrap_or(1.0);
+    let transform_x = |x_world: f64, flip_sign: f64| (x_world - normalize_center_x) * flip_sign;
+    let terrain = series
+        .first()
+        .map(|series| {
+            series
+                .scenario
+                .world
+                .terrain
+                .points()
+                .iter()
+                .map(|point| (transform_x(point.x, first_flip_sign), point.y))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(x, y)| x.is_finite() && y.is_finite())
+        .collect::<Vec<_>>();
+    let pad = pad_world.map(|(_, surface_y_m, width_m)| (0.0, surface_y_m, width_m));
+    let trajectories = series
+        .iter()
+        .map(|series| {
+            let flip_sign =
+                preview_flip_sign(series.scenario.initial_state.position_m.x - normalize_center_x);
+            let trajectory = series
+                .samples
+                .iter()
+                .map(|sample| {
+                    (
+                        transform_x(sample.observation.position_m.x, flip_sign),
+                        sample.observation.position_m.y,
+                    )
+                })
+                .filter(|(x, y)| x.is_finite() && y.is_finite())
+                .collect::<Vec<_>>();
+            let reference = if multi_run {
+                Vec::new()
+            } else {
+                pad.map(|(target_x_m, target_y_m, _)| {
+                    idealized_reference_curve(
+                        series.scenario.initial_state.position_m.x,
+                        series.scenario.initial_state.position_m.y,
+                        normalize_center_x + target_x_m,
+                        target_y_m,
+                        series.scenario.world.gravity_mps2,
+                    )
+                    .into_iter()
+                    .map(|(x, y)| (transform_x(x, flip_sign), y))
+                    .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+            };
+            (
+                trajectory,
+                reference,
+                enum_label(&series.manifest.mission_outcome),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut include_point = |x: f64, y: f64| {
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+    };
+    for &(x, y) in terrain.iter() {
+        include_point(x, y);
+    }
+    for (trajectory, reference, _) in &trajectories {
+        for &(x, y) in trajectory.iter().chain(reference.iter()) {
+            include_point(x, y);
+        }
+    }
+    if let Some((center_x_m, surface_y_m, width_m)) = pad {
+        include_point(center_x_m - (0.5 * width_m), surface_y_m);
+        include_point(center_x_m + (0.5 * width_m), surface_y_m);
+    }
+
+    if !min_x.is_finite() || !max_x.is_finite() || !min_y.is_finite() || !max_y.is_finite() {
+        return format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH_PX}" height="{HEIGHT_PX}" viewBox="0 0 {WIDTH_PX} {HEIGHT_PX}"><rect width="100%" height="100%" rx="10" fill="#fbf7ee"/><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#7c6d5c">no preview</text></svg>"##
+        );
+    }
+
+    let x_span = (max_x - min_x).max(1.0);
+    let y_span = (max_y - min_y).max(1.0);
+    let x_margin = x_span * 0.06;
+    let y_margin = y_span * 0.08;
+    min_x -= x_margin;
+    max_x += x_margin;
+    min_y -= y_margin.max(2.0);
+    max_y += y_margin.max(2.0);
+
+    let x_span = (max_x - min_x).max(1.0);
+    let y_span = (max_y - min_y).max(1.0);
+    let scale = ((WIDTH_PX - (2.0 * PADDING_PX)) / x_span)
+        .min((HEIGHT_PX - (2.0 * PADDING_PX)) / y_span)
+        .max(1e-6);
+    let inner_width = x_span * scale;
+    let inner_height = y_span * scale;
+    let x_origin = PADDING_PX + ((WIDTH_PX - (2.0 * PADDING_PX) - inner_width) * 0.5);
+    let bottom_padding = PADDING_PX + ((HEIGHT_PX - (2.0 * PADDING_PX) - inner_height) * 0.5);
+    let project = |x: f64, y: f64| -> (f64, f64) {
+        let px = x_origin + ((x - min_x) * scale);
+        let py = HEIGHT_PX - bottom_padding - ((y - min_y) * scale);
+        (px, py)
+    };
+    let polyline_points = |points: &[(f64, f64)]| -> String {
+        let mut out = String::new();
+        for (index, &(x, y)) in points.iter().enumerate() {
+            let (px, py) = project(x, y);
+            if index > 0 {
+                out.push(' ');
+            }
+            let _ = write!(out, "{px:.2},{py:.2}");
+        }
+        out
+    };
+
+    let terrain_points = polyline_points(&terrain);
+    let start_markers = (!multi_run)
+        .then(|| {
+            trajectories
+                .iter()
+                .filter_map(|(trajectory, _, _)| {
+                    trajectory.first().copied().map(|(x, y)| {
+                        let (px, py) = project(x, y);
+                        format!(
+                            r##"<circle cx="{px:.2}" cy="{py:.2}" r="2.3" fill="#fffaf2" stroke="#5d5143" stroke-width="1"/>"##
+                        )
+                    })
+                })
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+    let end_markers = trajectories
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (trajectory, _, outcome))| {
+            trajectory.last().copied().map(|(x, y)| {
+                let (px, py) = project(x, y);
+                let seed_color = preview_seed_color(index, trajectories.len());
+                match outcome.as_str() {
+                    "success" => format!(
+                        r##"<circle cx="{px:.2}" cy="{py:.2}" r="{radius:.2}" fill="{fill}" stroke="#fffaf2" stroke-width="{stroke:.2}"/>"##,
+                        radius = if multi_run { 2.6 } else { 3.4 },
+                        fill = if multi_run { seed_color.as_str() } else { "#2f9e44" },
+                        stroke = if multi_run { 1.0 } else { 1.4 },
+                    ),
+                    "failed_off_target" => format!(
+                        r##"<path d="M {x1:.2} {py:.2} L {px:.2} {y1:.2} L {x2:.2} {py:.2} L {px:.2} {y2:.2} Z" fill="#d6a237" stroke="{stroke_color}" stroke-width="{stroke:.2}"/>"##,
+                        x1 = px - if multi_run { 2.9 } else { 3.8 },
+                        y1 = py - if multi_run { 2.9 } else { 3.8 },
+                        x2 = px + if multi_run { 2.9 } else { 3.8 },
+                        y2 = py + if multi_run { 2.9 } else { 3.8 },
+                        stroke_color = if multi_run { seed_color.as_str() } else { "#fffaf2" },
+                        stroke = if multi_run { 0.9 } else { 1.1 },
+                    ),
+                    _ => format!(
+                        r##"<path d="M {x1:.2} {y1:.2} L {x2:.2} {y2:.2} M {x2:.2} {y1:.2} L {x1:.2} {y2:.2}" stroke="#b5542d" stroke-width="{stroke:.2}" stroke-linecap="round"/>"##,
+                        x1 = px - if multi_run { 2.8 } else { 3.6 },
+                        y1 = py - if multi_run { 2.8 } else { 3.6 },
+                        x2 = px + if multi_run { 2.8 } else { 3.6 },
+                        y2 = py + if multi_run { 2.8 } else { 3.6 },
+                        stroke = if multi_run { 1.35 } else { 1.8 },
+                    ),
+                }
+            })
+        })
+        .collect::<String>();
+    let pad_svg = pad.map(|(center_x_m, surface_y_m, width_m)| {
+        let (x1, y1) = project(center_x_m - (0.5 * width_m), surface_y_m);
+        let (x2, y2) = project(center_x_m + (0.5 * width_m), surface_y_m);
+        format!(
+            r##"<line x1="{x1:.2}" y1="{y1:.2}" x2="{x2:.2}" y2="{y2:.2}" stroke="#2f9e44" stroke-width="3.2" stroke-linecap="round"/>"##
+        )
+    });
+    let reference_svg = trajectories
+        .iter()
+        .map(|(_, reference, _)| polyline_points(reference))
+        .filter(|points| !points.is_empty())
+        .map(|points| {
+            format!(
+                r##"<polyline points="{points}" fill="none" stroke="#8c9cb1" stroke-width="{width:.1}" stroke-opacity="{opacity:.2}" stroke-dasharray="4 3" stroke-linecap="round" stroke-linejoin="round"/>"##,
+                width = if multi_run { 1.0 } else { 1.3 },
+                opacity = if multi_run { 0.38 } else { 1.0 },
+            )
+        })
+        .collect::<String>();
+    let trajectory_svg = trajectories
+        .iter()
+        .enumerate()
+        .map(|(index, (trajectory, _, _))| (index, polyline_points(trajectory)))
+        .filter(|(_, points)| !points.is_empty())
+        .map(|(index, points)| {
+            let stroke = if multi_run {
+                preview_seed_color(index, trajectories.len())
+            } else {
+                "#1d5e7a".to_owned()
+            };
+            format!(
+                r##"<polyline points="{points}" fill="none" stroke="{stroke}" stroke-width="{width:.1}" stroke-opacity="{opacity:.2}" stroke-linecap="round" stroke-linejoin="round"/>"##,
+                stroke = stroke,
+                width = if multi_run { 1.3 } else { 1.9 },
+                opacity = if multi_run { 0.88 } else { 1.0 },
+            )
+        })
+        .collect::<String>();
+
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH_PX}" height="{HEIGHT_PX}" viewBox="0 0 {WIDTH_PX} {HEIGHT_PX}" role="img" aria-label="run trajectory preview">
+  <rect width="100%" height="100%" rx="10" fill="#fbf7ee"/>
+  <rect x="0.5" y="0.5" width="{border_w:.1}" height="{border_h:.1}" rx="9.5" fill="none" stroke="#d7cdbd"/>
+  {reference_svg}
+  {trajectory_svg}
+  {terrain_svg}
+  {pad_svg}
+  {start_markers}
+  {end_markers}
+</svg>"##,
+        border_w = WIDTH_PX - 1.0,
+        border_h = HEIGHT_PX - 1.0,
+        reference_svg = reference_svg,
+        trajectory_svg = trajectory_svg,
+        terrain_svg = if terrain_points.is_empty() {
+            String::new()
+        } else {
+            format!(
+                r##"<polyline points="{terrain_points}" fill="none" stroke="#7a5d3e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"##
+            )
+        },
+        pad_svg = pad_svg.unwrap_or_default(),
+        start_markers = start_markers,
+        end_markers = end_markers,
+    )
+}
+
+fn preview_seed_color(index: usize, total: usize) -> String {
+    if total <= 1 {
+        return "#1d5e7a".to_owned();
+    }
+    let t = index as f64 / (total.saturating_sub(1)) as f64;
+    let hue = 210.0 - (165.0 * t);
+    format!("hsl({hue:.0},74%,40%)")
+}
+
+fn preview_flip_sign(initial_dx: f64) -> f64 {
+    if initial_dx > 0.0 { -1.0 } else { 1.0 }
+}
+
+fn ballistic_end_time(start_y: f64, target_y: f64, vy_mps: f64, gravity_mps2: f64) -> Option<f64> {
+    let g = gravity_mps2.abs().max(1e-6);
+    let a = 0.5 * g;
+    let b = -vy_mps;
+    let c = target_y - start_y;
+    let discriminant = (b * b) - (4.0 * a * c);
+    if !discriminant.is_finite() || discriminant < 0.0 {
+        return None;
+    }
+    let sqrt = discriminant.sqrt();
+    [(-b - sqrt) / (2.0 * a), (-b + sqrt) / (2.0 * a)]
+        .into_iter()
+        .filter(|value| value.is_finite() && *value > 1e-6)
+        .max_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+fn idealized_reference_kinematics(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    apex_y: f64,
+    gravity_mps2: f64,
+) -> Option<(f64, f64, f64)> {
+    let g = gravity_mps2.abs().max(1e-6);
+    let peak_y = start_y.max(apex_y);
+    let vy_up = (2.0 * g * (peak_y - start_y).max(0.0)).sqrt();
+    let flight_time = ballistic_end_time(start_y, target_y, vy_up, gravity_mps2)?;
+    if flight_time <= 1e-6 {
+        return None;
+    }
+    Some((flight_time, (target_x - start_x) / flight_time, vy_up))
+}
+
+fn idealized_reference_impact_angle_deg(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    apex_y: f64,
+    gravity_mps2: f64,
+) -> Option<f64> {
+    let (flight_time, vx_mps, vy_up_mps) =
+        idealized_reference_kinematics(start_x, start_y, target_x, target_y, apex_y, gravity_mps2)?;
+    let g = gravity_mps2.abs().max(1e-6);
+    let vy_target = vy_up_mps - (g * flight_time);
+    Some((-vy_target).max(0.0).atan2(vx_mps.abs()).to_degrees())
+}
+
+fn idealized_reference_apex_y(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    gravity_mps2: f64,
+) -> f64 {
+    let dx = target_x - start_x;
+    let dy = target_y - start_y;
+    let base_peak = if target_y > start_y {
+        start_y.max(target_y + 1.0)
+    } else {
+        start_y
+    };
+    if dx.abs() <= 1e-6 {
+        return base_peak;
+    }
+    let meets_angle_floor = |peak_y: f64| {
+        idealized_reference_impact_angle_deg(
+            start_x,
+            start_y,
+            target_x,
+            target_y,
+            peak_y,
+            gravity_mps2,
+        )
+        .is_some_and(|angle| angle >= 45.0)
+    };
+    if meets_angle_floor(base_peak) {
+        return base_peak;
+    }
+    let mut low_peak = base_peak;
+    let mut growth = 16.0_f64.max(0.25 * dx.abs().max(dy.abs()).max(1.0));
+    let mut candidate_peak = base_peak;
+    let mut high_peak = None;
+    for _ in 0..16 {
+        candidate_peak += growth;
+        if meets_angle_floor(candidate_peak) {
+            high_peak = Some(candidate_peak);
+            break;
+        }
+        low_peak = candidate_peak;
+        growth *= 2.0;
+    }
+    let Some(mut high_peak) = high_peak else {
+        return candidate_peak;
+    };
+    for _ in 0..32 {
+        let mid_peak = 0.5 * (low_peak + high_peak);
+        if meets_angle_floor(mid_peak) {
+            high_peak = mid_peak;
+        } else {
+            low_peak = mid_peak;
+        }
+    }
+    high_peak
+}
+
+fn idealized_reference_curve(
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    gravity_mps2: f64,
+) -> Vec<(f64, f64)> {
+    let apex_y = idealized_reference_apex_y(start_x, start_y, target_x, target_y, gravity_mps2);
+    let Some((flight_time, vx_mps, vy_up_mps)) =
+        idealized_reference_kinematics(start_x, start_y, target_x, target_y, apex_y, gravity_mps2)
+    else {
+        return Vec::new();
+    };
+    let g = gravity_mps2.abs().max(1e-6);
+    let point_count = (18.0 + (flight_time * 10.0)).round().clamp(24.0, 84.0) as usize;
+    let mut points = Vec::with_capacity(point_count);
+    for index in 0..point_count {
+        let t = if point_count <= 1 {
+            0.0
+        } else {
+            flight_time * (index as f64) / ((point_count - 1) as f64)
+        };
+        points.push((
+            start_x + (vx_mps * t),
+            start_y + (vy_up_mps * t) - (0.5 * g * t * t),
+        ));
+    }
+    if let Some(last) = points.last_mut() {
+        *last = (target_x, target_y);
+    }
+    points
 }
 
 fn build_report_samples(

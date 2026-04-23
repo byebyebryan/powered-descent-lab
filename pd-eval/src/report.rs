@@ -6,7 +6,9 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use pd_core::{SampleRecord, ScenarioSpec};
+use pd_report::{PreviewSeries, build_multi_run_preview_svg};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     BatchComparison, BatchReport, BatchRunComparison, BatchRunPointer, compare_batch_reports,
@@ -198,12 +200,21 @@ fn render_batch_report(
     .header-context {{
       margin-bottom: 16px;
     }}
-    .header-overview h2 {{
-      margin: 0 0 10px;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
+    .section-head {{
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      margin-bottom: 10px;
+    }}
+    .header-context h2,
+    .header-overview h2,
+    .review-tree-section h2 {{
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--ink);
     }}
     .context-table {{
       width: 100%;
@@ -453,7 +464,6 @@ fn render_batch_report(
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-bottom: 12px;
     }}
     .tree-controls button {{
       border: 1px solid var(--line);
@@ -473,7 +483,6 @@ fn render_batch_report(
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-bottom: 12px;
     }}
     .view-mode-controls button {{
       border: 1px solid var(--line);
@@ -711,18 +720,34 @@ fn render_batch_report(
       color: var(--good);
       font-weight: 700;
     }}
-    .detail-links {{
-      display: flex;
-      flex-wrap: wrap;
+    .preview-cell {{
+      display: grid;
       gap: 6px;
     }}
-    .detail-links a {{
+    .run-preview {{
       display: inline-flex;
-      padding: 3px 7px;
-      border-radius: 999px;
+      width: 148px;
+      max-width: 100%;
+      border-radius: 10px;
       border: 1px solid var(--line);
-      background: var(--surface-strong);
-      font-size: 0.77rem;
+      background: #fbf7ee;
+      overflow: hidden;
+      box-shadow: 0 3px 10px rgba(39,28,18,0.06);
+    }}
+    .run-preview img {{
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fbf7ee;
+    }}
+    .run-preview svg {{
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fbf7ee;
+    }}
+    .lane-preview {{
+      width: 148px;
     }}
     .scenario-table.baseline-hidden .baseline-row {{
       display: none;
@@ -756,6 +781,16 @@ fn render_batch_report(
     }}
     .review-tree-root.compare-hidden .compare-toggle-target {{
       display: none;
+    }}
+    .review-tree-section {{
+      border-top: 1px solid rgba(215,205,189,0.88);
+      padding-top: 16px;
+      margin-bottom: 16px;
+    }}
+    .review-tree-section > p {{
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
     }}
     .section-note {{
       color: var(--muted);
@@ -812,16 +847,16 @@ fn render_batch_report(
 
     {overview_html}
 
-	    <section class="panel">
-	      <h2>Review Tree</h2>
-	      <p>Start here. The selector hierarchy is rendered as a dense tree table, with aggregate rows up top and exact seeded runs hidden underneath the lane rows.</p>
-	      {view_controls}
-	      {tree_controls}
-	      <div id="review-tree-root" class="review-tree-root">{review_tree}</div>
-	    </section>
+    <section class="review-tree-section">
+      <div class="section-head">
+        <h2>Review Tree</h2>
+        {tree_controls}
+      </div>
+      <div id="review-tree-root" class="review-tree-root">{review_tree}</div>
+    </section>
 
-	    <div class="compare-sections">{comparison_sections}</div>
-	  </div>
+    <div class="compare-sections">{comparison_sections}</div>
+  </div>
   <script>
     (() => {{
       const page = document.getElementById("report-page");
@@ -854,6 +889,19 @@ fn render_batch_report(
           }}
         }});
       }};
+      const summaryLevel = (kind) => {{
+        switch (kind) {{
+          case "mission": return 0;
+          case "arrival": return 1;
+          case "condition": return 2;
+          case "vehicle": return 3;
+          case "arc": return 4;
+          case "velocity": return 5;
+          case "lane": return 6;
+          default: return 0;
+        }}
+      }};
+      const laneLeafDepth = summaryLevel("lane");
       const toggleRow = (row) => {{
         if (!row.classList.contains("summary-row")) return;
         const table = row.closest("table");
@@ -881,22 +929,57 @@ fn render_batch_report(
           }}
         }});
       }};
-      const expandGroups = (table) => {{
+      const applyExpansionState = (table, targetDepth, showSeeds) => {{
         collapseGroups(table);
-        summaryRows(table).forEach((row) => {{
-          if (row.dataset.kind && row.dataset.kind !== "lane" && row.dataset.group) {{
-            row.setAttribute("aria-expanded", "true");
-            showImmediateChildren(table, row, false);
-          }}
-        }});
+        const clampedDepth = Math.max(0, Math.min(laneLeafDepth, targetDepth));
+        table.dataset.targetDepth = String(clampedDepth);
+        table.dataset.showSeeds = showSeeds ? "true" : "false";
+        let changed = true;
+        while (changed) {{
+          changed = false;
+          summaryRows(table).forEach((row) => {{
+            if (row.hidden || !row.dataset.group) return;
+            const level = summaryLevel(row.dataset.kind || "");
+            if (level < clampedDepth) {{
+              if (row.getAttribute("aria-expanded") !== "true") {{
+                row.setAttribute("aria-expanded", "true");
+                showImmediateChildren(table, row, false);
+                changed = true;
+              }}
+            }} else if (level === clampedDepth && row.dataset.kind === "lane" && showSeeds) {{
+              if (row.getAttribute("aria-expanded") !== "true") {{
+                row.setAttribute("aria-expanded", "true");
+                showImmediateChildren(table, row, true);
+                changed = true;
+              }}
+            }}
+          }});
+        }}
       }};
-      const expandAll = (table) => {{
-        allRows(table).forEach((row) => {{
-          row.hidden = false;
-          if (row.classList.contains("summary-row") && row.dataset.group) {{
-            row.setAttribute("aria-expanded", "true");
-          }}
-        }});
+      const expandGroups = (table) => {{
+        applyExpansionState(table, laneLeafDepth, false);
+      }};
+      const expandSeeds = (table) => {{
+        applyExpansionState(table, laneLeafDepth, true);
+      }};
+      const collapseSeeds = (table) => {{
+        applyExpansionState(table, Number(table.dataset.targetDepth || laneLeafDepth), false);
+      }};
+      const stepDepth = (table, delta) => {{
+        const currentDepth = Number(table.dataset.targetDepth || laneLeafDepth);
+        const showSeeds = table.dataset.showSeeds === "true";
+        const nextDepth = Math.max(0, Math.min(laneLeafDepth, currentDepth + delta));
+        const keepSeeds = showSeeds && nextDepth === laneLeafDepth;
+        applyExpansionState(table, nextDepth, keepSeeds);
+      }};
+      const collapseOneLevel = (table) => {{
+        stepDepth(table, -1);
+      }};
+      const expandOneLevel = (table) => {{
+        stepDepth(table, 1);
+      }};
+      const collapseAll = (table) => {{
+        applyExpansionState(table, 0, false);
       }};
       tables().forEach((table) => {{
         expandGroups(table);
@@ -917,14 +1000,16 @@ fn render_batch_report(
       document.querySelectorAll("[data-tree-action]").forEach((button) => {{
         button.addEventListener("click", () => {{
           const action = button.getAttribute("data-tree-action");
-          if (action === "expand-groups") {{
-            tables().forEach(expandGroups);
-          }} else if (action === "collapse-groups") {{
-            tables().forEach(collapseGroups);
-          }} else if (action === "expand-all") {{
-            tables().forEach(expandAll);
+          if (action === "expand-depth") {{
+            tables().forEach(expandOneLevel);
+          }} else if (action === "collapse-depth") {{
+            tables().forEach(collapseOneLevel);
+          }} else if (action === "expand-seeds") {{
+            tables().forEach(expandSeeds);
+          }} else if (action === "collapse-seeds") {{
+            tables().forEach(collapseSeeds);
           }} else if (action === "collapse-all") {{
-            tables().forEach(collapseGroups);
+            tables().forEach(collapseAll);
           }} else if (action === "toggle-baseline") {{
             tables().forEach((table) => table.classList.toggle("baseline-hidden"));
             const anyHidden = tables().some((table) => table.classList.contains("baseline-hidden"));
@@ -979,9 +1064,12 @@ fn render_batch_report(
             .unwrap_or_default(),
         context_html =
             render_context_table(candidate, baseline.map(|(_, report)| report), comparison),
-        overview_html =
-            render_overview_table(candidate, baseline.map(|(_, report)| report), comparison,),
-        view_controls = render_view_controls(has_compare_view),
+        overview_html = render_overview_table(
+            candidate,
+            baseline.map(|(_, report)| report),
+            comparison,
+            render_view_controls(has_compare_view).as_str(),
+        ),
         tree_controls = render_tree_controls(comparison.is_some()),
         review_tree = render_review_tree(
             candidate,
@@ -1606,6 +1694,7 @@ fn render_overview_table(
     candidate: &BatchReport,
     baseline: Option<&BatchReport>,
     comparison: Option<&BatchComparison>,
+    view_controls: &str,
 ) -> String {
     let candidate_scope = selector_scope_counts(candidate);
     let candidate_records = candidate.records.iter().collect::<Vec<_>>();
@@ -1878,7 +1967,10 @@ fn render_overview_table(
 
     format!(
         r#"<section class="header-overview">
-  <h2>Overview</h2>
+  <div class="section-head">
+    <h2>Overview</h2>
+    {view_controls}
+  </div>
   <div class="table-wrap">
     <table class="summary-table">
       <thead>
@@ -1896,18 +1988,18 @@ fn render_overview_table(
     </table>
   </div>
 </section>"#,
-        rows.join("")
+        rows.join(""),
+        view_controls = view_controls,
     )
 }
 
 fn render_tree_controls(has_compare: bool) -> String {
     let mut buttons = vec![
-        r#"<button type="button" data-tree-action="expand-groups">Expand Groups</button>"#
+        r#"<button type="button" data-tree-action="expand-depth">Expand</button>"#.to_owned(),
+        r#"<button type="button" data-tree-action="collapse-depth">Collapse</button>"#.to_owned(),
+        r#"<button type="button" data-tree-action="expand-seeds">Expand Seeds</button>"#.to_owned(),
+        r#"<button type="button" data-tree-action="collapse-seeds">Collapse Seeds</button>"#
             .to_owned(),
-        r#"<button type="button" data-tree-action="collapse-groups">Collapse Groups</button>"#
-            .to_owned(),
-        r#"<button type="button" data-tree-action="expand-all">Expand All</button>"#.to_owned(),
-        r#"<button type="button" data-tree-action="collapse-all">Collapse All</button>"#.to_owned(),
     ];
     if has_compare {
         buttons.push(
@@ -2107,7 +2199,7 @@ fn render_mission_review_section(
           <th>Flight Time</th>
           <th>Landing Offset</th>
           <th>Ref Dev</th>
-          <th>Details</th>
+          <th>Preview</th>
         </tr>
       </thead>
       <tbody>{rows}</tbody>
@@ -2835,6 +2927,10 @@ fn render_lane_review_section(
         aggregate.is_some(),
         baseline_aggregate.is_some(),
     );
+    let current_note = render_summary_note_with_preview(
+        current_note.as_str(),
+        render_lane_preview(candidate_records.as_slice()).as_deref(),
+    );
     rows.push_str(&render_summary_row(
         lane_label.as_str(),
         depth,
@@ -2859,6 +2955,10 @@ fn render_lane_review_section(
             None,
             aggregate.is_some(),
             baseline_aggregate.is_some(),
+        );
+        let baseline_note = render_summary_note_with_preview(
+            baseline_note.as_str(),
+            render_lane_preview(baseline_records.as_slice()).as_deref(),
         );
         rows.push_str(&render_summary_row(
             lane_label.as_str(),
@@ -2887,8 +2987,8 @@ fn render_entry_run_table(
     parent_group_id: &str,
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     output_dir: &Path,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    _candidate_record_map: &BTreeMap<String, String>,
+    _baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
     if candidate_records.is_empty() && baseline_records.is_empty() {
         return String::new();
@@ -2915,8 +3015,6 @@ fn render_entry_run_table(
             TreeRowTone::Current,
             run_change_map,
             output_dir,
-            candidate_record_map,
-            baseline_record_map,
         ));
         if show_baseline
             && let Some(baseline_record) = baseline_by_run_id.remove(&record.resolved.run_id)
@@ -2928,8 +3026,6 @@ fn render_entry_run_table(
                 TreeRowTone::Baseline,
                 run_change_map,
                 output_dir,
-                candidate_record_map,
-                baseline_record_map,
             ));
         }
     }
@@ -2950,8 +3046,6 @@ fn render_entry_run_table(
                 TreeRowTone::Baseline,
                 run_change_map,
                 output_dir,
-                candidate_record_map,
-                baseline_record_map,
             ));
         }
     }
@@ -3198,8 +3292,6 @@ fn render_seed_run_row(
     tone: TreeRowTone,
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     output_dir: &Path,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
     let mut row_classes = vec!["seed-row"];
     match tone {
@@ -3262,14 +3354,9 @@ fn render_seed_run_row(
         format!(r#"<span class="row-note">{change_note}</span>"#)
     };
     let details = format!(
-        r#"{detail_note}<div class="detail-links">{links}</div>"#,
+        r#"{detail_note}<div class="preview-cell">{preview}</div>"#,
         detail_note = detail_note,
-        links = render_dual_links(
-            &record.resolved.run_id,
-            candidate_record_map,
-            baseline_record_map,
-            output_dir,
-        ),
+        preview = render_run_preview(record, output_dir),
     );
 
     format!(
@@ -4064,21 +4151,72 @@ fn render_dual_links(
     links.join("")
 }
 
+fn render_run_preview(record: &crate::BatchRunRecord, output_dir: &Path) -> String {
+    let Some(bundle_dir) = record.bundle_dir.as_ref() else {
+        return r#"<span class="muted">no bundle</span>"#.to_owned();
+    };
+    let bundle_dir = resolve_repo_relative(Path::new(bundle_dir));
+    let preview_path = bundle_dir.join("preview.svg");
+    let detail_href = best_bundle_href(&bundle_dir, output_dir);
+    if preview_path.is_file() {
+        return format!(
+            r#"<a class="run-preview" href="{href}"><img src="{img}" alt="{alt}"></a>"#,
+            href = escape_html(&detail_href),
+            img = escape_html(&relative_href(output_dir, &preview_path)),
+            alt = escape_html(&record.resolved.run_id),
+        );
+    }
+    render_link_row_for_bundle("run", bundle_dir.to_string_lossy().as_ref(), output_dir)
+}
+
+fn render_lane_preview(records: &[&crate::BatchRunRecord]) -> Option<String> {
+    let mut loaded = Vec::new();
+    for record in records {
+        let Some(bundle_dir) = record.bundle_dir.as_deref() else {
+            continue;
+        };
+        let bundle_dir = resolve_repo_relative(Path::new(bundle_dir));
+        let Some(scenario) = load_json_file::<ScenarioSpec>(&bundle_dir.join("scenario.json"))
+        else {
+            continue;
+        };
+        let Some(samples) = load_json_file::<Vec<SampleRecord>>(&bundle_dir.join("samples.json"))
+        else {
+            continue;
+        };
+        loaded.push((scenario, samples, &record.manifest));
+    }
+    if loaded.is_empty() {
+        return None;
+    }
+    let series = loaded
+        .iter()
+        .map(|(scenario, samples, manifest)| PreviewSeries {
+            scenario,
+            manifest: *manifest,
+            samples,
+        })
+        .collect::<Vec<_>>();
+    Some(format!(
+        r#"<div class="run-preview lane-preview">{}</div>"#,
+        build_multi_run_preview_svg(&series)
+    ))
+}
+
+fn render_summary_note_with_preview(note_html: &str, preview_html: Option<&str>) -> String {
+    match preview_html {
+        Some(preview_html) => format!(
+            r#"{note_html}<div class="preview-cell">{preview_html}</div>"#,
+            note_html = note_html,
+            preview_html = preview_html,
+        ),
+        None => note_html.to_owned(),
+    }
+}
+
 fn render_link_row_for_bundle(label: &str, bundle_dir: &str, output_dir: &Path) -> String {
     let bundle_dir = resolve_repo_relative(Path::new(bundle_dir));
-    let site_report_path = report_site_output_for_batch_run(&bundle_dir);
-    let report_path = bundle_dir.join("report.html");
-    let manifest_path = bundle_dir.join("manifest.json");
-    let href = if site_report_path.as_ref().is_some_and(|path| path.is_file()) {
-        relative_href(
-            output_dir,
-            site_report_path.as_ref().expect("checked above"),
-        )
-    } else if report_path.is_file() {
-        relative_href(output_dir, &report_path)
-    } else {
-        relative_href(output_dir, &manifest_path)
-    };
+    let href = best_bundle_href(&bundle_dir, output_dir);
     format!(
         r#"<a href="{}">{}:{}</a>"#,
         escape_html(&href),
@@ -4090,6 +4228,27 @@ fn render_link_row_for_bundle(label: &str, bundle_dir: &str, output_dir: &Path) 
                 .unwrap_or("run")
         )
     )
+}
+
+fn best_bundle_href(bundle_dir: &Path, output_dir: &Path) -> String {
+    let site_report_path = report_site_output_for_batch_run(&bundle_dir);
+    let report_path = bundle_dir.join("report.html");
+    let manifest_path = bundle_dir.join("manifest.json");
+    if site_report_path.as_ref().is_some_and(|path| path.is_file()) {
+        relative_href(
+            output_dir,
+            site_report_path.as_ref().expect("checked above"),
+        )
+    } else if report_path.is_file() {
+        relative_href(output_dir, &report_path)
+    } else {
+        relative_href(output_dir, &manifest_path)
+    }
+}
+
+fn load_json_file<T: DeserializeOwned>(path: &Path) -> Option<T> {
+    let raw = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
 }
 
 fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {

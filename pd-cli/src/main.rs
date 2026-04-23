@@ -14,7 +14,7 @@ use pd_core::{
     ActionLogEntry, EventRecord, RunArtifacts, RunContext, RunManifest, SampleRecord, ScenarioSpec,
     replay_simulation,
 };
-use pd_report::write_run_report;
+use pd_report::{write_run_preview_svg, write_run_report};
 use serde::{Serialize, de::DeserializeOwned};
 
 #[cfg(unix)]
@@ -167,6 +167,12 @@ fn render_report(args: ReportArgs) -> Result<()> {
         &bundle.controller_updates,
         bundle.performance.as_ref(),
     )?;
+    write_run_preview_svg(
+        &args.bundle_dir.join("preview.svg"),
+        &bundle.scenario,
+        &bundle.manifest,
+        &bundle.samples,
+    )?;
     if output
         .file_name()
         .and_then(|name| name.to_str())
@@ -292,6 +298,12 @@ fn write_artifact_bundle(
             &artifacts.samples,
             controller_updates,
             performance,
+        )?;
+        write_run_preview_svg(
+            &path.join("preview.svg"),
+            scenario,
+            &artifacts.manifest,
+            &artifacts.samples,
         )?;
         if let Some(report_site_output) = default_report_site_output_for_bundle(path) {
             write_run_report(
