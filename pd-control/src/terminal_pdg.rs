@@ -25,6 +25,11 @@ pub struct TerminalPdgControllerConfig {
     pub vy_low_alt_cap_mps: f64,
     pub vy_touch_cap_alt_m: f64,
     pub vy_touch_cap_mps: f64,
+    pub lateral_hold_alt_m: f64,
+    pub lateral_hold_vx_min_mps: f64,
+    pub lateral_hold_time_ratio_start: f64,
+    pub lateral_hold_time_ratio_full: f64,
+    pub lateral_hold_vy_cap_mps: f64,
     #[serde(alias = "touchdown_zero_alt_m")]
     pub touchdown_idle_clearance_m: f64,
     pub touchdown_zero_vx_mps: f64,
@@ -76,6 +81,11 @@ impl Default for TerminalPdgControllerConfig {
             vy_low_alt_cap_mps: 9.5,
             vy_touch_cap_alt_m: 8.0,
             vy_touch_cap_mps: 1.8,
+            lateral_hold_alt_m: 24.0,
+            lateral_hold_vx_min_mps: 4.0,
+            lateral_hold_time_ratio_start: 1.0,
+            lateral_hold_time_ratio_full: 1.45,
+            lateral_hold_vy_cap_mps: 3.2,
             touchdown_idle_clearance_m: 0.05,
             touchdown_zero_vx_mps: 0.55,
             touchdown_zero_vy_mps: 0.6,
@@ -268,8 +278,11 @@ impl TerminalPdgController {
         );
         let desired_vertical_speed_mps = self.desired_terminal_vertical_speed(
             touchdown_clearance_m,
+            lateral_dx_m,
             max_thrust_accel_mps2,
             max_tilt_rad,
+            vx_mps,
+            vy_up_mps,
             gravity_mps2,
         );
         let (ax_req, ay_req) = required_control_accel(
@@ -324,8 +337,11 @@ impl TerminalPdgController {
     fn desired_terminal_vertical_speed(
         &self,
         altitude_m: f64,
+        lateral_dx_m: f64,
         max_thrust_accel_mps2: f64,
         max_tilt_rad: f64,
+        vx_mps: f64,
+        vy_up_mps: f64,
         gravity_mps2: f64,
     ) -> f64 {
         let mut vy_mag = self.config.braking_target_ratio
@@ -340,6 +356,26 @@ impl TerminalPdgController {
         }
         if altitude_m <= self.config.vy_touch_cap_alt_m {
             vy_mag = vy_mag.min(self.config.vy_touch_cap_mps);
+        }
+        if altitude_m <= self.config.lateral_hold_alt_m
+            && vx_mps.abs() >= self.config.lateral_hold_vx_min_mps
+        {
+            let lateral_accel = (max_thrust_accel_mps2 * max_tilt_rad.sin()).max(0.5);
+            let lateral_correction_time_s =
+                self.terminal_lateral_correction_time(lateral_dx_m, vx_mps, lateral_accel);
+            let time_to_impact_s =
+                estimate_ground_time_to_impact(altitude_m.max(0.0), vy_up_mps, gravity_mps2);
+            let cleanup_ratio = lateral_correction_time_s / time_to_impact_s.max(0.25);
+            let hold_weight = ((cleanup_ratio - self.config.lateral_hold_time_ratio_start)
+                / (self.config.lateral_hold_time_ratio_full
+                    - self.config.lateral_hold_time_ratio_start)
+                    .max(1e-3))
+            .clamp(0.0, 1.0);
+            if hold_weight > 0.0 {
+                let eased_vy_mag = self.config.vy_touch_cap_mps
+                    + ((1.0 - hold_weight) * (vy_mag - self.config.vy_touch_cap_mps).max(0.0));
+                vy_mag = vy_mag.min(eased_vy_mag.min(self.config.lateral_hold_vy_cap_mps));
+            }
         }
         -vy_mag.max(self.config.braking_min_speed_mps)
     }
@@ -554,8 +590,11 @@ impl TerminalPdgController {
         );
         let target_vy_up = self.desired_terminal_vertical_speed(
             altitude_m,
+            lateral_dx_m,
             thrust_accel_mps2,
             max_tilt,
+            vx_mps,
+            vy_up_mps,
             gravity_mps2,
         );
         let down_speed = (-vy_up_mps).max(0.0);

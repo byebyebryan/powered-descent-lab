@@ -282,6 +282,13 @@ mod tests {
         scenario
     }
 
+    fn frame_metric_f64(frame: &ControllerFrame, key: &str) -> f64 {
+        match frame.metrics.get(key) {
+            Some(TelemetryValue::Float(value)) => *value,
+            other => panic!("expected float metric {key}, got {other:?}"),
+        }
+    }
+
     #[test]
     fn baseline_controller_emits_bounded_commands() {
         let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
@@ -427,6 +434,35 @@ mod tests {
         assert!(landing.on_target);
         assert!(landing.envelope_margin_ratio > 0.95);
         assert!(artifacts.run.manifest.summary.min_touchdown_clearance_m < 0.5);
+    }
+
+    #[test]
+    fn terminal_pdg_preserves_more_altitude_when_lateral_cleanup_is_behind() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut high_vx_observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        high_vx_observation.position_m = Vec2::new(-18.0, 29.0);
+        high_vx_observation.velocity_mps = Vec2::new(12.0, -3.8);
+        high_vx_observation.target_dx_m = 18.0;
+        high_vx_observation.height_above_target_m = 29.0;
+        high_vx_observation.touchdown_clearance_m = 24.0;
+        high_vx_observation.min_hull_clearance_m = 24.0;
+
+        let mut controller = TerminalPdgController::default();
+        let high_vx_frame = controller.update(&ctx, &high_vx_observation);
+
+        let mut low_vx_observation = high_vx_observation.clone();
+        low_vx_observation.velocity_mps.x = 1.2;
+
+        let mut controller = TerminalPdgController::default();
+        let low_vx_frame = controller.update(&ctx, &low_vx_observation);
+
+        let high_vx_descent =
+            frame_metric_f64(&high_vx_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
+        let low_vx_descent = frame_metric_f64(&low_vx_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
+
+        assert!(high_vx_descent > low_vx_descent + 0.5);
     }
 
     #[test]
