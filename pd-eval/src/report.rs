@@ -3102,18 +3102,10 @@ fn render_summary_note(
         ));
     }
     match (candidate_present, baseline_present, tone) {
-        (true, false, TreeRowTone::Current) => {
-            items.push(r#"<span class="emph">current only</span>"#.to_owned());
-        }
-        (false, true, TreeRowTone::Current) => {
-            items.push(r#"<span class="bad">missing in current</span>"#.to_owned());
-        }
-        (false, true, TreeRowTone::Baseline) => {
-            items.push(r#"<span class="emph">baseline only</span>"#.to_owned());
-        }
-        (true, false, TreeRowTone::Baseline) => {
-            items.push(r#"<span class="muted">not in baseline</span>"#.to_owned());
-        }
+        (true, false, TreeRowTone::Current)
+        | (false, true, TreeRowTone::Current)
+        | (false, true, TreeRowTone::Baseline)
+        | (true, false, TreeRowTone::Baseline) => {}
         _ => {}
     }
     if show_compare
@@ -3144,7 +3136,7 @@ fn render_summary_row(
     metric_style: SummaryMetricStyle,
     changed: bool,
     note_html: &str,
-    compare_tag: Option<&str>,
+    _compare_tag: Option<&str>,
     tone: TreeRowTone,
 ) -> String {
     let mut row_classes = vec!["summary-row"];
@@ -3188,47 +3180,7 @@ fn render_summary_row(
     } else {
         r#"<span class="expander muted">·</span>"#.to_owned()
     };
-    let tag_html = compare_tag
-        .and_then(|tag| {
-            if kind != "lane" {
-                return None;
-            }
-            let tag_class = match tone {
-                TreeRowTone::Current => "row-tag lane-current",
-                TreeRowTone::Baseline => "row-tag lane-baseline",
-            };
-            let tag_text = match tag {
-                "cur" => "CURR",
-                "base" => "BASE",
-                other => other,
-            };
-            Some(format!(
-                r#"<span class="{}">{}</span>"#,
-                tag_class,
-                escape_html(tag_text)
-            ))
-        })
-        .or_else(|| {
-            if kind == "lane" {
-                let class = match label {
-                    "current" => Some("row-tag lane-current"),
-                    "baseline" => Some("row-tag lane-baseline"),
-                    _ => None,
-                }?;
-                Some(format!(
-                    r#"<span class="{}">{}</span>"#,
-                    class,
-                    escape_html(match label {
-                        "current" => "CURR",
-                        "baseline" => "BASE",
-                        other => other,
-                    })
-                ))
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default();
+    let tag_html = String::new();
     let outcome_html = aggregate
         .map(|aggregate| format_summary_rate(aggregate, secondary_aggregate, metric_style))
         .unwrap_or_else(|| "-".to_owned());
@@ -4204,6 +4156,11 @@ fn render_lane_preview(records: &[&crate::BatchRunRecord]) -> Option<String> {
 }
 
 fn render_summary_note_with_preview(note_html: &str, preview_html: Option<&str>) -> String {
+    let note_html = if note_html.trim() == r#"<span class="row-note muted">-</span>"# {
+        ""
+    } else {
+        note_html
+    };
     match preview_html {
         Some(preview_html) => format!(
             r#"{note_html}<div class="preview-cell">{preview_html}</div>"#,
