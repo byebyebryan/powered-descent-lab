@@ -225,35 +225,54 @@ fn render_batch_report(
       font-weight: 700;
       color: var(--ink);
     }}
+    .header-context .table-wrap {{
+      overflow-x: visible;
+    }}
     .context-table {{
       width: 100%;
-      min-width: 1080px;
+      min-width: 0;
+      table-layout: fixed;
     }}
     .context-table thead th {{
-      white-space: nowrap;
+      white-space: normal;
       font-size: 0.74rem;
       letter-spacing: 0.05em;
       text-transform: uppercase;
       color: var(--muted);
       background: rgba(248,243,234,0.92);
+      line-height: 1.2;
     }}
+    .context-table thead th,
     .context-table td {{
+      width: calc(100% / 7);
       vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     .context-value {{
       display: grid;
       gap: 2px;
       font-variant-numeric: tabular-nums;
+      min-width: 0;
     }}
     .context-main {{
       color: var(--ink);
       font-weight: 700;
       line-height: 1.25;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
     .context-sub {{
       color: var(--muted);
       font-size: 0.78rem;
       line-height: 1.25;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+    .context-main code,
+    .context-sub code {{
+      white-space: normal;
+      word-break: break-all;
     }}
     .status-chip {{
       display: inline-flex;
@@ -1507,7 +1526,7 @@ fn batch_report_subtitle(
             .saturating_sub(current_focus.records.len());
         if other_runs > 0 {
             return format!(
-                "{}. {} total runs captured for this batch; overview below focuses {} current controller-lane runs while {} other lane or reference runs remain in the tree detail.",
+                "{}. {} total runs captured for this batch; the page below focuses {} current controller-lane runs while {} other lane or reference runs are excluded from this current-lane view.",
                 candidate.pack_name,
                 candidate.total_runs,
                 current_focus.records.len(),
@@ -1634,7 +1653,7 @@ fn render_context_table(
                 context_none_value("none"),
                 context_value(
                     "current controller lane",
-                    "the overview focuses the preferred current controller lane while the tree still shows pack detail",
+                    "the overview and tree focus the preferred current controller lane when no cached history compare is available",
                 ),
             )
         } else {
@@ -2343,6 +2362,11 @@ fn render_review_tree(
                     .unwrap_or_default(),
             )
         }
+    } else if let Some(candidate_focus) = preferred_current_lane_focus(candidate) {
+        (
+            records_by_selector_hierarchy_from_records(candidate_focus.records.as_slice()),
+            MissionRecordGroups::new(),
+        )
     } else {
         (
             records_by_selector_hierarchy(candidate),
@@ -5464,6 +5488,9 @@ mod report_tests {
         assert!(html.contains("not cached"));
         assert!(!html.contains("data-view-mode=\"compare\""));
         assert!(!html.contains("baseline controller lane <code>baseline</code>"));
+        assert!(!html.contains(
+            r#"selector-inline">lane</span> <span class="selector-code">baseline</span>"#
+        ));
     }
 
     #[test]
