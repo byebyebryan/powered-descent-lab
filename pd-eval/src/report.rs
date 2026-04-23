@@ -11,6 +11,7 @@ use pd_report::{PreviewSeries, build_multi_run_preview_svg};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
+    BatchCacheInfo, BatchCacheStatus, BatchCompareResolutionStatus, BatchCompareSource,
     BatchComparison, BatchReport, BatchRunComparison, BatchRunPointer, compare_batch_reports,
 };
 
@@ -29,6 +30,16 @@ pub fn write_batch_report_artifacts(
     let comparison = baseline.map(|(_, report)| compare_batch_reports(candidate, report));
     if let Some(comparison) = comparison.as_ref() {
         write_json(&output_dir.join("compare.json"), comparison)?;
+    } else {
+        let compare_path = output_dir.join("compare.json");
+        if compare_path.exists() {
+            fs::remove_file(&compare_path).with_context(|| {
+                format!(
+                    "failed to remove stale compare artifact {}",
+                    compare_path.display()
+                )
+            })?;
+        }
     }
 
     let html = render_batch_report(
@@ -1453,6 +1464,7 @@ fn render_context_table(
     baseline: Option<&BatchReport>,
     comparison: Option<&BatchComparison>,
 ) -> String {
+    let compare_provenance = &candidate.provenance.compare;
     let candidate_records = candidate.records.iter().collect::<Vec<_>>();
     let current_lane_id =
         preferred_current_lane_id(candidate_records.as_slice()).unwrap_or("current");
@@ -1487,17 +1499,15 @@ fn render_context_table(
                 ),
                 baseline.map(|baseline| {
                     format!(
-                        r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code> · Baseline Resolution: explicit baseline report · resolved from --baseline-dir for this render</div></div>"#,
+                        r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code> · {}</div></div>"#,
                         escape_html(&baseline.pack_id),
                         escape_html(&baseline.pack_name),
                         escape_html(&short_digest(&baseline.identity.pack_spec_digest)),
                         escape_html(&short_digest(&baseline.identity.resolved_run_digest)),
+                        escape_html(&baseline_resolution_summary(compare_provenance, true)),
                     )
                 }).unwrap_or_else(|| {
-                    context_value(
-                        "missing baseline report",
-                        "Baseline Resolution: none · not applicable for this batch page",
-                    )
+                    missing_baseline_context_value(compare_provenance)
                 }),
                 context_value(
                     &format!(
@@ -1571,10 +1581,7 @@ fn render_context_table(
                 escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
                 escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
             ),
-            context_value(
-                "none",
-                "Baseline Resolution: none · not applicable for this batch page",
-            ),
+            missing_baseline_context_value(compare_provenance),
             context_none_value("none"),
             context_value(
                 "full pack",
@@ -1611,6 +1618,15 @@ fn render_context_table(
                 "available",
                 "ok",
                 "internal lane compare available within this pack",
+            )
+        } else if compare_provenance.status == BatchCompareResolutionStatus::Missing {
+            (
+                "missing",
+                "warn",
+                compare_provenance
+                    .note
+                    .as_deref()
+                    .unwrap_or("requested compare cache was not available"),
             )
         } else {
             (
@@ -1668,11 +1684,135 @@ fn render_context_table(
         compare_basis,
         scope_resolution,
         compare_status_html,
-        context_value(
-            "not modeled",
-            "pd-lab does not yet expose cached result reuse, promotion, or invalidation state",
+        render_cache_context(
+            candidate.provenance.cache.as_ref(),
+            baseline.and_then(|report| report.provenance.cache.as_ref())
         ),
     )
+}
+
+fn render_cache_context(
+    candidate_cache: Option<&BatchCacheInfo>,
+    baseline_cache: Option<&BatchCacheInfo>,
+) -> String {
+    let mut blocks = Vec::new();
+    if let Some(cache) = candidate_cache {
+        blocks.push(context_value_html(
+            &format!(
+                "candidate {}",
+                render_cache_status_label(cache.status, cache.promotion.is_some())
+            ),
+            &format!(
+                "workspace <code>{}</code> · commit <code>{}</code> · batch <code>{}</code>{}",
+                escape_html(&cache.workspace_key),
+                escape_html(&cache.commit_key),
+                escape_html(&cache.batch_stem),
+                cache
+                    .promotion
+                    .as_ref()
+                    .map(|promotion| format!(
+                        " · promoted from <code>{}</code>",
+                        escape_html(&promotion.source_workspace_key)
+                    ))
+                    .unwrap_or_default(),
+            ),
+        ));
+    }
+    if let Some(cache) = baseline_cache {
+        blocks.push(context_value_html(
+            &format!(
+                "baseline {}",
+                render_cache_status_label(cache.status, cache.promotion.is_some())
+            ),
+            &format!(
+                "workspace <code>{}</code> · commit <code>{}</code> · batch <code>{}</code>{}",
+                escape_html(&cache.workspace_key),
+                escape_html(&cache.commit_key),
+                escape_html(&cache.batch_stem),
+                cache
+                    .promotion
+                    .as_ref()
+                    .map(|promotion| format!(
+                        " · promoted from <code>{}</code>",
+                        escape_html(&promotion.source_workspace_key)
+                    ))
+                    .unwrap_or_default(),
+            ),
+        ));
+    }
+    if blocks.is_empty() {
+        context_value(
+            "not cached",
+            "this batch page was rendered without cache provenance",
+        )
+    } else {
+        blocks.join("")
+    }
+}
+
+fn render_cache_status_label(status: BatchCacheStatus, promoted: bool) -> &'static str {
+    match (status, promoted) {
+        (BatchCacheStatus::Fresh, false) => "fresh",
+        (BatchCacheStatus::Fresh, true) => "fresh promoted-cache",
+        (BatchCacheStatus::Reused, false) => "reused",
+        (BatchCacheStatus::Reused, true) => "reused promoted-cache",
+        (BatchCacheStatus::Promoted, _) => "promoted",
+    }
+}
+
+fn baseline_resolution_summary(
+    provenance: &crate::BatchCompareProvenance,
+    fallback_external: bool,
+) -> String {
+    match provenance.source {
+        BatchCompareSource::ExplicitDir => provenance
+            .baseline_dir
+            .as_ref()
+            .map(|dir| format!("Baseline Resolution: explicit baseline report from {}", dir))
+            .unwrap_or_else(|| "Baseline Resolution: explicit baseline report".to_owned()),
+        BatchCompareSource::CacheRef => {
+            let requested = provenance.requested_ref.as_deref().unwrap_or("auto");
+            let resolved = provenance.resolved_ref.as_deref().unwrap_or("unresolved");
+            format!(
+                "Baseline Resolution: compare cache ref {} -> {}",
+                requested, resolved
+            )
+        }
+        BatchCompareSource::None => {
+            if fallback_external {
+                "Baseline Resolution: external baseline report provided for this render".to_owned()
+            } else {
+                "Baseline Resolution: none · not applicable for this batch page".to_owned()
+            }
+        }
+    }
+}
+
+fn missing_baseline_context_value(provenance: &crate::BatchCompareProvenance) -> String {
+    match provenance.source {
+        BatchCompareSource::CacheRef
+            if provenance.status == BatchCompareResolutionStatus::Missing =>
+        {
+            context_value(
+                "missing compare cache",
+                provenance
+                    .note
+                    .as_deref()
+                    .unwrap_or("requested compare cache was not available"),
+            )
+        }
+        BatchCompareSource::ExplicitDir => context_value(
+            "explicit baseline pending",
+            provenance
+                .note
+                .as_deref()
+                .unwrap_or("baseline report directory will be resolved at render time"),
+        ),
+        _ => context_value(
+            "none",
+            "Baseline Resolution: none · not applicable for this batch page",
+        ),
+    }
 }
 
 fn context_value(main: &str, sub: &str) -> String {
@@ -1680,6 +1820,13 @@ fn context_value(main: &str, sub: &str) -> String {
         r#"<div class="context-value"><div class="context-main">{}</div><div class="context-sub">{}</div></div>"#,
         escape_html(main),
         escape_html(sub),
+    )
+}
+
+fn context_value_html(main_html: &str, sub_html: &str) -> String {
+    format!(
+        r#"<div class="context-value"><div class="context-main">{}</div><div class="context-sub">{}</div></div>"#,
+        main_html, sub_html,
     )
 }
 
@@ -5176,7 +5323,7 @@ mod report_tests {
         assert!(html.contains("Compare Status"));
         assert!(html.contains("available"));
         assert!(html.contains("Cache / Promotion"));
-        assert!(html.contains("not modeled"));
+        assert!(html.contains("not cached"));
     }
 
     #[test]
@@ -5235,6 +5382,7 @@ mod report_tests {
         assert!(html.contains("shared 3"));
         assert!(html.contains("Scope Resolution"));
         assert!(html.contains("exact"));
+        assert!(html.contains("external baseline report provided for this render"));
         assert!(html.contains("Compare Status"));
         assert!(html.contains("available"));
     }

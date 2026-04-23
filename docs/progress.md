@@ -568,6 +568,31 @@
   pages:
   - dense HTML tables and cards first
   - no heavy chart layer yet
+
+#### Checkpoint 16: batch cache reuse and promotion
+
+- `pd-eval run-pack` now has a real cache layer under:
+  - `outputs/eval/cache/<workspace-or-commit-key>/<batch-stem>/`
+- Candidate cache identity is now derived from:
+  - clean commit key or dirty workspace key
+  - pack id
+  - pack spec digest
+  - resolved run digest
+- `run-pack` now reuses a complete cache automatically by default instead of
+  always rerunning the batch.
+- Added explicit cache metadata in `meta.json` and threaded cache provenance
+  into `summary.json` and the batch `Context` section.
+- Added `--compare-ref auto|<ref>|none` to `pd-eval run-pack`:
+  - dirty workspaces default to comparing against the clean `HEAD` cache
+  - clean workspaces default to comparing against the previous clean commit
+    cache
+- Added `pd-eval promote-cache <pack>` so a validated dirty cache can be copied
+  onto the clean commit key after checkpointing, instead of rerunning the old
+  code just to recover a baseline.
+- The batch `Context` section now explicitly reports:
+  - current cache status (`fresh`, `reused`, `promoted`)
+  - baseline cache source / compare ref resolution
+  - when a compare was requested but no baseline cache was available
   - drill-down links currently target bundle artifacts unless a per-run report
     already exists
 

@@ -2,7 +2,8 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
-    time::Instant,
+    process::Command,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -20,7 +21,77 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 7;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 8;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchCacheStatus {
+    #[default]
+    Fresh,
+    Reused,
+    Promoted,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchCachePromotion {
+    pub source_workspace_key: String,
+    pub source_cache_dir: String,
+    pub promoted_at_unix_s: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchCacheInfo {
+    pub workspace_key: String,
+    pub commit_key: String,
+    pub batch_stem: String,
+    pub cache_dir: String,
+    pub status: BatchCacheStatus,
+    pub created_at_unix_s: u64,
+    #[serde(default)]
+    pub promotion: Option<BatchCachePromotion>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchCompareSource {
+    #[default]
+    None,
+    ExplicitDir,
+    CacheRef,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchCompareResolutionStatus {
+    #[default]
+    NotRequested,
+    Resolved,
+    Missing,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchCompareProvenance {
+    #[serde(default)]
+    pub source: BatchCompareSource,
+    #[serde(default)]
+    pub requested_ref: Option<String>,
+    #[serde(default)]
+    pub resolved_ref: Option<String>,
+    #[serde(default)]
+    pub baseline_dir: Option<String>,
+    #[serde(default)]
+    pub status: BatchCompareResolutionStatus,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchProvenance {
+    #[serde(default)]
+    pub cache: Option<BatchCacheInfo>,
+    #[serde(default)]
+    pub compare: BatchCompareProvenance,
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct BatchMetricSummary {
@@ -333,9 +404,22 @@ pub struct BatchReport {
     pub workers_requested: usize,
     pub workers_used: usize,
     pub identity: BatchIdentity,
+    #[serde(default)]
+    pub provenance: BatchProvenance,
     pub resolved_runs: Vec<ResolvedRunDescriptor>,
     pub records: Vec<BatchRunRecord>,
     pub summary: BatchSummary,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BatchCacheMeta {
+    pub schema_version: u32,
+    pub pack_id: String,
+    pub pack_name: String,
+    pub identity: BatchIdentity,
+    pub total_runs: usize,
+    pub workers_used: usize,
+    pub cache: BatchCacheInfo,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -444,6 +528,33 @@ pub struct BatchComparison {
     pub baseline_only: Vec<BatchRunPointer>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum MissingComparePolicy {
+    #[default]
+    Skip,
+    Error,
+}
+
+#[derive(Clone, Debug)]
+pub struct ResolvedBaselineReport {
+    pub dir: PathBuf,
+    pub report: BatchReport,
+}
+
+#[derive(Clone, Debug)]
+pub struct CachedBatchRunOutcome {
+    pub report: BatchReport,
+    pub baseline: Option<ResolvedBaselineReport>,
+    pub cache_dir: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+struct WorkspaceState {
+    commit_key: String,
+    workspace_key: String,
+    dirty: bool,
+}
+
 #[derive(Clone, Debug)]
 struct ResolvedBatchRun {
     descriptor: ResolvedRunDescriptor,
@@ -473,6 +584,108 @@ pub fn load_batch_report(path: &Path) -> Result<BatchReport> {
         .with_context(|| format!("failed to read batch report {}", summary_path.display()))?;
     serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse batch report {}", summary_path.display()))
+}
+
+pub fn run_pack_file_cached(
+    path: &Path,
+    output_dir: Option<&Path>,
+    workers: usize,
+    compare_ref: Option<&str>,
+    baseline_dir: Option<&Path>,
+    missing_compare: MissingComparePolicy,
+    reuse_cache: bool,
+) -> Result<CachedBatchRunOutcome> {
+    let pack = load_pack(path)?;
+    let base_dir = path
+        .parent()
+        .ok_or_else(|| anyhow!("pack path has no parent directory"))?;
+    run_pack_cached(
+        &pack,
+        base_dir,
+        output_dir,
+        workers,
+        compare_ref,
+        baseline_dir,
+        missing_compare,
+        reuse_cache,
+    )
+}
+
+pub fn promote_pack_cache(
+    path: &Path,
+    source_workspace_key: Option<&str>,
+    target_ref: &str,
+) -> Result<PathBuf> {
+    let pack = load_pack(path)?;
+    let base_dir = path
+        .parent()
+        .ok_or_else(|| anyhow!("pack path has no parent directory"))?;
+    validate_pack(&pack)?;
+    let resolved_runs = resolve_pack_runs(&pack, base_dir)?;
+    let identity = batch_identity_for_pack(&pack, &resolved_runs)?;
+    let batch_stem = batch_cache_stem(&pack.id, &identity);
+    let workspace = current_workspace_state()?;
+    let target_commit_key = git_commit_key_for_ref(target_ref)?;
+    let source_key = if let Some(source_workspace_key) = source_workspace_key {
+        source_workspace_key.to_owned()
+    } else if workspace.dirty
+        && cache_dir_for_batch_key(&workspace.workspace_key, &batch_stem).exists()
+    {
+        workspace.workspace_key.clone()
+    } else {
+        find_latest_dirty_workspace_key(&target_commit_key, &batch_stem)?.ok_or_else(|| {
+            anyhow!(
+                "no dirty cache found for commit '{}' and batch '{}'",
+                target_commit_key,
+                batch_stem
+            )
+        })?
+    };
+    let source_dir = cache_dir_for_batch_key(&source_key, &batch_stem);
+    let target_dir = cache_dir_for_batch_key(&target_commit_key, &batch_stem);
+    if source_dir == target_dir {
+        bail!(
+            "source cache {} and target cache {} are identical",
+            source_dir.display(),
+            target_dir.display()
+        );
+    }
+
+    let mut report = validate_cached_batch_dir(&source_dir, &pack, &identity)?
+        .ok_or_else(|| anyhow!("no reusable cache found at {}", source_dir.display()))?;
+    let source_cache = report.provenance.cache.clone().ok_or_else(|| {
+        anyhow!(
+            "cached batch at {} is missing cache provenance",
+            source_dir.display()
+        )
+    })?;
+
+    if target_dir.exists() {
+        fs::remove_dir_all(&target_dir).with_context(|| {
+            format!(
+                "failed to remove existing promoted cache {}",
+                target_dir.display()
+            )
+        })?;
+    }
+    copy_dir_recursive(&source_dir, &target_dir)?;
+    rewrite_report_bundle_dirs(&mut report, &source_dir, &target_dir);
+    report.provenance.compare = BatchCompareProvenance::default();
+    report.provenance.cache = Some(BatchCacheInfo {
+        workspace_key: target_commit_key.clone(),
+        commit_key: target_commit_key.clone(),
+        batch_stem,
+        cache_dir: target_dir.to_string_lossy().into_owned(),
+        status: BatchCacheStatus::Promoted,
+        created_at_unix_s: current_unix_timestamp(),
+        promotion: Some(BatchCachePromotion {
+            source_workspace_key: source_key,
+            source_cache_dir: source_cache.cache_dir,
+            promoted_at_unix_s: current_unix_timestamp(),
+        }),
+    });
+    write_batch_cache_dir(&target_dir, &pack, &report, false)?;
+    Ok(target_dir)
 }
 
 pub fn compare_batch_reports(candidate: &BatchReport, baseline: &BatchReport) -> BatchComparison {
@@ -551,6 +764,107 @@ pub fn compare_batch_reports(candidate: &BatchReport, baseline: &BatchReport) ->
     }
 }
 
+pub fn run_pack_cached(
+    pack: &ScenarioPackSpec,
+    base_dir: &Path,
+    output_dir: Option<&Path>,
+    workers: usize,
+    compare_ref: Option<&str>,
+    baseline_dir: Option<&Path>,
+    missing_compare: MissingComparePolicy,
+    reuse_cache: bool,
+) -> Result<CachedBatchRunOutcome> {
+    validate_pack(pack)?;
+
+    let resolved_runs = resolve_pack_runs(pack, base_dir)?;
+    let requested_workers = workers.max(1);
+    let workers_used = effective_worker_count(requested_workers, resolved_runs.len());
+    let identity = batch_identity_for_pack(pack, &resolved_runs)?;
+    let workspace = current_workspace_state()?;
+    let batch_stem = batch_cache_stem(&pack.id, &identity);
+    let cache_dir = cache_dir_for_batch_key(&workspace.workspace_key, &batch_stem);
+
+    let base_cache_report = if reuse_cache {
+        validate_cached_batch_dir(&cache_dir, pack, &identity)?
+    } else {
+        None
+    };
+
+    let cache_report = if let Some(mut report) = base_cache_report {
+        if let Some(cache) = report.provenance.cache.as_mut() {
+            cache.status = BatchCacheStatus::Reused;
+        }
+        report
+    } else {
+        let started = Instant::now();
+        let records = execute_resolved_runs(&resolved_runs, Some(&cache_dir), workers_used)?;
+        let report = BatchReport {
+            schema_version: BATCH_REPORT_SCHEMA_VERSION,
+            pack_id: pack.id.clone(),
+            pack_name: pack.name.clone(),
+            total_runs: records.len(),
+            wall_clock_s: started.elapsed().as_secs_f64(),
+            workers_requested: requested_workers,
+            workers_used,
+            identity: identity.clone(),
+            provenance: BatchProvenance {
+                cache: Some(BatchCacheInfo {
+                    workspace_key: workspace.workspace_key.clone(),
+                    commit_key: workspace.commit_key.clone(),
+                    batch_stem: batch_stem.clone(),
+                    cache_dir: cache_dir.to_string_lossy().into_owned(),
+                    status: BatchCacheStatus::Fresh,
+                    created_at_unix_s: current_unix_timestamp(),
+                    promotion: None,
+                }),
+                compare: BatchCompareProvenance::default(),
+            },
+            resolved_runs: resolved_runs
+                .iter()
+                .map(|run| run.descriptor.clone())
+                .collect(),
+            summary: summarize_records(&records),
+            records,
+        };
+        write_batch_cache_dir(&cache_dir, pack, &report, true)?;
+        report
+    };
+
+    let requested_compare =
+        resolve_compare_provenance(baseline_dir, compare_ref, missing_compare, &workspace)?;
+    let (compare_provenance, baseline) =
+        load_requested_baseline(pack, &identity, requested_compare, missing_compare)?;
+
+    let mut output_report = cache_report.clone();
+    output_report.provenance.compare = compare_provenance;
+    if let Some(cache) = output_report.provenance.cache.as_mut() {
+        cache.status = match cache.status {
+            BatchCacheStatus::Promoted => BatchCacheStatus::Reused,
+            other => other,
+        };
+    }
+    let final_report = if let Some(output_dir) = output_dir {
+        let localized_report = localize_report_bundle_dirs(&output_report, output_dir);
+        write_batch_output_dir(
+            output_dir,
+            pack,
+            &output_report,
+            baseline
+                .as_ref()
+                .map(|baseline| (baseline.dir.as_path(), &baseline.report)),
+        )?;
+        localized_report
+    } else {
+        output_report
+    };
+
+    Ok(CachedBatchRunOutcome {
+        report: final_report,
+        baseline,
+        cache_dir,
+    })
+}
+
 pub fn run_pack_file_with_workers(
     path: &Path,
     output_dir: Option<&Path>,
@@ -604,6 +918,7 @@ pub fn run_pack_with_workers(
         workers_requested: requested_workers,
         workers_used,
         identity,
+        provenance: BatchProvenance::default(),
         resolved_runs: resolved_runs
             .iter()
             .map(|run| run.descriptor.clone())
@@ -2690,6 +3005,535 @@ fn write_artifact_bundle(
     Ok(())
 }
 
+fn batch_identity_for_pack(
+    pack: &ScenarioPackSpec,
+    resolved_runs: &[ResolvedBatchRun],
+) -> Result<BatchIdentity> {
+    Ok(BatchIdentity {
+        schema_version: BATCH_REPORT_SCHEMA_VERSION,
+        pack_spec_digest: stable_digest(pack)?,
+        resolved_run_digest: stable_digest(
+            &resolved_runs
+                .iter()
+                .map(|run| &run.descriptor)
+                .collect::<Vec<_>>(),
+        )?,
+    })
+}
+
+fn batch_cache_stem(pack_id: &str, identity: &BatchIdentity) -> String {
+    format!(
+        "{}__spec_{}__runs_{}",
+        sanitize_token(pack_id),
+        short_digest(&identity.pack_spec_digest),
+        short_digest(&identity.resolved_run_digest),
+    )
+}
+
+fn cache_dir_for_batch_key(workspace_key: &str, batch_stem: &str) -> PathBuf {
+    eval_cache_root().join(workspace_key).join(batch_stem)
+}
+
+fn eval_cache_root() -> PathBuf {
+    repo_root().join("outputs").join("eval").join("cache")
+}
+
+fn current_workspace_state() -> Result<WorkspaceState> {
+    let commit_key = git_commit_key_for_ref("HEAD")?;
+    let status_output = git_stdout(&["status", "--porcelain=v1", "--untracked-files=normal"])?;
+    let dirty = !status_output.trim().is_empty();
+    let workspace_key = if dirty {
+        format!(
+            "{}-dirty-{}",
+            commit_key,
+            short_bytes_digest(status_output.as_bytes())
+        )
+    } else {
+        commit_key.clone()
+    };
+    Ok(WorkspaceState {
+        commit_key,
+        workspace_key,
+        dirty,
+    })
+}
+
+fn git_commit_key_for_ref(reference: &str) -> Result<String> {
+    let resolved = git_stdout(&["rev-parse", "--short=12", reference])?;
+    let key = resolved.trim();
+    if key.is_empty() {
+        bail!("git rev-parse produced empty commit key for {}", reference);
+    }
+    Ok(key.to_owned())
+}
+
+fn git_stdout(args: &[&str]) -> Result<String> {
+    let output = Command::new("git")
+        .current_dir(repo_root())
+        .args(args)
+        .output()
+        .with_context(|| format!("failed to run git {}", args.join(" ")))?;
+    if !output.status.success() {
+        bail!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn current_unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn short_bytes_digest(bytes: &[u8]) -> String {
+    format!("{:08x}", fnv1a64(bytes))
+}
+
+fn short_digest(value: &str) -> String {
+    value.chars().take(8).collect()
+}
+
+fn resolve_compare_provenance(
+    baseline_dir: Option<&Path>,
+    compare_ref: Option<&str>,
+    missing_compare: MissingComparePolicy,
+    workspace: &WorkspaceState,
+) -> Result<BatchCompareProvenance> {
+    if let Some(baseline_dir) = baseline_dir {
+        return Ok(BatchCompareProvenance {
+            source: BatchCompareSource::ExplicitDir,
+            requested_ref: None,
+            resolved_ref: None,
+            baseline_dir: Some(baseline_dir.to_string_lossy().into_owned()),
+            status: BatchCompareResolutionStatus::Resolved,
+            note: Some("explicit baseline report directory".to_owned()),
+        });
+    }
+
+    let requested_ref = compare_ref.unwrap_or("auto");
+    if requested_ref == "none" {
+        return Ok(BatchCompareProvenance::default());
+    }
+
+    let resolved_ref = if requested_ref == "auto" {
+        if workspace.dirty {
+            Some(workspace.commit_key.clone())
+        } else {
+            git_commit_key_for_ref("HEAD^").ok()
+        }
+    } else {
+        Some(git_commit_key_for_ref(requested_ref)?)
+    };
+
+    let Some(resolved_ref) = resolved_ref else {
+        return Ok(BatchCompareProvenance {
+            source: BatchCompareSource::CacheRef,
+            requested_ref: Some(requested_ref.to_owned()),
+            resolved_ref: None,
+            baseline_dir: None,
+            status: BatchCompareResolutionStatus::Missing,
+            note: Some(match missing_compare {
+                MissingComparePolicy::Skip => {
+                    "no compare cache ref could be resolved; continuing without external compare"
+                        .to_owned()
+                }
+                MissingComparePolicy::Error => "no compare cache ref could be resolved".to_owned(),
+            }),
+        });
+    };
+
+    Ok(BatchCompareProvenance {
+        source: BatchCompareSource::CacheRef,
+        requested_ref: Some(requested_ref.to_owned()),
+        resolved_ref: Some(resolved_ref.clone()),
+        baseline_dir: Some(
+            eval_cache_root()
+                .join(&resolved_ref)
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        status: BatchCompareResolutionStatus::NotRequested,
+        note: Some(if requested_ref == "auto" && workspace.dirty {
+            "auto compare requested; using clean HEAD cache".to_owned()
+        } else if requested_ref == "auto" {
+            "auto compare requested; using previous clean commit cache".to_owned()
+        } else {
+            "explicit compare cache ref".to_owned()
+        }),
+    })
+}
+
+fn load_requested_baseline(
+    pack: &ScenarioPackSpec,
+    identity: &BatchIdentity,
+    mut provenance: BatchCompareProvenance,
+    missing_compare: MissingComparePolicy,
+) -> Result<(BatchCompareProvenance, Option<ResolvedBaselineReport>)> {
+    match provenance.source {
+        BatchCompareSource::None => Ok((provenance, None)),
+        BatchCompareSource::ExplicitDir => {
+            let baseline_dir = provenance
+                .baseline_dir
+                .as_deref()
+                .ok_or_else(|| anyhow!("explicit baseline compare is missing baseline_dir"))?;
+            let dir = PathBuf::from(baseline_dir);
+            provenance.status = BatchCompareResolutionStatus::Resolved;
+            Ok((
+                provenance,
+                Some(ResolvedBaselineReport {
+                    report: load_batch_report(&dir)?,
+                    dir,
+                }),
+            ))
+        }
+        BatchCompareSource::CacheRef => {
+            if provenance.resolved_ref.is_none() {
+                return if missing_compare == MissingComparePolicy::Skip {
+                    provenance.status = BatchCompareResolutionStatus::Missing;
+                    Ok((provenance, None))
+                } else {
+                    bail!("cache compare is missing resolved_ref")
+                };
+            }
+            let resolved_ref = provenance
+                .resolved_ref
+                .as_deref()
+                .expect("resolved_ref handled above");
+            let batch_stem = batch_cache_stem(&pack.id, identity);
+            let baseline_dir = cache_dir_for_batch_key(resolved_ref, &batch_stem);
+            if let Some(report) = validate_cached_batch_dir(&baseline_dir, pack, identity)? {
+                provenance.status = BatchCompareResolutionStatus::Resolved;
+                provenance.baseline_dir = Some(baseline_dir.to_string_lossy().into_owned());
+                Ok((
+                    provenance,
+                    Some(ResolvedBaselineReport {
+                        dir: baseline_dir,
+                        report,
+                    }),
+                ))
+            } else if missing_compare == MissingComparePolicy::Skip {
+                provenance.status = BatchCompareResolutionStatus::Missing;
+                provenance.baseline_dir = Some(baseline_dir.to_string_lossy().into_owned());
+                provenance.note = Some(format!(
+                    "no compare cache found for ref '{}' at {}; continuing without external compare",
+                    resolved_ref,
+                    baseline_dir.display()
+                ));
+                Ok((provenance, None))
+            } else {
+                bail!(
+                    "no compare cache found for ref '{}' at {}",
+                    resolved_ref,
+                    baseline_dir.display()
+                )
+            }
+        }
+    }
+}
+
+fn validate_cached_batch_dir(
+    cache_dir: &Path,
+    pack: &ScenarioPackSpec,
+    identity: &BatchIdentity,
+) -> Result<Option<BatchReport>> {
+    let required_files = [
+        cache_dir.join("pack.json"),
+        cache_dir.join("resolved_runs.json"),
+        cache_dir.join("summary.json"),
+        cache_dir.join("meta.json"),
+        cache_dir.join("report.html"),
+    ];
+    if required_files.iter().any(|path| !path.exists()) {
+        return Ok(None);
+    }
+
+    let Ok(meta) = read_json::<BatchCacheMeta>(&cache_dir.join("meta.json")) else {
+        return Ok(None);
+    };
+    if meta.schema_version != BATCH_REPORT_SCHEMA_VERSION
+        || meta.identity.schema_version != BATCH_REPORT_SCHEMA_VERSION
+        || meta.pack_id != pack.id
+        || meta.identity.pack_spec_digest != identity.pack_spec_digest
+        || meta.identity.resolved_run_digest != identity.resolved_run_digest
+    {
+        return Ok(None);
+    }
+
+    let Ok(report) = load_batch_report(cache_dir) else {
+        return Ok(None);
+    };
+    if report.schema_version != BATCH_REPORT_SCHEMA_VERSION
+        || report.identity.schema_version != BATCH_REPORT_SCHEMA_VERSION
+        || report.pack_id != pack.id
+        || report.identity.pack_spec_digest != identity.pack_spec_digest
+        || report.identity.resolved_run_digest != identity.resolved_run_digest
+        || report.records.len() != report.resolved_runs.len()
+    {
+        return Ok(None);
+    }
+    if !validate_cached_run_bundles(&report.records) {
+        return Ok(None);
+    }
+    Ok(Some(report))
+}
+
+fn validate_cached_run_bundles(records: &[BatchRunRecord]) -> bool {
+    const REQUIRED_BUNDLE_FILES: [&str; 10] = [
+        "scenario.json",
+        "controller.json",
+        "controller_updates.json",
+        "performance.json",
+        "manifest.json",
+        "actions.json",
+        "events.json",
+        "samples.json",
+        "report.html",
+        "preview.svg",
+    ];
+
+    records.iter().all(|record| {
+        let Some(bundle_dir) = record.bundle_dir.as_deref() else {
+            return false;
+        };
+        let bundle_dir = if Path::new(bundle_dir).is_absolute() {
+            PathBuf::from(bundle_dir)
+        } else {
+            repo_root().join(bundle_dir)
+        };
+        REQUIRED_BUNDLE_FILES
+            .iter()
+            .all(|name| bundle_dir.join(name).exists())
+    })
+}
+
+fn write_batch_cache_dir(
+    output_dir: &Path,
+    pack: &ScenarioPackSpec,
+    report: &BatchReport,
+    update_latest: bool,
+) -> Result<()> {
+    write_batch_manifest_files(output_dir, pack, report)?;
+    let cache = report
+        .provenance
+        .cache
+        .clone()
+        .ok_or_else(|| anyhow!("cannot write cache metadata without cache provenance"))?;
+    write_json(
+        &output_dir.join("meta.json"),
+        &BatchCacheMeta {
+            schema_version: BATCH_REPORT_SCHEMA_VERSION,
+            pack_id: report.pack_id.clone(),
+            pack_name: report.pack_name.clone(),
+            identity: report.identity.clone(),
+            total_runs: report.total_runs,
+            workers_used: report.workers_used,
+            cache,
+        },
+    )?;
+    report::write_batch_report_artifacts(output_dir, report, None)?;
+    if update_latest {
+        maybe_update_latest_link(output_dir)?;
+        if let Some(last_record) = report.records.last()
+            && let Some(bundle_dir) = last_record.bundle_dir.as_deref()
+        {
+            maybe_update_latest_link(Path::new(bundle_dir))?;
+        }
+    }
+    Ok(())
+}
+
+fn write_batch_output_dir(
+    output_dir: &Path,
+    pack: &ScenarioPackSpec,
+    report: &BatchReport,
+    baseline: Option<(&Path, &BatchReport)>,
+) -> Result<()> {
+    sync_output_run_bundles(output_dir, report)?;
+    let localized_report = localize_report_bundle_dirs(report, output_dir);
+    write_batch_manifest_files(output_dir, pack, &localized_report)?;
+    report::write_batch_report_artifacts(output_dir, &localized_report, baseline)?;
+    maybe_update_latest_link(output_dir)?;
+    if let Some(last_record) = localized_report.records.last()
+        && let Some(bundle_dir) = last_record.bundle_dir.as_deref()
+    {
+        maybe_update_latest_link(Path::new(bundle_dir))?;
+    }
+    Ok(())
+}
+
+fn write_batch_manifest_files(
+    output_dir: &Path,
+    pack: &ScenarioPackSpec,
+    report: &BatchReport,
+) -> Result<()> {
+    fs::create_dir_all(output_dir).with_context(|| {
+        format!(
+            "failed to create batch eval output directory {}",
+            output_dir.display()
+        )
+    })?;
+    write_json(&output_dir.join("pack.json"), pack)?;
+    write_json(
+        &output_dir.join("resolved_runs.json"),
+        &report.resolved_runs,
+    )?;
+    write_json(&output_dir.join("summary.json"), report)?;
+    Ok(())
+}
+
+fn rewrite_report_bundle_dirs(report: &mut BatchReport, source_dir: &Path, target_dir: &Path) {
+    for record in &mut report.records {
+        if let Some(bundle_dir) = record.bundle_dir.as_deref() {
+            record.bundle_dir = Some(rewrite_dir_string(bundle_dir, source_dir, target_dir));
+        }
+    }
+}
+
+fn localize_report_bundle_dirs(report: &BatchReport, output_dir: &Path) -> BatchReport {
+    let mut localized = report.clone();
+    let runs_dir = output_dir.join("runs");
+    for record in &mut localized.records {
+        if record.bundle_dir.is_some() {
+            record.bundle_dir = Some(
+                runs_dir
+                    .join(&record.resolved.run_id)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+    }
+    localized
+}
+
+fn sync_output_run_bundles(output_dir: &Path, report: &BatchReport) -> Result<()> {
+    let runs_dir = output_dir.join("runs");
+    remove_path_if_exists(&runs_dir)?;
+    let bundle_records = report
+        .records
+        .iter()
+        .filter_map(|record| {
+            record
+                .bundle_dir
+                .as_deref()
+                .map(|bundle_dir| (record.resolved.run_id.as_str(), PathBuf::from(bundle_dir)))
+        })
+        .collect::<Vec<_>>();
+    if bundle_records.is_empty() {
+        return Ok(());
+    }
+
+    fs::create_dir_all(&runs_dir)
+        .with_context(|| format!("failed to create runs directory {}", runs_dir.display()))?;
+    for (run_id, bundle_dir) in bundle_records {
+        let target = runs_dir.join(run_id);
+        platform_fs::symlink(&bundle_dir, &target).with_context(|| {
+            format!(
+                "failed to link stable output run {} -> {}",
+                target.display(),
+                bundle_dir.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn remove_path_if_exists(path: &Path) -> Result<()> {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return Ok(());
+    };
+    if metadata.file_type().is_symlink() || metadata.is_file() {
+        fs::remove_file(path)
+            .with_context(|| format!("failed to remove path {}", path.display()))?;
+    } else if metadata.is_dir() {
+        fs::remove_dir_all(path)
+            .with_context(|| format!("failed to remove directory {}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn rewrite_dir_string(path_str: &str, source_dir: &Path, target_dir: &Path) -> String {
+    let path = Path::new(path_str);
+    if let Ok(relative) = path.strip_prefix(source_dir) {
+        target_dir.join(relative).to_string_lossy().into_owned()
+    } else {
+        path_str.to_owned()
+    }
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<()> {
+    fs::create_dir_all(target)
+        .with_context(|| format!("failed to create directory {}", target.display()))?;
+    for entry in fs::read_dir(source)
+        .with_context(|| format!("failed to read directory {}", source.display()))?
+    {
+        let entry = entry?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            copy_dir_recursive(&source_path, &target_path)?;
+        } else {
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create directory {}", parent.display()))?;
+            }
+            fs::copy(&source_path, &target_path).with_context(|| {
+                format!(
+                    "failed to copy {} to {}",
+                    source_path.display(),
+                    target_path.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn find_latest_dirty_workspace_key(commit_key: &str, batch_stem: &str) -> Result<Option<String>> {
+    let mut candidates = Vec::<(u64, String)>::new();
+    let cache_root = eval_cache_root();
+    if !cache_root.exists() {
+        return Ok(None);
+    }
+    for entry in fs::read_dir(&cache_root)
+        .with_context(|| format!("failed to read cache root {}", cache_root.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let workspace_key = entry.file_name().to_string_lossy().into_owned();
+        if !workspace_key.starts_with(&format!("{commit_key}-dirty-")) {
+            continue;
+        }
+        let meta_path = entry.path().join(batch_stem).join("meta.json");
+        if !meta_path.exists() {
+            continue;
+        }
+        let Ok(meta) = read_json::<BatchCacheMeta>(&meta_path) else {
+            continue;
+        };
+        candidates.push((meta.cache.created_at_unix_s, workspace_key));
+    }
+    candidates.sort_by(|lhs, rhs| lhs.cmp(rhs));
+    Ok(candidates.pop().map(|(_, key)| key))
+}
+
+fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("failed to read json file {}", path.display()))?;
+    serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse json file {}", path.display()))
+}
+
 fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
     let raw = serde_json::to_string_pretty(value)?;
     fs::write(path, raw)
@@ -3340,5 +4184,150 @@ mod tests {
             let err = validate_pack(&pack).expect_err("path should be rejected");
             assert!(err.to_string().contains("uses unsupported path"), "{err}");
         }
+    }
+
+    #[test]
+    fn missing_compare_skip_allows_unresolved_cache_ref() {
+        let base_dir = temp_fixture_root("missing_compare_skip");
+        write_scenario(
+            &base_dir,
+            "scenarios/checkpoint_success.json",
+            &easy_checkpoint_scenario(),
+        );
+        let pack = ScenarioPackSpec {
+            id: "missing_compare_skip".to_owned(),
+            name: "Missing compare skip".to_owned(),
+            description: "missing compare skip".to_owned(),
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "checkpoint_success_idle".to_owned(),
+                scenario: "scenarios/checkpoint_success.json".to_owned(),
+                controller: "idle".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::new(),
+            })],
+        };
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+        let identity = batch_identity_for_pack(&pack, &resolved_runs).unwrap();
+        let provenance = BatchCompareProvenance {
+            source: BatchCompareSource::CacheRef,
+            requested_ref: Some("auto".to_owned()),
+            resolved_ref: None,
+            baseline_dir: None,
+            status: BatchCompareResolutionStatus::Missing,
+            note: Some("no compare cache ref could be resolved".to_owned()),
+        };
+
+        let (resolved_provenance, baseline) =
+            load_requested_baseline(&pack, &identity, provenance, MissingComparePolicy::Skip)
+                .unwrap();
+
+        assert!(baseline.is_none());
+        assert_eq!(
+            resolved_provenance.status,
+            BatchCompareResolutionStatus::Missing
+        );
+    }
+
+    #[test]
+    fn cached_batch_validation_rejects_schema_mismatch() {
+        let base_dir = temp_fixture_root("cache_schema");
+        write_scenario(
+            &base_dir,
+            "scenarios/checkpoint_success.json",
+            &easy_checkpoint_scenario(),
+        );
+        let output_dir = base_dir.join("cache_output");
+        let pack = ScenarioPackSpec {
+            id: "cache_schema".to_owned(),
+            name: "Cache schema".to_owned(),
+            description: "cache schema".to_owned(),
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "checkpoint_success_idle".to_owned(),
+                scenario: "scenarios/checkpoint_success.json".to_owned(),
+                controller: "idle".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &base_dir, Some(&output_dir), 1).unwrap();
+        report::write_batch_report_artifacts(&output_dir, &report, None).unwrap();
+        write_json(
+            &output_dir.join("meta.json"),
+            &BatchCacheMeta {
+                schema_version: BATCH_REPORT_SCHEMA_VERSION - 1,
+                pack_id: report.pack_id.clone(),
+                pack_name: report.pack_name.clone(),
+                identity: report.identity.clone(),
+                total_runs: report.total_runs,
+                workers_used: report.workers_used,
+                cache: BatchCacheInfo {
+                    workspace_key: "unit".to_owned(),
+                    commit_key: "unit".to_owned(),
+                    batch_stem: "cache_schema".to_owned(),
+                    cache_dir: output_dir.to_string_lossy().into_owned(),
+                    status: BatchCacheStatus::Fresh,
+                    created_at_unix_s: current_unix_timestamp(),
+                    promotion: None,
+                },
+            },
+        )
+        .unwrap();
+
+        assert!(
+            validate_cached_batch_dir(&output_dir, &pack, &report.identity)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn stable_output_runs_tree_is_refreshed_from_cache() {
+        let base_dir = temp_fixture_root("stable_output_runs");
+        write_scenario(
+            &base_dir,
+            "scenarios/checkpoint_success.json",
+            &easy_checkpoint_scenario(),
+        );
+        let output_dir = base_dir.join("stable_output");
+        fs::create_dir_all(output_dir.join("runs").join("stale_before"))
+            .expect("stale runs dir should be creatable");
+        let pack = ScenarioPackSpec {
+            id: "stable_output_runs".to_owned(),
+            name: "Stable output runs".to_owned(),
+            description: "stable output runs".to_owned(),
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "checkpoint_success_idle".to_owned(),
+                scenario: "scenarios/checkpoint_success.json".to_owned(),
+                controller: "idle".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let outcome = run_pack_cached(
+            &pack,
+            &base_dir,
+            Some(&output_dir),
+            1,
+            Some("none"),
+            None,
+            MissingComparePolicy::Skip,
+            false,
+        )
+        .unwrap();
+        let written = load_batch_report(&output_dir).unwrap();
+        let expected_run_dir = output_dir.join("runs").join("checkpoint_success_idle");
+
+        assert!(!output_dir.join("runs").join("stale_before").exists());
+        assert!(expected_run_dir.exists());
+        assert_eq!(
+            written.records[0].bundle_dir.as_deref(),
+            Some(expected_run_dir.to_string_lossy().as_ref())
+        );
+        assert_eq!(
+            outcome.report.records[0].bundle_dir,
+            Some(expected_run_dir.to_string_lossy().into_owned())
+        );
     }
 }

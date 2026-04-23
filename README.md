@@ -148,17 +148,36 @@ Example:
 cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 4
 ```
 
+`run-pack` now writes stable review output to `outputs/eval/<pack>/`, but stores
+the actual batch artifacts under:
+
+- `outputs/eval/cache/<workspace-or-commit-key>/<batch-stem>/`
+
+By default it will:
+
+- reuse a complete candidate cache when the resolved pack digest matches
+- try `--compare-ref auto`
+- on a dirty workspace, compare against the clean `HEAD` cache if it exists
+- on a clean workspace, compare against the previous clean commit cache if it
+  exists
+
+After a dirty run becomes the new checkpoint, promote it into the clean commit
+key:
+
+```bash
+cargo run -p pd-eval -- promote-cache fixtures/packs/terminal_bot_lab_suite.json
+```
+
 Run the same matrix with the full seed tier:
 
 ```bash
 cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_full.json --workers 8
 ```
 
-Compare a candidate batch against a recorded baseline:
+Force a rerun and skip cache reuse if needed:
 
 ```bash
-cargo run -p pd-eval -- run-pack fixtures/packs/terminal_compare_baseline_fixture.json --workers 4
-cargo run -p pd-eval -- run-pack fixtures/packs/terminal_compare_regression_fixture.json --workers 4 --baseline-dir outputs/eval/terminal_compare_baseline_fixture
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 8 --no-reuse
 ```
 
 Use `terminal_bot_lab_suite` as the primary controller workbench. It is the

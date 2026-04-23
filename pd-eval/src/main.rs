@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
-    load_batch_report, report::write_batch_report_artifacts, run_pack_file_with_workers,
+    MissingComparePolicy, load_batch_report, promote_pack_cache,
+    report::write_batch_report_artifacts, run_pack_file_cached,
 };
 
 #[derive(Debug, Parser)]
@@ -18,6 +19,7 @@ struct Cli {
 enum Commands {
     RunPack(RunPackArgs),
     Report(ReportArgs),
+    PromoteCache(PromoteCacheArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -30,6 +32,15 @@ struct RunPackArgs {
 
     #[arg(long, value_name = "BASELINE_DIR")]
     baseline_dir: Option<PathBuf>,
+
+    #[arg(long, value_name = "REF", default_value = "auto")]
+    compare_ref: String,
+
+    #[arg(long, value_enum, default_value_t = MissingComparePolicyArg::Skip)]
+    missing_compare: MissingComparePolicyArg,
+
+    #[arg(long)]
+    no_reuse: bool,
 
     #[arg(long, value_name = "N")]
     workers: Option<usize>,
@@ -44,6 +55,33 @@ struct ReportArgs {
     baseline_dir: Option<PathBuf>,
 }
 
+#[derive(Debug, Parser)]
+struct PromoteCacheArgs {
+    #[arg(value_name = "PACK_JSON")]
+    pack: PathBuf,
+
+    #[arg(long, value_name = "WORKSPACE_KEY")]
+    source_workspace: Option<String>,
+
+    #[arg(long, value_name = "REF", default_value = "HEAD")]
+    target_ref: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum MissingComparePolicyArg {
+    Skip,
+    Error,
+}
+
+impl From<MissingComparePolicyArg> for MissingComparePolicy {
+    fn from(value: MissingComparePolicyArg) -> Self {
+        match value {
+            MissingComparePolicyArg::Skip => MissingComparePolicy::Skip,
+            MissingComparePolicyArg::Error => MissingComparePolicy::Error,
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -54,27 +92,26 @@ fn main() -> Result<()> {
                 .clone()
                 .unwrap_or_else(|| default_eval_output_dir(&args.pack));
             let requested_workers = args.workers.unwrap_or_else(default_worker_count);
-            let report = run_pack_file_with_workers(
+            let outcome = run_pack_file_cached(
                 &args.pack,
                 Some(default_output_dir.as_path()),
                 requested_workers,
+                Some(args.compare_ref.as_str()),
+                args.baseline_dir.as_deref(),
+                args.missing_compare.into(),
+                !args.no_reuse,
             )?;
-            let baseline_report = args
-                .baseline_dir
-                .as_deref()
-                .map(load_batch_report)
-                .transpose()?;
-            write_batch_report_artifacts(
-                default_output_dir.as_path(),
-                &report,
-                args.baseline_dir
-                    .as_deref()
-                    .zip(baseline_report.as_ref())
-                    .map(|(dir, report)| (dir, report)),
-            )?;
-            println!("{}", serde_json::to_string_pretty(&report.summary)?);
+            println!("{}", serde_json::to_string_pretty(&outcome.report.summary)?);
         }
         Commands::Report(args) => render_report(args)?,
+        Commands::PromoteCache(args) => {
+            let promoted_dir = promote_pack_cache(
+                &args.pack,
+                args.source_workspace.as_deref(),
+                &args.target_ref,
+            )?;
+            println!("{}", promoted_dir.display());
+        }
     }
 
     Ok(())
