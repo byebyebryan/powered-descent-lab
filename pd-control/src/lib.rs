@@ -470,6 +470,26 @@ mod tests {
     }
 
     #[test]
+    fn terminal_pdg_touchdown_rescue_builds_small_inside_pad_vx_reserve() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        observation.position_m = Vec2::new(-4.0, 5.8);
+        observation.velocity_mps = Vec2::new(1.95, -1.1);
+        observation.target_dx_m = 4.0;
+        observation.height_above_target_m = 5.8;
+        observation.touchdown_clearance_m = 0.8;
+        observation.min_hull_clearance_m = 0.8;
+
+        let mut controller = TerminalPdgController::default();
+        let frame = controller.update(&ctx, &observation);
+
+        assert!(frame.command.target_attitude_rad < -0.015);
+        assert!(frame.command.throttle_frac > 0.0);
+    }
+
+    #[test]
     fn terminal_pdg_controller_emits_guidance_metrics_and_gate_markers() {
         let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
         let observation = pd_core::SimulationState::new(&ctx)

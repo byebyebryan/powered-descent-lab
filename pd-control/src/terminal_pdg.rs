@@ -36,6 +36,7 @@ pub struct TerminalPdgControllerConfig {
     pub touchdown_rescue_tilt_rad: f64,
     pub touchdown_rescue_vx_full_tilt_mps: f64,
     pub touchdown_rescue_dx_full_tilt_m: f64,
+    pub touchdown_rescue_vx_margin_mps: f64,
     pub touchdown_rescue_alt_floor_m: f64,
     pub terminal_gate_nominal_ratio: f64,
     pub terminal_gate_nominal_min_up_accel_mps2: f64,
@@ -82,6 +83,7 @@ impl Default for TerminalPdgControllerConfig {
             touchdown_rescue_tilt_rad: 0.42,
             touchdown_rescue_vx_full_tilt_mps: 3.0,
             touchdown_rescue_dx_full_tilt_m: 8.0,
+            touchdown_rescue_vx_margin_mps: 0.15,
             touchdown_rescue_alt_floor_m: 0.25,
             terminal_gate_nominal_ratio: 0.92,
             terminal_gate_nominal_min_up_accel_mps2: 0.5,
@@ -817,6 +819,8 @@ impl TerminalPdgController {
                 .vehicle
                 .safe_touchdown_tangential_speed_mps
                 .max(0.0);
+            let inside_pad_safe_vx_mps =
+                (safe_touchdown_vx_mps - self.config.touchdown_rescue_vx_margin_mps).max(0.0);
             let rescue_tilt_limit = current_state
                 .max_tilt_rad
                 .min(self.config.touchdown_rescue_tilt_rad)
@@ -824,9 +828,9 @@ impl TerminalPdgController {
             let moving_toward_target = (dx_m * vx_mps) > 0.0;
             let inside_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
             let vx_term = if inside_pad {
-                let vx_excess = (vx_mps.abs() - safe_touchdown_vx_mps).max(0.0);
+                let vx_excess = (vx_mps.abs() - inside_pad_safe_vx_mps).max(0.0);
                 let vx_full_tilt_excess = (self.config.touchdown_rescue_vx_full_tilt_mps
-                    - safe_touchdown_vx_mps)
+                    - inside_pad_safe_vx_mps)
                     .max(1e-3);
                 (vx_excess / vx_full_tilt_excess).clamp(0.0, 1.0)
             } else {
