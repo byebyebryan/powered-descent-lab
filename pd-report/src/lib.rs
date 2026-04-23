@@ -922,6 +922,7 @@ fn build_mission_details(scenario: &ScenarioSpec) -> ReportMissionDetails {
             max_fuel_kg: scenario.vehicle.max_fuel_kg,
             max_thrust_n: scenario.vehicle.max_thrust_n,
             max_fuel_burn_kgps: scenario.vehicle.max_fuel_burn_kgps,
+            min_throttle_frac: scenario.vehicle.min_throttle_frac,
             max_rotation_rate_degps: scenario.vehicle.max_rotation_rate_radps.to_degrees(),
             safe_touchdown_normal_speed_mps: scenario.vehicle.safe_touchdown_normal_speed_mps,
             safe_touchdown_tangential_speed_mps: scenario
@@ -1262,6 +1263,7 @@ struct ReportVehicleDetails {
     max_fuel_kg: f64,
     max_thrust_n: f64,
     max_fuel_burn_kgps: f64,
+    min_throttle_frac: f64,
     max_rotation_rate_degps: f64,
     safe_touchdown_normal_speed_mps: f64,
     safe_touchdown_tangential_speed_mps: f64,

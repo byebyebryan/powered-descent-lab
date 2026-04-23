@@ -158,14 +158,24 @@ impl SimulationState {
     }
 
     fn consume_fuel(&mut self, ctx: &RunContext, dt_s: f64) -> f64 {
-        let throttle_frac = if self.fuel_kg > 0.0 {
-            self.held_command.throttle_frac.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
+        let throttle_frac = self.applied_throttle_frac(ctx);
         let fuel_used = (ctx.vehicle.max_fuel_burn_kgps * throttle_frac * dt_s).min(self.fuel_kg);
         self.fuel_kg -= fuel_used;
         throttle_frac
+    }
+
+    fn applied_throttle_frac(&self, ctx: &RunContext) -> f64 {
+        if self.fuel_kg <= 0.0 {
+            return 0.0;
+        }
+
+        let commanded = self.held_command.throttle_frac.clamp(0.0, 1.0);
+        if commanded <= 0.0 {
+            return 0.0;
+        }
+
+        let min_throttle = ctx.vehicle.min_throttle_frac.clamp(0.0, 1.0);
+        min_throttle + commanded * (1.0 - min_throttle)
     }
 
     fn integrate_translation(&mut self, ctx: &RunContext, dt_s: f64, throttle_frac: f64) {
@@ -200,6 +210,7 @@ impl SimulationState {
 
     fn detect_contact_classification(&self, ctx: &RunContext) -> ContactClassification {
         let snapshot = self.landing_snapshot(ctx);
+        const STABLE_TOUCHDOWN_CLEARANCE_TOLERANCE_M: f64 = 0.01;
 
         if snapshot.min_touchdown_clearance_m > 0.0 && snapshot.min_hull_clearance_m > 0.0 {
             return ContactClassification::None;
@@ -207,7 +218,7 @@ impl SimulationState {
 
         let stable_touchdown = snapshot.min_touchdown_clearance_m <= 0.05
             && snapshot.max_touchdown_clearance_m <= 0.15
-            && snapshot.min_hull_clearance_m >= 0.0;
+            && snapshot.min_hull_clearance_m >= -STABLE_TOUCHDOWN_CLEARANCE_TOLERANCE_M;
         let safe_touchdown = snapshot.normal_speed_mps
             <= ctx.vehicle.safe_touchdown_normal_speed_mps
             && snapshot.tangential_speed_mps <= ctx.vehicle.safe_touchdown_tangential_speed_mps
@@ -760,6 +771,7 @@ mod tests {
                 max_fuel_kg: 200.0,
                 max_thrust_n: 14_000.0,
                 max_fuel_burn_kgps: 10.0,
+                min_throttle_frac: 0.0,
                 max_rotation_rate_radps: 1.0,
                 safe_touchdown_normal_speed_mps: 3.0,
                 safe_touchdown_tangential_speed_mps: 2.0,

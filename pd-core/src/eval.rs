@@ -310,6 +310,7 @@ mod tests {
                 max_fuel_kg: 200.0,
                 max_thrust_n: 14_000.0,
                 max_fuel_burn_kgps: 10.0,
+                min_throttle_frac: 0.0,
                 max_rotation_rate_radps: 1.0,
                 safe_touchdown_normal_speed_mps: 3.0,
                 safe_touchdown_tangential_speed_mps: 2.0,

@@ -147,6 +147,8 @@ pub struct VehicleSpec {
     pub max_fuel_kg: f64,
     pub max_thrust_n: f64,
     pub max_fuel_burn_kgps: f64,
+    #[serde(default)]
+    pub min_throttle_frac: f64,
     pub max_rotation_rate_radps: f64,
     pub safe_touchdown_normal_speed_mps: f64,
     pub safe_touchdown_tangential_speed_mps: f64,
@@ -184,6 +186,12 @@ impl VehicleSpec {
             if !value.is_finite() || value <= 0.0 {
                 return Err(format!("{label} must be positive and finite"));
             }
+        }
+        if !self.min_throttle_frac.is_finite()
+            || self.min_throttle_frac < 0.0
+            || self.min_throttle_frac > 1.0
+        {
+            return Err("min_throttle_frac must be finite and within [0, 1]".to_owned());
         }
         if self.initial_fuel_kg > self.max_fuel_kg {
             return Err("initial_fuel_kg cannot exceed max_fuel_kg".to_owned());

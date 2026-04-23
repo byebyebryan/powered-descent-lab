@@ -34,6 +34,8 @@ pub struct TerminalPdgControllerConfig {
     pub touchdown_rescue_clearance_m: f64,
     pub touchdown_rescue_vy_ratio: f64,
     pub touchdown_rescue_tilt_rad: f64,
+    pub touchdown_rescue_vx_full_tilt_mps: f64,
+    pub touchdown_rescue_dx_full_tilt_m: f64,
     pub touchdown_rescue_alt_floor_m: f64,
     pub terminal_gate_nominal_ratio: f64,
     pub terminal_gate_nominal_min_up_accel_mps2: f64,
@@ -77,7 +79,9 @@ impl Default for TerminalPdgControllerConfig {
             touchdown_low_clearance_trigger_m: 1.25,
             touchdown_rescue_clearance_m: 4.5,
             touchdown_rescue_vy_ratio: 1.8,
-            touchdown_rescue_tilt_rad: 0.14,
+            touchdown_rescue_tilt_rad: 0.42,
+            touchdown_rescue_vx_full_tilt_mps: 3.0,
+            touchdown_rescue_dx_full_tilt_m: 8.0,
             touchdown_rescue_alt_floor_m: 0.25,
             terminal_gate_nominal_ratio: 0.92,
             terminal_gate_nominal_min_up_accel_mps2: 0.5,
@@ -230,12 +234,12 @@ impl TerminalPdgController {
             self.nominal_ready_ticks = 0;
         }
 
-        let guidance_mode = if nominal.ready
+        let guidance_mode = if latest_safe.latest_safe_margin_s <= 0.0 {
+            GuidanceMode::LatestSafe
+        } else if nominal.ready
             && self.nominal_ready_ticks >= self.config.terminal_gate_hysteresis_ticks
         {
             GuidanceMode::NominalReady
-        } else if latest_safe.latest_safe_margin_s <= 0.0 {
-            GuidanceMode::LatestSafe
         } else {
             GuidanceMode::NominalPending
         };
@@ -786,15 +790,16 @@ impl TerminalPdgController {
         let dx_m = view.target_dx_m();
         let vx_mps = view.observation.velocity_mps.x;
         let vy_up_mps = view.observation.velocity_mps.y;
-        if touchdown_clearance_m <= self.config.touchdown_idle_clearance_m
-            && dx_m.abs() <= view.observation.target_pad_half_width_m
+        let down_speed = (-vy_up_mps).max(0.0);
+        let on_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
+        let settle_cut = touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m.min(1.0)
+            && on_pad
             && vx_mps.abs() <= self.config.touchdown_zero_vx_mps
-            && vy_up_mps.abs() <= self.config.touchdown_zero_vy_mps
-        {
+            && down_speed <= self.config.touchdown_zero_vy_mps
+            && vy_up_mps >= -0.05;
+        if settle_cut {
             return Some(Command::idle());
         }
-
-        let down_speed = (-vy_up_mps).max(0.0);
         let low_clearance = touchdown_clearance_m <= self.config.touchdown_low_clearance_trigger_m;
         let rescue_limit = self.braking_speed_limit(
             touchdown_clearance_m,
@@ -807,14 +812,49 @@ impl TerminalPdgController {
             && (down_speed > (self.config.touchdown_rescue_vy_ratio * rescue_limit)
                 || low_clearance_trigger)
         {
-            let mut rescue_angle_target = 0.0;
-            if vx_mps.abs() > self.config.touchdown_zero_vx_mps {
-                rescue_angle_target = self.config.touchdown_rescue_tilt_rad.copysign(-vx_mps);
-            }
-            rescue_angle_target = rescue_angle_target.clamp(
-                -self.config.touchdown_rescue_tilt_rad,
-                self.config.touchdown_rescue_tilt_rad,
-            );
+            let safe_touchdown_vx_mps = view
+                .ctx
+                .vehicle
+                .safe_touchdown_tangential_speed_mps
+                .max(0.0);
+            let rescue_tilt_limit = current_state
+                .max_tilt_rad
+                .min(self.config.touchdown_rescue_tilt_rad)
+                .max(0.0);
+            let moving_toward_target = (dx_m * vx_mps) > 0.0;
+            let inside_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
+            let vx_term = if inside_pad {
+                let vx_excess = (vx_mps.abs() - safe_touchdown_vx_mps).max(0.0);
+                let vx_full_tilt_excess = (self.config.touchdown_rescue_vx_full_tilt_mps
+                    - safe_touchdown_vx_mps)
+                    .max(1e-3);
+                (vx_excess / vx_full_tilt_excess).clamp(0.0, 1.0)
+            } else {
+                (vx_mps.abs() / self.config.touchdown_rescue_vx_full_tilt_mps.max(1e-3))
+                    .clamp(0.0, 1.0)
+            };
+            let dx_term = if inside_pad {
+                0.0
+            } else {
+                (dx_m.abs() / self.config.touchdown_rescue_dx_full_tilt_m.max(1e-3)).clamp(0.0, 1.0)
+            };
+            let rescue_sign = if vx_mps.abs() > self.config.touchdown_zero_vx_mps
+                && (moving_toward_target || inside_pad)
+            {
+                -vx_mps.signum()
+            } else if !inside_pad && dx_m.abs() > 1e-3 {
+                dx_m.signum()
+            } else if vx_mps.abs() > self.config.touchdown_zero_vx_mps {
+                -vx_mps.signum()
+            } else {
+                0.0
+            };
+            let rescue_weight = if rescue_sign == -vx_mps.signum() {
+                vx_term.max(0.5 * dx_term)
+            } else {
+                dx_term.max(0.25 * vx_term)
+            };
+            let rescue_angle_target = rescue_sign * rescue_tilt_limit * rescue_weight;
             let mass = view.observation.mass_kg.max(0.5);
             let alt_eff = if low_clearance {
                 touchdown_clearance_m.max(self.config.touchdown_rescue_alt_floor_m)

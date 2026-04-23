@@ -438,14 +438,59 @@ but those should only come after the clean matrix is real.
 
 ## Vehicle Variants
 
+The maintained Earth baseline should use the same core vehicle and nominal
+engine envelope as `pylander`'s `SimpleLander`:
+
+- geometry:
+  - width `8.0m`
+  - height `10.0m`
+- dry mass:
+  - `7200kg`
+- max fuel:
+  - `6300kg`
+- nominal max thrust:
+  - `240000N`
+- ignited minimum throttle:
+  - `25%`
+- max rotation rate:
+  - `90 deg/s`
+
+One intentional simplification for `pd-lab` right now:
+
+- do not model `pylander` overdrive or the nonlinear burn curve above nominal
+  thrust
+- instead, use a single max thrust and scale fuel burn linearly between:
+  - engine off
+  - ignited minimum throttle
+  - full thrust
+
+That keeps the suite easier to reason about while still matching the basic
+mass, thrust, and control-authority picture from `pylander`.
+
 The first vehicle variants should be:
 
 - `nominal`
-- `low_margin`
+- `heavy_cargo`
+
+`heavy_cargo` should be modeled as a fixed payload-style dry-mass addition, not
+as a fuel cut. The maintained first payload tiers should follow the useful
+`pylander` `plunge` precedent:
+
+- `nominal`
+  - `vehicle.dry_mass_kg += 2250`
+- `heavy_cargo`
+  - `vehicle.dry_mass_kg += 4500`
+
+Rationale:
+
+- it directly reduces thrust-to-weight and control authority
+- it maps more cleanly to the older `pylander` terminal/plunge weight-tier
+  intuition than `low_margin`
+- it keeps the mission energy budget the same, so the suite is testing
+  authority margin rather than just shortened burn duration
 
 Later variants can include:
 
-- `heavy_cargo`
 - `low_fuel`
 
 Again, these are distinct case classes, not seed jitter.
@@ -514,25 +559,26 @@ First results from the Earth baseline are already useful:
 
 - `terminal_bot_lab_suite`
   - `252` total runs
-  - `12` successes
-  - all `12` successes come from `baseline`
-  - `current` has `0` successes
+  - `0` successes
+  - both `baseline` and `current` are currently `0 / 126`
 - `terminal_bot_lab_full`
   - `1008` total runs
-  - `42` successes
-  - all `42` successes come from `baseline`
-  - `current` has `0` successes
+  - `0` successes
+  - both `baseline` and `current` are currently `0 / 504`
 
-That is a healthy framework result. The suite is already discriminating between
-controllers rather than only exercising plumbing.
+That is still a useful framework result. The suite is now aligned closely
+enough to the heavier `pylander` Earth vehicle that it exposed a real gap:
+the current terminal controllers were implicitly tuned against an easier
+vehicle model and now need to be retuned before the suite expands further.
 
 ## Next Expansion Targets
 
-Now that the core matrix is real, the next concrete milestones are:
+Now that the core matrix is real and the maintained vehicle baseline is
+aligned, the next concrete milestones are:
 
 1. improve controller robustness on the existing Earth matrix:
    - nominal first
-   - then low-margin
+   - then heavy-cargo
 2. expand the physical case space above seed:
    - `traj_err_small`
    - `traj_err_large`

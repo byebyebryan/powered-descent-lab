@@ -27,6 +27,22 @@
     - smoke tier
   - `fixtures/packs/terminal_bot_lab_full.json`
     - full tier
+- The maintained Earth terminal hardware baseline now matches the core
+  `pylander` vehicle/engine envelope closely enough for direct reasoning:
+  - `8m x 10m` hull
+  - `7200kg` dry mass
+  - `6300kg` max fuel
+  - `240000N` max thrust
+  - `25%` ignited minimum throttle
+  - `90 deg/s` max rotation rate
+- The main vehicle variants are now payload tiers, not fuel-margin tiers:
+  - `nominal`
+    - half payload
+  - `heavy_cargo`
+    - full payload
+- `pd-lab` still intentionally simplifies one engine detail:
+  - no `pylander` overdrive path yet
+  - fuel burn scales linearly between minimum and maximum thrust
 - The bot-lab `current` lane now points at `terminal_pdg_v1`, not the older
   staged heuristic.
 - Batch reports now surface the terminal matrix directly in the review tree:
@@ -35,32 +51,32 @@
 
 ### First matrix results
 
-- The first real Earth matrix run did its job:
-  - it exposed that the old `current` lane was not viable on the real matrix
-  - that result directly forced the new controller pass
-- After the `terminal_pdg_v1` implementation pass:
+- The first real Earth matrix run already showed that the old `current` lane
+  was not viable on the real matrix and directly forced the `terminal_pdg_v1`
+  pass.
+- After aligning the maintained Earth suite to the heavier `pylander`
+  vehicle/engine baseline and payload tiers:
   - `terminal_bot_lab_suite`
-    - `baseline`: `12 / 126`
-    - `current`: `100 / 126`
+    - `baseline`: `0 / 126`
+    - `current`: `0 / 126`
   - `terminal_bot_lab_full`
-    - `baseline`: `42 / 504`
-    - `current`: `403 / 504`
-- The new controller now sweeps the steeper core of the matrix:
-  - smoke: perfect across `a00` through `a45`
-  - full: perfect across `a00` through `a45`
-- The remaining weakness is concentrated in the shallow tail:
-  - `a60` still has some misses
-  - `a70` and `a80` are the main remaining weak cells
-  - `high` remains the hardest velocity band even after the latest-safe fix
+    - `baseline`: `0 / 504`
+    - `current`: `0 / 504`
+- That regression is useful signal, not a framework failure:
+  - the suite is now discriminating against controllers that were implicitly
+    tuned for an easier vehicle model
+  - controller work needs to restart from this more faithful baseline instead
+    of extrapolating from the earlier lighter craft
+- The next controller task is no longer only "fix the shallow tail":
+  - first restore viability on the steeper core
+  - then reopen the shallow tail once the heavier baseline is under control
 
 ### Active implementation focus
 
-1. Improve `terminal_pdg_v1` robustness on the shallow tail of the Earth
-   terminal matrix:
-   - `a60`
-   - `a70`
-   - `a80`
-   - especially `high`
+1. Restore controller viability on the pylander-aligned Earth terminal matrix:
+   - nominal first
+   - then heavy-cargo
+   - only then re-focus on the shallow tail
 2. Expand the now-real matrix corpus carefully:
    - `traj_err_small`
    - `traj_err_large`
@@ -103,7 +119,7 @@
 
 1. Improve controller behavior on the real terminal matrix:
    - clean nominal
-   - low-margin / stress
+   - heavy-cargo / stress
 2. Expand the real terminal corpus with:
    - trajectory-error conditions
    - later terrain and obstacle conditions
@@ -122,7 +138,7 @@
 - The current bot-lab corpus only covers:
   - `clean`
   - `nominal`
-  - `low_margin`
+  - `heavy_cargo`
   and still needs trajectory-error and later terrain conditions.
 - Compare provenance is explicit in the report, but compare cache / promote /
   invalidate semantics are not implemented yet.

@@ -166,9 +166,27 @@ smoke-tier Earth `half_arc_terminal_v1` matrix over:
 
 - `condition_set = clean`
 - `vehicle_variant = nominal`
-- `vehicle_variant = low_margin`
+  - `pylander`-aligned Earth baseline hardware with half payload
+- `vehicle_variant = heavy_cargo`
+  - the same hardware with full payload
 - `arc_point x velocity_band`
 - `baseline` and `current` controller lanes
+
+The maintained terminal baseline now matches the core `pylander`
+vehicle/engine envelope closely enough to reason about directly:
+
+- `8m x 10m` hull
+- `7200kg` dry mass
+- `6300kg` max fuel
+- `240000N` max thrust
+- `25%` ignited minimum throttle
+- `90 deg/s` max rotation rate
+
+The one intentional simplification is fuel use:
+
+- `pd-lab` does not yet model `pylander` overdrive or the nonlinear burn
+  penalty above nominal thrust
+- fuel burn currently scales linearly between minimum and maximum thrust
 
 At the moment:
 
@@ -206,7 +224,8 @@ The batch report is intentionally compare-friendly:
 - stable links back to per-run detail reports and bundles
 
 At this point the batch/single-run reporting stack is good enough for real
-controller iteration. The main next bottleneck is no longer “basic reports
-exist,” but “the Earth terminal matrix is now real, `terminal_pdg_v1` is the
-current serious lane, and the remaining controller work is concentrated in the
-shallow tail before the suite expands further.”
+controller iteration. The main next bottleneck is now controller viability on
+the fully aligned Earth baseline: once the terminal suite was moved onto the
+heavier `pylander`-style vehicle/engine envelope, both current bot-lab lanes
+regressed to `0` successes on the smoke and full matrices, so controller
+retuning is again the main job before the suite expands further.

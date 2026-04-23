@@ -24,7 +24,7 @@
     "sample_hz": 10
   },
   "world": {
-    "gravity_mps2": 1.62,
+    "gravity_mps2": 9.81,
     "terrain": {
       "kind": "heightfield",
       "points_m": [
@@ -49,17 +49,18 @@
   },
   "vehicle": {
     "geometry": {
-      "hull_width_m": 4.0,
-      "hull_height_m": 6.0,
-      "touchdown_half_span_m": 2.0,
-      "touchdown_base_offset_m": 3.2
+      "hull_width_m": 8.0,
+      "hull_height_m": 10.0,
+      "touchdown_half_span_m": 4.0,
+      "touchdown_base_offset_m": 5.0
     },
-    "dry_mass_kg": 700.0,
-    "initial_fuel_kg": 240.0,
-    "max_fuel_kg": 240.0,
-    "max_thrust_n": 16000.0,
-    "max_fuel_burn_kgps": 11.0,
-    "max_rotation_rate_radps": 1.2,
+    "dry_mass_kg": 7200.0,
+    "initial_fuel_kg": 6300.0,
+    "max_fuel_kg": 6300.0,
+    "max_thrust_n": 240000.0,
+    "max_fuel_burn_kgps": 49.5,
+    "min_throttle_frac": 0.25,
+    "max_rotation_rate_radps": 1.5707963267948966,
     "safe_touchdown_normal_speed_mps": 3.0,
     "safe_touchdown_tangential_speed_mps": 2.0,
     "safe_touchdown_attitude_error_rad": 0.15,

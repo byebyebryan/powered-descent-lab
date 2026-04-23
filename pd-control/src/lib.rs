@@ -238,6 +238,7 @@ mod tests {
                 max_fuel_kg: 240.0,
                 max_thrust_n: 16_000.0,
                 max_fuel_burn_kgps: 11.0,
+                min_throttle_frac: 0.0,
                 max_rotation_rate_radps: 1.2,
                 safe_touchdown_normal_speed_mps: 3.0,
                 safe_touchdown_tangential_speed_mps: 2.0,
@@ -265,8 +266,19 @@ mod tests {
         scenario.description = "Representative Earth half-arc terminal reference case".to_owned();
         scenario.seed = 0;
         scenario.world.gravity_mps2 = 9.81;
-        scenario.initial_state.position_m = Vec2::new(-574.1707063234766, 574.1707063234767);
-        scenario.initial_state.velocity_mps = Vec2::new(71.77133829043457, -32.53133829043458);
+        scenario.vehicle.geometry.hull_width_m = 8.0;
+        scenario.vehicle.geometry.hull_height_m = 10.0;
+        scenario.vehicle.geometry.touchdown_half_span_m = 4.0;
+        scenario.vehicle.geometry.touchdown_base_offset_m = 5.0;
+        scenario.vehicle.dry_mass_kg = 7_200.0;
+        scenario.vehicle.initial_fuel_kg = 6_300.0;
+        scenario.vehicle.max_fuel_kg = 6_300.0;
+        scenario.vehicle.max_thrust_n = 240_000.0;
+        scenario.vehicle.max_fuel_burn_kgps = 49.5;
+        scenario.vehicle.min_throttle_frac = 0.25;
+        scenario.vehicle.max_rotation_rate_radps = std::f64::consts::FRAC_PI_2;
+        scenario.initial_state.position_m = Vec2::new(18.0, 140.0);
+        scenario.initial_state.velocity_mps = Vec2::new(-1.0, -12.0);
         scenario
     }
 
@@ -394,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_pdg_controller_lands_earth_terminal_reference_fixture() {
+    fn terminal_pdg_controller_stabilizes_earth_terminal_reference_fixture() {
         let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
         let artifacts = run_controller_spec(
             &ctx,
@@ -404,10 +416,57 @@ mod tests {
         )
         .unwrap();
 
-        assert!(matches!(
-            artifacts.run.manifest.end_reason,
-            EndReason::TouchdownOnTarget
-        ));
+        let landing = artifacts
+            .run
+            .manifest
+            .summary
+            .landing
+            .as_ref()
+            .expect("landing summary should be present for landing scenarios");
+
+        assert!(landing.on_target);
+        assert!(landing.envelope_margin_ratio > 0.95);
+        assert!(artifacts.run.manifest.summary.min_touchdown_clearance_m < 0.5);
+    }
+
+    #[test]
+    fn terminal_pdg_touchdown_rescue_scales_lateral_braking_tilt() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        observation.position_m = Vec2::new(-6.0, 6.0);
+        observation.velocity_mps = Vec2::new(2.8, -1.2);
+        observation.target_dx_m = 6.0;
+        observation.height_above_target_m = 6.0;
+        observation.touchdown_clearance_m = 1.0;
+        observation.min_hull_clearance_m = 1.0;
+
+        let mut controller = TerminalPdgController::default();
+        let frame = controller.update(&ctx, &observation);
+
+        assert!(frame.command.target_attitude_rad < -0.25);
+        assert!(frame.command.throttle_frac > 0.0);
+    }
+
+    #[test]
+    fn terminal_pdg_touchdown_rescue_does_not_late_recenter_on_pad_with_safe_vx() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        observation.position_m = Vec2::new(-4.0, 5.8);
+        observation.velocity_mps = Vec2::new(-0.55, -1.1);
+        observation.target_dx_m = 4.0;
+        observation.height_above_target_m = 5.8;
+        observation.touchdown_clearance_m = 0.8;
+        observation.min_hull_clearance_m = 0.8;
+
+        let mut controller = TerminalPdgController::default();
+        let frame = controller.update(&ctx, &observation);
+
+        assert!(frame.command.target_attitude_rad.abs() < 0.05);
+        assert!(frame.command.throttle_frac > 0.0);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 {
   "id": "terminal_bot_lab_suite",
   "name": "Terminal bot-lab suite",
-  "description": "Smoke-tier half-arc terminal guidance matrix on the maintained Earth baseline, comparing baseline and current controller lanes across clean nominal and low-margin variants.",
+  "description": "Smoke-tier half-arc terminal guidance matrix on the maintained Earth baseline, comparing baseline and current controller lanes across clean nominal and heavy-cargo variants.",
   "entries": [
     {
       "id": "terminal_guidance_clean_nominal",
@@ -21,6 +21,14 @@
       "condition_set": "clean",
       "vehicle_variant": "nominal",
       "expectation_tier": "core",
+      "adjustments": [
+        {
+          "id": "payload_half_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 2250.0
+        }
+      ],
       "tags": [
         "terminal_guidance",
         "clean",
@@ -33,7 +41,7 @@
       }
     },
     {
-      "id": "terminal_guidance_clean_low_margin",
+      "id": "terminal_guidance_clean_heavy_cargo",
       "terminal_matrix": "half_arc_terminal_v1",
       "base_scenario": "../scenarios/flat_terminal_descent.json",
       "lanes": [
@@ -48,25 +56,25 @@
       ],
       "seed_tier": "smoke",
       "condition_set": "clean",
-      "vehicle_variant": "low_margin",
+      "vehicle_variant": "heavy_cargo",
       "expectation_tier": "stress",
       "adjustments": [
         {
-          "id": "fuel_scale",
-          "path": "vehicle.initial_fuel_kg",
-          "mode": "scale",
-          "value": 0.85
+          "id": "payload_full_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 4500.0
         }
       ],
       "tags": [
         "terminal_guidance",
         "clean",
-        "low_margin",
+        "heavy_cargo",
         "bot_lab",
         "stress"
       ],
       "metadata": {
-        "difficulty": "low_margin"
+        "difficulty": "heavy_cargo"
       }
     }
   ]

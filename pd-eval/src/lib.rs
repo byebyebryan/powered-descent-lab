@@ -2816,32 +2816,191 @@ fn maybe_update_latest_link(target_dir: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use super::*;
+    use pd_core::{
+        EvaluationGoal, LandingPadSpec, MissionSpec, ScenarioSpec, SimConfig, TerrainDefinition,
+        Vec2, VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec,
+    };
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
     }
 
+    fn temp_fixture_root(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("pd_eval_{prefix}_{unique}"));
+        fs::create_dir_all(root.join("scenarios")).expect("temp fixture root should be creatable");
+        root
+    }
+
+    fn write_scenario(root: &Path, relative_path: &str, scenario: &ScenarioSpec) {
+        let path = root.join(relative_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("scenario parent directory should be creatable");
+        }
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(scenario).expect("scenario json should serialize"),
+        )
+        .expect("scenario json should be writable");
+    }
+
+    fn easy_landing_scenario() -> ScenarioSpec {
+        ScenarioSpec {
+            id: "unit_flat_landing".to_owned(),
+            name: "Unit flat landing".to_owned(),
+            description: "Low-gravity flat landing fixture for eval tests".to_owned(),
+            seed: 3,
+            tags: vec!["test".to_owned(), "landing".to_owned()],
+            metadata: BTreeMap::from([("suite".to_owned(), "eval".to_owned())]),
+            sim: SimConfig {
+                physics_hz: 120,
+                controller_hz: 60,
+                max_time_s: 45.0,
+                sample_hz: Some(10),
+            },
+            world: WorldSpec {
+                gravity_mps2: 1.62,
+                terrain: TerrainDefinition::Heightfield {
+                    points_m: vec![Vec2::new(-120.0, 0.0), Vec2::new(120.0, 0.0)],
+                },
+                landing_pads: vec![LandingPadSpec {
+                    id: "pad_a".to_owned(),
+                    center_x_m: 0.0,
+                    surface_y_m: 0.0,
+                    width_m: 36.0,
+                }],
+            },
+            vehicle: VehicleSpec {
+                geometry: VehicleGeometry {
+                    hull_width_m: 4.0,
+                    hull_height_m: 6.0,
+                    touchdown_half_span_m: 2.0,
+                    touchdown_base_offset_m: 3.2,
+                },
+                dry_mass_kg: 700.0,
+                initial_fuel_kg: 240.0,
+                max_fuel_kg: 240.0,
+                max_thrust_n: 16_000.0,
+                max_fuel_burn_kgps: 11.0,
+                min_throttle_frac: 0.0,
+                max_rotation_rate_radps: 1.2,
+                safe_touchdown_normal_speed_mps: 3.0,
+                safe_touchdown_tangential_speed_mps: 2.0,
+                safe_touchdown_attitude_error_rad: 0.15,
+                safe_touchdown_angular_rate_radps: 0.35,
+            },
+            initial_state: VehicleInitialState {
+                position_m: Vec2::new(18.0, 140.0),
+                velocity_mps: Vec2::new(-1.0, -12.0),
+                attitude_rad: 0.0,
+                angular_rate_radps: 0.0,
+            },
+            mission: MissionSpec {
+                goal: EvaluationGoal::LandingOnPad {
+                    target_pad_id: "pad_a".to_owned(),
+                },
+            },
+        }
+    }
+
+    fn easy_checkpoint_scenario() -> ScenarioSpec {
+        ScenarioSpec {
+            id: "unit_timed_checkpoint".to_owned(),
+            name: "Unit timed checkpoint".to_owned(),
+            description: "Stationary timed checkpoint fixture for eval tests".to_owned(),
+            seed: 5,
+            tags: vec!["test".to_owned(), "checkpoint".to_owned()],
+            metadata: BTreeMap::from([("suite".to_owned(), "eval".to_owned())]),
+            sim: SimConfig {
+                physics_hz: 120,
+                controller_hz: 60,
+                max_time_s: 5.0,
+                sample_hz: Some(10),
+            },
+            world: WorldSpec {
+                gravity_mps2: 1.62,
+                terrain: TerrainDefinition::Heightfield {
+                    points_m: vec![Vec2::new(-80.0, 0.0), Vec2::new(80.0, 0.0)],
+                },
+                landing_pads: vec![LandingPadSpec {
+                    id: "pad_a".to_owned(),
+                    center_x_m: 0.0,
+                    surface_y_m: 0.0,
+                    width_m: 36.0,
+                }],
+            },
+            vehicle: VehicleSpec {
+                geometry: VehicleGeometry {
+                    hull_width_m: 4.0,
+                    hull_height_m: 6.0,
+                    touchdown_half_span_m: 2.0,
+                    touchdown_base_offset_m: 3.2,
+                },
+                dry_mass_kg: 700.0,
+                initial_fuel_kg: 40.0,
+                max_fuel_kg: 40.0,
+                max_thrust_n: 16_000.0,
+                max_fuel_burn_kgps: 11.0,
+                min_throttle_frac: 0.0,
+                max_rotation_rate_radps: 1.2,
+                safe_touchdown_normal_speed_mps: 3.0,
+                safe_touchdown_tangential_speed_mps: 2.0,
+                safe_touchdown_attitude_error_rad: 0.15,
+                safe_touchdown_angular_rate_radps: 0.35,
+            },
+            initial_state: VehicleInitialState {
+                position_m: Vec2::new(0.0, 10.0),
+                velocity_mps: Vec2::new(0.0, 0.0),
+                attitude_rad: 0.0,
+                angular_rate_radps: 0.0,
+            },
+            mission: MissionSpec {
+                goal: EvaluationGoal::TimedCheckpoint {
+                    target_pad_id: "pad_a".to_owned(),
+                    end_time_s: 0.5,
+                    desired_position_offset_m: Vec2::new(0.0, 9.794125),
+                    max_position_error_m: 0.01,
+                    desired_velocity_mps: Vec2::new(0.0, -0.81),
+                    max_velocity_error_mps: 0.01,
+                    max_attitude_error_rad: 0.01,
+                },
+            },
+        }
+    }
+
     #[test]
     fn run_pack_aggregates_nominal_suite() {
-        let base_dir = fixtures_root();
+        let base_dir = temp_fixture_root("unit_pack");
+        write_scenario(
+            &base_dir,
+            "scenarios/checkpoint_success.json",
+            &easy_checkpoint_scenario(),
+        );
         let pack = ScenarioPackSpec {
             id: "unit_pack".to_owned(),
             name: "Unit pack".to_owned(),
             description: "unit pack".to_owned(),
             entries: vec![
                 ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
-                    id: "landing_success".to_owned(),
-                    scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    id: "checkpoint_success_baseline".to_owned(),
+                    scenario: "scenarios/checkpoint_success.json".to_owned(),
                     controller: "baseline".to_owned(),
                     controller_config: None,
                     metadata: BTreeMap::new(),
                 }),
                 ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
-                    id: "checkpoint_success".to_owned(),
-                    scenario: "scenarios/timed_checkpoint_idle.json".to_owned(),
+                    id: "checkpoint_success_idle".to_owned(),
+                    scenario: "scenarios/checkpoint_success.json".to_owned(),
                     controller: "idle".to_owned(),
                     controller_config: None,
                     metadata: BTreeMap::new(),
@@ -2974,14 +3133,19 @@ mod tests {
 
     #[test]
     fn compare_reports_flags_regressions_on_shared_runs() {
-        let base_dir = fixtures_root();
+        let base_dir = temp_fixture_root("compare_pack");
+        write_scenario(
+            &base_dir,
+            "scenarios/landing_case.json",
+            &easy_landing_scenario(),
+        );
         let baseline_pack = ScenarioPackSpec {
             id: "compare_baseline".to_owned(),
             name: "Compare baseline".to_owned(),
             description: "compare baseline".to_owned(),
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "landing_case".to_owned(),
-                scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                scenario: "scenarios/landing_case.json".to_owned(),
                 controller: "baseline".to_owned(),
                 controller_config: None,
                 metadata: BTreeMap::new(),
@@ -2993,7 +3157,7 @@ mod tests {
             description: "compare candidate".to_owned(),
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "landing_case".to_owned(),
-                scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                scenario: "scenarios/landing_case.json".to_owned(),
                 controller: "idle".to_owned(),
                 controller_config: None,
                 metadata: BTreeMap::new(),
