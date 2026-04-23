@@ -104,9 +104,7 @@ fn render_batch_report(
     } else {
         format!("{} batch report", candidate.pack_name)
     };
-    let has_compare_view = comparison.is_some()
-        || overview_lane_split_counts(candidate, baseline.map(|(_, report)| report), comparison)
-            .is_some();
+    let has_compare_view = comparison.is_some();
 
     format!(
         r#"<!DOCTYPE html>
@@ -1110,6 +1108,21 @@ struct SelectorScopeCounts {
     lanes: usize,
 }
 
+struct LaneRecordFocus<'a> {
+    lane_id: &'static str,
+    records: Vec<&'a crate::BatchRunRecord>,
+}
+
+struct LaneFocusSummary {
+    lane_id: &'static str,
+    run_count: usize,
+    controller_html: String,
+    scope: SelectorScopeCounts,
+    review: ReviewAggregate,
+    mean_sim_time_s: f64,
+    max_sim_time_s: f64,
+}
+
 fn selector_scope_counts(candidate: &BatchReport) -> SelectorScopeCounts {
     let records = candidate.records.iter().collect::<Vec<_>>();
     selector_scope_counts_from_records(records.as_slice())
@@ -1135,6 +1148,69 @@ fn selector_scope_counts_from_records(records: &[&crate::BatchRunRecord]) -> Sel
         missions,
         case_groups,
         lanes,
+    }
+}
+
+fn preferred_current_lane_focus<'a>(report: &'a BatchReport) -> Option<LaneRecordFocus<'a>> {
+    let records = report.records.iter().collect::<Vec<_>>();
+    let lane_id = preferred_current_lane_id(records.as_slice())?;
+    let records = controller_lane_records(records.as_slice(), lane_id);
+    (!records.is_empty()).then_some(LaneRecordFocus { lane_id, records })
+}
+
+fn summarize_lane_focus(focus: &LaneRecordFocus<'_>) -> LaneFocusSummary {
+    let (mean_sim_time_s, max_sim_time_s) = overview_timing_from_records(focus.records.as_slice());
+    LaneFocusSummary {
+        lane_id: focus.lane_id,
+        run_count: focus.records.len(),
+        controller_html: render_controller_summary_inline(focus.records.as_slice()),
+        scope: selector_scope_counts_from_records(focus.records.as_slice()),
+        review: review_aggregate_from_records(focus.records.as_slice()),
+        mean_sim_time_s,
+        max_sim_time_s,
+    }
+}
+
+fn compare_basis_from_records(
+    mode: &str,
+    candidate_records: &[&crate::BatchRunRecord],
+    baseline_records: &[&crate::BatchRunRecord],
+) -> crate::BatchCompareBasis {
+    let candidate_run_ids = candidate_records
+        .iter()
+        .map(|record| record.resolved.run_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let baseline_run_ids = baseline_records
+        .iter()
+        .map(|record| record.resolved.run_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let shared_runs = candidate_run_ids.intersection(&baseline_run_ids).count();
+    let candidate_only_runs = candidate_run_ids.difference(&baseline_run_ids).count();
+    let baseline_only_runs = baseline_run_ids.difference(&candidate_run_ids).count();
+    crate::BatchCompareBasis {
+        mode: mode.to_owned(),
+        shared_runs,
+        candidate_only_runs,
+        baseline_only_runs,
+    }
+}
+
+fn compare_scope_resolution(basis: &crate::BatchCompareBasis) -> (&'static str, &'static str) {
+    if basis.shared_runs == 0 {
+        (
+            "no shared scope",
+            "no shared run set was available for comparison",
+        )
+    } else if basis.candidate_only_runs == 0 && basis.baseline_only_runs == 0 {
+        (
+            "exact",
+            "candidate and baseline cover the same resolved run set",
+        )
+    } else {
+        (
+            "shared intersection",
+            "report deltas are limited to the shared run intersection",
+        )
     }
 }
 
@@ -1401,56 +1477,43 @@ fn success_rate_ratio(success_runs: usize, total_runs: usize) -> f64 {
     }
 }
 
-fn overview_lane_split_counts(
-    candidate: &BatchReport,
-    baseline: Option<&BatchReport>,
-    comparison: Option<&BatchComparison>,
-) -> Option<(usize, usize, usize)> {
-    if baseline.is_some() || comparison.is_some() {
-        return None;
-    }
-    let candidate_records = candidate.records.iter().collect::<Vec<_>>();
-    let lane_current_records = preferred_current_lane_records(candidate_records.as_slice());
-    let lane_baseline_records = controller_lane_records(candidate_records.as_slice(), "baseline");
-    if lane_current_records.is_empty() || lane_baseline_records.is_empty() {
-        return None;
-    }
-    let covered = lane_current_records.len() + lane_baseline_records.len();
-    Some((
-        lane_current_records.len(),
-        lane_baseline_records.len(),
-        candidate.total_runs.saturating_sub(covered),
-    ))
-}
-
 fn batch_report_subtitle(
     candidate: &BatchReport,
     baseline: Option<&BatchReport>,
     comparison: Option<&BatchComparison>,
 ) -> String {
-    if let Some((current_runs, baseline_runs, other_runs)) =
-        overview_lane_split_counts(candidate, baseline, comparison)
+    if let Some(comparison) = comparison
+        && let (Some(candidate_focus), Some(baseline)) =
+            (preferred_current_lane_focus(candidate), baseline)
+        && let Some(baseline_focus) = preferred_current_lane_focus(baseline)
     {
+        let basis = compare_basis_from_records(
+            &comparison.basis.mode,
+            candidate_focus.records.as_slice(),
+            baseline_focus.records.as_slice(),
+        );
+        return format!(
+            "{}. {} total runs captured for this batch; overview below compares {} current controller-lane runs against {} cached history runs.",
+            candidate.pack_name,
+            candidate.total_runs,
+            basis.shared_runs + basis.candidate_only_runs,
+            basis.shared_runs + basis.baseline_only_runs,
+        );
+    }
+
+    if let Some(current_focus) = preferred_current_lane_focus(candidate) {
+        let other_runs = candidate
+            .total_runs
+            .saturating_sub(current_focus.records.len());
         if other_runs > 0 {
-            let reference_label = if other_runs == 1 {
-                "reference run"
-            } else {
-                "reference runs"
-            };
             return format!(
-                "{}. {} total runs captured for this batch; overview below compares {} current vs {} baseline controller-lane runs and leaves {} {} outside the lane summary.",
+                "{}. {} total runs captured for this batch; overview below focuses {} current controller-lane runs while {} other lane or reference runs remain in the tree detail.",
                 candidate.pack_name,
                 candidate.total_runs,
-                current_runs,
-                baseline_runs,
+                current_focus.records.len(),
                 other_runs,
-                reference_label
             );
         }
-        return format!(
-            "{}. {} total runs captured for this batch; overview below compares {} current vs {} baseline controller-lane runs.",
-            candidate.pack_name, candidate.total_runs, current_runs, baseline_runs
-        );
     }
 
     format!(
@@ -1465,30 +1528,57 @@ fn render_context_table(
     comparison: Option<&BatchComparison>,
 ) -> String {
     let compare_provenance = &candidate.provenance.compare;
-    let candidate_records = candidate.records.iter().collect::<Vec<_>>();
-    let current_lane_id =
-        preferred_current_lane_id(candidate_records.as_slice()).unwrap_or("current");
-    let lane_split = overview_lane_split_counts(candidate, baseline, comparison);
-    let current_lane_records = preferred_current_lane_records(candidate_records.as_slice());
-    let baseline_lane_records = controller_lane_records(candidate_records.as_slice(), "baseline");
-    let current_lane_controller_html =
-        render_controller_summary_inline(current_lane_records.as_slice());
-    let baseline_lane_controller_html =
-        render_controller_summary_inline(baseline_lane_records.as_slice());
     let (mode, current_source, baseline_source, compare_basis, scope_resolution) = if let Some(
         comparison,
     ) = comparison
     {
-        let scope_resolution = if comparison.basis.shared_runs == 0 {
-            "no shared scope"
-        } else if comparison.basis.candidate_only_runs == 0
-            && comparison.basis.baseline_only_runs == 0
+        if let (Some(candidate_focus), Some(baseline_report)) =
+            (preferred_current_lane_focus(candidate), baseline)
+            && let Some(baseline_focus) = preferred_current_lane_focus(baseline_report)
         {
-            "exact"
+            let candidate_summary = summarize_lane_focus(&candidate_focus);
+            let baseline_summary = summarize_lane_focus(&baseline_focus);
+            let basis = compare_basis_from_records(
+                &comparison.basis.mode,
+                candidate_focus.records.as_slice(),
+                baseline_focus.records.as_slice(),
+            );
+            let (scope_label, scope_note) = compare_scope_resolution(&basis);
+            (
+                "current-lane history compare",
+                format!(
+                    r#"<div class="context-value"><div class="context-main">current controller lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs · {}</div></div>"#,
+                    escape_html(candidate_summary.lane_id),
+                    escape_html(&candidate.pack_id),
+                    escape_html(&candidate.pack_name),
+                    candidate_summary.run_count,
+                    candidate_summary.controller_html,
+                ),
+                format!(
+                    r#"<div class="context-value"><div class="context-main">history baseline lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} baseline runs · {} · {}</div></div>"#,
+                    escape_html(baseline_summary.lane_id),
+                    escape_html(&baseline_report.pack_id),
+                    escape_html(&baseline_report.pack_name),
+                    baseline_summary.run_count,
+                    baseline_summary.controller_html,
+                    escape_html(&baseline_resolution_summary(compare_provenance, true)),
+                ),
+                context_value(
+                    &format!(
+                        "lane_id {} -> {} · shared {} · current-only {} · baseline-only {}",
+                        candidate_summary.lane_id,
+                        baseline_summary.lane_id,
+                        basis.shared_runs,
+                        basis.candidate_only_runs,
+                        basis.baseline_only_runs
+                    ),
+                    "current controller history is compared against the resolved cached baseline lane",
+                ),
+                context_value(scope_label, scope_note),
+            )
         } else {
-            "shared intersection"
-        };
-        (
+            let (scope_label, scope_note) = compare_scope_resolution(&comparison.basis);
+            (
                 "external compare",
                 format!(
                     r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
@@ -1520,74 +1610,51 @@ fn render_context_table(
                     "candidate and baseline runs are paired by compare basis",
                 ),
                 context_value(
-                    scope_resolution,
-                    if scope_resolution == "exact" {
-                        "candidate and baseline cover the same resolved run set"
-                    } else if scope_resolution == "shared intersection" {
-                        "report deltas are limited to the shared run intersection"
-                    } else {
-                        "no shared run set was available for comparison"
-                    },
+                    scope_label,
+                    scope_note,
                 ),
             )
-    } else if let Some((current_runs, baseline_runs, other_runs)) = lane_split {
-        (
-            "lane compare",
-            format!(
-                r#"<div class="context-value"><div class="context-main">current controller lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs · {}</div></div>"#,
-                escape_html(current_lane_id),
-                escape_html(&candidate.pack_id),
-                escape_html(&candidate.pack_name),
-                current_runs,
-                current_lane_controller_html,
-            ),
-            format!(
-                r#"<div class="context-value"><div class="context-main">baseline controller lane <code>baseline</code> within <code>{}</code></div><div class="context-sub">{} baseline runs{} · {} · Baseline Resolution: internal lane pairing · current and baseline are controller lanes inside the same pack</div></div>"#,
-                escape_html(&candidate.pack_id),
-                baseline_runs,
-                if other_runs > 0 {
-                    format!(" · {} reference runs excluded", other_runs)
-                } else {
-                    String::new()
-                },
-                baseline_lane_controller_html,
-            ),
-            context_value(
-                &format!(
-                    "lane_id within pack · same physical selector cells · current {} {} · baseline {}{}",
-                    current_lane_id,
-                    current_runs,
-                    baseline_runs,
-                    if other_runs > 0 {
-                        format!(" · other {}", other_runs)
-                    } else {
-                        String::new()
-                    }
-                ),
-                "controller lanes are compared within the shared selector space of this pack",
-            ),
-            context_value(
-                "internal controller lanes",
-                "this is a within-pack controller comparison; the physical case stays the same and only the controller lane differs",
-            ),
-        )
+        }
     } else {
-        (
-            "standalone",
-            format!(
-                r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
-                escape_html(&candidate.pack_id),
-                escape_html(&candidate.pack_name),
-                escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
-                escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
-            ),
-            missing_baseline_context_value(compare_provenance),
-            context_none_value("none"),
-            context_value(
-                "full pack",
-                "the overview and tree reflect the full batch without a comparison basis",
-            ),
-        )
+        if let Some(current_focus) = preferred_current_lane_focus(candidate) {
+            let current_summary = summarize_lane_focus(&current_focus);
+            (
+                "standalone",
+                format!(
+                    r#"<div class="context-value"><div class="context-main">current controller lane <code>{}</code> within <code>{}</code></div><div class="context-sub">{} · {} current runs · spec <code>{}</code> · resolved <code>{}</code> · {}</div></div>"#,
+                    escape_html(current_summary.lane_id),
+                    escape_html(&candidate.pack_id),
+                    escape_html(&candidate.pack_name),
+                    current_summary.run_count,
+                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                    escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
+                    current_summary.controller_html,
+                ),
+                missing_baseline_context_value(compare_provenance),
+                context_none_value("none"),
+                context_value(
+                    "current controller lane",
+                    "the overview focuses the preferred current controller lane while the tree still shows pack detail",
+                ),
+            )
+        } else {
+            (
+                "standalone",
+                format!(
+                    r#"<div class="context-value"><div class="context-main"><code>{}</code> · {}</div><div class="context-sub">spec <code>{}</code> · resolved <code>{}</code></div></div>"#,
+                    escape_html(&candidate.pack_id),
+                    escape_html(&candidate.pack_name),
+                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                    escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
+                ),
+                missing_baseline_context_value(compare_provenance),
+                context_none_value("none"),
+                context_value(
+                    "full pack",
+                    "the overview and tree reflect the full batch without a comparison basis",
+                ),
+            )
+        }
     };
 
     let (compare_status_label, compare_status_class, compare_status_note) =
@@ -1613,12 +1680,6 @@ fn render_context_table(
                     "compare is limited to the shared run intersection",
                 )
             }
-        } else if lane_split.is_some() {
-            (
-                "available",
-                "ok",
-                "internal lane compare available within this pack",
-            )
         } else if compare_provenance.status == BatchCompareResolutionStatus::Missing {
             (
                 "missing",
@@ -1632,7 +1693,7 @@ fn render_context_table(
             (
                 "standalone",
                 "muted",
-                "no baseline or internal lane compare requested",
+                "no history compare was available for this batch page",
             )
         };
 
@@ -1846,15 +1907,6 @@ fn render_overview_table(
     let candidate_scope = selector_scope_counts(candidate);
     let candidate_records = candidate.records.iter().collect::<Vec<_>>();
     let candidate_review = review_aggregate_from_records(candidate_records.as_slice());
-    let lane_current_records = preferred_current_lane_records(candidate_records.as_slice());
-    let lane_baseline_records = controller_lane_records(candidate_records.as_slice(), "baseline");
-    let lane_current_aggregate = (!lane_current_records.is_empty())
-        .then(|| review_aggregate_from_records(lane_current_records.as_slice()));
-    let lane_baseline_aggregate = (!lane_baseline_records.is_empty())
-        .then(|| review_aggregate_from_records(lane_baseline_records.as_slice()));
-    let split_by_lane = overview_lane_split_counts(candidate, baseline, comparison).is_some()
-        && lane_current_aggregate.is_some()
-        && lane_baseline_aggregate.is_some();
     let baseline_scope = baseline.map(selector_scope_counts);
     let baseline_records = baseline
         .map(|report| report.records.iter().collect::<Vec<_>>())
@@ -1862,30 +1914,26 @@ fn render_overview_table(
     let baseline_review = (!baseline_records.is_empty())
         .then(|| review_aggregate_from_records(baseline_records.as_slice()));
 
-    let mut rows = if split_by_lane {
-        let current_scope = selector_scope_counts_from_records(lane_current_records.as_slice());
-        let baseline_lane_scope =
-            selector_scope_counts_from_records(lane_baseline_records.as_slice());
-        let current_lane_controller_html =
-            render_controller_summary_inline(lane_current_records.as_slice());
-        let baseline_lane_controller_html =
-            render_controller_summary_inline(lane_baseline_records.as_slice());
-        let current_review = lane_current_aggregate
-            .as_ref()
-            .expect("current lane aggregate");
-        let baseline_lane_review = lane_baseline_aggregate
-            .as_ref()
-            .expect("baseline lane aggregate");
-        let (current_mean_sim_time_s, current_max_sim_time_s) =
-            overview_timing_from_records(lane_current_records.as_slice());
-        let (baseline_mean_sim_time_s, baseline_max_sim_time_s) =
-            overview_timing_from_records(lane_baseline_records.as_slice());
-        let success_rate_delta =
-            success_rate_ratio(current_review.success_runs, current_review.total_runs)
-                - success_rate_ratio(
-                    baseline_lane_review.success_runs,
-                    baseline_lane_review.total_runs,
-                );
+    let rows = if let (Some(comparison), Some(candidate_focus), Some(baseline_report)) = (
+        comparison,
+        preferred_current_lane_focus(candidate),
+        baseline,
+    ) && let Some(baseline_focus) = preferred_current_lane_focus(baseline_report)
+    {
+        let candidate_summary = summarize_lane_focus(&candidate_focus);
+        let baseline_summary = summarize_lane_focus(&baseline_focus);
+        let basis = compare_basis_from_records(
+            &comparison.basis.mode,
+            candidate_focus.records.as_slice(),
+            baseline_focus.records.as_slice(),
+        );
+        let success_rate_delta = success_rate_ratio(
+            candidate_summary.review.success_runs,
+            candidate_summary.review.total_runs,
+        ) - success_rate_ratio(
+            baseline_summary.review.success_runs,
+            baseline_summary.review.total_runs,
+        );
 
         vec![
             render_overview_row(
@@ -1894,103 +1942,167 @@ fn render_overview_table(
                     r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
                     escape_html(&candidate.pack_id),
                     escape_html(&candidate.pack_name),
-                    current_lane_controller_html,
+                    candidate_summary.controller_html,
                 ),
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
+                    r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code> · lane <code>{}</code></div></div>"#,
                     escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
-                    escape_html(&short_digest(&candidate.identity.resolved_run_digest))
+                    escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
+                    escape_html(candidate_summary.lane_id),
                 ),
-                render_overview_scope_cell(&current_scope, candidate.workers_used, None),
+                render_overview_scope_cell(
+                    &candidate_summary.scope,
+                    candidate.workers_used,
+                    Some(&basis),
+                ),
                 render_overview_result_cell(
-                    current_review.success_runs,
-                    current_review.total_runs,
-                    current_review.failure_runs,
+                    candidate_summary.review.success_runs,
+                    candidate_summary.review.total_runs,
+                    candidate_summary.review.failure_runs,
                     Some(success_rate_delta),
                 ),
                 render_overview_timing_cell(
-                    current_mean_sim_time_s,
-                    current_max_sim_time_s,
+                    candidate_summary.mean_sim_time_s,
+                    candidate_summary.max_sim_time_s,
                     Some((
-                        current_mean_sim_time_s - baseline_mean_sim_time_s,
-                        current_max_sim_time_s - baseline_max_sim_time_s,
+                        candidate_summary.mean_sim_time_s - baseline_summary.mean_sim_time_s,
+                        candidate_summary.max_sim_time_s - baseline_summary.max_sim_time_s,
                     )),
                 ),
-                render_overview_efficiency_cell(current_review, Some(baseline_lane_review), true),
-                render_overview_tracking_cell(current_review, Some(baseline_lane_review), true),
+                render_overview_efficiency_cell(
+                    &candidate_summary.review,
+                    Some(&baseline_summary.review),
+                    true,
+                ),
+                render_overview_tracking_cell(
+                    &candidate_summary.review,
+                    Some(&baseline_summary.review),
+                    true,
+                ),
             ),
             render_overview_row(
                 "baseline-summary-row baseline-row",
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag baseline">baseline</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
-                    escape_html(&candidate.pack_id),
-                    escape_html(&candidate.pack_name),
-                    baseline_lane_controller_html,
+                    escape_html(&baseline_report.pack_id),
+                    escape_html(&baseline_report.pack_name),
+                    baseline_summary.controller_html,
                 ),
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
-                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
-                    escape_html(&short_digest(&candidate.identity.resolved_run_digest))
+                    r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code> · lane <code>{}</code></div></div>"#,
+                    escape_html(&short_digest(&baseline_report.identity.pack_spec_digest)),
+                    escape_html(&short_digest(&baseline_report.identity.resolved_run_digest)),
+                    escape_html(baseline_summary.lane_id),
                 ),
-                render_overview_scope_cell(&baseline_lane_scope, candidate.workers_used, None),
+                render_overview_scope_cell(
+                    &baseline_summary.scope,
+                    baseline_report.workers_used,
+                    None,
+                ),
                 render_overview_result_cell(
-                    baseline_lane_review.success_runs,
-                    baseline_lane_review.total_runs,
-                    baseline_lane_review.failure_runs,
+                    baseline_summary.review.success_runs,
+                    baseline_summary.review.total_runs,
+                    baseline_summary.review.failure_runs,
                     None,
                 ),
                 render_overview_timing_cell(
-                    baseline_mean_sim_time_s,
-                    baseline_max_sim_time_s,
+                    baseline_summary.mean_sim_time_s,
+                    baseline_summary.max_sim_time_s,
                     None,
                 ),
-                render_overview_efficiency_cell(baseline_lane_review, None, false),
-                render_overview_tracking_cell(baseline_lane_review, None, false),
+                render_overview_efficiency_cell(&baseline_summary.review, None, false),
+                render_overview_tracking_cell(&baseline_summary.review, None, false),
             ),
             render_overview_row(
                 "diff-summary-row",
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>controller compare</div><div class="overview-sub">same pack physical cases · current - baseline controller lanes</div></div>"#
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>current-lane history compare</div><div class="overview-sub">shared {} · current-only {} · baseline-only {}</div></div>"#,
+                    basis.shared_runs, basis.candidate_only_runs, basis.baseline_only_runs
                 ),
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">shared selector space</div></div>"#,
-                    escape_html(&candidate.pack_id)
+                    r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub"><code>{}</code> -> <code>{}</code></div></div>"#,
+                    escape_html(&baseline_report.pack_id),
+                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                    escape_html(&short_digest(&baseline_report.identity.pack_spec_digest))
                 ),
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main">{} groups · {} missions</div><div class="overview-sub">workers {} · same pack physical cases</div></div>"#,
-                    current_scope.case_groups, current_scope.missions, candidate.workers_used
+                    r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">current lane <code>{}</code> -> baseline lane <code>{}</code></div></div>"#,
+                    escape_html(&format!("shared {}", basis.shared_runs)),
+                    escape_html(candidate_summary.lane_id),
+                    escape_html(baseline_summary.lane_id),
                 ),
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub {}">{}</div></div>"#,
                     delta_class(-success_rate_delta),
                     escape_html(&format_percent_delta(success_rate_delta)),
                     delta_class(
-                        (current_review.failure_runs as i64
-                            - baseline_lane_review.failure_runs as i64)
+                        (candidate_summary.review.failure_runs as i64
+                            - baseline_summary.review.failure_runs as i64)
                             as f64
                     ),
                     escape_html(&format_signed_i64(
-                        current_review.failure_runs as i64
-                            - baseline_lane_review.failure_runs as i64
+                        candidate_summary.review.failure_runs as i64
+                            - baseline_summary.review.failure_runs as i64
                     ))
                 ),
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub">{}</div></div>"#,
-                    delta_class(current_mean_sim_time_s - baseline_mean_sim_time_s),
+                    delta_class(
+                        candidate_summary.mean_sim_time_s - baseline_summary.mean_sim_time_s
+                    ),
                     escape_html(&format_signed_seconds(
-                        current_mean_sim_time_s - baseline_mean_sim_time_s
+                        candidate_summary.mean_sim_time_s - baseline_summary.mean_sim_time_s
                     )),
                     escape_html(&format!(
                         "max {}",
-                        format_signed_seconds(current_max_sim_time_s - baseline_max_sim_time_s)
+                        format_signed_seconds(
+                            candidate_summary.max_sim_time_s - baseline_summary.max_sim_time_s
+                        )
                     ))
                 ),
-                render_overview_efficiency_diff_cell(current_review, Some(baseline_lane_review)),
-                render_overview_tracking_diff_cell(current_review, Some(baseline_lane_review)),
+                render_overview_efficiency_diff_cell(
+                    &candidate_summary.review,
+                    Some(&baseline_summary.review),
+                ),
+                render_overview_tracking_diff_cell(
+                    &candidate_summary.review,
+                    Some(&baseline_summary.review),
+                ),
             ),
         ]
-    } else {
+    } else if let Some(candidate_focus) = preferred_current_lane_focus(candidate) {
+        let candidate_summary = summarize_lane_focus(&candidate_focus);
         vec![render_overview_row(
+            "current-summary-row",
+            format!(
+                r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
+                escape_html(&candidate.pack_id),
+                escape_html(&candidate.pack_name),
+                candidate_summary.controller_html
+            ),
+            format!(
+                r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code> · lane <code>{}</code></div></div>"#,
+                escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
+                escape_html(candidate_summary.lane_id)
+            ),
+            render_overview_scope_cell(&candidate_summary.scope, candidate.workers_used, None),
+            render_overview_result_cell(
+                candidate_summary.review.success_runs,
+                candidate_summary.review.total_runs,
+                candidate_summary.review.failure_runs,
+                None,
+            ),
+            render_overview_timing_cell(
+                candidate_summary.mean_sim_time_s,
+                candidate_summary.max_sim_time_s,
+                None,
+            ),
+            render_overview_efficiency_cell(&candidate_summary.review, None, false),
+            render_overview_tracking_cell(&candidate_summary.review, None, false),
+        )]
+    } else {
+        let mut rows = vec![render_overview_row(
             "current-summary-row",
             format!(
                 r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{}</div></div>"#,
@@ -2033,84 +2145,88 @@ fn render_overview_table(
                 baseline_review.as_ref(),
                 comparison.is_some(),
             ),
-        )]
+        )];
+
+        if let Some(baseline) = baseline {
+            let baseline_scope = baseline_scope.expect("baseline scope");
+            let baseline_review = baseline_review.as_ref().expect("baseline review");
+            rows.push(render_overview_row(
+                "baseline-summary-row baseline-row",
+                format!(
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag baseline">baseline</span><code>{}</code></div><div class="overview-sub">{}</div></div>"#,
+                    escape_html(&baseline.pack_id),
+                    escape_html(&baseline.pack_name)
+                ),
+                format!(
+                    r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
+                    escape_html(&short_digest(&baseline.identity.pack_spec_digest)),
+                    escape_html(&short_digest(&baseline.identity.resolved_run_digest))
+                ),
+                render_overview_scope_cell(&baseline_scope, baseline.workers_used, None),
+                render_overview_result_cell(
+                    baseline.summary.success_runs,
+                    baseline.summary.total_runs,
+                    baseline.summary.failure_runs,
+                    None,
+                ),
+                render_overview_timing_cell(
+                    baseline.summary.mean_sim_time_s,
+                    baseline.summary.max_sim_time_s,
+                    None,
+                ),
+                render_overview_efficiency_cell(baseline_review, None, false),
+                render_overview_tracking_cell(baseline_review, None, false),
+            ));
+        }
+
+        if let Some(comparison) = comparison {
+            rows.push(render_overview_row(
+                "diff-summary-row",
+                format!(
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>{}</div><div class="overview-sub">shared {} · current-only {} · baseline-only {}</div></div>"#,
+                    escape_html(&comparison.basis.mode),
+                    comparison.basis.shared_runs,
+                    comparison.basis.candidate_only_runs,
+                    comparison.basis.baseline_only_runs
+                ),
+                format!(
+                    r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub"><code>{}</code> -> <code>{}</code></div></div>"#,
+                    escape_html(&comparison.baseline_pack_id),
+                    escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
+                    escape_html(
+                        &baseline
+                            .map(|report| short_digest(&report.identity.pack_spec_digest))
+                            .unwrap_or_else(|| "-".to_owned())
+                    )
+                ),
+                format!(
+                    r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">candidate-only {} · baseline-only {}</div></div>"#,
+                    escape_html(&format!("shared {}", comparison.basis.shared_runs)),
+                    comparison.basis.candidate_only_runs,
+                    comparison.basis.baseline_only_runs
+                ),
+                format!(
+                    r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub {}">{}</div></div>"#,
+                    delta_class(-comparison.summary.success_rate_delta),
+                    escape_html(&format_percent_delta(comparison.summary.success_rate_delta)),
+                    delta_class(comparison.summary.failure_runs_delta as f64),
+                    escape_html(&format_signed_i64(comparison.summary.failure_runs_delta))
+                ),
+                format!(
+                    r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub">{}</div></div>"#,
+                    delta_class(comparison.summary.mean_sim_time_delta_s),
+                    escape_html(&format_signed_seconds(comparison.summary.mean_sim_time_delta_s)),
+                    escape_html(&format!(
+                        "max {}",
+                        format_signed_seconds(comparison.summary.max_sim_time_delta_s)
+                    ))
+                ),
+                render_overview_efficiency_diff_cell(&candidate_review, baseline_review.as_ref()),
+                render_overview_tracking_diff_cell(&candidate_review, baseline_review.as_ref()),
+            ));
+        }
+        rows
     };
-
-    if let Some(baseline) = baseline {
-        let baseline_scope = baseline_scope.expect("baseline scope");
-        let baseline_review = baseline_review.as_ref().expect("baseline review");
-        rows.push(render_overview_row(
-            "baseline-summary-row baseline-row",
-            format!(
-                r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag baseline">baseline</span><code>{}</code></div><div class="overview-sub">{}</div></div>"#,
-                escape_html(&baseline.pack_id),
-                escape_html(&baseline.pack_name)
-            ),
-            format!(
-                r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
-                escape_html(&short_digest(&baseline.identity.pack_spec_digest)),
-                escape_html(&short_digest(&baseline.identity.resolved_run_digest))
-            ),
-            render_overview_scope_cell(&baseline_scope, baseline.workers_used, None),
-            render_overview_result_cell(
-                baseline.summary.success_runs,
-                baseline.summary.total_runs,
-                baseline.summary.failure_runs,
-                None,
-            ),
-            render_overview_timing_cell(
-                baseline.summary.mean_sim_time_s,
-                baseline.summary.max_sim_time_s,
-                None,
-            ),
-            render_overview_efficiency_cell(baseline_review, None, false),
-            render_overview_tracking_cell(baseline_review, None, false),
-        ));
-    }
-
-    if let Some(comparison) = comparison {
-        rows.push(render_overview_row(
-            "diff-summary-row",
-            format!(
-                r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>{}</div><div class="overview-sub">shared {} · current-only {} · baseline-only {}</div></div>"#,
-                escape_html(&comparison.basis.mode),
-                comparison.basis.shared_runs,
-                comparison.basis.candidate_only_runs,
-                comparison.basis.baseline_only_runs
-            ),
-            format!(
-                r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub"><code>{}</code> -> <code>{}</code></div></div>"#,
-                escape_html(&comparison.baseline_pack_id),
-                escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
-                escape_html(
-                    &baseline
-                        .map(|report| short_digest(&report.identity.pack_spec_digest))
-                        .unwrap_or_else(|| "-".to_owned())
-                )
-            ),
-            format!(
-                r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">candidate-only {} · baseline-only {}</div></div>"#,
-                escape_html(&format!("shared {}", comparison.basis.shared_runs)),
-                comparison.basis.candidate_only_runs,
-                comparison.basis.baseline_only_runs
-            ),
-            format!(
-                r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub {}">{}</div></div>"#,
-                delta_class(-comparison.summary.success_rate_delta),
-                escape_html(&format_percent_delta(comparison.summary.success_rate_delta)),
-                delta_class(comparison.summary.failure_runs_delta as f64),
-                escape_html(&format_signed_i64(comparison.summary.failure_runs_delta))
-            ),
-            format!(
-                r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub">{}</div></div>"#,
-                delta_class(comparison.summary.mean_sim_time_delta_s),
-                escape_html(&format_signed_seconds(comparison.summary.mean_sim_time_delta_s)),
-                escape_html(&format!("max {}", format_signed_seconds(comparison.summary.max_sim_time_delta_s)))
-            ),
-            render_overview_efficiency_diff_cell(&candidate_review, baseline_review.as_ref()),
-            render_overview_tracking_diff_cell(&candidate_review, baseline_review.as_ref()),
-        ));
-    }
 
     format!(
         r#"<section class="header-overview">
@@ -2202,10 +2318,39 @@ fn render_review_tree(
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
-    let candidate_tree = records_by_selector_hierarchy(candidate);
-    let baseline_tree = baseline
-        .map(records_by_selector_hierarchy)
-        .unwrap_or_default();
+    let (candidate_tree, baseline_tree) = if comparison.is_some() {
+        if let (Some(candidate_focus), Some(baseline_report)) =
+            (preferred_current_lane_focus(candidate), baseline)
+        {
+            if let Some(baseline_focus) = preferred_current_lane_focus(baseline_report) {
+                (
+                    records_by_selector_hierarchy_from_records(candidate_focus.records.as_slice()),
+                    records_by_selector_hierarchy_from_records(baseline_focus.records.as_slice()),
+                )
+            } else {
+                (
+                    records_by_selector_hierarchy(candidate),
+                    baseline
+                        .map(records_by_selector_hierarchy)
+                        .unwrap_or_default(),
+                )
+            }
+        } else {
+            (
+                records_by_selector_hierarchy(candidate),
+                baseline
+                    .map(records_by_selector_hierarchy)
+                    .unwrap_or_default(),
+            )
+        }
+    } else {
+        (
+            records_by_selector_hierarchy(candidate),
+            baseline
+                .map(records_by_selector_hierarchy)
+                .unwrap_or_default(),
+        )
+    };
     if candidate_tree.is_empty() && baseline_tree.is_empty() {
         return r#"<p class="muted">No batch records available.</p>"#.to_owned();
     }
@@ -3486,8 +3631,15 @@ fn render_seed_run_row(
 }
 
 fn records_by_selector_hierarchy<'a>(candidate: &'a BatchReport) -> MissionRecordGroups<'a> {
+    let records = candidate.records.iter().collect::<Vec<_>>();
+    records_by_selector_hierarchy_from_records(records.as_slice())
+}
+
+fn records_by_selector_hierarchy_from_records<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> MissionRecordGroups<'a> {
     let mut grouped = MissionRecordGroups::new();
-    for record in &candidate.records {
+    for &record in records {
         grouped
             .entry(record.resolved.selector.mission.clone())
             .or_default()
@@ -3753,15 +3905,6 @@ fn controller_lane_records<'a>(
         .copied()
         .filter(|record| record.resolved.lane_id == lane_id)
         .collect::<Vec<_>>()
-}
-
-fn preferred_current_lane_records<'a>(
-    records: &[&'a crate::BatchRunRecord],
-) -> Vec<&'a crate::BatchRunRecord> {
-    match preferred_current_lane_id(records) {
-        Some(lane_id) => controller_lane_records(records, lane_id),
-        None => Vec::new(),
-    }
 }
 
 fn preferred_current_lane_id(records: &[&crate::BatchRunRecord]) -> Option<&'static str> {
@@ -5278,7 +5421,7 @@ mod report_tests {
     }
 
     #[test]
-    fn lane_compare_report_renders_context_section() {
+    fn standalone_report_prefers_current_lane_context() {
         let pack = ScenarioPackSpec {
             id: "lane_compare_unit".to_owned(),
             name: "Lane compare unit".to_owned(),
@@ -5308,22 +5451,19 @@ mod report_tests {
 
         assert!(html.contains("<h2>Context</h2>"));
         assert!(html.contains("Report Mode"));
-        assert!(html.contains("lane compare"));
+        assert!(html.contains("standalone"));
         assert!(html.contains("current controller lane <code>staged</code>"));
-        assert!(html.contains("baseline controller lane <code>baseline</code>"));
         assert!(html.contains("controller <code>staged_descent_v1</code>"));
-        assert!(html.contains("controller <code>baseline_v1</code>"));
-        assert!(html.contains("data-view-mode=\"compare\""));
-        assert!(html.contains("data-view-mode=\"current-only\""));
         assert!(html.contains("Compare Basis"));
-        assert!(html.contains("same physical selector cells"));
-        assert!(html.contains("lane_id within pack"));
+        assert!(html.contains("none"));
         assert!(html.contains("Scope Resolution"));
-        assert!(html.contains("internal controller lanes"));
+        assert!(html.contains("current controller lane"));
         assert!(html.contains("Compare Status"));
-        assert!(html.contains("available"));
+        assert!(html.contains("standalone"));
         assert!(html.contains("Cache / Promotion"));
         assert!(html.contains("not cached"));
+        assert!(!html.contains("data-view-mode=\"compare\""));
+        assert!(!html.contains("baseline controller lane <code>baseline</code>"));
     }
 
     #[test]
@@ -5336,7 +5476,7 @@ mod report_tests {
                 terminal_family_entry(
                     "terminal_compare_baseline",
                     "terminal_guidance_fixture_nominal",
-                    "baseline",
+                    "staged",
                 ),
                 checkpoint_entry(),
             ],
@@ -5349,7 +5489,7 @@ mod report_tests {
                 terminal_family_entry(
                     "terminal_compare_baseline",
                     "terminal_guidance_fixture_nominal",
-                    "idle",
+                    "staged",
                 ),
                 checkpoint_entry(),
             ],
@@ -5372,14 +5512,15 @@ mod report_tests {
 
         assert!(html.contains("<h2>Context</h2>"));
         assert!(html.contains("Report Mode"));
-        assert!(html.contains("external compare"));
+        assert!(html.contains("current-lane history compare"));
         assert!(html.contains("data-view-mode=\"compare\""));
         assert!(html.contains("data-view-mode=\"current-only\""));
         assert!(html.contains("Baseline Source"));
         assert!(html.contains("compare_baseline_unit"));
         assert!(html.contains("Compare Basis"));
-        assert!(html.contains("run_id"));
-        assert!(html.contains("shared 3"));
+        assert!(html.contains("current controller history"));
+        assert!(html.contains("lane <code>staged</code>"));
+        assert!(html.contains("shared 2"));
         assert!(html.contains("Scope Resolution"));
         assert!(html.contains("exact"));
         assert!(html.contains("external baseline report provided for this render"));
