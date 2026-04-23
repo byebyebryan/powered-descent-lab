@@ -701,6 +701,10 @@ fn render_batch_report(
       color: #8a5126;
       border-color: rgba(181, 93, 45, 0.24);
     }}
+    .outcome-bad {{
+      color: var(--bad);
+      font-weight: 700;
+    }}
     .expander {{
       display: inline-block;
       width: 1.15rem;
@@ -3587,7 +3591,12 @@ fn render_seed_run_row(
 
     let tag_html = String::new();
     let seed_label = format!("seed {:04}", record.resolved.resolved_seed);
-    let outcome = enum_label(&record.manifest.mission_outcome);
+    let outcome_label = enum_label(&record.manifest.mission_outcome);
+    let outcome = if matches!(record.manifest.mission_outcome, pd_core::MissionOutcome::Success) {
+        escape_html(&outcome_label)
+    } else {
+        format!(r#"<span class="outcome-bad">{}</span>"#, escape_html(&outcome_label))
+    };
     let fuel = record
         .review
         .fuel_used_pct_of_max
@@ -3647,7 +3656,7 @@ fn render_seed_run_row(
         depth = depth,
         tag_html = tag_html,
         seed = escape_html(&seed_label),
-        outcome = escape_html(&outcome),
+        outcome = outcome,
         fuel = escape_html(&fuel),
         sim_time = escape_html(&sim_time),
         landing_offset = escape_html(&landing_offset),
@@ -4151,23 +4160,31 @@ fn format_summary_rate(
     baseline: Option<&ReviewAggregate>,
     style: SummaryMetricStyle,
 ) -> String {
+    let failure_html = if aggregate.failure_runs > 0 {
+        format!(
+            r#"<span class="outcome-bad">{} fail</span>"#,
+            aggregate.failure_runs
+        )
+    } else {
+        "0 fail".to_owned()
+    };
     let base = format!(
-        "{} · {} fail",
-        inline_rate_text(aggregate.success_runs, aggregate.total_runs),
-        aggregate.failure_runs
+        "{} · {}",
+        escape_html(&inline_rate_text(aggregate.success_runs, aggregate.total_runs)),
+        failure_html
     );
     match style {
-        SummaryMetricStyle::MeanStddev => escape_html(&base),
+        SummaryMetricStyle::MeanStddev => base,
         SummaryMetricStyle::MeanDelta => {
             let Some(baseline) = baseline else {
-                return escape_html(&base);
+                return base;
             };
             let delta = (crate::success_rate(aggregate.success_runs, aggregate.total_runs)
                 - crate::success_rate(baseline.success_runs, baseline.total_runs))
                 * 100.0;
             format!(
                 r#"{}<span class="compare-toggle-target"> ({delta:+.1}pt)</span>"#,
-                escape_html(&base)
+                base
             )
         }
     }
@@ -5660,4 +5677,5 @@ mod report_tests {
             ]
         );
     }
+
 }
