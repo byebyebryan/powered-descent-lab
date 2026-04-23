@@ -3382,9 +3382,24 @@ fn sort_selector_keys(keys: &mut [String]) {
         ) {
             (true, false) => std::cmp::Ordering::Greater,
             (false, true) => std::cmp::Ordering::Less,
-            _ => lhs.cmp(rhs),
+            _ => selector_sort_rank(lhs)
+                .cmp(&selector_sort_rank(rhs))
+                .then(lhs.cmp(rhs)),
         }
     });
+}
+
+fn selector_sort_rank(key: &str) -> u8 {
+    match key {
+        "low" => 0,
+        "mid" => 1,
+        "high" => 2,
+        "nominal" => 10,
+        "low_margin" => 11,
+        "low_fuel" => 12,
+        "heavy_cargo" => 13,
+        _ => 20,
+    }
 }
 
 fn has_meaningful_selector_keys(keys: &[String]) -> bool {
@@ -5038,7 +5053,7 @@ mod report_tests {
         run_pack_with_workers,
     };
 
-    use super::render_batch_report;
+    use super::{render_batch_report, sort_selector_keys};
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
@@ -5268,5 +5283,45 @@ mod report_tests {
         assert!(html.contains("selector-inline\">band</span>"));
         assert!(html.contains("selector-code\">a00</span>"));
         assert!(html.contains("selector-code\">low</span>"));
+    }
+
+    #[test]
+    fn selector_keys_use_semantic_velocity_band_order() {
+        let mut keys = vec![
+            "high".to_owned(),
+            "low".to_owned(),
+            "mid".to_owned(),
+            "unspecified".to_owned(),
+        ];
+        sort_selector_keys(&mut keys);
+        assert_eq!(
+            keys,
+            vec![
+                "low".to_owned(),
+                "mid".to_owned(),
+                "high".to_owned(),
+                "unspecified".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn selector_keys_use_semantic_vehicle_variant_order() {
+        let mut keys = vec![
+            "low_margin".to_owned(),
+            "heavy_cargo".to_owned(),
+            "nominal".to_owned(),
+            "unspecified".to_owned(),
+        ];
+        sort_selector_keys(&mut keys);
+        assert_eq!(
+            keys,
+            vec![
+                "nominal".to_owned(),
+                "low_margin".to_owned(),
+                "heavy_cargo".to_owned(),
+                "unspecified".to_owned(),
+            ]
+        );
     }
 }
