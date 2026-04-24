@@ -69,7 +69,7 @@ This means the maintained Earth matrix is now doing the intended job:
   - `fixtures/packs/terminal_traj_err_suite.json`
   - `fixtures/packs/terminal_traj_err_full.json`
 - The tree keeps the same selector depth as the clean matrix:
-  - `condition_set -> vehicle_variant -> arc_point -> velocity_band -> lane -> seed`
+  - `condition_set -> arc_point -> velocity_band -> vehicle_variant -> lane -> seed`
 - Condition sets are split by direction and severity instead of aggregating
   undershoot and overshoot:
   - `traj_undershoot_small`
@@ -156,8 +156,8 @@ control-authority limits.
 - The bot-lab `current` lane now points at `terminal_pdg_v1`, not the older
   staged heuristic.
 - Batch reports now surface the terminal matrix directly in the review tree:
-  - `mission -> arrival_family -> condition_set -> vehicle_variant`
-  - `arc_point -> velocity_band -> lane -> seed`
+  - `mission -> arrival_family -> condition_set`
+  - `arc_point -> velocity_band -> vehicle_variant -> lane -> seed`
 
 ### First matrix results
 

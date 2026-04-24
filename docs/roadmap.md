@@ -163,8 +163,8 @@ Status:
     - split condition sets for undershoot/overshoot and small/large projected
       miss distances
   - batch review trees that surface the terminal matrix directly:
-    - `mission -> arrival_family -> condition_set -> vehicle_variant`
-    - `arc_point -> velocity_band -> lane -> seed`
+    - `mission -> arrival_family -> condition_set`
+    - `arc_point -> velocity_band -> vehicle_variant -> lane -> seed`
   - analytic impossible-run classification for clearly unrecoverable terminal
     cells based on controller-independent vertical braking bounds
 - still missing:

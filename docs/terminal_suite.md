@@ -468,9 +468,14 @@ For `a00`, approach side is only a deterministic seed-derived pseudo-side so
 the condition can still exercise lateral correction without introducing a new
 axis.
 
-The selector tree therefore remains:
+The review tree therefore keeps the same depth but orders the dense arrival
+cell before payload:
 
-- `condition_set -> vehicle_variant -> arc_point -> velocity_band -> lane -> seed`
+- `condition_set -> arc_point -> velocity_band -> vehicle_variant -> lane -> seed`
+
+That keeps `empty / half / full` comparisons local to the exact same arrival
+cell, which is easier to scan once multiple trajectory-error conditions are in
+the same report.
 
 Later conditions can include:
 
@@ -559,16 +564,17 @@ expected variation.
 
 ## Reporting Expectations
 
-The batch report should eventually present the terminal suite as:
+The batch report should present the terminal suite as:
 
-- hierarchy:
+- scenario class:
   - `mission`
   - `arrival_family`
   - `condition_set`
-  - `vehicle_variant`
 - then matrix structure:
   - `arc_point`
   - `velocity_band`
+- then payload / vehicle:
+  - `vehicle_variant`
 - then lane:
   - `current`
   - `baseline`
@@ -603,9 +609,9 @@ Current implementation:
   - `mission`
   - `arrival_family`
   - `condition_set`
-  - `vehicle_variant`
   - `arc_point`
   - `velocity_band`
+  - `vehicle_variant`
   - `lane`
   - `seed`
 

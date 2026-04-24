@@ -926,9 +926,9 @@ fn render_batch_report(
           case "mission": return 0;
           case "arrival": return 1;
           case "condition": return 2;
-          case "vehicle": return 3;
-          case "arc": return 4;
-          case "velocity": return 5;
+          case "arc": return 3;
+          case "band": return 4;
+          case "vehicle": return 5;
           case "lane": return 6;
           default: return 0;
         }}
@@ -2365,6 +2365,9 @@ type VehicleRecordGroups<'a> = BTreeMap<String, ArcRecordGroups<'a>>;
 type ConditionRecordGroups<'a> = BTreeMap<String, VehicleRecordGroups<'a>>;
 type ArrivalRecordGroups<'a> = BTreeMap<String, ConditionRecordGroups<'a>>;
 type MissionRecordGroups<'a> = BTreeMap<String, ArrivalRecordGroups<'a>>;
+type VehicleLaneRecordGroups<'a> = BTreeMap<String, LaneRecordGroups<'a>>;
+type VelocityVehicleRecordGroups<'a> = BTreeMap<String, VehicleLaneRecordGroups<'a>>;
+type ArcVelocityVehicleRecordGroups<'a> = BTreeMap<String, VelocityVehicleRecordGroups<'a>>;
 
 fn render_review_tree(
     candidate: &BatchReport,
@@ -2742,15 +2745,293 @@ fn render_condition_review_section(
     let candidate_vehicles = candidate_vehicles.unwrap_or(&empty_candidate);
     let baseline_vehicles = baseline_vehicles.unwrap_or(&empty_baseline);
     let vehicle_keys = merged_map_keys(candidate_vehicles, Some(baseline_vehicles));
+    let candidate_arcs = records_by_arc_velocity_vehicle_from_records(candidate_records.as_slice());
+    let baseline_arcs = records_by_arc_velocity_vehicle_from_records(baseline_records.as_slice());
+    let arc_keys = merged_map_keys(&candidate_arcs, Some(&baseline_arcs));
+    let render_matrix_axes = has_meaningful_selector_keys(arc_keys.as_slice());
     let group_id = tree_group_id(&["condition", mission, arrival_family, condition_set]);
+    let child_rows = if render_matrix_axes {
+        arc_keys
+            .iter()
+            .map(|arc_point| {
+                render_condition_arc_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    arc_point,
+                    candidate_arcs.get(arc_point),
+                    baseline_arcs.get(arc_point),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    } else {
+        vehicle_keys
+            .iter()
+            .map(|vehicle_variant| {
+                render_vehicle_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    vehicle_variant,
+                    candidate_vehicles.get(vehicle_variant),
+                    baseline_vehicles.get(vehicle_variant),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    };
+    let mut rows = String::new();
+    let current_note = render_summary_note(
+        comparison.is_some(),
+        TreeRowTone::Current,
+        comparison.is_some().then_some(regression_count),
+        None,
+        current_row_aggregate.is_some(),
+        baseline_row_aggregate.is_some(),
+    );
+    rows.push_str(&render_summary_row(
+        condition_set,
+        depth,
+        parent_group_id,
+        (!child_rows.is_empty()).then_some(group_id.as_str()),
+        "condition",
+        current_row_aggregate,
+        baseline_row_aggregate,
+        SummaryMetricStyle::MeanDelta,
+        changed,
+        current_note.as_str(),
+        baseline_row_aggregate.is_some().then_some("cur"),
+        TreeRowTone::Current,
+    ));
+    rows.push_str(&child_rows);
+    rows
+}
+
+fn render_condition_arc_review_section(
+    mission: &str,
+    arrival_family: &str,
+    condition_set: &str,
+    arc_point: &str,
+    candidate_velocities: Option<&VelocityVehicleRecordGroups<'_>>,
+    baseline_velocities: Option<&VelocityVehicleRecordGroups<'_>>,
+    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
+    comparison: Option<&BatchComparison>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+    baseline_record_map: &BTreeMap<String, String>,
+    depth: usize,
+    parent_group_id: Option<&str>,
+) -> String {
+    let candidate_records = flatten_velocity_vehicle_records(candidate_velocities);
+    let baseline_records = flatten_velocity_vehicle_records(baseline_velocities);
+    let aggregate =
+        (!candidate_records.is_empty()).then(|| review_aggregate_from_records(&candidate_records));
+    let baseline_aggregate =
+        (!baseline_records.is_empty()).then(|| review_aggregate_from_records(&baseline_records));
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_baseline_aggregate =
+        controller_lane_aggregate(candidate_records.as_slice(), "baseline");
+    let split_by_lane = comparison.is_none()
+        && lane_current_aggregate.is_some()
+        && lane_baseline_aggregate.is_some();
+    let current_row_aggregate = if split_by_lane {
+        lane_current_aggregate.as_ref()
+    } else {
+        aggregate.as_ref()
+    };
+    let baseline_row_aggregate = if comparison.is_some() {
+        baseline_aggregate.as_ref()
+    } else if split_by_lane {
+        lane_baseline_aggregate.as_ref()
+    } else {
+        None
+    };
+    let regression_count = count_regressions(comparison, |row| {
+        row.selector.mission == mission
+            && row.selector.arrival_family == arrival_family
+            && row.selector.condition_set == condition_set
+            && row.selector.arc_point == arc_point
+    });
+    let changed =
+        comparison.is_some() && aggregate_changed(current_row_aggregate, baseline_row_aggregate);
+    let empty_candidate = VelocityVehicleRecordGroups::new();
+    let empty_baseline = VelocityVehicleRecordGroups::new();
+    let candidate_velocities = candidate_velocities.unwrap_or(&empty_candidate);
+    let baseline_velocities = baseline_velocities.unwrap_or(&empty_baseline);
+    let velocity_keys = merged_map_keys(candidate_velocities, Some(baseline_velocities));
+    let render_velocity_axes = has_meaningful_selector_keys(velocity_keys.as_slice());
+    let group_id = tree_group_id(&["arc", mission, arrival_family, condition_set, arc_point]);
+    let child_rows = if render_velocity_axes {
+        velocity_keys
+            .iter()
+            .map(|velocity_band| {
+                render_condition_velocity_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    arc_point,
+                    velocity_band,
+                    candidate_velocities.get(velocity_band),
+                    baseline_velocities.get(velocity_band),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    } else {
+        let empty_candidate_vehicles = VehicleLaneRecordGroups::new();
+        let empty_baseline_vehicles = VehicleLaneRecordGroups::new();
+        let candidate_vehicles = candidate_velocities
+            .get(UNSPECIFIED_SELECTOR_VALUE)
+            .unwrap_or(&empty_candidate_vehicles);
+        let baseline_vehicles = baseline_velocities
+            .get(UNSPECIFIED_SELECTOR_VALUE)
+            .unwrap_or(&empty_baseline_vehicles);
+        let vehicle_keys = merged_map_keys(candidate_vehicles, Some(baseline_vehicles));
+        vehicle_keys
+            .iter()
+            .map(|vehicle_variant| {
+                render_deep_vehicle_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    vehicle_variant,
+                    Some(arc_point),
+                    None,
+                    candidate_vehicles.get(vehicle_variant),
+                    baseline_vehicles.get(vehicle_variant),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    };
+    let mut rows = String::new();
+    let current_note = render_summary_note(
+        comparison.is_some(),
+        TreeRowTone::Current,
+        comparison.is_some().then_some(regression_count),
+        None,
+        current_row_aggregate.is_some(),
+        baseline_row_aggregate.is_some(),
+    );
+    rows.push_str(&render_summary_row(
+        arc_point,
+        depth,
+        parent_group_id,
+        (!child_rows.is_empty()).then_some(group_id.as_str()),
+        "arc",
+        current_row_aggregate,
+        baseline_row_aggregate,
+        SummaryMetricStyle::MeanDelta,
+        changed,
+        current_note.as_str(),
+        baseline_row_aggregate.is_some().then_some("cur"),
+        TreeRowTone::Current,
+    ));
+    rows.push_str(&child_rows);
+    rows
+}
+
+fn render_condition_velocity_review_section(
+    mission: &str,
+    arrival_family: &str,
+    condition_set: &str,
+    arc_point: &str,
+    velocity_band: &str,
+    candidate_vehicles: Option<&VehicleLaneRecordGroups<'_>>,
+    baseline_vehicles: Option<&VehicleLaneRecordGroups<'_>>,
+    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
+    comparison: Option<&BatchComparison>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+    baseline_record_map: &BTreeMap<String, String>,
+    depth: usize,
+    parent_group_id: Option<&str>,
+) -> String {
+    let candidate_records = flatten_vehicle_lane_records(candidate_vehicles);
+    let baseline_records = flatten_vehicle_lane_records(baseline_vehicles);
+    let aggregate =
+        (!candidate_records.is_empty()).then(|| review_aggregate_from_records(&candidate_records));
+    let baseline_aggregate =
+        (!baseline_records.is_empty()).then(|| review_aggregate_from_records(&baseline_records));
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_baseline_aggregate =
+        controller_lane_aggregate(candidate_records.as_slice(), "baseline");
+    let split_by_lane = comparison.is_none()
+        && lane_current_aggregate.is_some()
+        && lane_baseline_aggregate.is_some();
+    let current_row_aggregate = if split_by_lane {
+        lane_current_aggregate.as_ref()
+    } else {
+        aggregate.as_ref()
+    };
+    let baseline_row_aggregate = if comparison.is_some() {
+        baseline_aggregate.as_ref()
+    } else if split_by_lane {
+        lane_baseline_aggregate.as_ref()
+    } else {
+        None
+    };
+    let regression_count = count_regressions(comparison, |row| {
+        row.selector.mission == mission
+            && row.selector.arrival_family == arrival_family
+            && row.selector.condition_set == condition_set
+            && row.selector.arc_point == arc_point
+            && row.selector.velocity_band == velocity_band
+    });
+    let changed =
+        comparison.is_some() && aggregate_changed(current_row_aggregate, baseline_row_aggregate);
+    let empty_candidate = VehicleLaneRecordGroups::new();
+    let empty_baseline = VehicleLaneRecordGroups::new();
+    let candidate_vehicles = candidate_vehicles.unwrap_or(&empty_candidate);
+    let baseline_vehicles = baseline_vehicles.unwrap_or(&empty_baseline);
+    let vehicle_keys = merged_map_keys(candidate_vehicles, Some(baseline_vehicles));
+    let group_id = tree_group_id(&[
+        "band",
+        mission,
+        arrival_family,
+        condition_set,
+        arc_point,
+        velocity_band,
+    ]);
     let vehicle_rows = vehicle_keys
         .iter()
         .map(|vehicle_variant| {
-            render_vehicle_review_section(
+            render_deep_vehicle_review_section(
                 mission,
                 arrival_family,
                 condition_set,
                 vehicle_variant,
+                Some(arc_point),
+                Some(velocity_band),
                 candidate_vehicles.get(vehicle_variant),
                 baseline_vehicles.get(vehicle_variant),
                 run_change_map,
@@ -2774,11 +3055,11 @@ fn render_condition_review_section(
         baseline_row_aggregate.is_some(),
     );
     rows.push_str(&render_summary_row(
-        condition_set,
+        velocity_band,
         depth,
         parent_group_id,
-        (!vehicle_keys.is_empty()).then_some(group_id.as_str()),
-        "condition",
+        (!vehicle_rows.is_empty()).then_some(group_id.as_str()),
+        "band",
         current_row_aggregate,
         baseline_row_aggregate,
         SummaryMetricStyle::MeanDelta,
@@ -2788,6 +3069,131 @@ fn render_condition_review_section(
         TreeRowTone::Current,
     ));
     rows.push_str(&vehicle_rows);
+    rows
+}
+
+fn render_deep_vehicle_review_section(
+    mission: &str,
+    arrival_family: &str,
+    condition_set: &str,
+    vehicle_variant: &str,
+    arc_point: Option<&str>,
+    velocity_band: Option<&str>,
+    candidate_lanes: Option<&LaneRecordGroups<'_>>,
+    baseline_lanes: Option<&LaneRecordGroups<'_>>,
+    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
+    comparison: Option<&BatchComparison>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+    baseline_record_map: &BTreeMap<String, String>,
+    depth: usize,
+    parent_group_id: Option<&str>,
+) -> String {
+    let candidate_records = flatten_lane_records(candidate_lanes);
+    let baseline_records = flatten_lane_records(baseline_lanes);
+    let aggregate =
+        (!candidate_records.is_empty()).then(|| review_aggregate_from_records(&candidate_records));
+    let baseline_aggregate =
+        (!baseline_records.is_empty()).then(|| review_aggregate_from_records(&baseline_records));
+    let lane_current_aggregate = preferred_current_lane_aggregate(candidate_records.as_slice());
+    let lane_baseline_aggregate =
+        controller_lane_aggregate(candidate_records.as_slice(), "baseline");
+    let split_by_lane = comparison.is_none()
+        && lane_current_aggregate.is_some()
+        && lane_baseline_aggregate.is_some();
+    let current_row_aggregate = if split_by_lane {
+        lane_current_aggregate.as_ref()
+    } else {
+        aggregate.as_ref()
+    };
+    let baseline_row_aggregate = if comparison.is_some() {
+        baseline_aggregate.as_ref()
+    } else if split_by_lane {
+        lane_baseline_aggregate.as_ref()
+    } else {
+        None
+    };
+    let regression_count = count_regressions(comparison, |row| {
+        row.selector.mission == mission
+            && row.selector.arrival_family == arrival_family
+            && row.selector.condition_set == condition_set
+            && row.selector.vehicle_variant == vehicle_variant
+            && arc_point
+                .map(|value| row.selector.arc_point == value)
+                .unwrap_or(true)
+            && velocity_band
+                .map(|value| row.selector.velocity_band == value)
+                .unwrap_or(true)
+    });
+    let changed =
+        comparison.is_some() && aggregate_changed(current_row_aggregate, baseline_row_aggregate);
+    let expectation = aggregate
+        .as_ref()
+        .and_then(|_| expectation_tier(candidate_records.as_slice()))
+        .or_else(|| expectation_tier(baseline_records.as_slice()));
+    let empty_candidate = LaneRecordGroups::new();
+    let empty_baseline = LaneRecordGroups::new();
+    let candidate_lanes = candidate_lanes.unwrap_or(&empty_candidate);
+    let baseline_lanes = baseline_lanes.unwrap_or(&empty_baseline);
+    let mut lane_keys = merged_map_keys(candidate_lanes, Some(baseline_lanes));
+    sort_lane_keys(&mut lane_keys);
+    let mut group_parts = vec!["vehicle", mission, arrival_family, condition_set];
+    if let Some(arc_point) = arc_point {
+        group_parts.push(arc_point);
+    }
+    if let Some(velocity_band) = velocity_band {
+        group_parts.push(velocity_band);
+    }
+    group_parts.push(vehicle_variant);
+    let group_id = tree_group_id(group_parts.as_slice());
+    let lane_rows = lane_keys
+        .iter()
+        .map(|lane_id| {
+            render_lane_review_section(
+                mission,
+                arrival_family,
+                condition_set,
+                vehicle_variant,
+                arc_point,
+                velocity_band,
+                lane_id,
+                candidate_lanes.get(lane_id),
+                baseline_lanes.get(lane_id),
+                run_change_map,
+                comparison,
+                output_dir,
+                candidate_record_map,
+                baseline_record_map,
+                depth + 1,
+                Some(group_id.as_str()),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let mut rows = String::new();
+    let current_note = render_summary_note(
+        comparison.is_some(),
+        TreeRowTone::Current,
+        comparison.is_some().then_some(regression_count),
+        expectation.as_deref(),
+        current_row_aggregate.is_some(),
+        baseline_row_aggregate.is_some(),
+    );
+    rows.push_str(&render_summary_row(
+        vehicle_variant,
+        depth,
+        parent_group_id,
+        (!lane_rows.is_empty()).then_some(group_id.as_str()),
+        "vehicle",
+        current_row_aggregate,
+        baseline_row_aggregate,
+        SummaryMetricStyle::MeanDelta,
+        changed,
+        current_note.as_str(),
+        baseline_row_aggregate.is_some().then_some("cur"),
+        TreeRowTone::Current,
+    ));
+    rows.push_str(&lane_rows);
     rows
 }
 
@@ -3752,6 +4158,25 @@ fn records_by_selector_hierarchy_from_records<'a>(
     grouped
 }
 
+fn records_by_arc_velocity_vehicle_from_records<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> ArcVelocityVehicleRecordGroups<'a> {
+    let mut grouped = ArcVelocityVehicleRecordGroups::new();
+    for &record in records {
+        grouped
+            .entry(record.resolved.selector.arc_point.clone())
+            .or_default()
+            .entry(record.resolved.selector.velocity_band.clone())
+            .or_default()
+            .entry(record.resolved.selector.vehicle_variant.clone())
+            .or_default()
+            .entry(record.resolved.lane_id.clone())
+            .or_default()
+            .push(record);
+    }
+    grouped
+}
+
 fn merged_map_keys<T, U>(
     candidate: &BTreeMap<String, T>,
     baseline: Option<&BTreeMap<String, U>>,
@@ -3906,6 +4331,36 @@ fn flatten_condition_records<'a>(
                         }
                     }
                 }
+            }
+        }
+    }
+    out
+}
+
+fn flatten_velocity_vehicle_records<'a>(
+    groups: Option<&VelocityVehicleRecordGroups<'a>>,
+) -> Vec<&'a crate::BatchRunRecord> {
+    let mut out = Vec::new();
+    if let Some(groups) = groups {
+        for vehicles in groups.values() {
+            for lanes in vehicles.values() {
+                for records in lanes.values() {
+                    out.extend(records.iter().copied());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn flatten_vehicle_lane_records<'a>(
+    groups: Option<&VehicleLaneRecordGroups<'a>>,
+) -> Vec<&'a crate::BatchRunRecord> {
+    let mut out = Vec::new();
+    if let Some(groups) = groups {
+        for lanes in groups.values() {
+            for records in lanes.values() {
+                out.extend(records.iter().copied());
             }
         }
     }
@@ -5747,6 +6202,26 @@ mod report_tests {
         assert!(html.contains("selector-inline\">band</span>"));
         assert!(html.contains("selector-code\">a00</span>"));
         assert!(html.contains("selector-code\">low</span>"));
+
+        let condition_pos = html
+            .find(r#"selector-inline">condition</span> <span class="selector-code">clean</span>"#)
+            .expect("condition row should render");
+        let arc_pos = html
+            .find(r#"selector-inline">arc</span> <span class="selector-code">a00</span>"#)
+            .expect("arc row should render");
+        let band_pos = html
+            .find(r#"selector-inline">band</span> <span class="selector-code">low</span>"#)
+            .expect("band row should render");
+        let vehicle_pos = html
+            .find(r#"selector-inline">vehicle</span> <span class="selector-code">nominal</span>"#)
+            .expect("vehicle row should render");
+
+        assert!(
+            condition_pos < arc_pos && arc_pos < band_pos && band_pos < vehicle_pos,
+            "terminal matrix tree should render condition -> arc -> band -> vehicle"
+        );
+        assert!(html.contains(r#"case "band": return 4;"#));
+        assert!(html.contains(r#"case "vehicle": return 5;"#));
     }
 
     #[test]
