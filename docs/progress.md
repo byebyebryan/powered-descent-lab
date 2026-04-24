@@ -10,6 +10,7 @@
   - executable Earth `half_arc_terminal_v1` matrix
   - payload tiers `empty / half / full`
   - `terminal_pdg_v1` as the serious current lane
+  - split trajectory-error condition packs for undershoot/overshoot
   - cache reuse / promotion / current-lane history compare in `pd-eval`
   - impossible-run classification for analytically unrecoverable terminal
     cases
@@ -51,14 +52,61 @@ This means the maintained Earth matrix is now doing the intended job:
    - `half a80 mid/high`
    - the remaining scored `full` high-band failures
 2. Expand the terminal corpus above the clean payload tiers:
-   - `traj_err_small`
-   - `traj_err_large`
+   - `traj_undershoot_small`
+   - `traj_undershoot_large`
+   - `traj_overshoot_small`
+   - `traj_overshoot_large`
    - later terrain and obstacle conditions
 3. Tighten evaluation semantics now that the workflow is real:
    - broader frontier / infeasible classification beyond the current vertical
      brake bound
    - thresholded regression policy
    - only then more specialized report affordances
+
+### Trajectory-error matrix checkpoint
+
+- Added current-lane-only trajectory-error packs:
+  - `fixtures/packs/terminal_traj_err_suite.json`
+  - `fixtures/packs/terminal_traj_err_full.json`
+- The tree keeps the same selector depth as the clean matrix:
+  - `condition_set -> vehicle_variant -> arc_point -> velocity_band -> lane -> seed`
+- Condition sets are split by direction and severity instead of aggregating
+  undershoot and overshoot:
+  - `traj_undershoot_small`
+  - `traj_undershoot_large`
+  - `traj_overshoot_small`
+  - `traj_overshoot_large`
+- The condition perturbation is projected engine-off miss distance:
+  - `small`: `30m`, `45m`, `60m`
+  - `large`: `75m`, `90m`, `105m`
+  - undershoot remains short on the approach side
+  - overshoot crosses past the target to the far side
+
+Smoke-tier result:
+
+- `terminal_traj_err_suite`
+  - `current`: `640 / 720` scored successes, `80` scored failures,
+    `36` impossible
+
+Full-tier result:
+
+- `terminal_traj_err_full`
+  - `current`: `2557 / 2880` scored successes, `323` scored failures,
+    `144` impossible
+- By condition:
+  - `traj_undershoot_small`: `655 / 720` scored, `36` impossible
+  - `traj_undershoot_large`: `684 / 720` scored, `36` impossible
+  - `traj_overshoot_small`: `624 / 720` scored, `36` impossible
+  - `traj_overshoot_large`: `594 / 720` scored, `36` impossible
+- By vehicle tier:
+  - `empty`: `1008 / 1008`
+  - `half`: `877 / 1008`
+  - `full`: `672 / 864` scored, `144` impossible
+
+The immediate read is that empty-payload trajectory error is solved across the
+new corpus, half-payload failures cluster in the shallow/high-energy frontier,
+and full-payload trajectory error mostly amplifies the already-known
+control-authority limits.
 
 ## 2026-04-22
 
@@ -140,8 +188,8 @@ This means the maintained Earth matrix is now doing the intended job:
    - then heavy-cargo
    - only then re-focus on the shallow tail
 2. Expand the now-real matrix corpus carefully:
-   - `traj_err_small`
-   - `traj_err_large`
+   - undershoot / overshoot trajectory-error conditions
+   - small / large projected-miss severities
    - later terrain and obstacle conditions
 3. Only after controller signal is meaningful on the matrix:
    - add thresholded regression policy

@@ -174,6 +174,13 @@ Run the same matrix with the full seed tier:
 cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_full.json --workers 8
 ```
 
+Run the trajectory-error matrix:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_traj_err_suite.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/terminal_traj_err_full.json --workers 8
+```
+
 Force a rerun and skip cache reuse if needed:
 
 ```bash
@@ -223,6 +230,21 @@ Use `terminal_bot_lab_full` when the same matrix should run with the full
 seed tier for spread measurement. The `terminal_compare_*_fixture` packs are
 only for smoke-testing pack-vs-pack compare output.
 
+Use `terminal_traj_err_suite` and `terminal_traj_err_full` when the same
+Earth/payload matrix should exercise projected miss conditions. These packs use
+current-lane-only runs over:
+
+- `traj_undershoot_small`
+- `traj_undershoot_large`
+- `traj_overshoot_small`
+- `traj_overshoot_large`
+
+The clean matrix keeps small seed-level radial/speed jitter. The trajectory
+error matrix instead owns the lateral miss as a condition-set perturbation:
+undershoot stays short on the approach side, overshoot crosses to the far side,
+and the configured small/large projected miss magnitudes are recorded in each
+resolved run.
+
 That writes:
 
 - `pack.json`
@@ -268,6 +290,24 @@ Current checkpoint on the maintained Earth payload tiers:
     - `empty`: `252 / 252`
     - `half`: `228 / 252`
     - `full`: `163 / 216` scored, `36` impossible
+
+Trajectory-error checkpoint:
+
+- `terminal_traj_err_suite`
+  - `current`: `640 / 720` scored successes, `80` scored failures,
+    `36` impossible
+- `terminal_traj_err_full`
+  - `current`: `2557 / 2880` scored successes, `323` scored failures,
+    `144` impossible
+  - by condition:
+    - `traj_undershoot_small`: `655 / 720` scored, `36` impossible
+    - `traj_undershoot_large`: `684 / 720` scored, `36` impossible
+    - `traj_overshoot_small`: `624 / 720` scored, `36` impossible
+    - `traj_overshoot_large`: `594 / 720` scored, `36` impossible
+  - by vehicle tier:
+    - `empty`: `1008 / 1008`
+    - `half`: `877 / 1008`
+    - `full`: `672 / 864` scored, `144` impossible
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. The remaining gap is concentrated in the shallow tail,

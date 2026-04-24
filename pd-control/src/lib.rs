@@ -458,8 +458,7 @@ mod tests {
         let mut controller = TerminalPdgController::default();
         let low_vx_frame = controller.update(&ctx, &low_vx_observation);
 
-        let high_vx_descent =
-            frame_metric_f64(&high_vx_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
+        let high_vx_descent = frame_metric_f64(&high_vx_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
         let low_vx_descent = frame_metric_f64(&low_vx_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
 
         assert!(high_vx_descent > low_vx_descent + 0.5);

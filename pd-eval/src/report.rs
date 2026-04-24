@@ -3782,6 +3782,11 @@ fn sort_selector_keys(keys: &mut [String]) {
 
 fn selector_sort_rank(key: &str) -> u8 {
     match key {
+        "clean" => 0,
+        "traj_undershoot_small" => 1,
+        "traj_undershoot_large" => 2,
+        "traj_overshoot_small" => 3,
+        "traj_overshoot_large" => 4,
         "low" => 0,
         "mid" => 1,
         "high" => 2,
@@ -5823,6 +5828,28 @@ mod report_tests {
                 "half".to_owned(),
                 "full".to_owned(),
                 "unspecified".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn selector_keys_use_semantic_condition_order() {
+        let mut keys = vec![
+            "traj_overshoot_large".to_owned(),
+            "traj_undershoot_small".to_owned(),
+            "clean".to_owned(),
+            "traj_overshoot_small".to_owned(),
+            "traj_undershoot_large".to_owned(),
+        ];
+        sort_selector_keys(&mut keys);
+        assert_eq!(
+            keys,
+            vec![
+                "clean".to_owned(),
+                "traj_undershoot_small".to_owned(),
+                "traj_undershoot_large".to_owned(),
+                "traj_overshoot_small".to_owned(),
+                "traj_overshoot_large".to_owned(),
             ]
         );
     }

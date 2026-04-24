@@ -1,0 +1,423 @@
+{
+  "id": "terminal_traj_err_full",
+  "name": "Terminal trajectory-error full suite",
+  "description": "Full-seed half-arc terminal guidance matrix with projected undershoot/overshoot trajectory errors on the maintained Earth baseline.",
+  "entries": [
+    {
+      "id": "terminal_guidance_traj_undershoot_small_empty",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_undershoot_small",
+      "vehicle_variant": "empty",
+      "expectation_tier": "reference",
+      "adjustments": [],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "undershoot",
+        "small",
+        "empty",
+        "bot_lab",
+        "reference"
+      ],
+      "metadata": {
+        "difficulty": "empty",
+        "traj_error_kind": "undershoot",
+        "traj_error_severity": "small"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_undershoot_small_half",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_undershoot_small",
+      "vehicle_variant": "half",
+      "expectation_tier": "core",
+      "adjustments": [
+        {
+          "id": "payload_half_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 2250.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "undershoot",
+        "small",
+        "half",
+        "bot_lab",
+        "core"
+      ],
+      "metadata": {
+        "difficulty": "half",
+        "traj_error_kind": "undershoot",
+        "traj_error_severity": "small"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_undershoot_small_full",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_undershoot_small",
+      "vehicle_variant": "full",
+      "expectation_tier": "stress",
+      "adjustments": [
+        {
+          "id": "payload_full_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 4500.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "undershoot",
+        "small",
+        "full",
+        "bot_lab",
+        "stress"
+      ],
+      "metadata": {
+        "difficulty": "full",
+        "traj_error_kind": "undershoot",
+        "traj_error_severity": "small"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_undershoot_large_empty",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_undershoot_large",
+      "vehicle_variant": "empty",
+      "expectation_tier": "reference",
+      "adjustments": [],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "undershoot",
+        "large",
+        "empty",
+        "bot_lab",
+        "reference"
+      ],
+      "metadata": {
+        "difficulty": "empty",
+        "traj_error_kind": "undershoot",
+        "traj_error_severity": "large"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_undershoot_large_half",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_undershoot_large",
+      "vehicle_variant": "half",
+      "expectation_tier": "core",
+      "adjustments": [
+        {
+          "id": "payload_half_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 2250.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "undershoot",
+        "large",
+        "half",
+        "bot_lab",
+        "core"
+      ],
+      "metadata": {
+        "difficulty": "half",
+        "traj_error_kind": "undershoot",
+        "traj_error_severity": "large"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_undershoot_large_full",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_undershoot_large",
+      "vehicle_variant": "full",
+      "expectation_tier": "stress",
+      "adjustments": [
+        {
+          "id": "payload_full_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 4500.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "undershoot",
+        "large",
+        "full",
+        "bot_lab",
+        "stress"
+      ],
+      "metadata": {
+        "difficulty": "full",
+        "traj_error_kind": "undershoot",
+        "traj_error_severity": "large"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_overshoot_small_empty",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_overshoot_small",
+      "vehicle_variant": "empty",
+      "expectation_tier": "reference",
+      "adjustments": [],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "overshoot",
+        "small",
+        "empty",
+        "bot_lab",
+        "reference"
+      ],
+      "metadata": {
+        "difficulty": "empty",
+        "traj_error_kind": "overshoot",
+        "traj_error_severity": "small"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_overshoot_small_half",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_overshoot_small",
+      "vehicle_variant": "half",
+      "expectation_tier": "core",
+      "adjustments": [
+        {
+          "id": "payload_half_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 2250.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "overshoot",
+        "small",
+        "half",
+        "bot_lab",
+        "core"
+      ],
+      "metadata": {
+        "difficulty": "half",
+        "traj_error_kind": "overshoot",
+        "traj_error_severity": "small"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_overshoot_small_full",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_overshoot_small",
+      "vehicle_variant": "full",
+      "expectation_tier": "stress",
+      "adjustments": [
+        {
+          "id": "payload_full_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 4500.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "overshoot",
+        "small",
+        "full",
+        "bot_lab",
+        "stress"
+      ],
+      "metadata": {
+        "difficulty": "full",
+        "traj_error_kind": "overshoot",
+        "traj_error_severity": "small"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_overshoot_large_empty",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_overshoot_large",
+      "vehicle_variant": "empty",
+      "expectation_tier": "reference",
+      "adjustments": [],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "overshoot",
+        "large",
+        "empty",
+        "bot_lab",
+        "reference"
+      ],
+      "metadata": {
+        "difficulty": "empty",
+        "traj_error_kind": "overshoot",
+        "traj_error_severity": "large"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_overshoot_large_half",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_overshoot_large",
+      "vehicle_variant": "half",
+      "expectation_tier": "core",
+      "adjustments": [
+        {
+          "id": "payload_half_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 2250.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "overshoot",
+        "large",
+        "half",
+        "bot_lab",
+        "core"
+      ],
+      "metadata": {
+        "difficulty": "half",
+        "traj_error_kind": "overshoot",
+        "traj_error_severity": "large"
+      }
+    },
+    {
+      "id": "terminal_guidance_traj_overshoot_large_full",
+      "terminal_matrix": "half_arc_terminal_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "terminal_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "condition_set": "traj_overshoot_large",
+      "vehicle_variant": "full",
+      "expectation_tier": "stress",
+      "adjustments": [
+        {
+          "id": "payload_full_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 4500.0
+        }
+      ],
+      "tags": [
+        "terminal_guidance",
+        "traj_error",
+        "overshoot",
+        "large",
+        "full",
+        "bot_lab",
+        "stress"
+      ],
+      "metadata": {
+        "difficulty": "full",
+        "traj_error_kind": "overshoot",
+        "traj_error_severity": "large"
+      }
+    }
+  ]
+}

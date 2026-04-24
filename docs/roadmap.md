@@ -157,6 +157,11 @@ Status:
       - `empty`
       - `half`
       - `full`
+  - a first projected trajectory-error corpus on the same Earth matrix:
+    - `terminal_traj_err_suite` as the smoke matrix
+    - `terminal_traj_err_full` as the full-seed matrix
+    - split condition sets for undershoot/overshoot and small/large projected
+      miss distances
   - batch review trees that surface the terminal matrix directly:
     - `mission -> arrival_family -> condition_set -> vehicle_variant`
     - `arc_point -> velocity_band -> lane -> seed`
@@ -168,8 +173,8 @@ Status:
       and `full`
     - the remaining weakness is concentrated in the shallow `a80` tail for
       `half`, plus the still-scored `full` high-band cells
-  - a broader curated terminal corpus built on top of that selector model:
-    - trajectory-error conditions
+  - broader curated terminal conditions built on top of that selector model:
+    - trajectory-error tuning and feasibility semantics
     - later terrain and obstacle conditions
   - broader feasibility/frontier classification beyond the current 1D vertical
     bound

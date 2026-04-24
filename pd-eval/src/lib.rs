@@ -1129,6 +1129,7 @@ fn validate_terminal_matrix_entry(entry: &TerminalMatrixEntry) -> Result<()> {
             entry.id
         );
     }
+    terminal_condition_spec(&entry.condition_set)?;
     if entry.vehicle_variant.trim().is_empty() {
         bail!(
             "terminal matrix entry '{}' must define a non-empty vehicle_variant",
@@ -1407,6 +1408,29 @@ struct TerminalSeedSpec {
     index: u64,
     radial_pct: Option<f64>,
     speed_pct: Option<f64>,
+    error_level_index: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TerminalProjectedErrorKind {
+    Undershoot,
+    Overshoot,
+}
+
+impl TerminalProjectedErrorKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Undershoot => "undershoot",
+            Self::Overshoot => "overshoot",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerminalProjectedErrorSpec {
+    kind: TerminalProjectedErrorKind,
+    severity: &'static str,
+    magnitudes_m: [f64; 3],
 }
 
 const HALF_ARC_TERMINAL_V1_ARC_POINTS: [TerminalArcPointSpec; 7] = [
@@ -1468,16 +1492,19 @@ const TERMINAL_SMOKE_SEEDS: [TerminalSeedSpec; 3] = [
         index: 0,
         radial_pct: Some(0.015),
         speed_pct: None,
+        error_level_index: 0,
     },
     TerminalSeedSpec {
         index: 1,
         radial_pct: Some(-0.015),
         speed_pct: None,
+        error_level_index: 1,
     },
     TerminalSeedSpec {
         index: 6,
         radial_pct: None,
         speed_pct: Some(0.010),
+        error_level_index: 2,
     },
 ];
 
@@ -1486,61 +1513,73 @@ const TERMINAL_FULL_SEEDS: [TerminalSeedSpec; 12] = [
         index: 0,
         radial_pct: Some(0.015),
         speed_pct: None,
+        error_level_index: 0,
     },
     TerminalSeedSpec {
         index: 1,
         radial_pct: Some(-0.015),
         speed_pct: None,
+        error_level_index: 1,
     },
     TerminalSeedSpec {
         index: 2,
         radial_pct: Some(0.030),
         speed_pct: None,
+        error_level_index: 2,
     },
     TerminalSeedSpec {
         index: 3,
         radial_pct: Some(-0.030),
         speed_pct: None,
+        error_level_index: 0,
     },
     TerminalSeedSpec {
         index: 4,
         radial_pct: Some(0.045),
         speed_pct: None,
+        error_level_index: 1,
     },
     TerminalSeedSpec {
         index: 5,
         radial_pct: Some(-0.045),
         speed_pct: None,
+        error_level_index: 2,
     },
     TerminalSeedSpec {
         index: 6,
         radial_pct: None,
         speed_pct: Some(0.010),
+        error_level_index: 2,
     },
     TerminalSeedSpec {
         index: 7,
         radial_pct: None,
         speed_pct: Some(-0.010),
+        error_level_index: 0,
     },
     TerminalSeedSpec {
         index: 8,
         radial_pct: None,
         speed_pct: Some(0.020),
+        error_level_index: 1,
     },
     TerminalSeedSpec {
         index: 9,
         radial_pct: None,
         speed_pct: Some(-0.020),
+        error_level_index: 2,
     },
     TerminalSeedSpec {
         index: 10,
         radial_pct: None,
         speed_pct: Some(0.030),
+        error_level_index: 0,
     },
     TerminalSeedSpec {
         index: 11,
         radial_pct: None,
         speed_pct: Some(-0.030),
+        error_level_index: 1,
     },
 ];
 
@@ -1619,6 +1658,33 @@ fn terminal_seed_specs(seed_tier: TerminalSeedTier) -> &'static [TerminalSeedSpe
     match seed_tier {
         TerminalSeedTier::Smoke => &TERMINAL_SMOKE_SEEDS,
         TerminalSeedTier::Full => &TERMINAL_FULL_SEEDS,
+    }
+}
+
+fn terminal_condition_spec(condition_set: &str) -> Result<Option<TerminalProjectedErrorSpec>> {
+    match condition_set {
+        "clean" => Ok(None),
+        "traj_undershoot_small" => Ok(Some(TerminalProjectedErrorSpec {
+            kind: TerminalProjectedErrorKind::Undershoot,
+            severity: "small",
+            magnitudes_m: [30.0, 45.0, 60.0],
+        })),
+        "traj_undershoot_large" => Ok(Some(TerminalProjectedErrorSpec {
+            kind: TerminalProjectedErrorKind::Undershoot,
+            severity: "large",
+            magnitudes_m: [75.0, 90.0, 105.0],
+        })),
+        "traj_overshoot_small" => Ok(Some(TerminalProjectedErrorSpec {
+            kind: TerminalProjectedErrorKind::Overshoot,
+            severity: "small",
+            magnitudes_m: [30.0, 45.0, 60.0],
+        })),
+        "traj_overshoot_large" => Ok(Some(TerminalProjectedErrorSpec {
+            kind: TerminalProjectedErrorKind::Overshoot,
+            severity: "large",
+            magnitudes_m: [75.0, 90.0, 105.0],
+        })),
+        _ => bail!("unsupported condition_set '{condition_set}'"),
     }
 }
 
@@ -1771,11 +1837,71 @@ fn resolve_terminal_matrix_scenario(
     resolved_parameters.insert("start_x_m".to_owned(), x_m);
     resolved_parameters.insert("start_y_m".to_owned(), y_m);
 
-    let (mut vx_mps, mut vy_mps) =
+    let (clean_vx_mps, clean_vy_mps) =
         solve_ballistic_velocity(x_m, y_m, ttg_s, family_spec.gravity_mps2);
-    let speed_scale = 1.0 + seed_spec.speed_pct.unwrap_or(0.0);
-    vx_mps *= speed_scale;
-    vy_mps *= speed_scale;
+    let projected_error_spec = terminal_condition_spec(&entry.condition_set)?;
+    let mut vx_mps = clean_vx_mps;
+    let mut vy_mps = clean_vy_mps;
+    let mut speed_scale = 1.0;
+    let mut projected_dx_error_m = 0.0;
+    let mut projected_dx_error_mag_m = 0.0;
+    let mut traj_error_approach_sign = if x_m.abs() > f64::EPSILON {
+        x_m.signum()
+    } else if seed_spec.index % 2 == 0 {
+        -1.0
+    } else {
+        1.0
+    };
+
+    if let Some(error_spec) = projected_error_spec {
+        let magnitude_index = seed_spec
+            .error_level_index
+            .min(error_spec.magnitudes_m.len().saturating_sub(1));
+        projected_dx_error_mag_m = error_spec.magnitudes_m[magnitude_index];
+        let error_sign = match error_spec.kind {
+            TerminalProjectedErrorKind::Undershoot => traj_error_approach_sign,
+            TerminalProjectedErrorKind::Overshoot => -traj_error_approach_sign,
+        };
+        projected_dx_error_m = error_sign * projected_dx_error_mag_m;
+        vx_mps = (projected_dx_error_m - x_m) / ttg_s;
+        scenario.metadata.insert(
+            "resolved.traj_error_kind".to_owned(),
+            error_spec.kind.as_str().to_owned(),
+        );
+        scenario.metadata.insert(
+            "resolved.traj_error_severity".to_owned(),
+            error_spec.severity.to_owned(),
+        );
+        scenario.metadata.insert(
+            "resolved.seed_variation".to_owned(),
+            "projected_error".to_owned(),
+        );
+        scenario.metadata.remove("resolved.speed_pct");
+    } else {
+        traj_error_approach_sign = 0.0;
+        speed_scale = 1.0 + seed_spec.speed_pct.unwrap_or(0.0);
+        vx_mps *= speed_scale;
+        vy_mps *= speed_scale;
+        scenario
+            .metadata
+            .insert("resolved.traj_error_kind".to_owned(), "none".to_owned());
+        scenario
+            .metadata
+            .insert("resolved.traj_error_severity".to_owned(), "none".to_owned());
+    }
+    let engine_off_impact_x_m = x_m + (vx_mps * ttg_s);
+    resolved_parameters.insert("clean_start_vx_mps".to_owned(), clean_vx_mps);
+    resolved_parameters.insert("clean_start_vy_mps".to_owned(), clean_vy_mps);
+    resolved_parameters.insert("projected_dx_error_m".to_owned(), projected_dx_error_m);
+    resolved_parameters.insert(
+        "projected_dx_error_mag_m".to_owned(),
+        projected_dx_error_mag_m,
+    );
+    resolved_parameters.insert(
+        "traj_error_approach_sign".to_owned(),
+        traj_error_approach_sign,
+    );
+    resolved_parameters.insert("engine_off_impact_x_m".to_owned(), engine_off_impact_x_m);
     resolved_parameters.insert("speed_scale".to_owned(), speed_scale);
     resolved_parameters.insert("start_vx_mps".to_owned(), vx_mps);
     resolved_parameters.insert("start_vy_mps".to_owned(), vy_mps);
@@ -4342,6 +4468,100 @@ mod tests {
                 .copied(),
             Some(9.81)
         );
+    }
+
+    #[test]
+    fn terminal_matrix_projected_error_conditions_resolve_exact_engine_off_miss() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_traj_error".to_owned(),
+            name: "Terminal matrix trajectory error".to_owned(),
+            description: "terminal matrix trajectory error".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_traj_overshoot_small_half".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "terminal_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Smoke,
+                condition_set: "traj_overshoot_small".to_owned(),
+                vehicle_variant: "half".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: vec![NumericAdjustmentSpec {
+                    id: "payload_half_mass_kg".to_owned(),
+                    path: "vehicle.dry_mass_kg".to_owned(),
+                    mode: NumericPerturbationMode::Offset,
+                    value: 2250.0,
+                }],
+                tags: vec!["terminal".to_owned(), "traj_error".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+        let record = resolved_runs
+            .iter()
+            .find(|run| {
+                run.descriptor.selector.arc_point == "a30"
+                    && run.descriptor.selector.velocity_band == "mid"
+                    && run.descriptor.resolved_seed == 0
+            })
+            .expect("projected-error matrix record present");
+
+        let params = &record.descriptor.resolved_parameters;
+        let start_x = params["start_x_m"];
+        let start_vx = params["start_vx_mps"];
+        let ttg = params["ttg_s"];
+        let impact_x = start_x + (start_vx * ttg);
+
+        assert_eq!(
+            record.descriptor.selector.condition_set,
+            "traj_overshoot_small"
+        );
+        assert_eq!(
+            record
+                .scenario
+                .metadata
+                .get("resolved.traj_error_kind")
+                .map(String::as_str),
+            Some("overshoot")
+        );
+        assert_eq!(params["projected_dx_error_mag_m"], 30.0);
+        assert!((impact_x - params["projected_dx_error_m"]).abs() < 1e-9);
+        assert!((params["speed_scale"] - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn terminal_matrix_entry_rejects_unknown_condition_set() {
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_unknown_condition".to_owned(),
+            name: "Terminal matrix unknown condition".to_owned(),
+            description: "terminal matrix unknown condition".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_traj_typo_half".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "terminal_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Smoke,
+                condition_set: "traj_overshot_small".to_owned(),
+                vehicle_variant: "half".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: vec![],
+                tags: vec![],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let err = validate_pack(&pack).expect_err("unknown condition set should be rejected");
+
+        assert!(err.to_string().contains("unsupported condition_set"));
     }
 
     #[test]

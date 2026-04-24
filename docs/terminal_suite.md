@@ -432,11 +432,45 @@ For the first clean matrix, that implies:
 The first condition sets should be:
 
 - `clean`
-- `traj_err_small`
-- `traj_err_large`
+- `traj_undershoot_small`
+- `traj_undershoot_large`
+- `traj_overshoot_small`
+- `traj_overshoot_large`
 
 These belong above seed in the hierarchy because they intentionally change the
 kind of problem being solved.
+
+Undershoot and overshoot should stay split at the condition-set level instead
+of being aggregated under a shared `traj_error` bucket. They tend to fail for
+different reasons and are hard to interpret as one aggregate.
+
+The first trajectory-error policy is projected miss distance:
+
+- solve the clean ballistic initial velocity for the cell
+- replace only the lateral velocity so the engine-off impact point would miss
+  the target by the configured projected amount
+- keep vertical velocity on the clean ballistic solution
+- do not apply clean-case speed jitter afterward, so the projected miss remains
+  exact
+
+The first maintained magnitudes are:
+
+- `small`: `30m`, `45m`, `60m`
+- `large`: `75m`, `90m`, `105m`
+
+For non-vertical cells:
+
+- `undershoot` means the engine-off impact remains short on the approach side
+- `overshoot` means the engine-off impact crosses past the target to the far
+  side
+
+For `a00`, approach side is only a deterministic seed-derived pseudo-side so
+the condition can still exercise lateral correction without introducing a new
+axis.
+
+The selector tree therefore remains:
+
+- `condition_set -> vehicle_variant -> arc_point -> velocity_band -> lane -> seed`
 
 Later conditions can include:
 
@@ -554,6 +588,8 @@ Current implementation:
 - `half_arc_terminal_v1` is implemented as the maintained Earth baseline family
 - `terminal_bot_lab_suite` is the smoke-tier matrix pack
 - `terminal_bot_lab_full` is the full-tier matrix pack
+- `terminal_traj_err_suite` is the smoke-tier projected trajectory-error pack
+- `terminal_traj_err_full` is the full-tier projected trajectory-error pack
 - the maintained clean payload tiers are:
   - `empty`
   - `half`
@@ -593,6 +629,30 @@ Full-tier current-lane split:
 - `half`: `228 / 252`
 - `full`: `163 / 216` scored, `36` impossible
 
+Trajectory-error checkpoint:
+
+- `terminal_traj_err_suite`
+  - `756` total current-lane runs
+  - `current`: `640 / 720` scored successes, `80` scored failures,
+    `36` impossible
+- `terminal_traj_err_full`
+  - `3024` total current-lane runs
+  - `current`: `2557 / 2880` scored successes, `323` scored failures,
+    `144` impossible
+
+Full-tier trajectory-error split by condition:
+
+- `traj_undershoot_small`: `655 / 720` scored, `36` impossible
+- `traj_undershoot_large`: `684 / 720` scored, `36` impossible
+- `traj_overshoot_small`: `624 / 720` scored, `36` impossible
+- `traj_overshoot_large`: `594 / 720` scored, `36` impossible
+
+Full-tier trajectory-error split by payload:
+
+- `empty`: `1008 / 1008`
+- `half`: `877 / 1008`
+- `full`: `672 / 864` scored, `144` impossible
+
 So the suite is no longer proving only that the aligned Earth baseline is
 harder. It is now a real workbench with a clear controller frontier:
 
@@ -610,8 +670,8 @@ aligned, the next concrete milestones are:
    - close the remaining `half a80 mid/high` gap
    - then work the still-scored `full` high-band failures
 2. expand the physical case space above seed:
-   - `traj_err_small`
-   - `traj_err_large`
+   - tune and classify the first projected trajectory-error corpus
+   - later add terrain and obstacle conditions
 3. deepen feasibility/frontier semantics beyond the current vertical-only
    invalidation:
    - relaxed reachability or broader frontier classification
