@@ -10,7 +10,10 @@ use anyhow::{Context, Result, anyhow, bail};
 use pd_control::{
     ControlledRunArtifacts, ControllerSpec, built_in_controller_spec, run_controller_spec,
 };
-use pd_core::{MissionOutcome, RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec};
+use pd_core::{
+    LandingPadSpec, MissionOutcome, RunContext, RunManifest, RunSummary, SampleRecord,
+    ScenarioSpec, VehicleSpec,
+};
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +24,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 9;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 10;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -124,6 +127,7 @@ pub enum BatchRunAnalyticClass {
 #[serde(rename_all = "snake_case")]
 pub enum BatchRunAnalyticReason {
     VerticalStopHeight,
+    CoupledStopAcceleration,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -138,6 +142,12 @@ pub struct BatchRunAnalyticFeasibility {
     pub required_stop_height_m: Option<f64>,
     #[serde(default)]
     pub stop_height_margin_m: Option<f64>,
+    #[serde(default)]
+    pub available_stop_accel_mps2: Option<f64>,
+    #[serde(default)]
+    pub required_stop_accel_mps2: Option<f64>,
+    #[serde(default)]
+    pub stop_accel_margin_mps2: Option<f64>,
 }
 
 impl BatchRunAnalyticFeasibility {
@@ -2331,16 +2341,138 @@ fn analytic_feasibility_for_run(resolved_run: &ResolvedBatchRun) -> BatchRunAnal
             available_stop_height_m: Some(available_stop_height_m),
             required_stop_height_m: Some(required_stop_height_m),
             stop_height_margin_m: Some(stop_height_margin_m),
+            ..Default::default()
         }
     } else {
+        let coupled =
+            coupled_stop_acceleration_bound(scenario, target_pad, available_stop_height_m);
+        if coupled.stop_accel_margin_mps2 < 0.0 {
+            return BatchRunAnalyticFeasibility {
+                class: BatchRunAnalyticClass::Impossible,
+                reason: Some(BatchRunAnalyticReason::CoupledStopAcceleration),
+                available_stop_height_m: Some(available_stop_height_m),
+                required_stop_height_m: Some(required_stop_height_m),
+                stop_height_margin_m: Some(stop_height_margin_m),
+                available_stop_accel_mps2: Some(coupled.available_accel_mps2),
+                required_stop_accel_mps2: Some(coupled.required_accel_mps2),
+                stop_accel_margin_mps2: Some(coupled.stop_accel_margin_mps2),
+            };
+        }
+
         BatchRunAnalyticFeasibility {
             class: BatchRunAnalyticClass::Scored,
             reason: None,
             available_stop_height_m: Some(available_stop_height_m),
             required_stop_height_m: Some(required_stop_height_m),
             stop_height_margin_m: Some(stop_height_margin_m),
+            available_stop_accel_mps2: Some(coupled.available_accel_mps2),
+            required_stop_accel_mps2: Some(coupled.required_accel_mps2),
+            stop_accel_margin_mps2: Some(coupled.stop_accel_margin_mps2),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CoupledStopAccelerationBound {
+    available_accel_mps2: f64,
+    required_accel_mps2: f64,
+    stop_accel_margin_mps2: f64,
+}
+
+fn coupled_stop_acceleration_bound(
+    scenario: &ScenarioSpec,
+    target_pad: &LandingPadSpec,
+    available_stop_height_m: f64,
+) -> CoupledStopAccelerationBound {
+    let gravity_mps2 = scenario.world.gravity_mps2.abs().max(1e-6);
+    let mass_kg = scenario.vehicle.dry_mass_kg + scenario.vehicle.initial_fuel_kg;
+    let target_center_dx_m = target_pad.center_x_m - scenario.initial_state.position_m.x;
+    let vx_mps = scenario.initial_state.velocity_mps.x;
+    let lateral_speed_mps = vx_mps.abs();
+    let safe_lateral_speed_mps = scenario.vehicle.safe_touchdown_tangential_speed_mps;
+    let touchdown_center_limit_m =
+        (target_pad.half_width_m() - scenario.vehicle.geometry.touchdown_half_span_m).max(0.0);
+    let lateral_stop_distance_m =
+        lateral_stop_distance(target_center_dx_m, vx_mps, touchdown_center_limit_m);
+    let required_lateral_accel_mps2 = if lateral_speed_mps <= safe_lateral_speed_mps {
+        0.0
+    } else if lateral_stop_distance_m <= 0.0 {
+        f64::INFINITY
+    } else {
+        ((lateral_speed_mps * lateral_speed_mps)
+            - (safe_lateral_speed_mps * safe_lateral_speed_mps))
+            / (2.0 * lateral_stop_distance_m)
+    };
+
+    let downward_speed_mps = (-scenario.initial_state.velocity_mps.y).max(0.0);
+    let safe_vertical_speed_mps = scenario.vehicle.safe_touchdown_normal_speed_mps;
+    let required_vertical_net_accel_mps2 = if downward_speed_mps <= safe_vertical_speed_mps {
+        0.0
+    } else if available_stop_height_m <= 0.0 {
+        f64::INFINITY
+    } else {
+        ((downward_speed_mps * downward_speed_mps)
+            - (safe_vertical_speed_mps * safe_vertical_speed_mps))
+            / (2.0 * available_stop_height_m)
+    };
+    let required_vertical_thrust_accel_mps2 = gravity_mps2 + required_vertical_net_accel_mps2;
+    let required_accel_mps2 = (required_lateral_accel_mps2 * required_lateral_accel_mps2
+        + required_vertical_thrust_accel_mps2 * required_vertical_thrust_accel_mps2)
+        .sqrt();
+
+    let terminal_window_s =
+        terminal_ballistic_time_to_ground_s(scenario, available_stop_height_m, gravity_mps2);
+    let available_accel_mps2 =
+        full_throttle_average_accel_mps2(&scenario.vehicle, mass_kg, terminal_window_s);
+
+    CoupledStopAccelerationBound {
+        available_accel_mps2,
+        required_accel_mps2,
+        stop_accel_margin_mps2: available_accel_mps2 - required_accel_mps2,
+    }
+}
+
+fn lateral_stop_distance(
+    target_center_dx_m: f64,
+    vx_mps: f64,
+    touchdown_center_limit_m: f64,
+) -> f64 {
+    if vx_mps.abs() <= 1e-9 {
+        return f64::INFINITY;
+    }
+    if target_center_dx_m * vx_mps > 0.0 {
+        target_center_dx_m.abs() + touchdown_center_limit_m
+    } else {
+        touchdown_center_limit_m - target_center_dx_m.abs()
+    }
+}
+
+fn terminal_ballistic_time_to_ground_s(
+    scenario: &ScenarioSpec,
+    available_stop_height_m: f64,
+    gravity_mps2: f64,
+) -> f64 {
+    let vy_up_mps = scenario.initial_state.velocity_mps.y;
+    let discriminant =
+        (vy_up_mps * vy_up_mps) + (2.0 * gravity_mps2 * available_stop_height_m.max(0.0));
+    ((vy_up_mps + discriminant.sqrt()) / gravity_mps2).max(1e-6)
+}
+
+fn full_throttle_average_accel_mps2(
+    vehicle: &VehicleSpec,
+    initial_mass_kg: f64,
+    terminal_window_s: f64,
+) -> f64 {
+    let mass0 = initial_mass_kg.max(1.0);
+    let burn_window_s = terminal_window_s.max(1e-6);
+    let fuel_used_kg =
+        (vehicle.max_fuel_burn_kgps.max(0.0) * burn_window_s).min(vehicle.initial_fuel_kg.max(0.0));
+    let mass1 = (mass0 - fuel_used_kg).max(vehicle.dry_mass_kg.max(1.0));
+    if fuel_used_kg <= 1e-9 || vehicle.max_fuel_burn_kgps <= 1e-9 {
+        return vehicle.max_thrust_n / mass0;
+    }
+
+    vehicle.max_thrust_n / (vehicle.max_fuel_burn_kgps * burn_window_s) * (mass0 / mass1).ln()
 }
 
 fn execute_resolved_run(
@@ -4628,6 +4760,101 @@ mod tests {
                 .expect("entry summary should exist")
                 .invalidated_runs
                 >= 24
+        );
+    }
+
+    #[test]
+    fn analytic_coupled_bound_invalidates_full_payload_lateral_high_cases() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_full_payload_lateral".to_owned(),
+            name: "Terminal matrix full payload lateral".to_owned(),
+            description: "terminal matrix full payload lateral".to_owned(),
+            entries: vec![
+                ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                    id: "terminal_guidance_clean_half_payload".to_owned(),
+                    terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                    base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    lanes: vec![TerminalMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "terminal_pdg".to_owned(),
+                        controller_config: None,
+                    }],
+                    seed_tier: TerminalSeedTier::Smoke,
+                    condition_set: "clean".to_owned(),
+                    vehicle_variant: "half".to_owned(),
+                    expectation_tier: "core".to_owned(),
+                    adjustments: vec![NumericAdjustmentSpec {
+                        id: "payload_half_mass_kg".to_owned(),
+                        path: "vehicle.dry_mass_kg".to_owned(),
+                        mode: NumericPerturbationMode::Offset,
+                        value: 2250.0,
+                    }],
+                    tags: vec!["terminal".to_owned(), "analytic".to_owned()],
+                    metadata: BTreeMap::new(),
+                }),
+                ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                    id: "terminal_guidance_clean_full_payload".to_owned(),
+                    terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                    base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    lanes: vec![TerminalMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "terminal_pdg".to_owned(),
+                        controller_config: None,
+                    }],
+                    seed_tier: TerminalSeedTier::Smoke,
+                    condition_set: "clean".to_owned(),
+                    vehicle_variant: "full".to_owned(),
+                    expectation_tier: "stress".to_owned(),
+                    adjustments: vec![NumericAdjustmentSpec {
+                        id: "payload_full_mass_kg".to_owned(),
+                        path: "vehicle.dry_mass_kg".to_owned(),
+                        mode: NumericPerturbationMode::Offset,
+                        value: 4500.0,
+                    }],
+                    tags: vec!["terminal".to_owned(), "analytic".to_owned()],
+                    metadata: BTreeMap::new(),
+                }),
+            ],
+        };
+
+        let report = run_pack_with_workers(&pack, &base_dir, None, 1).unwrap();
+        let half_a45_high = report
+            .records
+            .iter()
+            .find(|record| {
+                record.resolved.entry_id == "terminal_guidance_clean_half_payload"
+                    && record.resolved.selector.arc_point == "a45"
+                    && record.resolved.selector.velocity_band == "high"
+                    && record.resolved.resolved_seed == 0
+            })
+            .expect("half payload a45 high seed 0 should be present");
+        let full_a45_high = report
+            .records
+            .iter()
+            .find(|record| {
+                record.resolved.entry_id == "terminal_guidance_clean_full_payload"
+                    && record.resolved.selector.arc_point == "a45"
+                    && record.resolved.selector.velocity_band == "high"
+                    && record.resolved.resolved_seed == 0
+            })
+            .expect("full payload a45 high seed 0 should be present");
+
+        assert_eq!(half_a45_high.analytic.class, BatchRunAnalyticClass::Scored);
+        assert_eq!(
+            full_a45_high.analytic.class,
+            BatchRunAnalyticClass::Impossible
+        );
+        assert_eq!(
+            full_a45_high.analytic.reason,
+            Some(BatchRunAnalyticReason::CoupledStopAcceleration)
+        );
+        assert!(
+            full_a45_high
+                .analytic
+                .stop_accel_margin_mps2
+                .expect("coupled stop margin should be present")
+                < 0.0
         );
     }
 

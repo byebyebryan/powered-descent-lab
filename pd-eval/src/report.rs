@@ -4696,6 +4696,9 @@ fn analytic_reason_note(analytic: &crate::BatchRunAnalyticFeasibility) -> Option
         Some(crate::BatchRunAnalyticReason::VerticalStopHeight) => {
             Some("impossible vertical brake")
         }
+        Some(crate::BatchRunAnalyticReason::CoupledStopAcceleration) => {
+            Some("impossible coupled brake")
+        }
         None => None,
     }
 }
