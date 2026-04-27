@@ -170,6 +170,7 @@ pub struct TerminalPdgController {
     last_phase: Option<String>,
     last_mode: Option<GuidanceMode>,
     nominal_ready_ticks: u32,
+    touchdown_idle_cut_active: bool,
 }
 
 impl Default for TerminalPdgController {
@@ -185,6 +186,7 @@ impl TerminalPdgController {
             last_phase: None,
             last_mode: None,
             nominal_ready_ticks: 0,
+            touchdown_idle_cut_active: false,
         }
     }
 
@@ -822,8 +824,70 @@ impl TerminalPdgController {
         (throttle_frac, target_attitude_rad)
     }
 
-    fn touchdown_cut_command(
+    fn settled_descent_command(
         &self,
+        view: &ControllerView<'_>,
+        current_state: &TerminalCommandState,
+    ) -> Option<Command> {
+        let touchdown_clearance_m = view.touchdown_clearance_m();
+        if touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m {
+            return None;
+        }
+
+        let dx_m = view.target_dx_m();
+        let vx_mps = view.observation.velocity_mps.x;
+        let inside_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
+        let safe_vx_mps = view
+            .ctx
+            .vehicle
+            .safe_touchdown_tangential_speed_mps
+            .max(0.0);
+        if !inside_pad || vx_mps.abs() > safe_vx_mps {
+            return None;
+        }
+        let dx_abs_m = dx_m.abs();
+        let settled_descent_dx_min_m = 0.4 * view.observation.target_pad_half_width_m;
+        let settled_descent_dx_max_m = 0.6 * view.observation.target_pad_half_width_m;
+        // This branch is only for shallow arrivals that have already cleaned up
+        // lateral speed but are still far enough from center to keep hunting
+        // laterally. Near-center cases should continue using the nominal
+        // solution, and near-edge cases should keep the normal capture logic.
+        if dx_abs_m > settled_descent_dx_max_m {
+            return None;
+        }
+        if dx_abs_m < settled_descent_dx_min_m
+            && current_state.projected_dx_m.abs() < settled_descent_dx_min_m
+        {
+            return None;
+        }
+
+        let max_thrust_accel_mps2 =
+            view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(1.0);
+        let target_vy_up_mps = current_state
+            .desired_vertical_speed_mps
+            .min(-self.config.vy_touch_cap_mps);
+        let vy_error_mps = target_vy_up_mps - view.observation.velocity_mps.y;
+        let target_up_accel_mps2 = view.observation.gravity_mps2 + (0.75 * vy_error_mps);
+        let applied_throttle_frac =
+            (target_up_accel_mps2 / max_thrust_accel_mps2.max(1e-6)).clamp(0.0, 1.0);
+        let throttle_frac = command_throttle_for_applied_throttle(
+            applied_throttle_frac,
+            view.ctx.vehicle.min_throttle_frac,
+        );
+        let attitude_limit = current_state
+            .max_tilt_rad
+            .min(self.config.touchdown_rescue_tilt_rad)
+            .max(0.0);
+        let target_attitude_rad = (-0.08 * vx_mps).clamp(-attitude_limit, attitude_limit);
+
+        Some(Command {
+            throttle_frac,
+            target_attitude_rad,
+        })
+    }
+
+    fn touchdown_cut_command(
+        &mut self,
         view: &ControllerView<'_>,
         current_state: &TerminalCommandState,
     ) -> Option<Command> {
@@ -833,13 +897,27 @@ impl TerminalPdgController {
         let vy_up_mps = view.observation.velocity_mps.y;
         let down_speed = (-vy_up_mps).max(0.0);
         let on_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
+        let safe_touchdown_vx_mps = view
+            .ctx
+            .vehicle
+            .safe_touchdown_tangential_speed_mps
+            .max(0.0);
+        if self.touchdown_idle_cut_active {
+            if touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m.min(1.0) && on_pad
+            {
+                return Some(self.touchdown_settle_command(view));
+            }
+            self.touchdown_idle_cut_active = false;
+        }
         let settle_cut = touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m.min(1.0)
             && on_pad
-            && vx_mps.abs() <= self.config.touchdown_zero_vx_mps
+            && vx_mps.abs() <= safe_touchdown_vx_mps
             && down_speed <= self.config.touchdown_zero_vy_mps
-            && vy_up_mps >= -0.05;
+            && view.observation.attitude_rad.abs()
+                <= view.ctx.vehicle.safe_touchdown_attitude_error_rad;
         if settle_cut {
-            return Some(Command::idle());
+            self.touchdown_idle_cut_active = true;
+            return Some(self.touchdown_settle_command(view));
         }
         let low_clearance = touchdown_clearance_m <= self.config.touchdown_low_clearance_trigger_m;
         let rescue_limit = self.braking_speed_limit(
@@ -853,11 +931,6 @@ impl TerminalPdgController {
             && (down_speed > (self.config.touchdown_rescue_vy_ratio * rescue_limit)
                 || low_clearance_trigger)
         {
-            let safe_touchdown_vx_mps = view
-                .ctx
-                .vehicle
-                .safe_touchdown_tangential_speed_mps
-                .max(0.0);
             let inside_pad_safe_vx_mps =
                 (safe_touchdown_vx_mps - self.config.touchdown_rescue_vx_margin_mps).max(0.0);
             let rescue_tilt_limit = current_state
@@ -931,6 +1004,32 @@ impl TerminalPdgController {
         None
     }
 
+    fn touchdown_settle_command(&self, view: &ControllerView<'_>) -> Command {
+        let touchdown_clearance_m = view.touchdown_clearance_m();
+        let down_speed = (-view.observation.velocity_mps.y).max(0.0);
+        let target_down_speed = self.config.touchdown_zero_vy_mps;
+        if down_speed <= target_down_speed {
+            return Command::idle();
+        }
+
+        let mass = view.observation.mass_kg.max(0.5);
+        let alt_eff = touchdown_clearance_m.max(self.config.touchdown_rescue_alt_floor_m);
+        let v_excess = down_speed - target_down_speed;
+        let required_net_brake = (v_excess * v_excess) / (2.0 * alt_eff.max(1e-6));
+        let required_ay = view.observation.gravity_mps2 + required_net_brake;
+        let applied_throttle_frac =
+            (required_ay / (view.ctx.vehicle.max_thrust_n / mass).max(1e-6)).clamp(0.0, 1.0);
+        let throttle_frac = command_throttle_for_applied_throttle(
+            applied_throttle_frac,
+            view.ctx.vehicle.min_throttle_frac,
+        );
+
+        Command {
+            throttle_frac,
+            target_attitude_rad: 0.0,
+        }
+    }
+
     fn select_latest_safe_candidate(
         &self,
         candidates: &mut [TerminalGateCandidate],
@@ -969,6 +1068,7 @@ impl Controller for TerminalPdgController {
         self.last_phase = None;
         self.last_mode = None;
         self.nominal_ready_ticks = 0;
+        self.touchdown_idle_cut_active = false;
     }
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
@@ -983,6 +1083,7 @@ impl Controller for TerminalPdgController {
         };
         let command = self
             .touchdown_cut_command(&view, &command_state)
+            .or_else(|| self.settled_descent_command(&view, &command_state))
             .unwrap_or(Command {
                 throttle_frac: command_state.throttle_frac,
                 target_attitude_rad: command_state.target_attitude_rad,
@@ -1114,6 +1215,24 @@ fn aggressive_latest_safe_preference_order(
             OrderedF64(rhs.burn_time_s),
             OrderedF64(rhs.required_accel_ratio),
         ))
+}
+
+fn command_throttle_for_applied_throttle(
+    applied_throttle_frac: f64,
+    min_throttle_frac: f64,
+) -> f64 {
+    let applied = applied_throttle_frac.clamp(0.0, 1.0);
+    if applied <= 0.0 {
+        return 0.0;
+    }
+    let min_throttle = min_throttle_frac.clamp(0.0, 1.0);
+    if min_throttle >= 1.0 {
+        return 1.0;
+    }
+    if applied <= min_throttle {
+        return 1e-6;
+    }
+    ((applied - min_throttle) / (1.0 - min_throttle)).clamp(0.0, 1.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

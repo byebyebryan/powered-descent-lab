@@ -437,6 +437,31 @@ mod tests {
     }
 
     #[test]
+    fn terminal_pdg_lands_scored_shallow_half_high_terminal_case() {
+        let mut scenario = earth_terminal_reference_scenario();
+        scenario.id = "terminal_pdg_shallow_half_high".to_owned();
+        scenario.name = "Terminal PDG shallow half high".to_owned();
+        scenario.sim.max_time_s = 60.0;
+        scenario.vehicle.dry_mass_kg = 9_450.0;
+        scenario.initial_state.position_m = Vec2::new(-799.6638954459129, 141.0023202655475);
+        scenario.initial_state.velocity_mps = Vec2::new(133.27731590765214, 5.929613289075415);
+
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        );
+    }
+
+    #[test]
     fn terminal_pdg_preserves_more_altitude_when_lateral_cleanup_is_behind() {
         let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
         let mut high_vx_observation = pd_core::SimulationState::new(&ctx)
