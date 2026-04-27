@@ -462,6 +462,27 @@ mod tests {
     }
 
     #[test]
+    fn terminal_pdg_settles_near_pad_edge_when_lateral_stop_stays_inside_pad() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        observation.position_m = Vec2::new(-13.0, 38.0);
+        observation.velocity_mps = Vec2::new(0.35, -4.0);
+        observation.target_dx_m = 13.0;
+        observation.height_above_target_m = 38.0;
+        observation.touchdown_clearance_m = 33.0;
+        observation.min_hull_clearance_m = 33.0;
+
+        let mut controller = TerminalPdgController::default();
+        let frame = controller.update(&ctx, &observation);
+
+        assert!(frame.command.target_attitude_rad < 0.0);
+        assert!(frame.command.target_attitude_rad.abs() < 0.05);
+        assert!(frame.command.throttle_frac > 0.0);
+    }
+
+    #[test]
     fn terminal_pdg_preserves_more_altitude_when_lateral_cleanup_is_behind() {
         let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
         let mut high_vx_observation = pd_core::SimulationState::new(&ctx)

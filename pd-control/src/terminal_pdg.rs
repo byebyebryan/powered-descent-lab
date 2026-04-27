@@ -830,7 +830,8 @@ impl TerminalPdgController {
         current_state: &TerminalCommandState,
     ) -> Option<Command> {
         let touchdown_clearance_m = view.touchdown_clearance_m();
-        if touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m {
+        let settle_handoff_clearance_m = 2.0 * self.config.touchdown_rescue_clearance_m;
+        if touchdown_clearance_m <= settle_handoff_clearance_m {
             return None;
         }
 
@@ -845,19 +846,11 @@ impl TerminalPdgController {
         if !inside_pad || vx_mps.abs() > safe_vx_mps {
             return None;
         }
-        let dx_abs_m = dx_m.abs();
-        let settled_descent_dx_min_m = 0.4 * view.observation.target_pad_half_width_m;
-        let settled_descent_dx_max_m = 0.6 * view.observation.target_pad_half_width_m;
-        // This branch is only for shallow arrivals that have already cleaned up
-        // lateral speed but are still far enough from center to keep hunting
-        // laterally. Near-center cases should continue using the nominal
-        // solution, and near-edge cases should keep the normal capture logic.
-        if dx_abs_m > settled_descent_dx_max_m {
-            return None;
-        }
-        if dx_abs_m < settled_descent_dx_min_m
-            && current_state.projected_dx_m.abs() < settled_descent_dx_min_m
-        {
+        let meaningful_lateral_error = dx_m.abs() > view.ctx.vehicle.geometry.touchdown_half_span_m
+            || vx_mps.abs() > self.config.touchdown_zero_vx_mps;
+        // Centered vertical arrivals should keep the nominal plan; this branch
+        // is for suppressing low-speed lateral hunting after capture.
+        if !meaningful_lateral_error {
             return None;
         }
 
@@ -868,6 +861,14 @@ impl TerminalPdgController {
             .min(-self.config.vy_touch_cap_mps);
         let vy_error_mps = target_vy_up_mps - view.observation.velocity_mps.y;
         let target_up_accel_mps2 = view.observation.gravity_mps2 + (0.75 * vy_error_mps);
+        // Settled descent should not consume the last vertical authority margin.
+        // Saturated cases stay on nominal/latest-safe guidance.
+        if target_up_accel_mps2 <= 0.0
+            || target_up_accel_mps2
+                > max_thrust_accel_mps2 * self.config.terminal_gate_nominal_ratio
+        {
+            return None;
+        }
         let applied_throttle_frac =
             (target_up_accel_mps2 / max_thrust_accel_mps2.max(1e-6)).clamp(0.0, 1.0);
         let throttle_frac = command_throttle_for_applied_throttle(
@@ -879,6 +880,29 @@ impl TerminalPdgController {
             .min(self.config.touchdown_rescue_tilt_rad)
             .max(0.0);
         let target_attitude_rad = (-0.08 * vx_mps).clamp(-attitude_limit, attitude_limit);
+        let lateral_brake_accel_mps2 =
+            max_thrust_accel_mps2 * applied_throttle_frac * target_attitude_rad.sin().abs();
+        let target_down_speed_mps = (-target_vy_up_mps)
+            .max(self.config.touchdown_zero_vy_mps)
+            .max(1e-3);
+        let current_down_speed_mps = (-view.observation.velocity_mps.y).max(0.0);
+        let descent_speed_mps = current_down_speed_mps.max(target_down_speed_mps).max(1e-3);
+        let time_to_touchdown_s = touchdown_clearance_m / descent_speed_mps;
+        let projected_touchdown_dx_m = projected_target_dx_after_lateral_brake(
+            dx_m,
+            vx_mps,
+            lateral_brake_accel_mps2,
+            time_to_touchdown_s,
+        );
+        // Use a touchdown-footprint center limit, not an arc/seed-specific pad
+        // fraction, so near-edge arrivals are allowed only when they can stop
+        // with the vehicle still fully on the pad.
+        let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
+            - view.ctx.vehicle.geometry.touchdown_half_span_m)
+            .max(0.0);
+        if projected_touchdown_dx_m.abs() > touchdown_center_limit_m {
+            return None;
+        }
 
         Some(Command {
             throttle_frac,
@@ -1233,6 +1257,30 @@ fn command_throttle_for_applied_throttle(
         return 1e-6;
     }
     ((applied - min_throttle) / (1.0 - min_throttle)).clamp(0.0, 1.0)
+}
+
+fn projected_target_dx_after_lateral_brake(
+    dx_m: f64,
+    vx_mps: f64,
+    brake_accel_mps2: f64,
+    time_s: f64,
+) -> f64 {
+    if vx_mps.abs() <= 1e-6 || time_s <= 0.0 {
+        return dx_m;
+    }
+    let accel = brake_accel_mps2.max(0.0);
+    if accel <= 1e-6 {
+        return dx_m - (vx_mps * time_s);
+    }
+
+    let stop_time_s = vx_mps.abs() / accel;
+    if stop_time_s <= time_s {
+        let stop_distance_m = (vx_mps * vx_mps) / (2.0 * accel);
+        dx_m - (vx_mps.signum() * stop_distance_m)
+    } else {
+        let displacement_m = (vx_mps * time_s) - (0.5 * vx_mps.signum() * accel * time_s * time_s);
+        dx_m - displacement_m
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
