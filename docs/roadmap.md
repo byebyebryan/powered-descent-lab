@@ -29,6 +29,12 @@ Current implementation status:
   - single-run and batch static reports
   - lane-compare and external compare reporting
   - a curated terminal bot-lab suite as the main controller workbench
+  - a first serious native terminal controller lane, `terminal_pdg_v1`
+  - projected trajectory-error packs over the same maintained Earth terminal
+    matrix
+  - cache reuse / promotion / current-lane history compare for batch reports
+  - analytic impossible-run classification for clearly unrecoverable terminal
+    cells
 - One Phase 3 contract probe has been pulled forward intentionally:
   `timed_checkpoint`, to validate early-termination mission evaluation without
   committing to the full transfer stack yet.
@@ -166,18 +172,26 @@ Status:
     - `mission -> arrival_family -> condition_set`
     - `arc_point -> velocity_band -> vehicle_variant -> lane -> seed`
   - analytic impossible-run classification for clearly unrecoverable terminal
-    cells based on controller-independent vertical braking bounds
+    cells based on controller-independent vertical and coupled terminal stop
+    bounds
+- latest terminal checkpoint:
+  - clean smoke current lane has no scored failures:
+    `168 / 168` scored successes, `21` impossible
+  - clean full-pack current lane:
+    `676 / 720` scored successes, `44` scored failures, `36` impossible
+  - clean full-pack `empty` and `half` tiers are solved on the maintained
+    Earth corpus; remaining clean failures are in the `full` payload tier
+  - trajectory-error full current lane:
+    `2718 / 2880` scored successes, `162` scored failures, `144` impossible
+  - trajectory-error `empty` is solved; `half` has sparse high-energy
+    outliers; `full` remains the main authority frontier
 - still missing:
-  - controller robustness on the shallow tail of the maintained Earth matrix:
-    - `terminal_pdg_v1` now solves the full `empty` tier and most of `half`
-      and `full`
-    - the remaining weakness is concentrated in the shallow `a80` tail for
-      `half`, plus the still-scored `full` high-band cells
+  - controller robustness on the remaining full-payload clean frontier and the
+    sparse high-energy trajectory-error outliers
   - broader curated terminal conditions built on top of that selector model:
-    - trajectory-error tuning and feasibility semantics
     - later terrain and obstacle conditions
-  - broader feasibility/frontier classification beyond the current 1D vertical
-    bound
+  - broader feasibility/frontier classification and warning semantics for
+    authority-limited cells
   - thresholded regression policy once the corpus and metrics are stable enough
     to support it
   - deeper report polish that depends on real matrix scenarios and controller
@@ -331,16 +345,21 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Before any implementation, lock these decisions:
+Keep Phase 2 focused on controller/corpus/evaluation signal rather than new
+infrastructure.
 
-- repo and crate naming
-- command and observation contract direction
-- scenario identity model
-- vehicle geometry and touchdown reference model
-- landing success envelope
-- artifact model for runs and traces
-- telemetry/reporting stack boundaries: what the project owns vs what existing
-  tools should handle
+The next useful work is:
 
-Once those are accepted, the first implementation pass can start with a narrow
-Phase 1 vertical slice instead of another open-ended prototype.
+1. Treat the remaining clean `full` failures as the main controller frontier.
+2. Treat the sparse trajectory-error failures as stress probes, not as a reason
+   to add seed-specific controller branches.
+3. Improve feasibility/frontier semantics where the vehicle is authority
+   limited so reports distinguish warning-grade impossible cells from scored
+   controller failures.
+4. Only then add the next corpus layer, starting with terrain or obstacle
+   terminal conditions.
+
+The immediate controller direction should stay general: if the low-altitude
+lateral cleanup problem gets another pass, prefer a broad rule that buys
+vertical cushion when touchdown is laterally unsafe, rather than a table of
+arc/seed/condition exceptions.

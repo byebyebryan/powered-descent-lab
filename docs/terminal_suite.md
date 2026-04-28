@@ -618,69 +618,108 @@ Current implementation:
 This means the suite is no longer a provisional seeded approximation of the
 intended selector model. The selector model is now the execution model.
 
-Current checkpoint on the maintained Earth baseline:
+## Latest Controller Checkpoint
 
-- `terminal_bot_lab_suite`
-  - `378` total runs across `empty / half / full` and two lanes
-  - `current`: `161 / 180` scored successes, `19` scored failures,
-    `9` impossible
-- `terminal_bot_lab_full`
-  - `1512` total runs across `empty / half / full` and two lanes
-  - `current`: `643 / 720` scored successes, `77` scored failures,
-    `36` impossible
+The current maintained checkpoint is commit `1db97c3`
+(`fix: trim sparse terminal controller outliers`).
 
-Full-tier current-lane split:
+Clean matrix reports:
+
+- `outputs/eval/terminal_bot_lab_suite/summary.json`
+- `outputs/eval/terminal_bot_lab_full/summary.json`
+
+Latest local wall-clock signal with `8` workers:
+
+- `terminal_bot_lab_suite`: `6.88s`
+- `terminal_bot_lab_full`: `30.67s`
+
+Current-lane clean results:
+
+- smoke tier:
+  - `168 / 168` scored successes
+  - `0` scored failures
+  - `21` impossible
+- full pack:
+  - `676 / 720` scored successes
+  - `44` scored failures
+  - `36` impossible
+
+`terminal_bot_lab_full` current-lane clean split:
 
 - `empty`: `252 / 252`
-- `half`: `228 / 252`
-- `full`: `163 / 216` scored, `36` impossible
+- `half`: `252 / 252`
+- `full`: `172 / 216` scored, `44` scored failures, `36` impossible
 
-Trajectory-error checkpoint:
+Trajectory-error reports:
 
-- `terminal_traj_err_suite`
-  - `756` total current-lane runs
-  - `current`: `640 / 720` scored successes, `80` scored failures,
+- `outputs/eval/terminal_traj_err_suite/summary.json`
+- `outputs/eval/terminal_traj_err_full/summary.json`
+
+Latest local wall-clock signal with `8` workers:
+
+- `terminal_traj_err_suite`: `12.78s`
+- `terminal_traj_err_full`: `57.90s`
+
+Current-lane trajectory-error results:
+
+- smoke tier:
+  - `640 / 720` scored successes
+  - `80` scored failures
+  - `36` impossible
+- full pack:
+  - `2718 / 2880` scored successes
+  - `162` scored failures
+  - `144` impossible
+
+`terminal_traj_err_full` current-lane trajectory-error split:
+
+- by payload:
+  - `empty`: `1008 / 1008`
+  - `half`: `986 / 1008`
+  - `full`: `724 / 864` scored, `140` scored failures, `144` impossible
+- by condition:
+  - `traj_undershoot_small`: `690 / 720` scored, `30` scored failures,
     `36` impossible
-- `terminal_traj_err_full`
-  - `3024` total current-lane runs
-  - `current`: `2557 / 2880` scored successes, `323` scored failures,
-    `144` impossible
+  - `traj_undershoot_large`: `704 / 720` scored, `16` scored failures,
+    `36` impossible
+  - `traj_overshoot_small`: `672 / 720` scored, `48` scored failures,
+    `36` impossible
+  - `traj_overshoot_large`: `652 / 720` scored, `68` scored failures,
+    `36` impossible
 
-Full-tier trajectory-error split by condition:
+The current interpretation is:
 
-- `traj_undershoot_small`: `655 / 720` scored, `36` impossible
-- `traj_undershoot_large`: `684 / 720` scored, `36` impossible
-- `traj_overshoot_small`: `624 / 720` scored, `36` impossible
-- `traj_overshoot_large`: `594 / 720` scored, `36` impossible
+- clean `empty` and `half` are solved on the maintained Earth corpus
+- clean `full` remains the clean authority frontier
+- trajectory-error `empty` is solved
+- trajectory-error `half` has only sparse high-energy outliers
+- trajectory-error `full` remains the main stress tier
 
-Full-tier trajectory-error split by payload:
+The standing sparse trajectory-error outliers are:
 
-- `empty`: `1008 / 1008`
-- `half`: `877 / 1008`
-- `full`: `672 / 864` scored, `144` impossible
+- `traj_overshoot_large / half / a30 / high`: seeds `2`, `4`
+- `traj_undershoot_large / full / a60 / high`: seeds `0`, `4`
+- `traj_undershoot_large / half / a80 / high`: seeds `0`, `1`
 
-So the suite is no longer proving only that the aligned Earth baseline is
-harder. It is now a real workbench with a clear controller frontier:
-
-- `empty` is effectively solved on the clean corpus
-- `half` is mostly solved, with the remaining weakness concentrated in
-  `a80 mid/high`
-- `full` still exposes genuine control-authority and frontier pressure
+These should be treated as controller/frontier probes, not as evidence that the
+selector model or report hierarchy needs another structural change.
 
 ## Next Expansion Targets
 
 Now that the core matrix is real and the maintained vehicle baseline is
 aligned, the next concrete milestones are:
 
-1. improve controller robustness on the existing Earth matrix:
-   - close the remaining `half a80 mid/high` gap
-   - then work the still-scored `full` high-band failures
-2. expand the physical case space above seed:
-   - tune and classify the first projected trajectory-error corpus
-   - later add terrain and obstacle conditions
-3. deepen feasibility/frontier semantics beyond the current vertical-only
-   invalidation:
-   - relaxed reachability or broader frontier classification
+1. improve controller robustness on the current frontier:
+   - clean `full` payload cells
+   - sparse high-energy trajectory-error outliers
+   - keep fixes general rather than arc/seed/condition-specific
+2. deepen feasibility/frontier semantics:
+   - authority-limited full-payload warnings
+   - broader coupled stop bounds beyond the current invalidation rules
+3. add the next physical condition space only after the clean and
+   trajectory-error semantics are stable:
+   - terrain and obstacle terminal cases
+   - later transfer-style cases
 4. only after the matrix produces stable controller signal:
    - add thresholded regression policy
    - consider more specialized matrix-review UI

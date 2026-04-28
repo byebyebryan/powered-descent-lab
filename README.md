@@ -91,6 +91,7 @@ without treating the old scenario files as fixtures to transliterate directly.
 
 - [Architecture](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
+- [Progress](docs/progress.md)
 - [Terminal Suite Design](docs/terminal_suite.md)
 - [Early Design Scratchpad](docs/early_design.md)
 
@@ -281,15 +282,15 @@ enough for real controller iteration. The evaluator can now:
 Current checkpoint on the maintained Earth payload tiers:
 
 - `terminal_bot_lab_suite`
-  - `current`: `161 / 180` scored successes, `19` scored failures,
-    `9` impossible
+  - `current`: `168 / 168` scored successes, `0` scored failures,
+    `21` impossible
 - `terminal_bot_lab_full`
-  - `current`: `643 / 720` scored successes, `77` scored failures,
+  - `current`: `676 / 720` scored successes, `44` scored failures,
     `36` impossible
   - by vehicle tier:
     - `empty`: `252 / 252`
-    - `half`: `228 / 252`
-    - `full`: `163 / 216` scored, `36` impossible
+    - `half`: `252 / 252`
+    - `full`: `172 / 216` scored, `36` impossible
 
 Trajectory-error checkpoint:
 
@@ -297,19 +298,21 @@ Trajectory-error checkpoint:
   - `current`: `640 / 720` scored successes, `80` scored failures,
     `36` impossible
 - `terminal_traj_err_full`
-  - `current`: `2557 / 2880` scored successes, `323` scored failures,
+  - `current`: `2718 / 2880` scored successes, `162` scored failures,
     `144` impossible
   - by condition:
-    - `traj_undershoot_small`: `655 / 720` scored, `36` impossible
-    - `traj_undershoot_large`: `684 / 720` scored, `36` impossible
-    - `traj_overshoot_small`: `624 / 720` scored, `36` impossible
-    - `traj_overshoot_large`: `594 / 720` scored, `36` impossible
+    - `traj_undershoot_small`: `690 / 720` scored, `36` impossible
+    - `traj_undershoot_large`: `704 / 720` scored, `36` impossible
+    - `traj_overshoot_small`: `672 / 720` scored, `36` impossible
+    - `traj_overshoot_large`: `652 / 720` scored, `36` impossible
   - by vehicle tier:
     - `empty`: `1008 / 1008`
-    - `half`: `877 / 1008`
-    - `full`: `672 / 864` scored, `144` impossible
+    - `half`: `986 / 1008`
+    - `full`: `724 / 864` scored, `144` impossible
 
 So the main next bottleneck is no longer basic controller viability on the
-Earth-aligned workbench. The remaining gap is concentrated in the shallow tail,
-especially `half/full a80 mid/high`, plus broader corpus expansion and a real
-thresholded regression policy.
+Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full` is
+the main authority frontier, trajectory-error `empty` is solved, trajectory-error
+`half` has sparse high-energy outliers, and trajectory-error `full` remains the
+main stress tier. Detailed checkpoint history lives in `docs/progress.md` and
+`docs/terminal_suite.md`.

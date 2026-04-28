@@ -1,8 +1,136 @@
 # Progress
 
-## 2026-04-23
+## 2026-04-28
 
 ### Current status
+
+- The latest controller checkpoint is commit `1db97c3`
+  (`fix: trim sparse terminal controller outliers`).
+- Phase 2 remains the active phase, but the center of gravity has moved:
+  - report/cache/review-tree infrastructure is no longer the bottleneck
+  - the clean terminal smoke matrix has no scored current-lane failures
+  - the clean full matrix has solved `empty` and `half`; remaining scored
+    clean failures are concentrated in `full`
+  - the trajectory-error matrix is now the main stress corpus above the clean
+    payload tiers
+- The important distinction in reports is now:
+  - `current` means the latest `terminal_pdg_v1` run
+  - compare/baseline provenance may point at a cached prior current run or at
+    the internal heuristic baseline controller
+  - `baseline` as a report lane is not a physical scenario axis
+
+### Current clean-matrix checkpoint
+
+Latest local reports:
+
+- `outputs/eval/terminal_bot_lab_suite/summary.json`
+- `outputs/eval/terminal_bot_lab_full/summary.json`
+
+Latest local wall-clock signal with `8` workers:
+
+- `terminal_bot_lab_suite`: `6.88s`
+- `terminal_bot_lab_full`: `30.67s`
+
+Smoke tier:
+
+- `terminal_bot_lab_suite`
+  - `current`: `168 / 168` scored successes, `0` scored failures,
+    `21` impossible
+  - `baseline`: `33 / 168` scored successes, `135` scored failures,
+    `21` impossible
+
+Full pack:
+
+- `terminal_bot_lab_full`
+  - `current`: `676 / 720` scored successes, `44` scored failures,
+    `36` impossible
+  - `baseline`: `135 / 720` scored successes, `585` scored failures,
+    `36` impossible
+
+`terminal_bot_lab_full` current-lane split by payload tier:
+
+- `empty`: `252 / 252`
+- `half`: `252 / 252`
+- `full`: `172 / 216` scored, `44` scored failures, `36` impossible
+
+The clean matrix read is now:
+
+- `empty` is solved on the maintained Earth corpus
+- `half` is solved on the maintained clean Earth corpus
+- `full` is still the clean-matrix frontier and is the right place to expose
+  remaining thrust-to-weight / authority limits
+
+### Trajectory-error matrix checkpoint
+
+Latest local reports:
+
+- `outputs/eval/terminal_traj_err_suite/summary.json`
+- `outputs/eval/terminal_traj_err_full/summary.json`
+
+Latest local wall-clock signal with `8` workers:
+
+- `terminal_traj_err_suite`: `12.78s`
+- `terminal_traj_err_full`: `57.90s`
+
+Smoke tier:
+
+- `terminal_traj_err_suite`
+  - `current`: `640 / 720` scored successes, `80` scored failures,
+    `36` impossible
+
+Full pack:
+
+- `terminal_traj_err_full`
+  - `current`: `2718 / 2880` scored successes, `162` scored failures,
+    `144` impossible
+
+`terminal_traj_err_full` current-lane split by condition:
+
+- `traj_undershoot_small`: `690 / 720` scored, `30` scored failures,
+  `36` impossible
+- `traj_undershoot_large`: `704 / 720` scored, `16` scored failures,
+  `36` impossible
+- `traj_overshoot_small`: `672 / 720` scored, `48` scored failures,
+  `36` impossible
+- `traj_overshoot_large`: `652 / 720` scored, `68` scored failures,
+  `36` impossible
+
+`terminal_traj_err_full` current-lane split by payload tier:
+
+- `empty`: `1008 / 1008`
+- `half`: `986 / 1008`
+- `full`: `724 / 864` scored, `140` scored failures, `144` impossible
+
+The trajectory-error read is now:
+
+- `empty` is solved across the projected-miss corpus
+- `half` is nearly solved, with sparse high-energy outliers still standing out
+- `full` remains the main trajectory-error authority frontier
+- the remaining sparse failures are real stress cases, not report artifacts:
+  - `traj_overshoot_large / half / a30 / high`: seeds `2`, `4`
+  - `traj_undershoot_large / full / a60 / high`: seeds `0`, `4`
+  - `traj_undershoot_large / half / a80 / high`: seeds `0`, `1`
+
+### Active implementation focus
+
+1. Keep the next controller pass general:
+   - avoid seed-specific or condition-specific state-machine hacks
+   - if touching the controller, prefer a broader rule for buying vertical
+     cushion when low-clearance touchdown is laterally unsafe
+2. Decide how to represent the `full` frontier:
+   - tune controller behavior where the case is still plausibly recoverable
+   - improve feasibility / warning semantics where the vehicle is authority
+     limited rather than treating every crash as a hard controller failure
+3. Add the next terminal corpus only after the current clean and
+   trajectory-error semantics stay stable:
+   - terrain / obstacle conditions
+   - later transfer-style conditions
+4. Start thresholded regression policy after the current metrics are stable
+   enough to distinguish meaningful regressions from frontier churn.
+
+## 2026-04-23
+
+### Status at this checkpoint
 
 - Phase 2 is now primarily a controller-and-corpus phase, not a scaffolding
   phase.
@@ -21,7 +149,7 @@
 - The internal heuristic baseline lane is still useful as a reference
   controller, but it is no longer the main progress metric.
 
-### Current controller checkpoint
+### Controller checkpoint at this date
 
 - `terminal_bot_lab_suite`
   - `current`: `161 / 180` scored successes, `19` scored failures,
@@ -46,7 +174,7 @@ This means the maintained Earth matrix is now doing the intended job:
 - `half` is mostly solved, with the remaining gap concentrated in `a80`
 - `full` still exposes real control-authority limits and frontier cells
 
-### Active implementation focus
+### Active implementation focus at this date
 
 1. Close the shallow-tail controller gap on the maintained Earth matrix:
    - `half a80 mid/high`
