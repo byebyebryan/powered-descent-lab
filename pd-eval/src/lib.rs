@@ -24,7 +24,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 10;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 11;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2344,8 +2344,7 @@ fn analytic_feasibility_for_run(resolved_run: &ResolvedBatchRun) -> BatchRunAnal
             ..Default::default()
         }
     } else {
-        let coupled =
-            coupled_stop_acceleration_bound(scenario, target_pad, available_stop_height_m);
+        let coupled = coupled_stop_acceleration_bound(scenario, target_pad);
         if coupled.stop_accel_margin_mps2 < 0.0 {
             return BatchRunAnalyticFeasibility {
                 class: BatchRunAnalyticClass::Impossible,
@@ -2379,83 +2378,100 @@ struct CoupledStopAccelerationBound {
     stop_accel_margin_mps2: f64,
 }
 
+const REACHABILITY_TIME_STEP_S: f64 = 0.1;
+
 fn coupled_stop_acceleration_bound(
     scenario: &ScenarioSpec,
     target_pad: &LandingPadSpec,
-    available_stop_height_m: f64,
 ) -> CoupledStopAccelerationBound {
     let gravity_mps2 = scenario.world.gravity_mps2.abs().max(1e-6);
     let mass_kg = scenario.vehicle.dry_mass_kg + scenario.vehicle.initial_fuel_kg;
-    let target_center_dx_m = target_pad.center_x_m - scenario.initial_state.position_m.x;
+    let x0_m = scenario.initial_state.position_m.x;
+    let y0_m = scenario.initial_state.position_m.y;
     let vx_mps = scenario.initial_state.velocity_mps.x;
-    let lateral_speed_mps = vx_mps.abs();
+    let vy_mps = scenario.initial_state.velocity_mps.y;
     let safe_lateral_speed_mps = scenario.vehicle.safe_touchdown_tangential_speed_mps;
     let touchdown_center_limit_m =
         (target_pad.half_width_m() - scenario.vehicle.geometry.touchdown_half_span_m).max(0.0);
-    let lateral_stop_distance_m =
-        lateral_stop_distance(target_center_dx_m, vx_mps, touchdown_center_limit_m);
-    let required_lateral_accel_mps2 = if lateral_speed_mps <= safe_lateral_speed_mps {
-        0.0
-    } else if lateral_stop_distance_m <= 0.0 {
-        f64::INFINITY
-    } else {
-        ((lateral_speed_mps * lateral_speed_mps)
-            - (safe_lateral_speed_mps * safe_lateral_speed_mps))
-            / (2.0 * lateral_stop_distance_m)
-    };
-
-    let downward_speed_mps = (-scenario.initial_state.velocity_mps.y).max(0.0);
     let safe_vertical_speed_mps = scenario.vehicle.safe_touchdown_normal_speed_mps;
-    let required_vertical_net_accel_mps2 = if downward_speed_mps <= safe_vertical_speed_mps {
+    let target_y_m = target_pad.surface_y_m + scenario.vehicle.geometry.touchdown_base_offset_m;
+    let target_min_x_m = target_pad.center_x_m - touchdown_center_limit_m;
+    let target_max_x_m = target_pad.center_x_m + touchdown_center_limit_m;
+    let max_time_s = scenario.sim.max_time_s.max(REACHABILITY_TIME_STEP_S);
+    let steps = (max_time_s / REACHABILITY_TIME_STEP_S).ceil() as u64;
+    let mut best: Option<CoupledStopAccelerationBound> = None;
+
+    // Sweep possible touchdown times and use optimistic double-integrator lower bounds.
+    // If even this lower bound exceeds full-throttle authority, the run is outside the envelope.
+    for step in 1..=steps {
+        let time_s = (step as f64 * REACHABILITY_TIME_STEP_S).min(max_time_s);
+        let ballistic_x_m = x0_m + vx_mps * time_s;
+        let required_lateral_position_accel_mps2 = 2.0
+            * distance_outside_interval_m(ballistic_x_m, target_min_x_m, target_max_x_m)
+            / (time_s * time_s);
+        let required_lateral_velocity_accel_mps2 =
+            distance_outside_interval_m(vx_mps, -safe_lateral_speed_mps, safe_lateral_speed_mps)
+                / time_s;
+        let required_lateral_accel_mps2 =
+            required_lateral_position_accel_mps2.max(required_lateral_velocity_accel_mps2);
+
+        let freefall_y_m = y0_m + vy_mps * time_s - 0.5 * gravity_mps2 * time_s * time_s;
+        let required_upward_displacement_m = target_y_m - freefall_y_m;
+        if required_upward_displacement_m < -1e-6 {
+            continue;
+        }
+        let required_vertical_position_accel_mps2 =
+            (2.0 * required_upward_displacement_m.max(0.0)) / (time_s * time_s);
+        let freefall_vy_mps = vy_mps - gravity_mps2 * time_s;
+        if freefall_vy_mps > 1e-6 {
+            continue;
+        }
+        let required_vertical_velocity_accel_mps2 = if freefall_vy_mps < -safe_vertical_speed_mps {
+            (-safe_vertical_speed_mps - freefall_vy_mps) / time_s
+        } else {
+            0.0
+        };
+        let required_vertical_accel_mps2 =
+            required_vertical_position_accel_mps2.max(required_vertical_velocity_accel_mps2);
+        let required_accel_mps2 = (required_lateral_accel_mps2 * required_lateral_accel_mps2
+            + required_vertical_accel_mps2 * required_vertical_accel_mps2)
+            .sqrt();
+        let available_accel_mps2 =
+            full_throttle_average_accel_mps2(&scenario.vehicle, mass_kg, time_s);
+        let stop_accel_margin_mps2 = available_accel_mps2 - required_accel_mps2;
+        let candidate = CoupledStopAccelerationBound {
+            available_accel_mps2,
+            required_accel_mps2,
+            stop_accel_margin_mps2,
+        };
+
+        if best
+            .map(|best| stop_accel_margin_mps2 > best.stop_accel_margin_mps2)
+            .unwrap_or(true)
+        {
+            best = Some(candidate);
+        }
+    }
+
+    best.unwrap_or_else(|| {
+        let available_accel_mps2 =
+            full_throttle_average_accel_mps2(&scenario.vehicle, mass_kg, max_time_s);
+        CoupledStopAccelerationBound {
+            available_accel_mps2,
+            required_accel_mps2: f64::INFINITY,
+            stop_accel_margin_mps2: f64::NEG_INFINITY,
+        }
+    })
+}
+
+fn distance_outside_interval_m(value: f64, min_value: f64, max_value: f64) -> f64 {
+    if value < min_value {
+        min_value - value
+    } else if value > max_value {
+        value - max_value
+    } else {
         0.0
-    } else if available_stop_height_m <= 0.0 {
-        f64::INFINITY
-    } else {
-        ((downward_speed_mps * downward_speed_mps)
-            - (safe_vertical_speed_mps * safe_vertical_speed_mps))
-            / (2.0 * available_stop_height_m)
-    };
-    let required_vertical_thrust_accel_mps2 = gravity_mps2 + required_vertical_net_accel_mps2;
-    let required_accel_mps2 = (required_lateral_accel_mps2 * required_lateral_accel_mps2
-        + required_vertical_thrust_accel_mps2 * required_vertical_thrust_accel_mps2)
-        .sqrt();
-
-    let terminal_window_s =
-        terminal_ballistic_time_to_ground_s(scenario, available_stop_height_m, gravity_mps2);
-    let available_accel_mps2 =
-        full_throttle_average_accel_mps2(&scenario.vehicle, mass_kg, terminal_window_s);
-
-    CoupledStopAccelerationBound {
-        available_accel_mps2,
-        required_accel_mps2,
-        stop_accel_margin_mps2: available_accel_mps2 - required_accel_mps2,
     }
-}
-
-fn lateral_stop_distance(
-    target_center_dx_m: f64,
-    vx_mps: f64,
-    touchdown_center_limit_m: f64,
-) -> f64 {
-    if vx_mps.abs() <= 1e-9 {
-        return f64::INFINITY;
-    }
-    if target_center_dx_m * vx_mps > 0.0 {
-        target_center_dx_m.abs() + touchdown_center_limit_m
-    } else {
-        touchdown_center_limit_m - target_center_dx_m.abs()
-    }
-}
-
-fn terminal_ballistic_time_to_ground_s(
-    scenario: &ScenarioSpec,
-    available_stop_height_m: f64,
-    gravity_mps2: f64,
-) -> f64 {
-    let vy_up_mps = scenario.initial_state.velocity_mps.y;
-    let discriminant =
-        (vy_up_mps * vy_up_mps) + (2.0 * gravity_mps2 * available_stop_height_m.max(0.0));
-    ((vy_up_mps + discriminant.sqrt()) / gravity_mps2).max(1e-6)
 }
 
 fn full_throttle_average_accel_mps2(
@@ -4764,7 +4780,7 @@ mod tests {
     }
 
     #[test]
-    fn analytic_coupled_bound_invalidates_full_payload_lateral_high_cases() {
+    fn analytic_reachability_bound_keeps_lateral_authority_cases_scored() {
         let base_dir = fixtures_root();
         let pack = ScenarioPackSpec {
             id: "terminal_matrix_full_payload_lateral".to_owned(),
@@ -4842,20 +4858,87 @@ mod tests {
 
         assert_eq!(half_a45_high.analytic.class, BatchRunAnalyticClass::Scored);
         assert_eq!(
-            full_a45_high.analytic.class,
-            BatchRunAnalyticClass::Impossible
+            full_a45_high.manifest.mission_outcome,
+            MissionOutcome::FailedCrash
         );
-        assert_eq!(
-            full_a45_high.analytic.reason,
-            Some(BatchRunAnalyticReason::CoupledStopAcceleration)
-        );
+        assert_eq!(full_a45_high.analytic.class, BatchRunAnalyticClass::Scored);
+        assert_eq!(full_a45_high.analytic.reason, None);
         assert!(
             full_a45_high
                 .analytic
                 .stop_accel_margin_mps2
-                .expect("coupled stop margin should be present")
-                < 0.0
+                .expect("reachability margin should be present")
+                > 0.0
         );
+    }
+
+    #[test]
+    fn analytic_coupled_bound_does_not_invalidate_projected_error_successes() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_projected_error_coupled_bound".to_owned(),
+            name: "Terminal matrix projected error coupled bound".to_owned(),
+            description: "terminal matrix projected error coupled bound".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_traj_overshoot_large_half".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "terminal_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Smoke,
+                condition_set: "traj_overshoot_large".to_owned(),
+                vehicle_variant: "half".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: vec![NumericAdjustmentSpec {
+                    id: "payload_half_mass_kg".to_owned(),
+                    path: "vehicle.dry_mass_kg".to_owned(),
+                    mode: NumericPerturbationMode::Offset,
+                    value: 2250.0,
+                }],
+                tags: vec!["terminal".to_owned(), "traj_error".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &base_dir, None, 1).unwrap();
+        let record = report
+            .records
+            .iter()
+            .find(|record| {
+                record.resolved.selector.arc_point == "a70"
+                    && record.resolved.selector.velocity_band == "high"
+                    && record.resolved.resolved_seed == 0
+            })
+            .expect("projected-error a70 high seed 0 should be present");
+
+        assert_eq!(record.manifest.mission_outcome, MissionOutcome::Success);
+        assert_eq!(record.analytic.class, BatchRunAnalyticClass::Scored);
+        assert!(
+            record
+                .analytic
+                .stop_accel_margin_mps2
+                .expect("coupled stop margin should be present")
+                > 0.0
+        );
+        let mission_success_runs = report
+            .records
+            .iter()
+            .filter(|record| matches!(record.manifest.mission_outcome, MissionOutcome::Success))
+            .count();
+        let impossible_non_success_runs = report
+            .records
+            .iter()
+            .filter(|record| {
+                !matches!(record.manifest.mission_outcome, MissionOutcome::Success)
+                    && matches!(record.analytic.class, BatchRunAnalyticClass::Impossible)
+            })
+            .count();
+
+        assert_eq!(report.summary.success_runs, mission_success_runs);
+        assert_eq!(report.summary.invalidated_runs, impossible_non_success_runs);
     }
 
     #[test]
