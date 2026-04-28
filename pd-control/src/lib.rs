@@ -599,6 +599,8 @@ mod tests {
         let high_vx_frame = controller.update(&ctx, &high_vx_observation);
 
         let mut low_vx_observation = high_vx_observation.clone();
+        low_vx_observation.position_m.x = -12.0;
+        low_vx_observation.target_dx_m = 12.0;
         low_vx_observation.velocity_mps.x = 1.2;
 
         let mut controller = TerminalPdgController::default();
@@ -608,6 +610,37 @@ mod tests {
         let low_vx_descent = frame_metric_f64(&low_vx_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
 
         assert!(high_vx_descent > low_vx_descent + 0.5);
+    }
+
+    #[test]
+    fn terminal_pdg_preserves_altitude_when_projected_touchdown_is_outside_safe_center() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut stranded_observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        stranded_observation.position_m = Vec2::new(-24.0, 29.0);
+        stranded_observation.velocity_mps = Vec2::new(1.2, -3.8);
+        stranded_observation.target_dx_m = 24.0;
+        stranded_observation.height_above_target_m = 29.0;
+        stranded_observation.touchdown_clearance_m = 24.0;
+        stranded_observation.min_hull_clearance_m = 24.0;
+
+        let mut controller = TerminalPdgController::default();
+        let stranded_frame = controller.update(&ctx, &stranded_observation);
+
+        let mut centered_observation = stranded_observation.clone();
+        centered_observation.position_m.x = -12.0;
+        centered_observation.target_dx_m = 12.0;
+
+        let mut controller = TerminalPdgController::default();
+        let centered_frame = controller.update(&ctx, &centered_observation);
+
+        let stranded_descent =
+            frame_metric_f64(&stranded_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
+        let centered_descent =
+            frame_metric_f64(&centered_frame, metric::DESIRED_VERTICAL_SPEED_MPS);
+
+        assert!(stranded_descent > centered_descent + 0.5);
     }
 
     #[test]

@@ -221,6 +221,9 @@ impl TerminalPdgController {
             gravity_mps2,
         );
         let lateral_dx_m = projection.projected_dx_m;
+        let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
+            - view.ctx.vehicle.geometry.touchdown_half_span_m)
+            .max(0.0);
 
         let latest_safe = self.latest_safe_candidate(
             dx_m,
@@ -232,6 +235,7 @@ impl TerminalPdgController {
             max_thrust_accel_mps2,
             gravity_mps2,
             view.observation.target_pad_half_width_m,
+            touchdown_center_limit_m,
         );
         let nominal = self.best_nominal_candidate(
             dx_m,
@@ -244,6 +248,7 @@ impl TerminalPdgController {
             nominal_thrust_accel_mps2,
             gravity_mps2,
             view.observation.target_pad_half_width_m,
+            touchdown_center_limit_m,
         );
 
         if nominal.ready {
@@ -281,6 +286,7 @@ impl TerminalPdgController {
         let desired_vertical_speed_mps = self.desired_terminal_vertical_speed(
             touchdown_clearance_m,
             lateral_dx_m,
+            touchdown_center_limit_m,
             max_thrust_accel_mps2,
             max_tilt_rad,
             vx_mps,
@@ -340,6 +346,7 @@ impl TerminalPdgController {
         &self,
         altitude_m: f64,
         lateral_dx_m: f64,
+        touchdown_center_limit_m: f64,
         max_thrust_accel_mps2: f64,
         max_tilt_rad: f64,
         vx_mps: f64,
@@ -359,8 +366,10 @@ impl TerminalPdgController {
         if altitude_m <= self.config.vy_touch_cap_alt_m {
             vy_mag = vy_mag.min(self.config.vy_touch_cap_mps);
         }
+        let lateral_position_unsafe = lateral_dx_m.abs() > touchdown_center_limit_m.max(0.0);
+        let lateral_speed_unsafe = vx_mps.abs() >= self.config.lateral_hold_vx_min_mps;
         if altitude_m <= self.config.lateral_hold_alt_m
-            && vx_mps.abs() >= self.config.lateral_hold_vx_min_mps
+            && (lateral_position_unsafe || lateral_speed_unsafe)
         {
             let lateral_accel = (max_thrust_accel_mps2 * max_tilt_rad.sin()).max(0.5);
             let lateral_correction_time_s =
@@ -374,8 +383,15 @@ impl TerminalPdgController {
                     .max(1e-3))
             .clamp(0.0, 1.0);
             if hold_weight > 0.0 {
-                let eased_vy_mag = self.config.vy_touch_cap_mps
-                    + ((1.0 - hold_weight) * (vy_mag - self.config.vy_touch_cap_mps).max(0.0));
+                let hold_floor_mps = if lateral_position_unsafe {
+                    self.config
+                        .touchdown_zero_vy_mps
+                        .max(self.config.braking_min_speed_mps)
+                } else {
+                    self.config.vy_touch_cap_mps
+                };
+                let eased_vy_mag =
+                    hold_floor_mps + ((1.0 - hold_weight) * (vy_mag - hold_floor_mps).max(0.0));
                 vy_mag = vy_mag.min(eased_vy_mag.min(self.config.lateral_hold_vy_cap_mps));
             }
         }
@@ -577,6 +593,7 @@ impl TerminalPdgController {
         lateral_dx_m: f64,
         gravity_mps2: f64,
         target_half_width_m: f64,
+        touchdown_center_limit_m: f64,
         include_max_time: bool,
     ) -> (Vec<f64>, f64, f64) {
         let max_tilt = self.resolve_max_tilt(
@@ -593,6 +610,7 @@ impl TerminalPdgController {
         let target_vy_up = self.desired_terminal_vertical_speed(
             altitude_m,
             lateral_dx_m,
+            touchdown_center_limit_m,
             thrust_accel_mps2,
             max_tilt,
             vx_mps,
@@ -690,6 +708,7 @@ impl TerminalPdgController {
         max_thrust_accel_mps2: f64,
         gravity_mps2: f64,
         target_half_width_m: f64,
+        touchdown_center_limit_m: f64,
     ) -> LatestSafeState {
         let height_to_target_m = (-dy_m).max(0.0);
         let down_speed = (-vy_up_mps).max(0.0);
@@ -719,6 +738,7 @@ impl TerminalPdgController {
             lateral_dx_m,
             gravity_mps2,
             target_half_width_m,
+            touchdown_center_limit_m,
             true,
         );
         let t_brake_v = down_speed / vertical_up_accel;
@@ -764,6 +784,7 @@ impl TerminalPdgController {
         nominal_thrust_accel_mps2: f64,
         gravity_mps2: f64,
         target_half_width_m: f64,
+        touchdown_center_limit_m: f64,
     ) -> NominalState {
         let (candidate_times, max_tilt, target_vy_up) = self.candidate_times(
             dx_m,
@@ -776,6 +797,7 @@ impl TerminalPdgController {
             lateral_dx_m,
             gravity_mps2,
             target_half_width_m,
+            touchdown_center_limit_m,
             false,
         );
         let mut candidates: Vec<TerminalGateCandidate> = candidate_times
@@ -1014,10 +1036,15 @@ impl TerminalPdgController {
                 .min(self.config.touchdown_rescue_tilt_rad),
         );
         let lateral_closing_too_fast = self.lateral_closing_too_fast_for_touchdown(view);
+        let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
+            - view.ctx.vehicle.geometry.touchdown_half_span_m)
+            .max(0.0);
+        let outside_touchdown_center = dx_m.abs() > touchdown_center_limit_m;
         let early_lateral_rescue = touchdown_clearance_m <= self.config.lateral_hold_alt_m
             && lateral_touchdown_unsafe
-            && lateral_closing_too_fast
-            && vx_mps.abs() > safe_touchdown_vx_mps;
+            && (outside_touchdown_center
+                || lateral_closing_too_fast
+                || vx_mps.abs() > safe_touchdown_vx_mps);
         let vertical_rescue = touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m
             && (down_speed > (self.config.touchdown_rescue_vy_ratio * rescue_limit)
                 || low_clearance_trigger);

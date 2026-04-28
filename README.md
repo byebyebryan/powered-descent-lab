@@ -298,30 +298,31 @@ Current checkpoint on the maintained Earth payload tiers:
 Trajectory-error checkpoint:
 
 - `terminal_traj_err_suite`
-  - `current`: `679 / 720` scored successes, `41` scored failures,
+  - `current`: `685 / 720` scored successes, `35` scored failures,
     `36` impossible warnings, `48` frontier annotations
 - `terminal_traj_err_full`
-  - `current`: `2718 / 2880` scored successes, `162` scored failures,
+  - `current`: `2732 / 2880` scored successes, `148` scored failures,
     `144` impossible warnings, `192` frontier annotations
   - by condition:
     - `traj_undershoot_small`: `690 / 720` scored, `30` fail,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_undershoot_large`: `704 / 720` scored, `16` fail,
+    - `traj_undershoot_large`: `707 / 720` scored, `13` fail,
       `36` impossible warnings, `48` frontier annotations
     - `traj_overshoot_small`: `672 / 720` scored, `48` fail,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_overshoot_large`: `652 / 720` scored, `68` fail,
+    - `traj_overshoot_large`: `663 / 720` scored, `57` fail,
       `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `1008 / 1008`
-    - `half`: `986 / 1008`, `22` fail
-    - `full`: `724 / 864` scored, `140` fail, `144` impossible warnings,
+    - `half`: `999 / 1008`, `9` fail
+    - `full`: `725 / 864` scored, `139` fail, `144` impossible warnings,
       `192` frontier annotations
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
 is still the low-thrust/high-energy frontier and its failed cells remain
 scored, trajectory-error `empty` is solved, trajectory-error `half` has sparse
-high-energy scored failures, and trajectory-error `full` is the main
+high-energy scored failures concentrated in `traj_overshoot_large`, and
+trajectory-error `full` is the main
 frontier-annotated stress tier. Detailed checkpoint history lives in
 `docs/progress.md` and `docs/terminal_suite.md`.

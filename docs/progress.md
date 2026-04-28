@@ -4,8 +4,8 @@
 
 ### Current status
 
-- The controller behavior checkpoint remains commit `1db97c3`
-  (`fix: trim sparse terminal controller outliers`).
+- The latest controller pass adds lateral-cushion preservation when
+  projected touchdown is outside the safe touchdown-footprint center.
 - Phase 2 remains the active phase, but the center of gravity has moved:
   - report/cache/review-tree infrastructure is no longer the bottleneck
   - the clean `empty` and `half` payload tiers have no scored current-lane
@@ -29,8 +29,8 @@ Latest local reports:
 
 Latest local wall-clock signal with `8` workers:
 
-- `terminal_bot_lab_suite`: `7.60s`
-- `terminal_bot_lab_full`: `31.05s`
+- `terminal_bot_lab_suite`: `7.13s`
+- `terminal_bot_lab_full`: `28.99s`
 
 Smoke tier:
 
@@ -71,48 +71,48 @@ Latest local reports:
 
 Latest local wall-clock signal with `8` workers:
 
-- `terminal_traj_err_suite`: `14.46s`
-- `terminal_traj_err_full`: `58.29s`
+- `terminal_traj_err_suite`: `13.70s`
+- `terminal_traj_err_full`: `56.01s`
 
 Smoke tier:
 
 - `terminal_traj_err_suite`
-  - `current`: `679 / 720` scored successes, `41` scored failures,
+  - `current`: `685 / 720` scored successes, `35` scored failures,
     `36` impossible warnings, `48` frontier annotations
 
 Full pack:
 
 - `terminal_traj_err_full`
-  - `current`: `2718 / 2880` scored successes, `162` scored failures,
+  - `current`: `2732 / 2880` scored successes, `148` scored failures,
     `144` impossible warnings, `192` frontier annotations
 
 `terminal_traj_err_full` current-lane split by condition:
 
 - `traj_undershoot_small`: `690 / 720` scored, `30` scored failures,
   `36` impossible warnings, `48` frontier annotations
-- `traj_undershoot_large`: `704 / 720` scored, `16` scored failures,
+- `traj_undershoot_large`: `707 / 720` scored, `13` scored failures,
   `36` impossible warnings, `48` frontier annotations
 - `traj_overshoot_small`: `672 / 720` scored, `48` scored failures,
   `36` impossible warnings, `48` frontier annotations
-- `traj_overshoot_large`: `652 / 720` scored, `68` scored failures,
+- `traj_overshoot_large`: `663 / 720` scored, `57` scored failures,
   `36` impossible warnings, `48` frontier annotations
 
 `terminal_traj_err_full` current-lane split by payload tier:
 
 - `empty`: `1008 / 1008`
-- `half`: `986 / 1008`, `22` scored failures
-- `full`: `724 / 864` scored, `140` scored failures,
+- `half`: `999 / 1008`, `9` scored failures
+- `full`: `725 / 864` scored, `139` scored failures,
   `144` impossible warnings, `192` frontier annotations
 
 The trajectory-error read is now:
 
 - `empty` is solved across the projected-miss corpus
-- `half` is nearly solved, with sparse high-energy outliers still standing out
+- `half` is nearly solved, with sparse high-energy overshoot-large outliers
+  still standing out
 - `full` is represented as a scored low-thrust/high-energy frontier stress tier
 - the remaining scored failures are real stress cases, not report artifacts:
-  - `traj_overshoot_large / half / high`: `20` failures across `a30 / a45 /
+  - `traj_overshoot_large / half / high`: `9` failures across `a30 / a45 /
     a60 / a80`
-  - `traj_undershoot_large / half / a80 / high`: seeds `0`, `1`
   - low-thrust/high-energy `full / high` frontier failures across clean and
     trajectory-error conditions
 

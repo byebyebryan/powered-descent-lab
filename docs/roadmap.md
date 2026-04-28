@@ -186,10 +186,11 @@ Status:
     Earth corpus; clean full-payload issues are scored frontier failures plus
     analytically impossible warnings
   - trajectory-error full current lane:
-    `2718 / 2880` scored successes, `162` scored failures,
+    `2732 / 2880` scored successes, `148` scored failures,
     `144` impossible warnings, `192` frontier annotations
   - trajectory-error `empty` is solved; `half` has sparse high-energy
-    outliers; `full` is represented as the main scored authority-frontier tier
+    overshoot-large outliers; `full` is represented as the main scored
+    authority-frontier tier
 - still missing:
   - controller robustness on the remaining sparse high-energy trajectory-error
     outliers
