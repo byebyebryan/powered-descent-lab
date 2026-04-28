@@ -462,6 +462,106 @@ mod tests {
     }
 
     #[test]
+    fn terminal_pdg_lands_sparse_traj_error_lateral_cleanup_case() {
+        let mut scenario = earth_terminal_reference_scenario();
+        scenario.id = "terminal_pdg_sparse_lateral_cleanup".to_owned();
+        scenario.name = "Terminal PDG sparse lateral cleanup".to_owned();
+        scenario.sim.max_time_s = 60.0;
+        scenario.vehicle.dry_mass_kg = 9_450.0;
+        scenario.initial_state.position_m = Vec2::new(-713.6049327183774, 412.0000000000001);
+        scenario.initial_state.velocity_mps = Vec2::new(125.02705983327311, -36.2361710858586);
+
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        );
+    }
+
+    #[test]
+    fn terminal_pdg_lands_sparse_traj_error_captured_settle_case() {
+        let mut scenario = earth_terminal_reference_scenario();
+        scenario.id = "terminal_pdg_sparse_captured_settle".to_owned();
+        scenario.name = "Terminal PDG sparse captured settle".to_owned();
+        scenario.sim.max_time_s = 60.0;
+        scenario.vehicle.dry_mass_kg = 11_700.0;
+        scenario.initial_state.position_m = Vec2::new(-811.4815884820595, 143.08609839755067);
+        scenario.initial_state.velocity_mps = Vec2::new(114.56019856025743, 21.354237700306168);
+
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        );
+    }
+
+    #[test]
+    fn terminal_pdg_lands_sparse_clean_low_clearance_cushion_case() {
+        let mut scenario = earth_terminal_reference_scenario();
+        scenario.id = "terminal_pdg_sparse_low_clearance_cushion".to_owned();
+        scenario.name = "Terminal PDG sparse low-clearance cushion".to_owned();
+        scenario.sim.max_time_s = 60.0;
+        scenario.vehicle.dry_mass_kg = 7_200.0;
+        scenario.initial_state.position_m = Vec2::new(-207.0552360820166, 772.7406610312546);
+        scenario.initial_state.velocity_mps = Vec2::new(23.696321462719677, -42.966525651354694);
+
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        );
+    }
+
+    #[test]
+    fn terminal_pdg_lands_sparse_traj_error_final_upright_case() {
+        let mut scenario = earth_terminal_reference_scenario();
+        scenario.id = "terminal_pdg_sparse_final_upright".to_owned();
+        scenario.name = "Terminal PDG sparse final upright".to_owned();
+        scenario.sim.max_time_s = 60.0;
+        scenario.vehicle.dry_mass_kg = 9_450.0;
+        scenario.initial_state.position_m = Vec2::new(764.2108163374734, 134.750985869538);
+        scenario.initial_state.velocity_mps = Vec2::new(-68.92108163374733, 35.574901413046206);
+
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget
+        );
+    }
+
+    #[test]
     fn terminal_pdg_settles_near_pad_edge_when_lateral_stop_stays_inside_pad() {
         let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
         let mut observation = pd_core::SimulationState::new(&ctx)
