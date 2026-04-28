@@ -1286,7 +1286,7 @@ fn render_overview_result_cell(
         format!("{:.1}%", percentage(success_runs, scored_runs))
     };
     let invalidated_html = if invalidated_runs > 0 {
-        format!(r#" · <span class="warn">{invalidated_runs} impossible</span>"#)
+        format!(r#" · <span class="warn">{invalidated_runs} warning</span>"#)
     } else {
         String::new()
     };
@@ -4032,10 +4032,7 @@ fn render_seed_run_row(
     let seed_label = format!("seed {:04}", record.resolved.resolved_seed);
     let outcome_label = enum_label(&record.manifest.mission_outcome);
     let analytic_note = analytic_reason_note(&record.analytic);
-    let outcome = if matches!(
-        record.analytic.class,
-        crate::BatchRunAnalyticClass::Impossible
-    ) {
+    let outcome = if !record.analytic.is_scored() {
         let label = if let Some(note) = analytic_note.as_deref() {
             format!("{outcome_label} · {note}")
         } else {
@@ -4046,11 +4043,20 @@ fn render_seed_run_row(
         record.manifest.mission_outcome,
         pd_core::MissionOutcome::Success
     ) {
-        escape_html(&outcome_label)
+        if let Some(note) = analytic_note.as_deref() {
+            escape_html(&format!("{outcome_label} · {note}"))
+        } else {
+            escape_html(&outcome_label)
+        }
     } else {
+        let label = if let Some(note) = analytic_note.as_deref() {
+            format!("{outcome_label} · {note}")
+        } else {
+            outcome_label
+        };
         format!(
             r#"<span class="outcome-bad">{}</span>"#,
-            escape_html(&outcome_label)
+            escape_html(&label)
         )
     };
     let fuel = record
@@ -4533,7 +4539,7 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
     let success_runs = records
         .iter()
         .filter(|record| {
-            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+            record.analytic.is_scored()
                 && matches!(
                     record.manifest.mission_outcome,
                     pd_core::MissionOutcome::Success
@@ -4542,12 +4548,12 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
         .count();
     let invalidated_runs = records
         .iter()
-        .filter(|record| !matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored))
+        .filter(|record| !record.analytic.is_scored())
         .count();
     let failure_runs = records
         .iter()
         .filter(|record| {
-            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+            record.analytic.is_scored()
                 && !matches!(
                     record.manifest.mission_outcome,
                     pd_core::MissionOutcome::Success
@@ -4557,7 +4563,7 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
     let failed_seeds = records
         .iter()
         .filter(|record| {
-            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+            record.analytic.is_scored()
                 && !matches!(
                     record.manifest.mission_outcome,
                     pd_core::MissionOutcome::Success
@@ -4570,7 +4576,7 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
     let success_records = records
         .iter()
         .filter(|record| {
-            matches!(record.analytic.class, crate::BatchRunAnalyticClass::Scored)
+            record.analytic.is_scored()
                 && matches!(
                     record.manifest.mission_outcome,
                     pd_core::MissionOutcome::Success
@@ -4699,6 +4705,9 @@ fn analytic_reason_note(analytic: &crate::BatchRunAnalyticFeasibility) -> Option
         Some(crate::BatchRunAnalyticReason::CoupledStopAcceleration) => {
             Some("impossible coupled brake")
         }
+        Some(crate::BatchRunAnalyticReason::LowThrustHighEnergy) => {
+            Some("low-thrust high-energy frontier")
+        }
         None => None,
     }
 }
@@ -4721,7 +4730,7 @@ fn format_summary_rate(
     };
     let invalidated_html = if aggregate.invalidated_runs > 0 {
         format!(
-            r#" · <span class="warn">{} impossible</span>"#,
+            r#" · <span class="warn">{} warning</span>"#,
             aggregate.invalidated_runs
         )
     } else {
@@ -6267,7 +6276,54 @@ mod report_tests {
 
         assert!(html.contains("impossible"));
         assert!(html.contains("impossible vertical brake"));
-        assert!(html.contains("0 fail · <span class=\"warn\">12 impossible</span>"));
+        assert!(html.contains("0 fail · <span class=\"warn\">12 warning</span>"));
+    }
+
+    #[test]
+    fn terminal_matrix_report_surfaces_frontier_runs_as_scored_annotations() {
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_frontier_unit".to_owned(),
+            name: "Terminal matrix frontier unit".to_owned(),
+            description: "terminal matrix frontier unit".to_owned(),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_clean_full_payload".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "terminal_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Full,
+                condition_set: "clean".to_owned(),
+                vehicle_variant: "full".to_owned(),
+                expectation_tier: "stress".to_owned(),
+                adjustments: vec![crate::NumericAdjustmentSpec {
+                    id: "payload_full_mass_kg".to_owned(),
+                    path: "vehicle.dry_mass_kg".to_owned(),
+                    mode: crate::NumericPerturbationMode::Offset,
+                    value: 4500.0,
+                }],
+                tags: vec!["terminal".to_owned(), "analytic".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
+        let html = render_batch_report(
+            Path::new("outputs/eval/terminal_matrix_frontier_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("low-thrust high-energy frontier"));
+        assert!(html.contains(
+            "<span class=\"outcome-bad\">failed_crash · low-thrust high-energy frontier</span>"
+        ));
+        assert!(!html.contains(
+            "<span class=\"warn\">failed_crash · low-thrust high-energy frontier</span>"
+        ));
     }
 
     #[test]

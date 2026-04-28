@@ -35,6 +35,7 @@ Current implementation status:
   - cache reuse / promotion / current-lane history compare for batch reports
   - analytic impossible-run classification for clearly unrecoverable terminal
     cells
+  - scored authority-frontier annotations for low-thrust/high-energy cells
 - One Phase 3 contract probe has been pulled forward intentionally:
   `timed_checkpoint`, to validate early-termination mission evaluation without
   committing to the full transfer stack yet.
@@ -175,23 +176,27 @@ Status:
     cells based on controller-independent vertical and coupled terminal stop
     bounds
 - latest terminal checkpoint:
-  - clean smoke current lane has no scored failures:
-    `168 / 168` scored successes, `21` impossible
+  - clean smoke current lane:
+    `168 / 180` scored successes, `12` scored failures,
+    `9` impossible warnings, `12` frontier annotations
   - clean full-pack current lane:
-    `676 / 720` scored successes, `44` scored failures, `36` impossible
+    `676 / 720` scored successes, `44` scored failures,
+    `36` impossible warnings, `48` frontier annotations
   - clean full-pack `empty` and `half` tiers are solved on the maintained
-    Earth corpus; remaining clean failures are in the `full` payload tier
+    Earth corpus; clean full-payload issues are scored frontier failures plus
+    analytically impossible warnings
   - trajectory-error full current lane:
-    `2718 / 2880` scored successes, `162` scored failures, `144` impossible
+    `2718 / 2880` scored successes, `162` scored failures,
+    `144` impossible warnings, `192` frontier annotations
   - trajectory-error `empty` is solved; `half` has sparse high-energy
-    outliers; `full` remains the main authority frontier
+    outliers; `full` is represented as the main scored authority-frontier tier
 - still missing:
-  - controller robustness on the remaining full-payload clean frontier and the
-    sparse high-energy trajectory-error outliers
+  - controller robustness on the remaining sparse high-energy trajectory-error
+    outliers
   - broader curated terminal conditions built on top of that selector model:
     - later terrain and obstacle conditions
-  - broader feasibility/frontier classification and warning semantics for
-    authority-limited cells
+  - broader feasibility/frontier classification while keeping
+    authority-frontier cells scored
   - thresholded regression policy once the corpus and metrics are stable enough
     to support it
   - deeper report polish that depends on real matrix scenarios and controller
@@ -350,13 +355,12 @@ infrastructure.
 
 The next useful work is:
 
-1. Treat the remaining clean `full` failures as the main controller frontier.
-2. Treat the sparse trajectory-error failures as stress probes, not as a reason
-   to add seed-specific controller branches.
-3. Improve feasibility/frontier semantics where the vehicle is authority
-   limited so reports distinguish warning-grade impossible cells from scored
-   controller failures.
-4. Only then add the next corpus layer, starting with terrain or obstacle
+1. Treat the remaining sparse trajectory-error failures as stress probes, not as
+   a reason to add seed-specific controller branches.
+2. Keep refining feasibility/frontier semantics where the vehicle is authority
+   limited, while keeping frontier cells scored so regressions do not disappear
+   into warning buckets.
+3. Only then add the next corpus layer, starting with terrain or obstacle
    terminal conditions.
 
 The immediate controller direction should stay general: if the low-altitude

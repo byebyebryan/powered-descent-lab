@@ -605,6 +605,7 @@ Current implementation:
   - default current-lane history compare against cached clean checkpoints
   - analytic impossible-run classification for clearly unrecoverable terminal
     cells
+  - scored authority-frontier annotations for low-thrust/high-energy cells
 - the batch report tree surfaces:
   - `mission`
   - `arrival_family`
@@ -620,8 +621,11 @@ intended selector model. The selector model is now the execution model.
 
 ## Latest Controller Checkpoint
 
-The current maintained checkpoint is commit `1db97c3`
-(`fix: trim sparse terminal controller outliers`).
+The current controller behavior checkpoint is commit `1db97c3`
+(`fix: trim sparse terminal controller outliers`). The report metrics below use
+the newer authority-frontier annotation classification: analytically impossible
+cells are non-scored warnings, while low-thrust/high-energy frontier cells stay
+scored and carry a separate annotation.
 
 Clean matrix reports:
 
@@ -630,25 +634,28 @@ Clean matrix reports:
 
 Latest local wall-clock signal with `8` workers:
 
-- `terminal_bot_lab_suite`: `6.88s`
-- `terminal_bot_lab_full`: `30.67s`
+- `terminal_bot_lab_suite`: `7.60s`
+- `terminal_bot_lab_full`: `31.05s`
 
 Current-lane clean results:
 
 - smoke tier:
-  - `168 / 168` scored successes
-  - `0` scored failures
-  - `21` impossible
+  - `168 / 180` scored successes
+  - `12` scored failures
+  - `9` impossible warnings
+  - `12` frontier annotations
 - full pack:
   - `676 / 720` scored successes
   - `44` scored failures
-  - `36` impossible
+  - `36` impossible warnings
+  - `48` frontier annotations
 
 `terminal_bot_lab_full` current-lane clean split:
 
 - `empty`: `252 / 252`
 - `half`: `252 / 252`
-- `full`: `172 / 216` scored, `44` scored failures, `36` impossible
+- `full`: `172 / 216` scored, `44` scored failures,
+  `36` impossible warnings, `48` frontier annotations
 
 Trajectory-error reports:
 
@@ -657,48 +664,53 @@ Trajectory-error reports:
 
 Latest local wall-clock signal with `8` workers:
 
-- `terminal_traj_err_suite`: `12.78s`
-- `terminal_traj_err_full`: `57.90s`
+- `terminal_traj_err_suite`: `14.46s`
+- `terminal_traj_err_full`: `58.29s`
 
 Current-lane trajectory-error results:
 
 - smoke tier:
-  - `640 / 720` scored successes
-  - `80` scored failures
-  - `36` impossible
+  - `679 / 720` scored successes
+  - `41` scored failures
+  - `36` impossible warnings
+  - `48` frontier annotations
 - full pack:
   - `2718 / 2880` scored successes
   - `162` scored failures
-  - `144` impossible
+  - `144` impossible warnings
+  - `192` frontier annotations
 
 `terminal_traj_err_full` current-lane trajectory-error split:
 
 - by payload:
   - `empty`: `1008 / 1008`
-  - `half`: `986 / 1008`
-  - `full`: `724 / 864` scored, `140` scored failures, `144` impossible
+  - `half`: `986 / 1008`, `22` scored failures
+  - `full`: `724 / 864` scored, `140` scored failures,
+    `144` impossible warnings, `192` frontier annotations
 - by condition:
   - `traj_undershoot_small`: `690 / 720` scored, `30` scored failures,
-    `36` impossible
+    `36` impossible warnings, `48` frontier annotations
   - `traj_undershoot_large`: `704 / 720` scored, `16` scored failures,
-    `36` impossible
+    `36` impossible warnings, `48` frontier annotations
   - `traj_overshoot_small`: `672 / 720` scored, `48` scored failures,
-    `36` impossible
+    `36` impossible warnings, `48` frontier annotations
   - `traj_overshoot_large`: `652 / 720` scored, `68` scored failures,
-    `36` impossible
+    `36` impossible warnings, `48` frontier annotations
 
 The current interpretation is:
 
 - clean `empty` and `half` are solved on the maintained Earth corpus
-- clean `full` remains the clean authority frontier
+- clean `full` is the low-thrust/high-energy frontier tier; failed frontier
+  cells remain scored failures
 - trajectory-error `empty` is solved
 - trajectory-error `half` has only sparse high-energy outliers
-- trajectory-error `full` remains the main stress tier
+- trajectory-error `full` is the main scored low-thrust/high-energy frontier
+  stress tier
 
 The standing sparse trajectory-error outliers are:
 
-- `traj_overshoot_large / half / a30 / high`: seeds `2`, `4`
-- `traj_undershoot_large / full / a60 / high`: seeds `0`, `4`
+- `traj_overshoot_large / half / high`: `20` scored failures across `a30 /
+  a45 / a60 / a80`
 - `traj_undershoot_large / half / a80 / high`: seeds `0`, `1`
 
 These should be treated as controller/frontier probes, not as evidence that the
@@ -709,12 +721,11 @@ selector model or report hierarchy needs another structural change.
 Now that the core matrix is real and the maintained vehicle baseline is
 aligned, the next concrete milestones are:
 
-1. improve controller robustness on the current frontier:
-   - clean `full` payload cells
-   - sparse high-energy trajectory-error outliers
+1. improve controller robustness on the current scored-failure frontier:
+   - sparse high-energy trajectory-error `half` outliers
    - keep fixes general rather than arc/seed/condition-specific
 2. deepen feasibility/frontier semantics:
-   - authority-limited full-payload warnings
+   - authority-limited full-payload annotations
    - broader coupled stop bounds beyond the current invalidation rules
 3. add the next physical condition space only after the clean and
    trajectory-error semantics are stable:

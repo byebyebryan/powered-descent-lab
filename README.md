@@ -278,41 +278,50 @@ enough for real controller iteration. The evaluator can now:
 - prefer cached current-lane history compare by default
 - classify analytically impossible terminal runs separately from scored
   failures
+- annotate low-thrust/high-energy frontier cells without removing them from
+  scoring
 
 Current checkpoint on the maintained Earth payload tiers:
 
 - `terminal_bot_lab_suite`
-  - `current`: `168 / 168` scored successes, `0` scored failures,
-    `21` impossible
+  - `current`: `168 / 180` scored successes, `12` scored failures,
+    `9` impossible warnings, `12` frontier annotations
 - `terminal_bot_lab_full`
   - `current`: `676 / 720` scored successes, `44` scored failures,
-    `36` impossible
+    `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `252 / 252`
     - `half`: `252 / 252`
-    - `full`: `172 / 216` scored, `36` impossible
+    - `full`: `172 / 216` scored, `44` fail, `36` impossible warnings,
+      `48` frontier annotations
 
 Trajectory-error checkpoint:
 
 - `terminal_traj_err_suite`
-  - `current`: `640 / 720` scored successes, `80` scored failures,
-    `36` impossible
+  - `current`: `679 / 720` scored successes, `41` scored failures,
+    `36` impossible warnings, `48` frontier annotations
 - `terminal_traj_err_full`
   - `current`: `2718 / 2880` scored successes, `162` scored failures,
-    `144` impossible
+    `144` impossible warnings, `192` frontier annotations
   - by condition:
-    - `traj_undershoot_small`: `690 / 720` scored, `36` impossible
-    - `traj_undershoot_large`: `704 / 720` scored, `36` impossible
-    - `traj_overshoot_small`: `672 / 720` scored, `36` impossible
-    - `traj_overshoot_large`: `652 / 720` scored, `36` impossible
+    - `traj_undershoot_small`: `690 / 720` scored, `30` fail,
+      `36` impossible warnings, `48` frontier annotations
+    - `traj_undershoot_large`: `704 / 720` scored, `16` fail,
+      `36` impossible warnings, `48` frontier annotations
+    - `traj_overshoot_small`: `672 / 720` scored, `48` fail,
+      `36` impossible warnings, `48` frontier annotations
+    - `traj_overshoot_large`: `652 / 720` scored, `68` fail,
+      `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `1008 / 1008`
-    - `half`: `986 / 1008`
-    - `full`: `724 / 864` scored, `144` impossible
+    - `half`: `986 / 1008`, `22` fail
+    - `full`: `724 / 864` scored, `140` fail, `144` impossible warnings,
+      `192` frontier annotations
 
 So the main next bottleneck is no longer basic controller viability on the
-Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full` is
-the main authority frontier, trajectory-error `empty` is solved, trajectory-error
-`half` has sparse high-energy outliers, and trajectory-error `full` remains the
-main stress tier. Detailed checkpoint history lives in `docs/progress.md` and
-`docs/terminal_suite.md`.
+Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
+is still the low-thrust/high-energy frontier and its failed cells remain
+scored, trajectory-error `empty` is solved, trajectory-error `half` has sparse
+high-energy scored failures, and trajectory-error `full` is the main
+frontier-annotated stress tier. Detailed checkpoint history lives in
+`docs/progress.md` and `docs/terminal_suite.md`.

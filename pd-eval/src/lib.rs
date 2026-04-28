@@ -24,7 +24,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 11;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 13;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -121,6 +121,7 @@ pub enum BatchRunAnalyticClass {
     #[default]
     Scored,
     Impossible,
+    Frontier,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -128,6 +129,7 @@ pub enum BatchRunAnalyticClass {
 pub enum BatchRunAnalyticReason {
     VerticalStopHeight,
     CoupledStopAcceleration,
+    LowThrustHighEnergy,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -151,8 +153,11 @@ pub struct BatchRunAnalyticFeasibility {
 }
 
 impl BatchRunAnalyticFeasibility {
-    fn is_scored(&self) -> bool {
-        matches!(self.class, BatchRunAnalyticClass::Scored)
+    pub(crate) fn is_scored(&self) -> bool {
+        matches!(
+            self.class,
+            BatchRunAnalyticClass::Scored | BatchRunAnalyticClass::Frontier
+        )
     }
 }
 
@@ -2358,9 +2363,25 @@ fn analytic_feasibility_for_run(resolved_run: &ResolvedBatchRun) -> BatchRunAnal
             };
         }
 
+        let class = if low_thrust_high_energy_frontier(
+            resolved_run,
+            max_upward_accel_mps2,
+            gravity_mps2,
+            coupled.stop_accel_margin_mps2,
+        ) {
+            BatchRunAnalyticClass::Frontier
+        } else {
+            BatchRunAnalyticClass::Scored
+        };
+        let reason = if matches!(class, BatchRunAnalyticClass::Frontier) {
+            Some(BatchRunAnalyticReason::LowThrustHighEnergy)
+        } else {
+            None
+        };
+
         BatchRunAnalyticFeasibility {
-            class: BatchRunAnalyticClass::Scored,
-            reason: None,
+            class,
+            reason,
             available_stop_height_m: Some(available_stop_height_m),
             required_stop_height_m: Some(required_stop_height_m),
             stop_height_margin_m: Some(stop_height_margin_m),
@@ -2369,6 +2390,24 @@ fn analytic_feasibility_for_run(resolved_run: &ResolvedBatchRun) -> BatchRunAnal
             stop_accel_margin_mps2: Some(coupled.stop_accel_margin_mps2),
         }
     }
+}
+
+const AUTHORITY_FRONTIER_MARGIN_GRAVITY_RATIO: f64 = 0.45;
+
+fn low_thrust_high_energy_frontier(
+    resolved_run: &ResolvedBatchRun,
+    upright_net_accel_mps2: f64,
+    gravity_mps2: f64,
+    stop_accel_margin_mps2: f64,
+) -> bool {
+    if resolved_run.descriptor.selector.velocity_band != "high" {
+        return false;
+    }
+
+    let low_authority_margin_mps2 =
+        AUTHORITY_FRONTIER_MARGIN_GRAVITY_RATIO * gravity_mps2.max(1e-6);
+    upright_net_accel_mps2 <= low_authority_margin_mps2
+        && stop_accel_margin_mps2 <= low_authority_margin_mps2
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -4780,7 +4819,7 @@ mod tests {
     }
 
     #[test]
-    fn analytic_reachability_bound_keeps_lateral_authority_cases_scored() {
+    fn analytic_authority_frontier_marks_low_thrust_high_energy_cases_but_keeps_them_scored() {
         let base_dir = fixtures_root();
         let pack = ScenarioPackSpec {
             id: "terminal_matrix_full_payload_lateral".to_owned(),
@@ -4818,7 +4857,7 @@ mod tests {
                         controller: "terminal_pdg".to_owned(),
                         controller_config: None,
                     }],
-                    seed_tier: TerminalSeedTier::Smoke,
+                    seed_tier: TerminalSeedTier::Full,
                     condition_set: "clean".to_owned(),
                     vehicle_variant: "full".to_owned(),
                     expectation_tier: "stress".to_owned(),
@@ -4855,20 +4894,82 @@ mod tests {
                     && record.resolved.resolved_seed == 0
             })
             .expect("full payload a45 high seed 0 should be present");
+        let full_a80_high_success = report
+            .records
+            .iter()
+            .find(|record| {
+                record.resolved.entry_id == "terminal_guidance_clean_full_payload"
+                    && record.resolved.selector.arc_point == "a80"
+                    && record.resolved.selector.velocity_band == "high"
+                    && record.resolved.resolved_seed == 3
+            })
+            .expect("full payload a80 high seed 3 should be present");
 
         assert_eq!(half_a45_high.analytic.class, BatchRunAnalyticClass::Scored);
         assert_eq!(
             full_a45_high.manifest.mission_outcome,
             MissionOutcome::FailedCrash
         );
-        assert_eq!(full_a45_high.analytic.class, BatchRunAnalyticClass::Scored);
-        assert_eq!(full_a45_high.analytic.reason, None);
+        assert_eq!(
+            full_a45_high.analytic.class,
+            BatchRunAnalyticClass::Frontier
+        );
+        assert_eq!(
+            full_a45_high.analytic.reason,
+            Some(BatchRunAnalyticReason::LowThrustHighEnergy)
+        );
         assert!(
             full_a45_high
                 .analytic
                 .stop_accel_margin_mps2
                 .expect("reachability margin should be present")
                 > 0.0
+        );
+        assert_eq!(
+            full_a80_high_success.manifest.mission_outcome,
+            MissionOutcome::Success
+        );
+        assert_eq!(
+            full_a80_high_success.analytic.class,
+            BatchRunAnalyticClass::Frontier
+        );
+        assert_eq!(
+            full_a80_high_success.analytic.reason,
+            Some(BatchRunAnalyticReason::LowThrustHighEnergy)
+        );
+
+        let impossible_runs = report
+            .records
+            .iter()
+            .filter(|record| matches!(record.analytic.class, BatchRunAnalyticClass::Impossible))
+            .count();
+        let frontier_success_runs = report
+            .records
+            .iter()
+            .filter(|record| {
+                matches!(record.analytic.class, BatchRunAnalyticClass::Frontier)
+                    && matches!(record.manifest.mission_outcome, MissionOutcome::Success)
+            })
+            .count();
+        let frontier_failure_runs = report
+            .records
+            .iter()
+            .filter(|record| {
+                matches!(record.analytic.class, BatchRunAnalyticClass::Frontier)
+                    && !matches!(record.manifest.mission_outcome, MissionOutcome::Success)
+            })
+            .count();
+
+        assert!(frontier_success_runs > 0);
+        assert!(frontier_failure_runs > 0);
+        assert_eq!(report.summary.invalidated_runs, impossible_runs);
+        assert!(report.summary.success_runs >= frontier_success_runs);
+        assert!(report.summary.failure_runs >= frontier_failure_runs);
+        assert_eq!(
+            report.summary.success_runs
+                + report.summary.failure_runs
+                + report.summary.invalidated_runs,
+            report.summary.total_runs
         );
     }
 
