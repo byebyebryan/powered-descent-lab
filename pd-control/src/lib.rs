@@ -626,6 +626,37 @@ mod tests {
     }
 
     #[test]
+    fn terminal_pdg_centered_latest_safe_settle_reports_applied_targets() {
+        let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        observation.position_m = Vec2::new(0.14620252197901334, 13.629634264157449);
+        observation.velocity_mps = Vec2::new(-0.08783825208171722, -2.449800120008519);
+        observation.target_dx_m = -0.14620252197901334;
+        observation.height_above_target_m = 13.629634264157449;
+        observation.touchdown_clearance_m = 8.612550617449283;
+        observation.min_hull_clearance_m = 8.612550617449283;
+
+        let mut controller = TerminalPdgController::default();
+        let frame = controller.update(&ctx, &observation);
+
+        let expected_descent = observation.touchdown_clearance_m / 4.0;
+        let desired_vertical = frame_metric_f64(&frame, metric::DESIRED_VERTICAL_SPEED_MPS);
+        let desired_attitude = frame_metric_f64(&frame, metric::DESIRED_ATTITUDE_RAD);
+        let vertical_error = frame_metric_f64(&frame, metric::VERTICAL_ERROR_MPS);
+
+        assert_eq!(frame.status, "terminal pdg settled descent");
+        assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_MODE),
+            Some(&TelemetryValue::from("latest safe"))
+        );
+        assert!((desired_vertical + expected_descent).abs() < 1e-9);
+        assert_eq!(desired_attitude, frame.command.target_attitude_rad);
+        assert!((vertical_error - (desired_vertical - observation.velocity_mps.y)).abs() < 1e-9);
+    }
+
+    #[test]
     fn terminal_pdg_preserves_more_altitude_when_lateral_cleanup_is_behind() {
         let ctx = RunContext::from_scenario(&earth_terminal_reference_scenario()).unwrap();
         let mut high_vx_observation = pd_core::SimulationState::new(&ctx)

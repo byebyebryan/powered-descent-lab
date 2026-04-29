@@ -170,6 +170,12 @@ struct TerminalCommandState {
     latest_safe_margin_s: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SettledDescentCommand {
+    command: Command,
+    target_down_speed_mps: f64,
+}
+
 #[derive(Debug)]
 pub struct TerminalPdgController {
     config: TerminalPdgControllerConfig,
@@ -879,7 +885,7 @@ impl TerminalPdgController {
         &self,
         view: &ControllerView<'_>,
         current_state: &TerminalCommandState,
-    ) -> Option<Command> {
+    ) -> Option<SettledDescentCommand> {
         let touchdown_clearance_m = view.touchdown_clearance_m();
         let settle_handoff_clearance_m = self.config.touchdown_rescue_clearance_m.min(1.0);
         if touchdown_clearance_m <= settle_handoff_clearance_m {
@@ -904,11 +910,9 @@ impl TerminalPdgController {
         let meaningful_lateral_error =
             near_touchdown_edge || vx_mps.abs() > self.config.touchdown_zero_vx_mps;
         let centered_for_settle_schedule = dx_m.abs() <= (0.25 * touchdown_center_limit_m);
-        let guidance_down_speed_mps = (-current_state.desired_vertical_speed_mps)
-            .max(self.config.vy_touch_cap_mps)
-            .max(self.config.touchdown_zero_vy_mps);
-        let brisk_guidance_descent = guidance_down_speed_mps >= 2.0 * self.config.vy_touch_cap_mps;
-        let settle_schedule_active = centered_for_settle_schedule && brisk_guidance_descent;
+        let settle_schedule_active = current_state.mode == GuidanceMode::LatestSafe
+            && centered_for_settle_schedule
+            && !meaningful_lateral_error;
         if !meaningful_lateral_error && !settle_schedule_active {
             return None;
         }
@@ -949,7 +953,13 @@ impl TerminalPdgController {
             .max_tilt_rad
             .min(self.config.touchdown_rescue_tilt_rad)
             .max(0.0);
-        let target_attitude_rad = (-0.08 * vx_mps).clamp(-attitude_limit, attitude_limit);
+        let recenter_attitude_rad = if settle_schedule_active {
+            0.012 * dx_m
+        } else {
+            0.0
+        };
+        let target_attitude_rad =
+            (recenter_attitude_rad - (0.08 * vx_mps)).clamp(-attitude_limit, attitude_limit);
         let lateral_brake_accel_mps2 =
             max_thrust_accel_mps2 * applied_throttle_frac * target_attitude_rad.sin().abs();
         let current_down_speed_mps = (-view.observation.velocity_mps.y).max(0.0);
@@ -968,9 +978,12 @@ impl TerminalPdgController {
             return None;
         }
 
-        Some(Command {
-            throttle_frac,
-            target_attitude_rad,
+        Some(SettledDescentCommand {
+            command: Command {
+                throttle_frac,
+                target_attitude_rad,
+            },
+            target_down_speed_mps,
         })
     }
 
@@ -1400,18 +1413,44 @@ impl Controller for TerminalPdgController {
         let planning_height_m = view.height_above_target_m().max(0.0);
         let phase = self.phase_for_height(planning_height_m).to_owned();
         let command_state = self.compute_command_state(&view);
-        let status = match command_state.mode {
+        let guidance_status = match command_state.mode {
             GuidanceMode::NominalReady => "terminal pdg nominal",
             GuidanceMode::NominalPending => "terminal pdg trimming into envelope",
             GuidanceMode::LatestSafe => "terminal pdg latest safe brake",
         };
-        let command = self
-            .touchdown_cut_command(&view, &command_state)
-            .or_else(|| self.settled_descent_command(&view, &command_state))
-            .unwrap_or(Command {
-                throttle_frac: command_state.throttle_frac,
-                target_attitude_rad: command_state.target_attitude_rad,
-            });
+
+        let touchdown_command = self.touchdown_cut_command(&view, &command_state);
+        let settled_descent = if touchdown_command.is_none() {
+            self.settled_descent_command(&view, &command_state)
+        } else {
+            None
+        };
+        let (command, status, desired_vertical_speed_mps, desired_attitude_rad) =
+            if let Some(command) = touchdown_command {
+                (
+                    command,
+                    guidance_status,
+                    command_state.desired_vertical_speed_mps,
+                    command_state.target_attitude_rad,
+                )
+            } else if let Some(settled_descent) = settled_descent {
+                (
+                    settled_descent.command,
+                    "terminal pdg settled descent",
+                    -settled_descent.target_down_speed_mps,
+                    settled_descent.command.target_attitude_rad,
+                )
+            } else {
+                (
+                    Command {
+                        throttle_frac: command_state.throttle_frac,
+                        target_attitude_rad: command_state.target_attitude_rad,
+                    },
+                    guidance_status,
+                    command_state.desired_vertical_speed_mps,
+                    command_state.target_attitude_rad,
+                )
+            };
         let mut builder = ControllerFrameBuilder::new(command)
             .status(status)
             .phase(phase.clone())
@@ -1420,12 +1459,9 @@ impl Controller for TerminalPdgController {
             .metric(metric::GUIDANCE_ACTIVE, true)
             .metric(
                 metric::DESIRED_VERTICAL_SPEED_MPS,
-                command_state.desired_vertical_speed_mps,
+                desired_vertical_speed_mps,
             )
-            .metric(
-                metric::DESIRED_ATTITUDE_RAD,
-                command_state.target_attitude_rad,
-            )
+            .metric(metric::DESIRED_ATTITUDE_RAD, desired_attitude_rad)
             .metric(metric::PROJECTED_DX_M, command_state.projected_dx_m)
             .metric(metric::PROJECTED_TIME_S, command_state.projected_time_s)
             .metric(metric::GUIDANCE_MODE, command_state.mode.label())
@@ -1444,7 +1480,7 @@ impl Controller for TerminalPdgController {
             )
             .metric(
                 metric::VERTICAL_ERROR_MPS,
-                command_state.desired_vertical_speed_mps - view.vertical_speed_mps(),
+                desired_vertical_speed_mps - view.vertical_speed_mps(),
             )
             .metric(metric::LATERAL_ERROR_MPS, -view.observation.velocity_mps.x)
             .metric(metric::HOVER_THROTTLE, view.hover_throttle_frac());
