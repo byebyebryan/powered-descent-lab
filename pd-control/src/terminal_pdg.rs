@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
 use crate::{Controller, ControllerFrame, TelemetryValue};
 
+const TERMINAL_GATE_LONG_CAPTURE_BURN_TIME_MAX_S: f64 = 30.0;
+const TERMINAL_GATE_CANDIDATE_TIME_EPS_S: f64 = 1e-6;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalPdgControllerConfig {
     pub max_tilt_rad: f64,
@@ -640,7 +643,7 @@ impl TerminalPdgController {
             );
             if !candidate_times
                 .iter()
-                .any(|existing| (existing - t).abs() <= 1e-6)
+                .any(|existing| (existing - t).abs() <= TERMINAL_GATE_CANDIDATE_TIME_EPS_S)
             {
                 candidate_times.push(t);
             }
@@ -649,7 +652,7 @@ impl TerminalPdgController {
             let max_time = self.config.terminal_gate_burn_time_max_s;
             if !candidate_times
                 .iter()
-                .any(|existing| (existing - max_time).abs() <= 1e-6)
+                .any(|existing| (existing - max_time).abs() <= TERMINAL_GATE_CANDIDATE_TIME_EPS_S)
             {
                 candidate_times.push(max_time);
             }
@@ -762,8 +765,31 @@ impl TerminalPdgController {
                 )
             })
             .collect();
-        let best_candidate =
+        let base_candidate =
             self.select_latest_safe_candidate(&mut candidates, lateral_dx_m, target_half_width_m);
+        let best_candidate = if self.latest_safe_long_capture_needed(
+            base_candidate,
+            altitude_m,
+            dx_m,
+            lateral_dx_m,
+            target_half_width_m,
+        ) {
+            self.add_latest_safe_long_capture_candidates(
+                &mut candidates,
+                dx_m,
+                dy_m,
+                vx_mps,
+                vy_up_mps,
+                target_vy_up,
+                max_tilt,
+                max_thrust_accel_mps2,
+                gravity_mps2,
+            );
+            self.select_latest_safe_long_capture_candidate(&mut candidates)
+                .unwrap_or(base_candidate)
+        } else {
+            base_candidate
+        };
 
         LatestSafeState {
             latest_safe_margin_s: time_to_impact
@@ -1238,11 +1264,8 @@ impl TerminalPdgController {
         lateral_dx_m: f64,
         target_half_width_m: f64,
     ) -> TerminalGateCandidate {
-        let aggressive_dx_threshold = self
-            .config
-            .terminal_gate_latest_safe_aggressive_dx_abs_m
-            .max(self.config.terminal_gate_latest_safe_aggressive_dx_ratio * target_half_width_m);
-        let urgent_lateral_recovery = lateral_dx_m.abs() > aggressive_dx_threshold;
+        let urgent_lateral_recovery =
+            self.latest_safe_urgent_lateral_recovery(lateral_dx_m, target_half_width_m);
         if urgent_lateral_recovery {
             candidates.sort_by(aggressive_latest_safe_preference_order);
             candidates
@@ -1258,6 +1281,86 @@ impl TerminalPdgController {
                 .find(|candidate| candidate.tilt_feasible && candidate.required_accel_ratio <= 1.0)
                 .unwrap_or_else(|| candidates[0])
         }
+    }
+
+    fn latest_safe_urgent_lateral_recovery(
+        &self,
+        lateral_dx_m: f64,
+        target_half_width_m: f64,
+    ) -> bool {
+        let aggressive_dx_threshold = self
+            .config
+            .terminal_gate_latest_safe_aggressive_dx_abs_m
+            .max(self.config.terminal_gate_latest_safe_aggressive_dx_ratio * target_half_width_m);
+        lateral_dx_m.abs() > aggressive_dx_threshold
+    }
+
+    fn latest_safe_long_capture_needed(
+        &self,
+        base_candidate: TerminalGateCandidate,
+        altitude_m: f64,
+        dx_m: f64,
+        lateral_dx_m: f64,
+        target_half_width_m: f64,
+    ) -> bool {
+        altitude_m > self.config.vy_low_alt_cap_alt_m
+            && base_candidate.tilt_feasible
+            && base_candidate.required_accel_ratio > 1.0
+            && dx_m * lateral_dx_m < 0.0
+            && self.latest_safe_urgent_lateral_recovery(lateral_dx_m, target_half_width_m)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn add_latest_safe_long_capture_candidates(
+        &self,
+        candidates: &mut Vec<TerminalGateCandidate>,
+        dx_m: f64,
+        dy_m: f64,
+        vx_mps: f64,
+        vy_up_mps: f64,
+        target_vy_up_mps: f64,
+        max_tilt_rad: f64,
+        max_thrust_accel_mps2: f64,
+        gravity_mps2: f64,
+    ) {
+        let capped_time = self.config.terminal_gate_burn_time_max_s;
+        let long_time = TERMINAL_GATE_LONG_CAPTURE_BURN_TIME_MAX_S.max(capped_time);
+        if long_time <= capped_time + TERMINAL_GATE_CANDIDATE_TIME_EPS_S {
+            return;
+        }
+
+        for burn_time_s in [0.5 * (capped_time + long_time), long_time] {
+            if candidates.iter().any(|candidate| {
+                (candidate.burn_time_s - burn_time_s).abs() <= TERMINAL_GATE_CANDIDATE_TIME_EPS_S
+            }) {
+                continue;
+            }
+            candidates.push(self.evaluate_candidate(
+                dx_m,
+                dy_m,
+                vx_mps,
+                vy_up_mps,
+                burn_time_s,
+                target_vy_up_mps,
+                max_tilt_rad,
+                max_thrust_accel_mps2,
+                1.0,
+                0.0,
+                gravity_mps2,
+            ));
+        }
+    }
+
+    fn select_latest_safe_long_capture_candidate(
+        &self,
+        candidates: &mut [TerminalGateCandidate],
+    ) -> Option<TerminalGateCandidate> {
+        candidates.sort_by(candidate_preference_order);
+        candidates.iter().copied().find(|candidate| {
+            candidate.burn_time_s
+                > self.config.terminal_gate_burn_time_max_s + TERMINAL_GATE_CANDIDATE_TIME_EPS_S
+                && candidate.tilt_feasible
+        })
     }
 }
 
@@ -1506,6 +1609,78 @@ mod tests {
 
         assert_eq!(selected.burn_time_s, 6.0);
         assert_eq!(selected.required_accel_ratio, 1.2);
+    }
+
+    #[test]
+    fn long_capture_only_activates_for_high_urgent_over_authority_candidate() {
+        let controller = TerminalPdgController::default();
+        let candidate = TerminalGateCandidate {
+            burn_time_s: 6.0,
+            required_accel_ratio: 1.01,
+            upward_accel_mps2: 5.0,
+            tilt_feasible: true,
+            ready: false,
+        };
+
+        assert!(controller.latest_safe_long_capture_needed(candidate, 80.0, -40.0, 32.0, 18.0));
+
+        let feasible_candidate = TerminalGateCandidate {
+            required_accel_ratio: 0.99,
+            ready: true,
+            ..candidate
+        };
+        assert!(!controller.latest_safe_long_capture_needed(
+            feasible_candidate,
+            80.0,
+            -40.0,
+            32.0,
+            18.0
+        ));
+        assert!(!controller.latest_safe_long_capture_needed(candidate, 20.0, -40.0, 32.0, 18.0));
+        assert!(!controller.latest_safe_long_capture_needed(candidate, 80.0, -40.0, 12.0, 18.0));
+        assert!(!controller.latest_safe_long_capture_needed(candidate, 80.0, 40.0, 32.0, 18.0));
+    }
+
+    #[test]
+    fn long_capture_prefers_added_lower_ratio_candidate() {
+        let controller = TerminalPdgController::default();
+        let mut candidates = vec![
+            TerminalGateCandidate {
+                burn_time_s: 6.0,
+                required_accel_ratio: 1.2,
+                upward_accel_mps2: 5.0,
+                tilt_feasible: true,
+                ready: false,
+            },
+            TerminalGateCandidate {
+                burn_time_s: 14.0,
+                required_accel_ratio: 0.9,
+                upward_accel_mps2: 3.0,
+                tilt_feasible: true,
+                ready: true,
+            },
+            TerminalGateCandidate {
+                burn_time_s: 22.0,
+                required_accel_ratio: 1.2,
+                upward_accel_mps2: 2.0,
+                tilt_feasible: true,
+                ready: false,
+            },
+            TerminalGateCandidate {
+                burn_time_s: 30.0,
+                required_accel_ratio: 1.05,
+                upward_accel_mps2: 2.0,
+                tilt_feasible: true,
+                ready: false,
+            },
+        ];
+
+        let selected = controller
+            .select_latest_safe_long_capture_candidate(&mut candidates)
+            .unwrap();
+
+        assert_eq!(selected.burn_time_s, 30.0);
+        assert_eq!(selected.required_accel_ratio, 1.05);
     }
 }
 

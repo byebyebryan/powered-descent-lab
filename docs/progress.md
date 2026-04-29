@@ -71,58 +71,120 @@ Latest local reports:
 
 Latest local wall-clock signal with `8` workers:
 
-- `terminal_traj_err_suite`: `13.70s`
-- `terminal_traj_err_full`: `56.01s`
+- `terminal_traj_err_suite`: `15.33s`
+- `terminal_traj_err_full`: `58.51s`
 
 Smoke tier:
 
 - `terminal_traj_err_suite`
-  - `current`: `685 / 720` scored successes, `35` scored failures,
+  - `current`: `686 / 720` scored successes, `34` scored failures,
     `36` impossible warnings, `48` frontier annotations
 
 Full pack:
 
 - `terminal_traj_err_full`
-  - `current`: `2732 / 2880` scored successes, `148` scored failures,
+  - `current`: `2741 / 2880` scored successes, `139` scored failures,
     `144` impossible warnings, `192` frontier annotations
 
 `terminal_traj_err_full` current-lane split by condition:
 
-- `traj_undershoot_small`: `690 / 720` scored, `30` scored failures,
+- `traj_undershoot_small`: `693 / 720` scored, `27` scored failures,
   `36` impossible warnings, `48` frontier annotations
 - `traj_undershoot_large`: `707 / 720` scored, `13` scored failures,
   `36` impossible warnings, `48` frontier annotations
 - `traj_overshoot_small`: `672 / 720` scored, `48` scored failures,
   `36` impossible warnings, `48` frontier annotations
-- `traj_overshoot_large`: `663 / 720` scored, `57` scored failures,
+- `traj_overshoot_large`: `669 / 720` scored, `51` scored failures,
   `36` impossible warnings, `48` frontier annotations
 
 `terminal_traj_err_full` current-lane split by payload tier:
 
 - `empty`: `1008 / 1008`
-- `half`: `999 / 1008`, `9` scored failures
-- `full`: `725 / 864` scored, `139` scored failures,
+- `half`: `1005 / 1008`, `3` scored failures
+- `full`: `728 / 864` scored, `136` scored failures,
   `144` impossible warnings, `192` frontier annotations
 
 The trajectory-error read is now:
 
 - `empty` is solved across the projected-miss corpus
-- `half` is nearly solved, with sparse high-energy overshoot-large outliers
+- `half` is nearly solved, with only sparse high-energy overshoot-large outliers
   still standing out
 - `full` is represented as a scored low-thrust/high-energy frontier stress tier
 - the remaining scored failures are real stress cases, not report artifacts:
-  - `traj_overshoot_large / half / high`: `9` failures across `a30 / a45 /
-    a60 / a80`
+  - `traj_overshoot_large / half / high`: `3` failures across `a60 / a80`
   - low-thrust/high-energy `full / high` frontier failures across clean and
     trajectory-error conditions
+
+### Latest tuning note
+
+The latest tuning loops deliberately rejected several broad controller levers:
+
+- Late-touchdown rescue sign/tilt changes regressed `terminal_traj_err_suite`
+  from the checkpoint `685 / 720` scored successes to the `650-664 / 720`
+  range, even when narrowed to off-pad projected touchdown.
+- Extending lateral-hold descent slowing above the touchdown band did not solve
+  `traj_overshoot_large / half / a45 / high / seed 6`; it moved the suite to
+  `684 / 720` and introduced an additional frontier off-target result.
+- Letting urgent latest-safe recovery pick tilt-infeasible short candidates was
+  too broad: the suite dropped to `677 / 720` and created new empty/half
+  overshoot regressions.
+- Shortening terminal gate vertical-brake timing with a shared-control tilt
+  assumption was too sensitive globally; both `0.5x` and `0.85x` tilt scales
+  broke pinned `pd-control` landing fixtures before suite testing.
+- Adding only a midpoint latest-safe candidate kept the suite at `685 / 720` but
+  did not fix `traj_overshoot_large / half / a45 / high / seed 6`.
+- Extending projected-off-pad lateral hold to `80 m` worsened that seed in a
+  single-run probe: it still crashed off target, with higher normal speed and
+  attitude error.
+- Raising the latest-safe max horizon from `14 s` to `30 s` proved the seed is
+  recoverable only when paired with a midpoint candidate, but the broad default
+  regressed the smoke suite to `683 / 720`, created new half-payload scored
+  crashes/timeouts, and raised mean sim time from about `33.6 s` to `46.8 s`.
+
+Focused diagnosis that led to the accepted fix:
+
+- `traj_overshoot_large / half / a45 / high / seed 6` is the lane's worst
+  projected-overshoot smoke seed (`engine_off_impact_x = 105 m`). The passing
+  `seed 0` and `seed 1` variants sit at `75 m` and `90 m`.
+- At about `40 m` altitude the failed run is still roughly `45 m` off-pad,
+  moving laterally at about `7 m/s`, and descending near `19 m/s`; by `24 m`
+  it is still roughly `49 m` off-pad. Late touchdown rescue then correctly
+  protects touchdown speed, but it has no remaining room to recenter.
+- A simple ZEM/ZEV feasibility check from the initial state needs roughly a
+  `20 s` or longer capture horizon before the combined acceleration fits the
+  tilt limit. The current latest-safe horizon is capped at `14 s`, so the
+  controller stays in short-horizon emergency braking until the problem is
+  geometrically unrecoverable.
+
+The useful finding is that the sparse half-payload overshoot failures are not
+final-touchdown rescue problems. The accepted fix is a conditional
+long-capture mode: when an urgent latest-safe candidate is over authority and
+the current target offset and projected ballistic miss have opposite signs, the
+controller adds `22 s` and `30 s` capture candidates without raising the global
+`14 s` latest-safe cap.
+
+The smoke suite improved from `685 / 720` to `686 / 720` scored successes. The
+full trajectory-error pack improved from `2732 / 2880` to `2741 / 2880` scored
+successes, with no new failures relative to the previous full cache. The patch
+fixed six half-payload overshoot-large full-pack failures across `a30/a45`
+plus three full-payload frontier failures, leaving only:
+
+- `traj_overshoot_large / half / a60 / high / seed 2`
+- `traj_overshoot_large / half / a60 / high / seed 4`
+- `traj_overshoot_large / half / a80 / high / seed 2`
 
 ### Active implementation focus
 
 1. Keep the next controller pass general and focused on sparse
    trajectory-error scored failures:
    - avoid seed-specific or condition-specific state-machine hacks
-   - if touching the controller, prefer a broader rule for buying vertical
-     cushion when low-clearance touchdown is laterally unsafe
+   - avoid late touchdown-rescue sign/tilt tweaks as the first lever; the
+     latest loop showed those create broad trajectory-error regressions
+   - avoid broad latest-safe candidate ordering or vertical timing changes
+     unless a pinned fixture and suite run both show no regressions
+   - next controller experiment should focus on the remaining `a60/a80`
+     overshoot-large high-energy cases without widening long capture into
+     same-side projected misses
 2. Keep refining feasibility / annotation semantics only where the vehicle is
    authority limited, while keeping frontier failures scored
 3. Add the next terminal corpus only after the current clean and
