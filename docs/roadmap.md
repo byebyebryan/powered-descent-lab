@@ -22,8 +22,8 @@ Current implementation status:
 
 - Phase 0 is complete.
 - Phase 1 is functionally complete for the first usable landing slice.
-- Phase 2 is now well underway and has crossed the line from scaffolding into a
-  usable bot workflow:
+- Phase 2 is now a late-stage bot workflow phase rather than a scaffolding
+  phase:
   - shared controller kit and multiple built-in controller styles
   - seeded packs and native multithreaded batch execution
   - single-run and batch static reports
@@ -175,6 +175,8 @@ Status:
   - analytic impossible-run classification for clearly unrecoverable terminal
     cells based on controller-independent vertical and coupled terminal stop
     bounds
+  - low-altitude dwell and low-altitude unsafe-recovery metrics for diagnosing
+    landing-time tuning without baking those diagnostics into controller logic
 - latest terminal checkpoint:
   - clean smoke current lane:
     `168 / 180` scored successes, `12` scored failures,
@@ -186,20 +188,21 @@ Status:
     Earth corpus; clean full-payload issues are scored frontier failures plus
     analytically impossible warnings
   - trajectory-error full current lane:
-    `2732 / 2880` scored successes, `148` scored failures,
+    `2754 / 2880` scored successes, `126` scored failures,
     `144` impossible warnings, `192` frontier annotations
-  - trajectory-error `empty` is solved; `half` has sparse high-energy
+  - trajectory-error `empty` is solved; `half` has only two high-energy
     overshoot-large outliers; `full` is represented as the main scored
     authority-frontier tier
 - still missing:
-  - controller robustness on the remaining sparse high-energy trajectory-error
-    outliers
+  - optional targeted controller robustness work on the two remaining
+    half-payload trajectory-error outliers, but this should not block Phase 2
+    corpus/evaluation progress
   - broader curated terminal conditions built on top of that selector model:
     - later terrain and obstacle conditions
   - broader feasibility/frontier classification while keeping
     authority-frontier cells scored
-  - thresholded regression policy once the corpus and metrics are stable enough
-    to support it
+  - thresholded regression policy now that the corpus and metrics are stable
+    enough to support it
   - deeper report polish that depends on real matrix scenarios and controller
     signal rather than the old provisional corpus
 
@@ -356,15 +359,18 @@ infrastructure.
 
 The next useful work is:
 
-1. Treat the remaining sparse trajectory-error failures as stress probes, not as
-   a reason to add seed-specific controller branches.
-2. Keep refining feasibility/frontier semantics where the vehicle is authority
+1. Treat the current terminal controller as the Phase 2 baseline unless a
+   specific, general controller hypothesis can clear a smoke-suite
+   no-regression gate.
+2. Start thresholded regression policy so future controller changes have an
+   explicit pass/fail bar.
+3. Keep refining feasibility/frontier semantics where the vehicle is authority
    limited, while keeping frontier cells scored so regressions do not disappear
    into warning buckets.
-3. Only then add the next corpus layer, starting with terrain or obstacle
-   terminal conditions.
+4. Add the next corpus layer, starting with terrain or obstacle terminal
+   conditions.
 
-The immediate controller direction should stay general: if the low-altitude
-lateral cleanup problem gets another pass, prefer a broad rule that buys
-vertical cushion when touchdown is laterally unsafe, rather than a table of
-arc/seed/condition exceptions.
+The immediate controller direction should stay conservative. Recent broad
+landing-time and touchdown shortcuts either did not move outcomes or added
+scored crashes, so another broad tuning loop is lower value than regression
+policy and the next physical condition space.

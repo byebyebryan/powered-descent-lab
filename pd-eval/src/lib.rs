@@ -11,8 +11,8 @@ use pd_control::{
     ControlledRunArtifacts, ControllerSpec, built_in_controller_spec, run_controller_spec,
 };
 use pd_core::{
-    LandingPadSpec, MissionOutcome, RunContext, RunManifest, RunSummary, SampleRecord,
-    ScenarioSpec, VehicleSpec,
+    EvaluationGoal, LandingPadSpec, MissionOutcome, RunContext, RunManifest, RunSummary,
+    SampleRecord, ScenarioSpec, VehicleSpec,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -24,7 +24,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 13;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 14;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -109,6 +109,10 @@ pub struct BatchRunReviewMetrics {
     pub fuel_used_pct_of_max: Option<f64>,
     #[serde(default)]
     pub landing_offset_abs_m: Option<f64>,
+    #[serde(default)]
+    pub low_altitude_dwell_s: Option<f64>,
+    #[serde(default)]
+    pub low_altitude_unsafe_recovery_s: Option<f64>,
     #[serde(default)]
     pub reference_gap_mean_m: Option<f64>,
     #[serde(default)]
@@ -384,6 +388,10 @@ pub struct BatchGroupSummary {
     pub fuel_used_pct_of_max: Option<BatchMetricSummary>,
     #[serde(default)]
     pub landing_offset_abs_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub low_altitude_dwell_s: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub low_altitude_unsafe_recovery_s: Option<BatchMetricSummary>,
     #[serde(default)]
     pub reference_gap_mean_m: Option<BatchMetricSummary>,
     pub mission_outcomes: BTreeMap<String, usize>,
@@ -3001,6 +3009,8 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
     let mut success_fuel_remaining = Vec::new();
     let mut success_fuel_used_pct = Vec::new();
     let mut success_landing_offset_abs_m = Vec::new();
+    let mut success_low_altitude_dwell_s = Vec::new();
+    let mut success_low_altitude_unsafe_recovery_s = Vec::new();
     let mut success_reference_gap_mean_m = Vec::new();
     let mut success_sim_time_s = Vec::new();
     let mut success_pointers = Vec::new();
@@ -3025,6 +3035,12 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             }
             if let Some(value) = record.review.landing_offset_abs_m {
                 success_landing_offset_abs_m.push(value);
+            }
+            if let Some(value) = record.review.low_altitude_dwell_s {
+                success_low_altitude_dwell_s.push(value);
+            }
+            if let Some(value) = record.review.low_altitude_unsafe_recovery_s {
+                success_low_altitude_unsafe_recovery_s.push(value);
             }
             if let Some(value) = record.review.reference_gap_mean_m {
                 success_reference_gap_mean_m.push(value);
@@ -3061,6 +3077,8 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         mean_success_fuel_remaining_kg,
         fuel_used_pct_of_max: metric_summary(&success_fuel_used_pct),
         landing_offset_abs_m: metric_summary(&success_landing_offset_abs_m),
+        low_altitude_dwell_s: metric_summary(&success_low_altitude_dwell_s),
+        low_altitude_unsafe_recovery_s: metric_summary(&success_low_altitude_unsafe_recovery_s),
         reference_gap_mean_m: metric_summary(&success_reference_gap_mean_m),
         mission_outcomes,
         end_reasons,
@@ -3131,13 +3149,81 @@ fn derive_run_review_metrics(
         reference_gap_metrics(scenario, &artifacts.samples)
             .map(|metrics| (Some(metrics.gap_mean_m), Some(metrics.gap_max_m)))
             .unwrap_or((None, None));
+    let (low_altitude_dwell_s, low_altitude_unsafe_recovery_s) =
+        low_altitude_recovery_metrics(scenario, &artifacts.samples)
+            .map(|metrics| {
+                (
+                    Some(metrics.low_altitude_dwell_s),
+                    Some(metrics.low_altitude_unsafe_recovery_s),
+                )
+            })
+            .unwrap_or((None, None));
 
     BatchRunReviewMetrics {
         fuel_used_pct_of_max,
         landing_offset_abs_m,
+        low_altitude_dwell_s,
+        low_altitude_unsafe_recovery_s,
         reference_gap_mean_m,
         reference_gap_max_m,
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LowAltitudeRecoveryMetrics {
+    low_altitude_dwell_s: f64,
+    low_altitude_unsafe_recovery_s: f64,
+}
+
+fn low_altitude_recovery_metrics(
+    scenario: &ScenarioSpec,
+    samples: &[SampleRecord],
+) -> Option<LowAltitudeRecoveryMetrics> {
+    if !matches!(scenario.mission.goal, EvaluationGoal::LandingOnPad { .. }) {
+        return None;
+    }
+    let target_pad = scenario
+        .world
+        .landing_pad(scenario.mission.goal.target_pad_id())?;
+    let touchdown_center_limit_m =
+        (target_pad.half_width_m() - scenario.vehicle.geometry.touchdown_half_span_m).max(0.0);
+    let low_altitude_threshold_m = scenario
+        .vehicle
+        .geometry
+        .touchdown_base_offset_m
+        .abs()
+        .max(1.0);
+    let safe_tangential_speed_mps = scenario
+        .vehicle
+        .safe_touchdown_tangential_speed_mps
+        .max(0.0);
+    let mut low_altitude_dwell_s = 0.0;
+    let mut low_altitude_unsafe_recovery_s = 0.0;
+
+    for pair in samples.windows(2) {
+        let current = &pair[0];
+        let next = &pair[1];
+        let dt_s = next.sim_time_s - current.sim_time_s;
+        if !dt_s.is_finite() || dt_s <= 0.0 {
+            continue;
+        }
+        let observation = &current.observation;
+        if observation.touchdown_clearance_m >= low_altitude_threshold_m {
+            continue;
+        }
+
+        low_altitude_dwell_s += dt_s;
+        let laterally_unsafe = observation.target_dx_m.abs() > touchdown_center_limit_m
+            || observation.velocity_mps.x.abs() > safe_tangential_speed_mps;
+        if laterally_unsafe {
+            low_altitude_unsafe_recovery_s += dt_s;
+        }
+    }
+
+    Some(LowAltitudeRecoveryMetrics {
+        low_altitude_dwell_s,
+        low_altitude_unsafe_recovery_s,
+    })
 }
 
 #[derive(Clone, Copy, Debug)]

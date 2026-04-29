@@ -1420,23 +1420,32 @@ fn render_overview_tracking_cell(
         .as_ref()
         .map(|summary| format_metric_value(summary, MetricDisplayKind::Meters))
         .unwrap_or_else(|| "-".to_owned());
+    let low_unsafe = review
+        .low_altitude_unsafe_recovery_s
+        .as_ref()
+        .map(|summary| format_metric_value(summary, MetricDisplayKind::Seconds))
+        .unwrap_or_else(|| "-".to_owned());
     let sub_html = if show_delta {
-        metric_delta_value(
+        let reference_delta = metric_delta_value(
             review.reference_gap_mean_m.as_ref(),
             baseline.and_then(|item| item.reference_gap_mean_m.as_ref()),
         )
-        .map(|delta| {
-            format!(
-                r#"<span class="compare-toggle-target">Δ {}</span><span class="standalone-toggle-target">mean ref deviation</span>"#,
-                escape_html(&format_metric_delta_value(delta, MetricDisplayKind::Meters))
-            )
-        })
-        .unwrap_or_else(|| {
-            r#"<span class="compare-toggle-target">Δ -</span><span class="standalone-toggle-target">mean ref deviation</span>"#
-                .to_owned()
-        })
+        .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Meters))
+        .unwrap_or_else(|| "-".to_owned());
+        let low_unsafe_delta = metric_delta_value(
+            review.low_altitude_unsafe_recovery_s.as_ref(),
+            baseline.and_then(|item| item.low_altitude_unsafe_recovery_s.as_ref()),
+        )
+        .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Seconds))
+        .unwrap_or_else(|| "-".to_owned());
+        format!(
+            r#"<span class="compare-toggle-target">low unsafe {low_unsafe} · Δ ref {reference_delta} · Δ low {low_unsafe_delta}</span><span class="standalone-toggle-target">low unsafe {low_unsafe}</span>"#,
+            low_unsafe = escape_html(&low_unsafe),
+            reference_delta = escape_html(&reference_delta),
+            low_unsafe_delta = escape_html(&low_unsafe_delta),
+        )
     } else {
-        escape_html("mean ref deviation")
+        escape_html(&format!("low unsafe {low_unsafe}"))
     };
     format!(
         r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
@@ -1484,9 +1493,16 @@ fn render_overview_tracking_diff_cell(
     )
     .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Meters))
     .unwrap_or_else(|| "-".to_owned());
+    let low_unsafe_delta = metric_delta_value(
+        candidate.low_altitude_unsafe_recovery_s.as_ref(),
+        baseline.low_altitude_unsafe_recovery_s.as_ref(),
+    )
+    .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Seconds))
+    .unwrap_or_else(|| "-".to_owned());
     format!(
-        r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">ref deviation delta</div></div>"#,
-        escape_html(&delta)
+        r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">low unsafe {}</div></div>"#,
+        escape_html(&delta),
+        escape_html(&low_unsafe_delta)
     )
 }
 
@@ -2354,6 +2370,8 @@ struct ReviewAggregate {
     sim_time_stats: Option<crate::BatchMetricSummary>,
     fuel_used_pct_of_max: Option<crate::BatchMetricSummary>,
     landing_offset_abs_m: Option<crate::BatchMetricSummary>,
+    low_altitude_dwell_s: Option<crate::BatchMetricSummary>,
+    low_altitude_unsafe_recovery_s: Option<crate::BatchMetricSummary>,
     reference_gap_mean_m: Option<crate::BatchMetricSummary>,
     failed_seeds: Vec<u64>,
 }
@@ -2543,7 +2561,7 @@ fn render_mission_review_section(
         r#"<section class="tree-table-section">
   <div class="table-heading">
     <h3><code>{mission}</code></h3>
-    <div class="section-meta">{success_rate} · {failure_count} fail · {fuel_used} fuel · {mean_sim} flight · {landing_offset} off · {reference_gap} ref</div>
+    <div class="section-meta">{success_rate} · {failure_count} fail · {fuel_used} fuel · {mean_sim} flight · {landing_offset} off · {reference_gap} ref · {low_unsafe} low unsafe</div>
   </div>
   <div class="table-wrap">
     <table class="scenario-table" data-tree-table="{table_id}">
@@ -2595,6 +2613,12 @@ fn render_mission_review_section(
                 .as_ref()
                 .and_then(|item| item.reference_gap_mean_m.as_ref()),
             MetricDisplayKind::Meters
+        ),
+        low_unsafe = format_metric_summary(
+            aggregate
+                .as_ref()
+                .and_then(|item| item.low_altitude_unsafe_recovery_s.as_ref()),
+            MetricDisplayKind::Seconds
         ),
         rows = rows,
     )
@@ -4596,6 +4620,14 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
         .iter()
         .filter_map(|record| record.review.landing_offset_abs_m)
         .collect::<Vec<_>>();
+    let low_altitude_dwell_values = success_records
+        .iter()
+        .filter_map(|record| record.review.low_altitude_dwell_s)
+        .collect::<Vec<_>>();
+    let low_altitude_unsafe_values = success_records
+        .iter()
+        .filter_map(|record| record.review.low_altitude_unsafe_recovery_s)
+        .collect::<Vec<_>>();
     let reference_gap_values = success_records
         .iter()
         .filter_map(|record| record.review.reference_gap_mean_m)
@@ -4608,6 +4640,8 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
         sim_time_stats: crate::metric_summary(&sim_time_values),
         fuel_used_pct_of_max: crate::metric_summary(&fuel_values),
         landing_offset_abs_m: crate::metric_summary(&landing_offset_values),
+        low_altitude_dwell_s: crate::metric_summary(&low_altitude_dwell_values),
+        low_altitude_unsafe_recovery_s: crate::metric_summary(&low_altitude_unsafe_values),
         reference_gap_mean_m: crate::metric_summary(&reference_gap_values),
         failed_seeds,
     }
@@ -4805,6 +4839,16 @@ fn aggregate_changed(
         || metric_delta_value(
             candidate.landing_offset_abs_m.as_ref(),
             baseline.landing_offset_abs_m.as_ref(),
+        )
+        .is_some_and(|delta| delta.abs() > 1e-9)
+        || metric_delta_value(
+            candidate.low_altitude_dwell_s.as_ref(),
+            baseline.low_altitude_dwell_s.as_ref(),
+        )
+        .is_some_and(|delta| delta.abs() > 1e-9)
+        || metric_delta_value(
+            candidate.low_altitude_unsafe_recovery_s.as_ref(),
+            baseline.low_altitude_unsafe_recovery_s.as_ref(),
         )
         .is_some_and(|delta| delta.abs() > 1e-9)
         || metric_delta_value(

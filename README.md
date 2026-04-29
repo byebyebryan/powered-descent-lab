@@ -298,31 +298,37 @@ Current checkpoint on the maintained Earth payload tiers:
 Trajectory-error checkpoint:
 
 - `terminal_traj_err_suite`
-  - `current`: `685 / 720` scored successes, `35` scored failures,
+  - `current`: `689 / 720` scored successes, `31` scored failures,
     `36` impossible warnings, `48` frontier annotations
 - `terminal_traj_err_full`
-  - `current`: `2732 / 2880` scored successes, `148` scored failures,
+  - `current`: `2754 / 2880` scored successes, `126` scored failures,
     `144` impossible warnings, `192` frontier annotations
   - by condition:
-    - `traj_undershoot_small`: `690 / 720` scored, `30` fail,
+    - `traj_undershoot_small`: `693 / 720` scored, `27` fail,
       `36` impossible warnings, `48` frontier annotations
     - `traj_undershoot_large`: `707 / 720` scored, `13` fail,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_overshoot_small`: `672 / 720` scored, `48` fail,
+    - `traj_overshoot_small`: `683 / 720` scored, `37` fail,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_overshoot_large`: `663 / 720` scored, `57` fail,
+    - `traj_overshoot_large`: `671 / 720` scored, `49` fail,
       `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `1008 / 1008`
-    - `half`: `999 / 1008`, `9` fail
-    - `full`: `725 / 864` scored, `139` fail, `144` impossible warnings,
+    - `half`: `1006 / 1008`, `2` fail
+    - `full`: `740 / 864` scored, `124` fail, `144` impossible warnings,
       `192` frontier annotations
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
 is still the low-thrust/high-energy frontier and its failed cells remain
 scored, trajectory-error `empty` is solved, trajectory-error `half` has sparse
-high-energy scored failures concentrated in `traj_overshoot_large`, and
+high-energy scored failures concentrated in `traj_overshoot_large / a60`, and
 trajectory-error `full` is the main
 frontier-annotated stress tier. Detailed checkpoint history lives in
 `docs/progress.md` and `docs/terminal_suite.md`.
+
+The next useful slice is Phase 2 closure work: thresholded regression policy,
+frontier/feasibility semantics where they still affect interpretation, and the
+next terminal condition space such as terrain or obstacles. Broad
+terminal-controller tuning should now be optional and hypothesis-gated rather
+than the default path.

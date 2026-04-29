@@ -4,8 +4,9 @@
 
 ### Current status
 
-- The latest controller pass adds lateral-cushion preservation when
-  projected touchdown is outside the safe touchdown-footprint center.
+- The latest landing-time pass kept reporting diagnostics, not controller
+  tuning: broad touchdown/settling shortcuts either did not move outcomes or
+  traded small time savings for new scored crashes.
 - Phase 2 remains the active phase, but the center of gravity has moved:
   - report/cache/review-tree infrastructure is no longer the bottleneck
   - the clean `empty` and `half` payload tiers have no scored current-lane
@@ -22,12 +23,12 @@
 
 ### Current clean-matrix checkpoint
 
-Latest local reports:
+Report entrypoints:
 
 - `outputs/eval/terminal_bot_lab_suite/summary.json`
 - `outputs/eval/terminal_bot_lab_full/summary.json`
 
-Latest local wall-clock signal with `8` workers:
+Latest recorded wall-clock signal with `8` workers:
 
 - `terminal_bot_lab_suite`: `7.13s`
 - `terminal_bot_lab_full`: `28.99s`
@@ -64,26 +65,30 @@ The clean matrix read is now:
 
 ### Trajectory-error matrix checkpoint
 
-Latest local reports:
+Report entrypoints:
 
 - `outputs/eval/terminal_traj_err_suite/summary.json`
 - `outputs/eval/terminal_traj_err_full/summary.json`
 
-Latest local wall-clock signal with `8` workers:
+The numeric checkpoint below is from fresh schema-14 local captures. Regenerate
+the ignored `outputs/eval` entrypoints after schema/report changes before
+treating the files in this checkout as authoritative.
 
-- `terminal_traj_err_suite`: `15.33s`
-- `terminal_traj_err_full`: `58.51s`
+Latest verified schema-14 wall-clock signal with `8` workers:
+
+- `terminal_traj_err_suite`: `12.71s`
+- `terminal_traj_err_full`: `52.03s`
 
 Smoke tier:
 
 - `terminal_traj_err_suite`
-  - `current`: `686 / 720` scored successes, `34` scored failures,
+  - `current`: `689 / 720` scored successes, `31` scored failures,
     `36` impossible warnings, `48` frontier annotations
 
 Full pack:
 
 - `terminal_traj_err_full`
-  - `current`: `2741 / 2880` scored successes, `139` scored failures,
+  - `current`: `2754 / 2880` scored successes, `126` scored failures,
     `144` impossible warnings, `192` frontier annotations
 
 `terminal_traj_err_full` current-lane split by condition:
@@ -92,16 +97,16 @@ Full pack:
   `36` impossible warnings, `48` frontier annotations
 - `traj_undershoot_large`: `707 / 720` scored, `13` scored failures,
   `36` impossible warnings, `48` frontier annotations
-- `traj_overshoot_small`: `672 / 720` scored, `48` scored failures,
+- `traj_overshoot_small`: `683 / 720` scored, `37` scored failures,
   `36` impossible warnings, `48` frontier annotations
-- `traj_overshoot_large`: `669 / 720` scored, `51` scored failures,
+- `traj_overshoot_large`: `671 / 720` scored, `49` scored failures,
   `36` impossible warnings, `48` frontier annotations
 
 `terminal_traj_err_full` current-lane split by payload tier:
 
 - `empty`: `1008 / 1008`
-- `half`: `1005 / 1008`, `3` scored failures
-- `full`: `728 / 864` scored, `136` scored failures,
+- `half`: `1006 / 1008`, `2` scored failures
+- `full`: `740 / 864` scored, `124` scored failures,
   `144` impossible warnings, `192` frontier annotations
 
 The trajectory-error read is now:
@@ -111,7 +116,7 @@ The trajectory-error read is now:
   still standing out
 - `full` is represented as a scored low-thrust/high-energy frontier stress tier
 - the remaining scored failures are real stress cases, not report artifacts:
-  - `traj_overshoot_large / half / high`: `3` failures across `a60 / a80`
+  - `traj_overshoot_large / half / a60 / high`: seeds `2` and `4`
   - low-thrust/high-energy `full / high` frontier failures across clean and
     trajectory-error conditions
 
@@ -167,32 +172,92 @@ The smoke suite improved from `685 / 720` to `686 / 720` scored successes. The
 full trajectory-error pack improved from `2732 / 2880` to `2741 / 2880` scored
 successes, with no new failures relative to the previous full cache. The patch
 fixed six half-payload overshoot-large full-pack failures across `a30/a45`
-plus three full-payload frontier failures, leaving only:
+plus three full-payload frontier failures. At that checkpoint, the remaining
+half-payload outliers were:
 
 - `traj_overshoot_large / half / a60 / high / seed 2`
 - `traj_overshoot_large / half / a60 / high / seed 4`
 - `traj_overshoot_large / half / a80 / high / seed 2`
 
+After the later `90s` eval-window policy change, the current full-pack
+checkpoint leaves only the two `a60 / high` seeds above.
+
+Landing-time follow-up finding:
+
+- Extending the eval window from `60s` to `90s` cut timeout noise meaningfully:
+  `terminal_traj_err_full` moved from `58` timeouts to `12`, and scored
+  failures dropped from `35` to `2`.
+- The accepted timeout change is explicitly eval policy, not controller logic:
+  terminal matrix packs use `terminal_matrix_max_time_s = 90.0`, while
+  reachability/frontier analysis still records and uses the original scenario
+  `60s` reachability window.
+- A focused landing-time pass rejected three tempting controller shortcuts:
+  - ballistic idle-cut near touchdown cut wall/sim time slightly but added
+    `29` crashes, mostly from stable-contact penetration tolerance
+  - shortening centered settled descent from `3.0s` to `2.75s` only improved
+    mean sim time by about `0.02s` and added `4` scored crashes
+  - increasing settled-descent recenter gain improved some offsets but worsened
+    mean sim time and added a scored crash
+- The durable diagnosis is that the worst low-clearance dwell is usually not
+  centered final hover. It is low-altitude unsafe recovery: the vehicle is
+  close to the ground while still outside the touchdown footprint or carrying
+  too much lateral speed.
+- The report schema now tracks that directly with successful-run
+  `low_altitude_dwell_s` and `low_altitude_unsafe_recovery_s` summaries, and
+  the HTML report surfaces low-altitude unsafe recovery in overview/review
+  tracking cells.
+- A follow-up controller pass rejected the first broad fixes:
+  - a low-altitude vertical-cushion rescue branch was effectively neutral on
+    the full pack: headline outcomes stayed at `2754 / 2880` scored
+    successes, `126` scored failures, and `12` timeouts, with only a tiny
+    `overshoot_large / half` low-unsafe change
+  - using the settled-descent command's smaller rescue tilt for its braking
+    speed cap cut smoke-suite mean sim time from `31.50s` to `29.32s`, but it
+    added `9` scored failures and loosened a reference fixture's centering
+  - shortening centered settled descent from `3.0s` to `2.9s` was also not
+    worth keeping: smoke-suite mean sim time moved only from `31.496s` to
+    `31.489s` while adding one scored failure
+- Current interpretation: the remaining landing-time cost is not a simple
+  final-hover constant. It mixes low-altitude unsafe recovery, high-altitude
+  late-safe arrival at the pad, and authority-limited frontier cases. Keep the
+  new metrics, but do not keep landing-time controller shortcuts until they
+  improve suite outcomes or a clearly targeted metric without adding crashes.
+
+Overall controller-tuning checkpoint:
+
+- The current `terminal_pdg_v1` is good enough for the maintained clean and
+  trajectory-error Phase 2 workbench:
+  - clean `empty` and `half` are solved
+  - trajectory-error `empty` is solved
+  - trajectory-error `half` has only `2 / 1008` scored failures, both in the
+    same high-energy overshoot-large cell
+  - the remaining full-payload failures are mostly the scored
+    low-thrust/high-energy frontier this corpus is meant to expose
+- Another broad tuning loop is unlikely to be the best next use of time. The
+  recent loops improved isolated seeds only when they introduced broader crash
+  regressions, weakened touchdown margins, or produced negligible timing gains.
+- More controller tuning is still reasonable only as a tightly framed
+  hypothesis with:
+  - one or two pinned failing runs
+  - a general mechanism, not arc/seed/condition branching
+  - no smoke-suite scored-regression tolerance
+- The better next slice is to move on to Phase 2 closure work: thresholded
+  regression policy, clearer frontier/feasibility semantics where needed, and
+  the next physical condition space such as terrain or obstacle terminal cases.
+
 ### Active implementation focus
 
-1. Keep the next controller pass general and focused on sparse
-   trajectory-error scored failures:
-   - avoid seed-specific or condition-specific state-machine hacks
-   - avoid late touchdown-rescue sign/tilt tweaks as the first lever; the
-     latest loop showed those create broad trajectory-error regressions
-   - avoid broad latest-safe candidate ordering or vertical timing changes
-     unless a pinned fixture and suite run both show no regressions
-   - next controller experiment should focus on the remaining `a60/a80`
-     overshoot-large high-energy cases without widening long capture into
-     same-side projected misses
+1. Treat the current terminal controller as the Phase 2 baseline unless a
+   specific, general controller hypothesis is worth testing against pinned
+   failures and a smoke-suite no-regression gate.
 2. Keep refining feasibility / annotation semantics only where the vehicle is
    authority limited, while keeping frontier failures scored
-3. Add the next terminal corpus only after the current clean and
-   trajectory-error semantics stay stable:
+3. Add the next terminal corpus now that the current clean and trajectory-error
+   semantics are stable enough:
    - terrain / obstacle conditions
    - later transfer-style conditions
-4. Start thresholded regression policy after the current metrics are stable
-   enough to distinguish meaningful regressions from frontier churn.
+4. Start thresholded regression policy so future tuning does not depend on
+   manually reading every frontier churn pattern.
 
 ## 2026-04-23
 
