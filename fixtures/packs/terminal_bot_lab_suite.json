@@ -2,6 +2,7 @@
   "id": "terminal_bot_lab_suite",
   "name": "Terminal bot-lab suite",
   "description": "Smoke-tier half-arc terminal guidance matrix on the maintained Earth baseline, comparing baseline and current controller lanes across clean empty, half, and full payload variants.",
+  "terminal_matrix_max_time_s": 90.0,
   "entries": [
     {
       "id": "terminal_guidance_clean_empty",

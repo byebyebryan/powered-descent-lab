@@ -202,6 +202,8 @@ pub struct ScenarioPackSpec {
     pub id: String,
     pub name: String,
     pub description: String,
+    #[serde(default)]
+    pub terminal_matrix_max_time_s: Option<f64>,
     pub entries: Vec<ScenarioPackEntry>,
 }
 
@@ -1030,6 +1032,11 @@ fn validate_pack(pack: &ScenarioPackSpec) -> Result<()> {
     if pack.entries.is_empty() {
         bail!("pack must contain at least one entry");
     }
+    if let Some(max_time_s) = pack.terminal_matrix_max_time_s
+        && (!max_time_s.is_finite() || max_time_s <= 0.0)
+    {
+        bail!("terminal_matrix_max_time_s must be finite and > 0");
+    }
 
     let mut seen_ids = BTreeSet::new();
     for entry in &pack.entries {
@@ -1309,9 +1316,9 @@ fn resolve_pack_runs(pack: &ScenarioPackSpec, base_dir: &Path) -> Result<Vec<Res
                 )?;
                 resolved.extend(resolve_family_runs(entry, base_dir, &controller_spec)?)
             }
-            ScenarioPackEntry::TerminalMatrix(entry) => {
-                resolved.extend(resolve_terminal_matrix_runs(entry, base_dir)?)
-            }
+            ScenarioPackEntry::TerminalMatrix(entry) => resolved.extend(
+                resolve_terminal_matrix_runs(entry, base_dir, pack.terminal_matrix_max_time_s)?,
+            ),
         }
     }
 
@@ -1601,6 +1608,7 @@ const TERMINAL_FULL_SEEDS: [TerminalSeedSpec; 12] = [
 fn resolve_terminal_matrix_runs(
     entry: &TerminalMatrixEntry,
     base_dir: &Path,
+    max_time_s: Option<f64>,
 ) -> Result<Vec<ResolvedBatchRun>> {
     let base_path = base_dir.join(&entry.base_scenario);
     let base_scenario = load_scenario(&base_path)?;
@@ -1634,6 +1642,7 @@ fn resolve_terminal_matrix_runs(
                             seed_spec,
                             &lane.id,
                             &run_id,
+                            max_time_s,
                         )?;
                     let descriptor = ResolvedRunDescriptor {
                         run_id,
@@ -1724,6 +1733,7 @@ fn resolve_terminal_matrix_scenario(
     seed_spec: &TerminalSeedSpec,
     lane_id: &str,
     run_id: &str,
+    max_time_s: Option<f64>,
 ) -> Result<(ScenarioSpec, BTreeMap<String, f64>, SelectorAxes)> {
     let mut scenario = base_scenario.clone();
     scenario.id = run_id.to_owned();
@@ -1790,9 +1800,34 @@ fn resolve_terminal_matrix_scenario(
         .insert("lane_id".to_owned(), lane_id.to_owned());
 
     scenario.world.gravity_mps2 = family_spec.gravity_mps2;
+    let reachability_max_time_s = scenario.sim.max_time_s;
+    scenario.metadata.insert(
+        "resolved.reachability_max_time_s".to_owned(),
+        format!("{:.6}", reachability_max_time_s),
+    );
+    if let Some(eval_max_time_s) = max_time_s {
+        if eval_max_time_s < reachability_max_time_s {
+            bail!(
+                "terminal_matrix_max_time_s ({eval_max_time_s:.3}) must be >= scenario reachability max_time_s ({reachability_max_time_s:.3}) for terminal matrix entry '{}'",
+                entry.id
+            );
+        }
+        scenario.sim.max_time_s = eval_max_time_s;
+        scenario.metadata.insert(
+            "resolved.eval_max_time_s".to_owned(),
+            format!("{:.6}", eval_max_time_s),
+        );
+    }
 
     let mut resolved_parameters = BTreeMap::new();
     resolved_parameters.insert("gravity_mps2".to_owned(), family_spec.gravity_mps2);
+    resolved_parameters.insert(
+        "reachability_max_time_s".to_owned(),
+        reachability_max_time_s,
+    );
+    if let Some(eval_max_time_s) = max_time_s {
+        resolved_parameters.insert("eval_max_time_s".to_owned(), eval_max_time_s);
+    }
     resolved_parameters.insert("radius_nominal_m".to_owned(), family_spec.radius_nominal_m);
     resolved_parameters.insert("arc_angle_deg".to_owned(), arc.angle_deg);
     resolved_parameters.insert("mid_ttg_s".to_owned(), arc.nominal_ttg_s);
@@ -2436,7 +2471,12 @@ fn coupled_stop_acceleration_bound(
     let target_y_m = target_pad.surface_y_m + scenario.vehicle.geometry.touchdown_base_offset_m;
     let target_min_x_m = target_pad.center_x_m - touchdown_center_limit_m;
     let target_max_x_m = target_pad.center_x_m + touchdown_center_limit_m;
-    let max_time_s = scenario.sim.max_time_s.max(REACHABILITY_TIME_STEP_S);
+    let max_time_s = scenario
+        .metadata
+        .get("resolved.reachability_max_time_s")
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or(scenario.sim.max_time_s)
+        .max(REACHABILITY_TIME_STEP_S);
     let steps = (max_time_s / REACHABILITY_TIME_STEP_S).ceil() as u64;
     let mut best: Option<CoupledStopAccelerationBound> = None;
 
@@ -4341,6 +4381,7 @@ mod tests {
             id: "unit_pack".to_owned(),
             name: "Unit pack".to_owned(),
             description: "unit pack".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![
                 ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                     id: "checkpoint_success_baseline".to_owned(),
@@ -4377,6 +4418,7 @@ mod tests {
             id: "family_pack".to_owned(),
             name: "Family pack".to_owned(),
             description: "family pack".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![
                 ScenarioPackEntry::Family(ScenarioFamilyEntry {
                     id: "terminal_sweep".to_owned(),
@@ -4494,6 +4536,7 @@ mod tests {
             id: "compare_baseline".to_owned(),
             name: "Compare baseline".to_owned(),
             description: "compare baseline".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "landing_case".to_owned(),
                 scenario: "scenarios/landing_case.json".to_owned(),
@@ -4506,6 +4549,7 @@ mod tests {
             id: "compare_candidate".to_owned(),
             name: "Compare candidate".to_owned(),
             description: "compare candidate".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "landing_case".to_owned(),
                 scenario: "scenarios/landing_case.json".to_owned(),
@@ -4541,6 +4585,7 @@ mod tests {
             id: "concrete_metadata_override".to_owned(),
             name: "Concrete metadata override".to_owned(),
             description: "selector metadata override".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "checkpoint".to_owned(),
                 scenario: "scenarios/timed_checkpoint_idle.json".to_owned(),
@@ -4585,6 +4630,7 @@ mod tests {
             id: "terminal_matrix_smoke".to_owned(),
             name: "Terminal matrix smoke".to_owned(),
             description: "terminal matrix smoke".to_owned(),
+            terminal_matrix_max_time_s: Some(90.0),
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_clean_nominal".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -4655,6 +4701,55 @@ mod tests {
                 .copied(),
             Some(9.81)
         );
+        assert_eq!(
+            record
+                .resolved
+                .resolved_parameters
+                .get("eval_max_time_s")
+                .copied(),
+            Some(90.0)
+        );
+        assert_eq!(
+            record
+                .resolved
+                .resolved_parameters
+                .get("reachability_max_time_s")
+                .copied(),
+            Some(60.0)
+        );
+    }
+
+    #[test]
+    fn terminal_matrix_eval_timeout_must_not_shorten_reachability_window() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_short_eval_timeout".to_owned(),
+            name: "Terminal matrix short eval timeout".to_owned(),
+            description: "terminal matrix short eval timeout".to_owned(),
+            terminal_matrix_max_time_s: Some(45.0),
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_clean_nominal".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "staged".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Smoke,
+                condition_set: "clean".to_owned(),
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                adjustments: Vec::new(),
+                tags: vec!["terminal".to_owned(), "smoke".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let error = run_pack_with_workers(&pack, &base_dir, None, 1).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("terminal_matrix_max_time_s"));
+        assert!(message.contains("must be >= scenario reachability max_time_s"));
     }
 
     #[test]
@@ -4664,6 +4759,7 @@ mod tests {
             id: "terminal_matrix_traj_error".to_owned(),
             name: "Terminal matrix trajectory error".to_owned(),
             description: "terminal matrix trajectory error".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_traj_overshoot_small_half".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -4727,6 +4823,7 @@ mod tests {
             id: "terminal_matrix_unknown_condition".to_owned(),
             name: "Terminal matrix unknown condition".to_owned(),
             description: "terminal matrix unknown condition".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_traj_typo_half".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -4758,6 +4855,7 @@ mod tests {
             id: "terminal_matrix_heavy_cargo_full".to_owned(),
             name: "Terminal matrix heavy cargo full".to_owned(),
             description: "terminal matrix heavy cargo full".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_clean_heavy_cargo".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -4825,6 +4923,7 @@ mod tests {
             id: "terminal_matrix_full_payload_lateral".to_owned(),
             name: "Terminal matrix full payload lateral".to_owned(),
             description: "terminal matrix full payload lateral".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![
                 ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                     id: "terminal_guidance_clean_half_payload".to_owned(),
@@ -4975,6 +5074,7 @@ mod tests {
             id: "terminal_matrix_projected_error_coupled_bound".to_owned(),
             name: "Terminal matrix projected error coupled bound".to_owned(),
             description: "terminal matrix projected error coupled bound".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_traj_overshoot_large_half".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -5043,6 +5143,7 @@ mod tests {
                 id: "terminal_matrix_invalid_adjustment".to_owned(),
                 name: "Terminal matrix invalid adjustment".to_owned(),
                 description: "terminal matrix invalid adjustment".to_owned(),
+                terminal_matrix_max_time_s: None,
                 entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                     id: "terminal_guidance_clean_nominal".to_owned(),
                     terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -5084,6 +5185,7 @@ mod tests {
             id: "missing_compare_skip".to_owned(),
             name: "Missing compare skip".to_owned(),
             description: "missing compare skip".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "checkpoint_success_idle".to_owned(),
                 scenario: "scenarios/checkpoint_success.json".to_owned(),
@@ -5127,6 +5229,7 @@ mod tests {
             id: "cache_schema".to_owned(),
             name: "Cache schema".to_owned(),
             description: "cache schema".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "checkpoint_success_idle".to_owned(),
                 scenario: "scenarios/checkpoint_success.json".to_owned(),
@@ -5182,6 +5285,7 @@ mod tests {
             id: "stable_output_runs".to_owned(),
             name: "Stable output runs".to_owned(),
             description: "stable output runs".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
                 id: "checkpoint_success_idle".to_owned(),
                 scenario: "scenarios/checkpoint_success.json".to_owned(),

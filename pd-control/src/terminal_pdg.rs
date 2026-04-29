@@ -10,7 +10,7 @@ const TERMINAL_GATE_LONG_CAPTURE_BURN_TIME_MAX_S: f64 = 30.0;
 const TERMINAL_GATE_CANDIDATE_TIME_EPS_S: f64 = 1e-6;
 // Local hover-avoidance horizon for centered terminal settle; intentionally
 // independent of the scenario's simulation stop time.
-const SETTLED_DESCENT_TIME_HORIZON_S: f64 = 4.0;
+const SETTLED_DESCENT_TIME_HORIZON_S: f64 = 3.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalPdgControllerConfig {
@@ -906,13 +906,14 @@ impl TerminalPdgController {
         let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
             - view.ctx.vehicle.geometry.touchdown_half_span_m)
             .max(0.0);
+        let inside_touchdown_footprint = dx_m.abs() <= touchdown_center_limit_m;
         let near_touchdown_edge = dx_m.abs() > (0.5 * touchdown_center_limit_m);
-        let meaningful_lateral_error =
-            near_touchdown_edge || vx_mps.abs() > self.config.touchdown_zero_vx_mps;
+        let meaningful_lateral_speed = vx_mps.abs() > self.config.touchdown_zero_vx_mps;
+        let meaningful_lateral_error = near_touchdown_edge || meaningful_lateral_speed;
         let centered_for_settle_schedule = dx_m.abs() <= (0.25 * touchdown_center_limit_m);
         let settle_schedule_active = current_state.mode == GuidanceMode::LatestSafe
-            && centered_for_settle_schedule
-            && !meaningful_lateral_error;
+            && (centered_for_settle_schedule || inside_touchdown_footprint)
+            && !meaningful_lateral_speed;
         if !meaningful_lateral_error && !settle_schedule_active {
             return None;
         }

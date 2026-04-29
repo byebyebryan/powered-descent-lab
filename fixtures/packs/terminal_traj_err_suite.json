@@ -2,6 +2,7 @@
   "id": "terminal_traj_err_suite",
   "name": "Terminal trajectory-error suite",
   "description": "Smoke-tier half-arc terminal guidance matrix with projected undershoot/overshoot trajectory errors on the maintained Earth baseline.",
+  "terminal_matrix_max_time_s": 90.0,
   "entries": [
     {
       "id": "terminal_guidance_traj_undershoot_small_empty",

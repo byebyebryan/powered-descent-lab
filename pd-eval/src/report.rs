@@ -6062,6 +6062,7 @@ mod report_tests {
             id: "lane_compare_unit".to_owned(),
             name: "Lane compare unit".to_owned(),
             description: "lane compare unit".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![
                 terminal_family_entry(
                     "terminal_guidance_clean_nominal_baseline",
@@ -6111,6 +6112,7 @@ mod report_tests {
             id: "compare_baseline_unit".to_owned(),
             name: "Compare baseline unit".to_owned(),
             description: "compare baseline unit".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![
                 terminal_family_entry(
                     "terminal_compare_baseline",
@@ -6124,6 +6126,7 @@ mod report_tests {
             id: "compare_candidate_unit".to_owned(),
             name: "Compare candidate unit".to_owned(),
             description: "compare candidate unit".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![
                 terminal_family_entry(
                     "terminal_compare_baseline",
@@ -6176,6 +6179,7 @@ mod report_tests {
             id: "terminal_matrix_tree_unit".to_owned(),
             name: "Terminal matrix tree unit".to_owned(),
             description: "terminal matrix tree unit".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_clean_nominal".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -6242,6 +6246,7 @@ mod report_tests {
             id: "terminal_matrix_heavy_cargo_unit".to_owned(),
             name: "Terminal matrix heavy cargo unit".to_owned(),
             description: "terminal matrix heavy cargo unit".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_clean_heavy_cargo".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),
@@ -6285,6 +6290,7 @@ mod report_tests {
             id: "terminal_matrix_frontier_unit".to_owned(),
             name: "Terminal matrix frontier unit".to_owned(),
             description: "terminal matrix frontier unit".to_owned(),
+            terminal_matrix_max_time_s: None,
             entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
                 id: "terminal_guidance_clean_full_payload".to_owned(),
                 terminal_matrix: "half_arc_terminal_v1".to_owned(),

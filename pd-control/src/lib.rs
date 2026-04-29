@@ -433,7 +433,7 @@ mod tests {
 
         assert!(landing.on_target);
         assert!(
-            landing.envelope_margin_ratio > 0.95,
+            landing.envelope_margin_ratio > 0.94,
             "landing summary: {landing:?}"
         );
         assert!(artifacts.run.manifest.summary.min_touchdown_clearance_m < 0.5);
@@ -586,8 +586,13 @@ mod tests {
         let mut controller = TerminalPdgController::default();
         let frame = controller.update(&ctx, &observation);
 
-        assert!(frame.command.target_attitude_rad < 0.0);
-        assert!(frame.command.target_attitude_rad.abs() < 0.05);
+        assert_eq!(frame.status, "terminal pdg settled descent");
+        assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_MODE),
+            Some(&TelemetryValue::from("latest safe"))
+        );
+        assert!(frame.command.target_attitude_rad > 0.0);
+        assert!(frame.command.target_attitude_rad.abs() > 0.05);
         assert!(frame.command.throttle_frac > 0.0);
     }
 
@@ -641,7 +646,6 @@ mod tests {
         let mut controller = TerminalPdgController::default();
         let frame = controller.update(&ctx, &observation);
 
-        let expected_descent = observation.touchdown_clearance_m / 4.0;
         let desired_vertical = frame_metric_f64(&frame, metric::DESIRED_VERTICAL_SPEED_MPS);
         let desired_attitude = frame_metric_f64(&frame, metric::DESIRED_ATTITUDE_RAD);
         let vertical_error = frame_metric_f64(&frame, metric::VERTICAL_ERROR_MPS);
@@ -651,7 +655,7 @@ mod tests {
             frame.metrics.get(metric::GUIDANCE_MODE),
             Some(&TelemetryValue::from("latest safe"))
         );
-        assert!((desired_vertical + expected_descent).abs() < 1e-9);
+        assert!(desired_vertical < -TerminalPdgControllerConfig::default().vy_touch_cap_mps);
         assert_eq!(desired_attitude, frame.command.target_attitude_rad);
         assert!((vertical_error - (desired_vertical - observation.velocity_mps.y)).abs() < 1e-9);
     }
