@@ -432,7 +432,10 @@ mod tests {
             .expect("landing summary should be present for landing scenarios");
 
         assert!(landing.on_target);
-        assert!(landing.envelope_margin_ratio > 0.95);
+        assert!(
+            landing.envelope_margin_ratio > 0.95,
+            "landing summary: {landing:?}"
+        );
         assert!(artifacts.run.manifest.summary.min_touchdown_clearance_m < 0.5);
     }
 
@@ -441,7 +444,7 @@ mod tests {
         let mut scenario = earth_terminal_reference_scenario();
         scenario.id = "terminal_pdg_shallow_half_high".to_owned();
         scenario.name = "Terminal PDG shallow half high".to_owned();
-        scenario.sim.max_time_s = 60.0;
+        scenario.sim.max_time_s = 75.0;
         scenario.vehicle.dry_mass_kg = 9_450.0;
         scenario.initial_state.position_m = Vec2::new(-799.6638954459129, 141.0023202655475);
         scenario.initial_state.velocity_mps = Vec2::new(133.27731590765214, 5.929613289075415);
@@ -457,7 +460,9 @@ mod tests {
 
         assert_eq!(
             artifacts.run.manifest.end_reason,
-            EndReason::TouchdownOnTarget
+            EndReason::TouchdownOnTarget,
+            "summary: {:?}",
+            artifacts.run.manifest.summary
         );
     }
 
@@ -482,7 +487,9 @@ mod tests {
 
         assert_eq!(
             artifacts.run.manifest.end_reason,
-            EndReason::TouchdownOnTarget
+            EndReason::TouchdownOnTarget,
+            "summary: {:?}",
+            artifacts.run.manifest.summary
         );
     }
 
@@ -491,7 +498,7 @@ mod tests {
         let mut scenario = earth_terminal_reference_scenario();
         scenario.id = "terminal_pdg_sparse_captured_settle".to_owned();
         scenario.name = "Terminal PDG sparse captured settle".to_owned();
-        scenario.sim.max_time_s = 60.0;
+        scenario.sim.max_time_s = 75.0;
         scenario.vehicle.dry_mass_kg = 11_700.0;
         scenario.initial_state.position_m = Vec2::new(-811.4815884820595, 143.08609839755067);
         scenario.initial_state.velocity_mps = Vec2::new(114.56019856025743, 21.354237700306168);
@@ -507,7 +514,9 @@ mod tests {
 
         assert_eq!(
             artifacts.run.manifest.end_reason,
-            EndReason::TouchdownOnTarget
+            EndReason::TouchdownOnTarget,
+            "summary: {:?}",
+            artifacts.run.manifest.summary
         );
     }
 
@@ -580,6 +589,40 @@ mod tests {
         assert!(frame.command.target_attitude_rad < 0.0);
         assert!(frame.command.target_attitude_rad.abs() < 0.05);
         assert!(frame.command.throttle_frac > 0.0);
+    }
+
+    #[test]
+    fn terminal_pdg_settled_descent_does_not_depend_on_sim_timeout() {
+        let mut short_scenario = earth_terminal_reference_scenario();
+        short_scenario.sim.max_time_s = 45.0;
+        let mut long_scenario = short_scenario.clone();
+        long_scenario.sim.max_time_s = 120.0;
+
+        let short_ctx = RunContext::from_scenario(&short_scenario).unwrap();
+        let long_ctx = RunContext::from_scenario(&long_scenario).unwrap();
+
+        let mut observation = pd_core::SimulationState::new(&short_ctx)
+            .unwrap()
+            .build_observation(&short_ctx);
+        observation.sim_time_s = 34.0;
+        observation.position_m = Vec2::new(-13.0, 38.0);
+        observation.velocity_mps = Vec2::new(0.35, -4.0);
+        observation.target_dx_m = 13.0;
+        observation.height_above_target_m = 38.0;
+        observation.touchdown_clearance_m = 33.0;
+        observation.min_hull_clearance_m = 33.0;
+
+        let mut short_controller = TerminalPdgController::default();
+        let short_frame = short_controller.update(&short_ctx, &observation);
+
+        let mut long_controller = TerminalPdgController::default();
+        let long_frame = long_controller.update(&long_ctx, &observation);
+
+        assert_eq!(short_frame.command, long_frame.command);
+        assert_eq!(
+            frame_metric_f64(&short_frame, metric::DESIRED_VERTICAL_SPEED_MPS),
+            frame_metric_f64(&long_frame, metric::DESIRED_VERTICAL_SPEED_MPS)
+        );
     }
 
     #[test]

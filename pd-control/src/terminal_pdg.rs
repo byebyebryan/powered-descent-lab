@@ -8,6 +8,9 @@ use crate::{Controller, ControllerFrame, TelemetryValue};
 
 const TERMINAL_GATE_LONG_CAPTURE_BURN_TIME_MAX_S: f64 = 30.0;
 const TERMINAL_GATE_CANDIDATE_TIME_EPS_S: f64 = 1e-6;
+// Local hover-avoidance horizon for centered terminal settle; intentionally
+// independent of the scenario's simulation stop time.
+const SETTLED_DESCENT_TIME_HORIZON_S: f64 = 4.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalPdgControllerConfig {
@@ -900,10 +903,20 @@ impl TerminalPdgController {
         let near_touchdown_edge = dx_m.abs() > (0.5 * touchdown_center_limit_m);
         let meaningful_lateral_error =
             near_touchdown_edge || vx_mps.abs() > self.config.touchdown_zero_vx_mps;
+        let centered_for_settle_schedule = dx_m.abs() <= (0.25 * touchdown_center_limit_m);
+        let guidance_down_speed_mps = (-current_state.desired_vertical_speed_mps)
+            .max(self.config.vy_touch_cap_mps)
+            .max(self.config.touchdown_zero_vy_mps);
+        let brisk_guidance_descent = guidance_down_speed_mps >= 2.0 * self.config.vy_touch_cap_mps;
+        let settle_schedule_active = centered_for_settle_schedule && brisk_guidance_descent;
+        if !meaningful_lateral_error && !settle_schedule_active {
+            return None;
+        }
 
         let max_thrust_accel_mps2 =
             view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(1.0);
-        let target_down_speed_mps = self.settled_descent_down_speed(view, current_state);
+        let target_down_speed_mps =
+            self.settled_descent_down_speed(view, current_state, settle_schedule_active);
         if !meaningful_lateral_error
             && target_down_speed_mps <= (-current_state.desired_vertical_speed_mps).max(0.0)
         {
@@ -914,18 +927,24 @@ impl TerminalPdgController {
         let target_up_accel_mps2 = view.observation.gravity_mps2 + (0.75 * vy_error_mps);
         // Settled descent should not consume the last vertical authority margin.
         // Saturated cases stay on nominal/latest-safe guidance.
-        if target_up_accel_mps2 <= 0.0
-            || target_up_accel_mps2
-                > max_thrust_accel_mps2 * self.config.terminal_gate_nominal_ratio
+        if target_up_accel_mps2 > max_thrust_accel_mps2 * self.config.terminal_gate_nominal_ratio
+            || (target_up_accel_mps2 <= 0.0 && !settle_schedule_active)
         {
             return None;
         }
         let applied_throttle_frac =
             (target_up_accel_mps2 / max_thrust_accel_mps2.max(1e-6)).clamp(0.0, 1.0);
-        let throttle_frac = command_throttle_for_applied_throttle(
-            applied_throttle_frac,
-            view.ctx.vehicle.min_throttle_frac,
-        );
+        let current_down_speed_mps = (-view.observation.velocity_mps.y).max(0.0);
+        let needs_more_down_speed = current_down_speed_mps + 0.05 < target_down_speed_mps;
+        let min_throttle_frac = view.ctx.vehicle.min_throttle_frac.clamp(0.0, 1.0);
+        let throttle_frac = if settle_schedule_active
+            && needs_more_down_speed
+            && applied_throttle_frac <= min_throttle_frac
+        {
+            0.0
+        } else {
+            command_throttle_for_applied_throttle(applied_throttle_frac, min_throttle_frac)
+        };
         let attitude_limit = current_state
             .max_tilt_rad
             .min(self.config.touchdown_rescue_tilt_rad)
@@ -959,6 +978,7 @@ impl TerminalPdgController {
         &self,
         view: &ControllerView<'_>,
         current_state: &TerminalCommandState,
+        settle_schedule_active: bool,
     ) -> f64 {
         let max_thrust_accel_mps2 =
             view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(1.0);
@@ -971,11 +991,10 @@ impl TerminalPdgController {
         let guidance_down_speed_mps = (-current_state.desired_vertical_speed_mps)
             .max(self.config.vy_touch_cap_mps)
             .max(self.config.touchdown_zero_vy_mps);
-        let remaining_time_s = (view.ctx.sim.max_time_s - view.observation.sim_time_s).max(0.0);
-        let scheduled_down_speed_mps = if remaining_time_s > 1.0 {
-            view.touchdown_clearance_m() / (0.55 * remaining_time_s).max(1.0)
+        let scheduled_down_speed_mps = if settle_schedule_active {
+            view.touchdown_clearance_m() / SETTLED_DESCENT_TIME_HORIZON_S
         } else {
-            brake_limit_mps
+            guidance_down_speed_mps
         };
         guidance_down_speed_mps
             .max(scheduled_down_speed_mps)
@@ -1393,7 +1412,6 @@ impl Controller for TerminalPdgController {
                 throttle_frac: command_state.throttle_frac,
                 target_attitude_rad: command_state.target_attitude_rad,
             });
-
         let mut builder = ControllerFrameBuilder::new(command)
             .status(status)
             .phase(phase.clone())
