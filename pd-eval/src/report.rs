@@ -12,7 +12,8 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
     BatchCacheInfo, BatchCacheStatus, BatchCompareResolutionStatus, BatchCompareSource,
-    BatchComparison, BatchReport, BatchRunComparison, BatchRunPointer, compare_batch_reports,
+    BatchComparison, BatchRegressionPolicyRuleResult, BatchRegressionPolicyStatus, BatchReport,
+    BatchRunComparison, BatchRunPointer, compare_batch_reports,
 };
 
 pub fn write_batch_report_artifacts(
@@ -300,6 +301,11 @@ fn render_batch_report(
       background: rgba(181, 93, 45, 0.12);
       color: #8a5126;
       border-color: rgba(181, 93, 45, 0.22);
+    }}
+    .status-chip.bad {{
+      background: rgba(176, 58, 46, 0.12);
+      color: #9b2f24;
+      border-color: rgba(176, 58, 46, 0.24);
     }}
     .status-chip.muted {{
       background: rgba(102, 92, 79, 0.08);
@@ -2084,8 +2090,11 @@ fn render_overview_table(
             render_overview_row(
                 "diff-summary-row",
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>current-lane history compare</div><div class="overview-sub">shared {} · current-only {} · baseline-only {}</div></div>"#,
-                    basis.shared_runs, basis.candidate_only_runs, basis.baseline_only_runs
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>current-lane history compare</div><div class="overview-sub">shared {} · current-only {} · baseline-only {} · {}</div></div>"#,
+                    basis.shared_runs,
+                    basis.candidate_only_runs,
+                    basis.baseline_only_runs,
+                    render_policy_status_chip(comparison.policy.status)
                 ),
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub"><code>{}</code> -> <code>{}</code></div></div>"#,
@@ -2254,11 +2263,12 @@ fn render_overview_table(
             rows.push(render_overview_row(
                 "diff-summary-row",
                 format!(
-                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>{}</div><div class="overview-sub">shared {} · current-only {} · baseline-only {}</div></div>"#,
+                    r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>{}</div><div class="overview-sub">shared {} · current-only {} · baseline-only {} · {}</div></div>"#,
                     escape_html(&comparison.basis.mode),
                     comparison.basis.shared_runs,
                     comparison.basis.candidate_only_runs,
-                    comparison.basis.baseline_only_runs
+                    comparison.basis.baseline_only_runs,
+                    render_policy_status_chip(comparison.policy.status)
                 ),
                 format!(
                     r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub"><code>{}</code> -> <code>{}</code></div></div>"#,
@@ -4895,7 +4905,7 @@ fn render_comparison_sections(
     baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
     format!(
-        r#"<section class="layout">
+        r#"{}<section class="layout">
   <div class="panel">
     <h2>Regressions</h2>
     <p>Shared runs that moved from success to failure.</p>
@@ -4919,6 +4929,7 @@ fn render_comparison_sections(
   <summary>Baseline-only Runs ({})</summary>
   <div class="table-wrap">{}</div>
 </details>"#,
+        render_regression_policy_panel(comparison),
         render_run_comparison_table(
             &comparison.regressions,
             output_dir,
@@ -4953,6 +4964,48 @@ fn render_comparison_sections(
             output_dir,
             "No baseline-only runs."
         ),
+    )
+}
+
+fn render_regression_policy_panel(comparison: &BatchComparison) -> String {
+    format!(
+        r#"<section class="layout">
+  <div class="panel">
+    <h2>Regression Policy</h2>
+    <p>{} {}</p>
+    <div class="table-wrap">{}</div>
+  </div>
+</section>
+"#,
+        render_policy_status_chip(comparison.policy.status),
+        escape_html(&comparison.policy.summary),
+        render_regression_policy_table(&comparison.policy.rules),
+    )
+}
+
+fn render_regression_policy_table(rules: &[BatchRegressionPolicyRuleResult]) -> String {
+    if rules.is_empty() {
+        return r#"<p class="muted">No regression policy rules recorded.</p>"#.to_owned();
+    }
+
+    let body = rules
+        .iter()
+        .map(|rule| {
+            format!(
+                "<tr><td><code>{}</code><div class=\"muted\">{}</div></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                escape_html(&rule.id),
+                escape_html(&rule.label),
+                render_policy_status_chip(rule.status),
+                escape_html(&rule.observed),
+                escape_html(&rule.threshold),
+                escape_html(&rule.note),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        "<table><thead><tr><th>Rule</th><th>Status</th><th>Observed</th><th>Threshold</th><th>Note</th></tr></thead><tbody>{body}</tbody></table>"
     )
 }
 
@@ -5988,6 +6041,22 @@ fn margin_class(value: f64) -> &'static str {
     }
 }
 
+fn render_policy_status_chip(status: BatchRegressionPolicyStatus) -> String {
+    format!(
+        r#"<span class="status-chip {}">{}</span>"#,
+        policy_status_class(status),
+        escape_html(&enum_label(&status)),
+    )
+}
+
+fn policy_status_class(status: BatchRegressionPolicyStatus) -> &'static str {
+    match status {
+        BatchRegressionPolicyStatus::Pass => "ok",
+        BatchRegressionPolicyStatus::Warn => "warn",
+        BatchRegressionPolicyStatus::Fail => "bad",
+    }
+}
+
 fn escape_html(input: &str) -> String {
     input
         .replace('&', "&amp;")
@@ -6215,6 +6284,9 @@ mod report_tests {
         assert!(html.contains("external baseline report provided for this render"));
         assert!(html.contains("Compare Status"));
         assert!(html.contains("available"));
+        assert!(html.contains("<h2>Regression Policy</h2>"));
+        assert!(html.contains("Compare coverage"));
+        assert!(html.contains(r#"baseline-only 0 · <span class="status-chip ok">pass</span>"#));
     }
 
     #[test]

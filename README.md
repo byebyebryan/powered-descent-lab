@@ -162,6 +162,10 @@ By default it will:
 - on a clean workspace, compare against the previous clean commit cache if it
   exists
 
+Add `--enforce-regression-policy` when a run should exit nonzero if the
+resolved compare target fails the default regression gate. That flag requires
+an explicit or cached compare baseline.
+
 After a dirty run becomes the new checkpoint, promote it into the clean commit
 key:
 
@@ -268,6 +272,7 @@ The batch report is intentionally compare-friendly:
   - compare basis
   - scope resolution
   - compare status
+- a regression-policy panel and overview chip for compare runs
 - optional candidate-vs-baseline deltas over shared run IDs
 - stable links back to per-run detail reports and bundles
 
@@ -280,6 +285,8 @@ enough for real controller iteration. The evaluator can now:
   failures
 - annotate low-thrust/high-energy frontier cells without removing them from
   scoring
+- evaluate a default thresholded regression policy over compare runs, scoped to
+  the preferred current controller lane when both reports contain one
 
 Current checkpoint on the maintained Earth payload tiers:
 
@@ -327,8 +334,8 @@ trajectory-error `full` is the main
 frontier-annotated stress tier. Detailed checkpoint history lives in
 `docs/progress.md` and `docs/terminal_suite.md`.
 
-The next useful slice is Phase 2 closure work: thresholded regression policy,
-frontier/feasibility semantics where they still affect interpretation, and the
-next terminal condition space such as terrain or obstacles. Broad
-terminal-controller tuning should now be optional and hypothesis-gated rather
-than the default path.
+The next useful slice is Phase 2 closure work that uses the regression-policy
+gate, refines frontier/feasibility semantics where they still affect
+interpretation, and adds the next terminal condition space such as terrain or
+obstacles. Broad terminal-controller tuning should now be optional and
+hypothesis-gated rather than the default path.

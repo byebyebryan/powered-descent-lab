@@ -1,5 +1,40 @@
 # Progress
 
+## 2026-04-29
+
+### Regression-policy checkpoint
+
+- Added a structured batch comparison regression policy so compare results now
+  carry an explicit `pass` / `warn` / `fail` status instead of relying only on
+  manual report reading.
+- When both compared reports contain a preferred `current` or `staged`
+  controller lane, the policy is scoped to that lane so hidden reference lanes
+  do not gate the main terminal workbench.
+- The default gate fails on:
+  - shared runs that move from success to failure
+  - increased scored failure count when compare run sets match exactly
+  - decreased scored success rate when compare run sets match exactly
+- The default gate warns on:
+  - material mean sim-time increase
+  - increased invalidated-run count
+  - compare coverage mismatch between current and baseline run sets
+- Batch reports now show a Regression Policy panel and a policy chip in the
+  overview diff row.
+- `pd-eval run-pack --enforce-regression-policy` exits nonzero when a resolved
+  compare baseline fails the required policy thresholds.
+
+### Active implementation focus
+
+1. Use the regression-policy gate for future controller and corpus changes.
+2. Keep refining feasibility / annotation semantics only where the vehicle is
+   authority limited, while keeping frontier failures scored.
+3. Add the next terminal corpus now that the current clean and trajectory-error
+   semantics are stable enough:
+   - terrain / obstacle conditions
+   - later transfer-style conditions
+4. Keep controller tuning hypothesis-driven and smoke-suite gated rather than
+   restarting broad parameter loops.
+
 ## 2026-04-28
 
 ### Current status
@@ -256,7 +291,7 @@ Overall controller-tuning checkpoint:
    semantics are stable enough:
    - terrain / obstacle conditions
    - later transfer-style conditions
-4. Start thresholded regression policy so future tuning does not depend on
+4. Use thresholded regression policy so future tuning does not depend on
    manually reading every frontier churn pattern.
 
 ## 2026-04-23

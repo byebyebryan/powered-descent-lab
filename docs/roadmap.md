@@ -36,6 +36,8 @@ Current implementation status:
   - analytic impossible-run classification for clearly unrecoverable terminal
     cells
   - scored authority-frontier annotations for low-thrust/high-energy cells
+  - default thresholded regression policy over batch comparisons, scoped to the
+    preferred current controller lane when both reports contain one
 - One Phase 3 contract probe has been pulled forward intentionally:
   `timed_checkpoint`, to validate early-termination mission evaluation without
   committing to the full transfer stack yet.
@@ -201,8 +203,6 @@ Status:
     - later terrain and obstacle conditions
   - broader feasibility/frontier classification while keeping
     authority-frontier cells scored
-  - thresholded regression policy now that the corpus and metrics are stable
-    enough to support it
   - deeper report polish that depends on real matrix scenarios and controller
     signal rather than the old provisional corpus
 
@@ -362,7 +362,7 @@ The next useful work is:
 1. Treat the current terminal controller as the Phase 2 baseline unless a
    specific, general controller hypothesis can clear a smoke-suite
    no-regression gate.
-2. Start thresholded regression policy so future controller changes have an
+2. Use the thresholded regression policy so future controller changes have an
    explicit pass/fail bar.
 3. Keep refining feasibility/frontier semantics where the vehicle is authority
    limited, while keeping frontier cells scored so regressions do not disappear

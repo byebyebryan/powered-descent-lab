@@ -608,6 +608,8 @@ Current implementation:
   - scored authority-frontier annotations for low-thrust/high-energy cells
   - low-altitude dwell and low-altitude unsafe-recovery review metrics for
     landing-time tuning analysis
+  - default thresholded regression policy over compare runs, scoped to the
+    preferred current controller lane when both reports contain one
 - the batch report tree surfaces:
   - `mission`
   - `arrival_family`
@@ -734,8 +736,8 @@ slice.
 Now that the core matrix is real and the maintained vehicle baseline is
 aligned, the next concrete milestones are:
 
-1. start thresholded regression policy so future controller changes are judged
-   by explicit tolerances instead of ad hoc report reading
+1. use the thresholded regression policy so future controller changes are
+   judged by explicit tolerances instead of ad hoc report reading
 2. deepen feasibility/frontier semantics:
    - authority-limited full-payload annotations
    - broader coupled stop bounds beyond the current invalidation rules

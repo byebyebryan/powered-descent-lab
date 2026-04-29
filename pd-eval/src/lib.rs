@@ -25,6 +25,8 @@ use std::os::unix::fs as platform_fs;
 use std::os::windows::fs as platform_fs;
 
 pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 14;
+const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
+const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -522,6 +524,32 @@ pub struct BatchSummaryDelta {
     pub max_sim_time_delta_s: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchRegressionPolicyStatus {
+    #[default]
+    Pass,
+    Warn,
+    Fail,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchRegressionPolicyRuleResult {
+    pub id: String,
+    pub label: String,
+    pub status: BatchRegressionPolicyStatus,
+    pub observed: String,
+    pub threshold: String,
+    pub note: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchRegressionPolicyEvaluation {
+    pub status: BatchRegressionPolicyStatus,
+    pub summary: String,
+    pub rules: Vec<BatchRegressionPolicyRuleResult>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BatchGroupComparison {
     pub key: String,
@@ -598,6 +626,8 @@ pub struct BatchComparison {
     pub baseline_pack_name: String,
     pub basis: BatchCompareBasis,
     pub summary: BatchSummaryDelta,
+    #[serde(default)]
+    pub policy: BatchRegressionPolicyEvaluation,
     pub by_entry: Vec<BatchGroupComparison>,
     pub by_family: Vec<BatchGroupComparison>,
     pub regressions: Vec<BatchRunComparison>,
@@ -690,6 +720,27 @@ pub fn run_pack_file_cached(
     )
 }
 
+pub fn resolve_pack_compare_baseline(
+    path: &Path,
+    compare_ref: Option<&str>,
+    baseline_dir: Option<&Path>,
+    missing_compare: MissingComparePolicy,
+) -> Result<Option<ResolvedBaselineReport>> {
+    let pack = load_pack(path)?;
+    let base_dir = path
+        .parent()
+        .ok_or_else(|| anyhow!("pack path has no parent directory"))?;
+    validate_pack(&pack)?;
+    let resolved_runs = resolve_pack_runs(&pack, base_dir)?;
+    let identity = batch_identity_for_pack(&pack, &resolved_runs)?;
+    let workspace = current_workspace_state()?;
+    let requested_compare =
+        resolve_compare_provenance(baseline_dir, compare_ref, missing_compare, &workspace)?;
+    let (_, baseline) =
+        load_requested_baseline(&pack, &identity, requested_compare, missing_compare)?;
+    Ok(baseline)
+}
+
 pub fn promote_pack_cache(
     path: &Path,
     source_workspace_key: Option<&str>,
@@ -768,15 +819,15 @@ pub fn promote_pack_cache(
 }
 
 pub fn compare_batch_reports(candidate: &BatchReport, baseline: &BatchReport) -> BatchComparison {
-    let candidate_records = candidate
-        .records
+    let (candidate_scope_records, baseline_scope_records) =
+        comparison_record_scope(candidate, baseline);
+    let candidate_records = candidate_scope_records
         .iter()
-        .map(|record| (record.resolved.run_id.clone(), record))
+        .map(|record| (record.resolved.run_id.clone(), *record))
         .collect::<BTreeMap<_, _>>();
-    let baseline_records = baseline
-        .records
+    let baseline_records = baseline_scope_records
         .iter()
-        .map(|record| (record.resolved.run_id.clone(), record))
+        .map(|record| (record.resolved.run_id.clone(), *record))
         .collect::<BTreeMap<_, _>>();
 
     let mut shared_run_ids = Vec::new();
@@ -821,26 +872,278 @@ pub fn compare_batch_reports(candidate: &BatchReport, baseline: &BatchReport) ->
     candidate_only.sort_by(run_pointer_sort_key);
     baseline_only.sort_by(run_pointer_sort_key);
 
+    let basis = BatchCompareBasis {
+        mode: "run_id".to_owned(),
+        shared_runs: shared_run_ids.len(),
+        candidate_only_runs: candidate_only.len(),
+        baseline_only_runs: baseline_only.len(),
+    };
+    let candidate_summary = summarize_record_refs(candidate_scope_records.as_slice());
+    let baseline_summary = summarize_record_refs(baseline_scope_records.as_slice());
+    let summary = compare_summary_delta(&candidate_summary, &baseline_summary);
+    let policy = evaluate_regression_policy(&summary, &basis, &regressions);
+
     BatchComparison {
         candidate_pack_id: candidate.pack_id.clone(),
         candidate_pack_name: candidate.pack_name.clone(),
         baseline_pack_id: baseline.pack_id.clone(),
         baseline_pack_name: baseline.pack_name.clone(),
-        basis: BatchCompareBasis {
-            mode: "run_id".to_owned(),
-            shared_runs: shared_run_ids.len(),
-            candidate_only_runs: candidate_only.len(),
-            baseline_only_runs: baseline_only.len(),
-        },
-        summary: compare_summary_delta(&candidate.summary, &baseline.summary),
-        by_entry: compare_group_sets(&candidate.summary.by_entry, &baseline.summary.by_entry),
-        by_family: compare_group_sets(&candidate.summary.by_family, &baseline.summary.by_family),
+        basis,
+        summary,
+        policy,
+        by_entry: compare_group_sets(&candidate_summary.by_entry, &baseline_summary.by_entry),
+        by_family: compare_group_sets(&candidate_summary.by_family, &baseline_summary.by_family),
         regressions,
         improvements,
         outcome_changes,
         candidate_only,
         baseline_only,
     }
+}
+
+fn comparison_record_scope<'a, 'b>(
+    candidate: &'a BatchReport,
+    baseline: &'b BatchReport,
+) -> (Vec<&'a BatchRunRecord>, Vec<&'b BatchRunRecord>) {
+    let candidate_lane_id = preferred_compare_lane_id(&candidate.records);
+    let baseline_lane_id = preferred_compare_lane_id(&baseline.records);
+    if let (Some(candidate_lane_id), Some(baseline_lane_id)) = (candidate_lane_id, baseline_lane_id)
+    {
+        (
+            records_for_lane(&candidate.records, candidate_lane_id),
+            records_for_lane(&baseline.records, baseline_lane_id),
+        )
+    } else {
+        (
+            candidate.records.iter().collect(),
+            baseline.records.iter().collect(),
+        )
+    }
+}
+
+fn preferred_compare_lane_id(records: &[BatchRunRecord]) -> Option<&'static str> {
+    if records
+        .iter()
+        .any(|record| record.resolved.lane_id == "current")
+    {
+        Some("current")
+    } else if records
+        .iter()
+        .any(|record| record.resolved.lane_id == "staged")
+    {
+        Some("staged")
+    } else {
+        None
+    }
+}
+
+fn records_for_lane<'a>(records: &'a [BatchRunRecord], lane_id: &str) -> Vec<&'a BatchRunRecord> {
+    records
+        .iter()
+        .filter(|record| record.resolved.lane_id == lane_id)
+        .collect()
+}
+
+fn summarize_record_refs(records: &[&BatchRunRecord]) -> BatchSummary {
+    let owned_records = records
+        .iter()
+        .map(|record| (*record).clone())
+        .collect::<Vec<_>>();
+    summarize_records(&owned_records)
+}
+
+fn evaluate_regression_policy(
+    summary: &BatchSummaryDelta,
+    basis: &BatchCompareBasis,
+    regressions: &[BatchRunComparison],
+) -> BatchRegressionPolicyEvaluation {
+    let mut rules = Vec::new();
+    let has_exact_coverage = basis.candidate_only_runs == 0 && basis.baseline_only_runs == 0;
+
+    rules.push(regression_policy_rule(
+        "new_failures",
+        "New shared-run failures",
+        if regressions.is_empty() {
+            BatchRegressionPolicyStatus::Pass
+        } else {
+            BatchRegressionPolicyStatus::Fail
+        },
+        regressions.len().to_string(),
+        "0",
+        "shared runs must not move from success to failure",
+    ));
+    rules.push(regression_policy_rule(
+        "scored_failure_delta",
+        "Scored failure delta",
+        if summary.failure_runs_delta > 0 {
+            if has_exact_coverage {
+                BatchRegressionPolicyStatus::Fail
+            } else {
+                BatchRegressionPolicyStatus::Warn
+            }
+        } else {
+            BatchRegressionPolicyStatus::Pass
+        },
+        format!("{:+}", summary.failure_runs_delta),
+        "<= 0 with exact coverage",
+        "total scored failures must not increase when run sets match",
+    ));
+    rules.push(regression_policy_rule(
+        "success_rate_delta",
+        "Scored success-rate delta",
+        if summary.success_rate_delta < -REGRESSION_POLICY_EPSILON {
+            if has_exact_coverage {
+                BatchRegressionPolicyStatus::Fail
+            } else {
+                BatchRegressionPolicyStatus::Warn
+            }
+        } else {
+            BatchRegressionPolicyStatus::Pass
+        },
+        format_policy_percent_delta(summary.success_rate_delta),
+        ">= 0.00 pp with exact coverage",
+        "scored success rate must not drop when run sets match",
+    ));
+    rules.push(regression_policy_rule(
+        "mean_sim_time_delta",
+        "Mean sim-time delta",
+        if summary.mean_sim_time_delta_s > REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S {
+            BatchRegressionPolicyStatus::Warn
+        } else {
+            BatchRegressionPolicyStatus::Pass
+        },
+        format_policy_seconds_delta(summary.mean_sim_time_delta_s),
+        format!(
+            "<= {}",
+            format_policy_seconds_delta(REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S)
+        ),
+        "mean simulated time should not drift upward materially",
+    ));
+    rules.push(regression_policy_rule(
+        "invalidated_delta",
+        "Invalidated-run delta",
+        if summary.invalidated_runs_delta > 0 {
+            BatchRegressionPolicyStatus::Warn
+        } else {
+            BatchRegressionPolicyStatus::Pass
+        },
+        format!("{:+}", summary.invalidated_runs_delta),
+        "<= 0",
+        "new invalidations can hide scored regressions",
+    ));
+    rules.push(regression_policy_rule(
+        "compare_coverage",
+        "Compare coverage",
+        if basis.candidate_only_runs > 0 || basis.baseline_only_runs > 0 {
+            BatchRegressionPolicyStatus::Warn
+        } else {
+            BatchRegressionPolicyStatus::Pass
+        },
+        format!(
+            "current-only {}, baseline-only {}",
+            basis.candidate_only_runs, basis.baseline_only_runs
+        ),
+        "0 unmatched runs",
+        "policy is strongest when the candidate and baseline run sets match",
+    ));
+
+    let status = regression_policy_status_from_rules(&rules);
+    let summary_text = regression_policy_summary(status, &rules);
+
+    BatchRegressionPolicyEvaluation {
+        status,
+        summary: summary_text,
+        rules,
+    }
+}
+
+fn regression_policy_rule(
+    id: impl Into<String>,
+    label: impl Into<String>,
+    status: BatchRegressionPolicyStatus,
+    observed: impl Into<String>,
+    threshold: impl Into<String>,
+    note: impl Into<String>,
+) -> BatchRegressionPolicyRuleResult {
+    BatchRegressionPolicyRuleResult {
+        id: id.into(),
+        label: label.into(),
+        status,
+        observed: observed.into(),
+        threshold: threshold.into(),
+        note: note.into(),
+    }
+}
+
+fn regression_policy_status_from_rules(
+    rules: &[BatchRegressionPolicyRuleResult],
+) -> BatchRegressionPolicyStatus {
+    if rules
+        .iter()
+        .any(|rule| rule.status == BatchRegressionPolicyStatus::Fail)
+    {
+        BatchRegressionPolicyStatus::Fail
+    } else if rules
+        .iter()
+        .any(|rule| rule.status == BatchRegressionPolicyStatus::Warn)
+    {
+        BatchRegressionPolicyStatus::Warn
+    } else {
+        BatchRegressionPolicyStatus::Pass
+    }
+}
+
+fn regression_policy_summary(
+    status: BatchRegressionPolicyStatus,
+    rules: &[BatchRegressionPolicyRuleResult],
+) -> String {
+    let failures = rules
+        .iter()
+        .filter(|rule| rule.status == BatchRegressionPolicyStatus::Fail)
+        .count();
+    let warnings = rules
+        .iter()
+        .filter(|rule| rule.status == BatchRegressionPolicyStatus::Warn)
+        .count();
+    match status {
+        BatchRegressionPolicyStatus::Pass => "passed all regression thresholds".to_owned(),
+        BatchRegressionPolicyStatus::Warn => {
+            format!(
+                "passed required thresholds with {}",
+                plural_count(warnings, "warning", "warnings")
+            )
+        }
+        BatchRegressionPolicyStatus::Fail => {
+            if warnings > 0 {
+                format!(
+                    "failed {} with {}",
+                    plural_count(failures, "required threshold", "required thresholds"),
+                    plural_count(warnings, "warning", "warnings")
+                )
+            } else {
+                format!(
+                    "failed {}",
+                    plural_count(failures, "required threshold", "required thresholds")
+                )
+            }
+        }
+    }
+}
+
+fn plural_count(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("1 {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
+}
+
+fn format_policy_percent_delta(value: f64) -> String {
+    format!("{:+.2} pp", value * 100.0)
+}
+
+fn format_policy_seconds_delta(value: f64) -> String {
+    format!("{value:+.2}s")
 }
 
 pub fn run_pack_cached(
@@ -4331,6 +4634,17 @@ mod tests {
         .expect("scenario json should be writable");
     }
 
+    fn report_with_records(mut report: BatchReport, records: Vec<BatchRunRecord>) -> BatchReport {
+        report.total_runs = records.len();
+        report.resolved_runs = records
+            .iter()
+            .map(|record| record.resolved.clone())
+            .collect();
+        report.summary = summarize_records(&records);
+        report.records = records;
+        report
+    }
+
     fn easy_landing_scenario() -> ScenarioSpec {
         ScenarioSpec {
             id: "unit_flat_landing".to_owned(),
@@ -4653,6 +4967,17 @@ mod tests {
         assert_eq!(comparison.regressions.len(), 1);
         assert!(comparison.improvements.is_empty());
         assert_eq!(comparison.summary.failure_runs_delta, 1);
+        assert_eq!(comparison.policy.status, BatchRegressionPolicyStatus::Fail);
+        assert_eq!(
+            comparison
+                .policy
+                .rules
+                .iter()
+                .find(|rule| rule.id == "new_failures")
+                .expect("new failure policy rule should exist")
+                .status,
+            BatchRegressionPolicyStatus::Fail
+        );
         assert_eq!(comparison.regressions[0].run_id, "landing_case");
         assert_eq!(
             comparison.regressions[0].baseline_mission_outcome,
@@ -4662,6 +4987,170 @@ mod tests {
             comparison.regressions[0].candidate_mission_outcome,
             "failed_crash"
         );
+    }
+
+    #[test]
+    fn compare_reports_passes_policy_for_identical_reports() {
+        let base_dir = temp_fixture_root("compare_identical");
+        write_scenario(
+            &base_dir,
+            "scenarios/landing_case.json",
+            &easy_landing_scenario(),
+        );
+        let pack = ScenarioPackSpec {
+            id: "compare_identical".to_owned(),
+            name: "Compare identical".to_owned(),
+            description: "compare identical".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "landing_case".to_owned(),
+                scenario: "scenarios/landing_case.json".to_owned(),
+                controller: "baseline".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack(&pack, &base_dir, None).unwrap();
+        let comparison = compare_batch_reports(&report, &report);
+
+        assert_eq!(comparison.policy.status, BatchRegressionPolicyStatus::Pass);
+        assert!(comparison.regressions.is_empty());
+        assert!(
+            comparison
+                .policy
+                .summary
+                .contains("passed all regression thresholds")
+        );
+    }
+
+    #[test]
+    fn compare_policy_warns_on_aggregate_deltas_when_coverage_differs() {
+        let base_dir = temp_fixture_root("compare_coverage");
+        write_scenario(
+            &base_dir,
+            "scenarios/landing_case.json",
+            &easy_landing_scenario(),
+        );
+        let baseline_pack = ScenarioPackSpec {
+            id: "compare_coverage_baseline".to_owned(),
+            name: "Compare coverage baseline".to_owned(),
+            description: "compare coverage baseline".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "landing_case".to_owned(),
+                scenario: "scenarios/landing_case.json".to_owned(),
+                controller: "baseline".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::new(),
+            })],
+        };
+        let candidate_pack = ScenarioPackSpec {
+            id: "compare_coverage_candidate".to_owned(),
+            name: "Compare coverage candidate".to_owned(),
+            description: "compare coverage candidate".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![
+                ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                    id: "landing_case".to_owned(),
+                    scenario: "scenarios/landing_case.json".to_owned(),
+                    controller: "baseline".to_owned(),
+                    controller_config: None,
+                    metadata: BTreeMap::new(),
+                }),
+                ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                    id: "extra_case".to_owned(),
+                    scenario: "scenarios/landing_case.json".to_owned(),
+                    controller: "idle".to_owned(),
+                    controller_config: None,
+                    metadata: BTreeMap::new(),
+                }),
+            ],
+        };
+
+        let baseline = run_pack(&baseline_pack, &base_dir, None).unwrap();
+        let candidate = run_pack(&candidate_pack, &base_dir, None).unwrap();
+        let comparison = compare_batch_reports(&candidate, &baseline);
+
+        assert_eq!(comparison.basis.candidate_only_runs, 1);
+        assert_eq!(comparison.summary.failure_runs_delta, 1);
+        assert!(comparison.regressions.is_empty());
+        assert_eq!(comparison.policy.status, BatchRegressionPolicyStatus::Warn);
+        assert_eq!(
+            comparison
+                .policy
+                .rules
+                .iter()
+                .find(|rule| rule.id == "scored_failure_delta")
+                .expect("scored failure policy rule should exist")
+                .status,
+            BatchRegressionPolicyStatus::Warn
+        );
+    }
+
+    #[test]
+    fn compare_reports_prefer_current_lane_policy_scope() {
+        let base_dir = temp_fixture_root("compare_current_lane_scope");
+        write_scenario(
+            &base_dir,
+            "scenarios/landing_case.json",
+            &easy_landing_scenario(),
+        );
+        let baseline_pack = ScenarioPackSpec {
+            id: "compare_current_lane_baseline".to_owned(),
+            name: "Compare current lane baseline".to_owned(),
+            description: "compare current lane baseline".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "landing_case".to_owned(),
+                scenario: "scenarios/landing_case.json".to_owned(),
+                controller: "baseline".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::new(),
+            })],
+        };
+        let candidate_pack = ScenarioPackSpec {
+            id: "compare_current_lane_candidate".to_owned(),
+            name: "Compare current lane candidate".to_owned(),
+            description: "compare current lane candidate".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+                id: "landing_case".to_owned(),
+                scenario: "scenarios/landing_case.json".to_owned(),
+                controller: "idle".to_owned(),
+                controller_config: None,
+                metadata: BTreeMap::new(),
+            })],
+        };
+        let baseline_single = run_pack(&baseline_pack, &base_dir, None).unwrap();
+        let candidate_single = run_pack(&candidate_pack, &base_dir, None).unwrap();
+
+        let mut current_success = baseline_single.records[0].clone();
+        current_success.resolved.run_id = "landing_case__current".to_owned();
+        current_success.resolved.lane_id = "current".to_owned();
+
+        let mut hidden_baseline_success = baseline_single.records[0].clone();
+        hidden_baseline_success.resolved.run_id = "landing_case__baseline".to_owned();
+        hidden_baseline_success.resolved.lane_id = "baseline".to_owned();
+
+        let mut hidden_candidate_failure = candidate_single.records[0].clone();
+        hidden_candidate_failure.resolved.run_id = "landing_case__baseline".to_owned();
+        hidden_candidate_failure.resolved.lane_id = "baseline".to_owned();
+
+        let baseline = report_with_records(
+            baseline_single.clone(),
+            vec![current_success.clone(), hidden_baseline_success],
+        );
+        let candidate = report_with_records(
+            candidate_single,
+            vec![current_success, hidden_candidate_failure],
+        );
+        let comparison = compare_batch_reports(&candidate, &baseline);
+
+        assert_eq!(comparison.basis.shared_runs, 1);
+        assert_eq!(comparison.summary.failure_runs_delta, 0);
+        assert!(comparison.regressions.is_empty());
+        assert_eq!(comparison.policy.status, BatchRegressionPolicyStatus::Pass);
     }
 
     #[test]

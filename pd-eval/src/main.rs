@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
-    MissingComparePolicy, load_batch_report, promote_pack_cache,
-    report::write_batch_report_artifacts, run_pack_file_cached,
+    BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
+    promote_pack_cache, report::write_batch_report_artifacts, resolve_pack_compare_baseline,
+    run_pack_file_cached,
 };
 
 #[derive(Debug, Parser)]
@@ -44,6 +45,9 @@ struct RunPackArgs {
 
     #[arg(long, value_name = "N")]
     workers: Option<usize>,
+
+    #[arg(long)]
+    enforce_regression_policy: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -92,6 +96,17 @@ fn main() -> Result<()> {
                 .clone()
                 .unwrap_or_else(|| default_eval_output_dir(&args.pack));
             let requested_workers = args.workers.unwrap_or_else(default_worker_count);
+            if args.enforce_regression_policy
+                && resolve_pack_compare_baseline(
+                    &args.pack,
+                    Some(args.compare_ref.as_str()),
+                    args.baseline_dir.as_deref(),
+                    MissingComparePolicy::Error,
+                )?
+                .is_none()
+            {
+                bail!("--enforce-regression-policy requires a resolved compare baseline");
+            }
             let outcome = run_pack_file_cached(
                 &args.pack,
                 Some(default_output_dir.as_path()),
@@ -101,6 +116,18 @@ fn main() -> Result<()> {
                 args.missing_compare.into(),
                 !args.no_reuse,
             )?;
+            if args.enforce_regression_policy {
+                let baseline = outcome.baseline.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "--enforce-regression-policy requires a resolved compare baseline"
+                    )
+                })?;
+                let comparison = compare_batch_reports(&outcome.report, &baseline.report);
+                if comparison.policy.status == BatchRegressionPolicyStatus::Fail {
+                    bail!("regression policy failed: {}", comparison.policy.summary);
+                }
+                eprintln!("regression policy: {}", comparison.policy.summary);
+            }
             println!("{}", serde_json::to_string_pretty(&outcome.report.summary)?);
         }
         Commands::Report(args) => render_report(args)?,
