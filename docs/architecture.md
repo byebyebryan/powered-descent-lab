@@ -181,6 +181,12 @@ sensors.
 This should be a simple controller-facing terrain package, not a hidden view
 over engine internals and not a sensor-gated approximation.
 
+Reactive avoidance should be expressed as terrain-clearance guidance, not as
+scenario-specific controller modes. Scenario metadata can identify a fixture as a
+backstop or descent-clip case for reports, but the controller should still plan
+against terrain geometry and clearance margins rather than branching on those
+labels.
+
 Optional obstacle layers can be added later for structures or hazards without
 discarding the heightfield as the canonical ground model.
 

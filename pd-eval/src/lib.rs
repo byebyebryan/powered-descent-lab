@@ -12,7 +12,7 @@ use pd_control::{
 };
 use pd_core::{
     EvaluationGoal, LandingPadSpec, MissionOutcome, RunContext, RunManifest, RunSummary,
-    SampleRecord, ScenarioSpec, VehicleSpec,
+    SampleRecord, ScenarioSpec, TerrainDefinition, Vec2, VehicleSpec,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -272,6 +272,8 @@ pub struct TerminalMatrixEntry {
     pub condition_set: String,
     pub vehicle_variant: String,
     pub expectation_tier: String,
+    #[serde(default)]
+    pub arc_points: Vec<String>,
     #[serde(default)]
     pub adjustments: Vec<NumericAdjustmentSpec>,
     #[serde(default)]
@@ -1450,6 +1452,7 @@ fn validate_terminal_matrix_entry(entry: &TerminalMatrixEntry) -> Result<()> {
             entry.id
         );
     }
+    let family_spec = terminal_arrival_family_spec(&entry.terminal_matrix)?;
     if entry.base_scenario.trim().is_empty() {
         bail!(
             "terminal matrix entry '{}' must define a non-empty base_scenario",
@@ -1509,6 +1512,34 @@ fn validate_terminal_matrix_entry(entry: &TerminalMatrixEntry) -> Result<()> {
             bail!(
                 "terminal matrix entry '{}' metadata keys and values must not be empty",
                 entry.id
+            );
+        }
+    }
+    let mut seen_arc_points = BTreeSet::new();
+    for arc_point in &entry.arc_points {
+        if arc_point.trim().is_empty() {
+            bail!(
+                "terminal matrix entry '{}' has an empty arc_point selector",
+                entry.id
+            );
+        }
+        if !seen_arc_points.insert(arc_point.clone()) {
+            bail!(
+                "terminal matrix entry '{}' has duplicate arc_point selector '{}'",
+                entry.id,
+                arc_point
+            );
+        }
+        if !family_spec
+            .arc_points
+            .iter()
+            .any(|candidate| candidate.id == arc_point)
+        {
+            bail!(
+                "terminal matrix entry '{}' arc_point selector '{}' is not supported by matrix '{}'",
+                entry.id,
+                arc_point,
+                entry.terminal_matrix
             );
         }
     }
@@ -1766,6 +1797,62 @@ struct TerminalProjectedErrorSpec {
     magnitudes_m: [f64; 3],
 }
 
+#[derive(Clone, Copy, Debug)]
+enum TerminalReactiveTerrainHazard {
+    ContainmentBackstop,
+    DescentClip,
+}
+
+impl TerminalReactiveTerrainHazard {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ContainmentBackstop => "containment_backstop",
+            Self::DescentClip => "descent_clip",
+        }
+    }
+
+    fn obstacle_kind(self) -> &'static str {
+        match self {
+            Self::ContainmentBackstop => "backstop",
+            Self::DescentClip => "shoulder",
+        }
+    }
+
+    fn obstacle_placement(self) -> &'static str {
+        match self {
+            Self::ContainmentBackstop => "target_side",
+            Self::DescentClip => "terminal_approach",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TerminalReactiveTerrainSpec {
+    hazard: TerminalReactiveTerrainHazard,
+    variant: &'static str,
+    height_offset_m: f64,
+    pad_clearance_gap_m: f64,
+    shoulder_width_m: f64,
+    top_width_m: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TerminalConditionSpec {
+    Clean,
+    ProjectedError(TerminalProjectedErrorSpec),
+    ReactiveTerrain(TerminalReactiveTerrainSpec),
+}
+
+impl TerminalConditionSpec {
+    fn kind_label(self) -> &'static str {
+        match self {
+            Self::Clean => "clean",
+            Self::ProjectedError(_) => "projected_error",
+            Self::ReactiveTerrain(_) => "reactive_terrain",
+        }
+    }
+}
+
 const HALF_ARC_TERMINAL_V1_ARC_POINTS: [TerminalArcPointSpec; 7] = [
     TerminalArcPointSpec {
         id: "a00",
@@ -1924,6 +2011,7 @@ fn resolve_terminal_matrix_runs(
     let base_path = base_dir.join(&entry.base_scenario);
     let base_scenario = load_scenario(&base_path)?;
     let family_spec = terminal_arrival_family_spec(&entry.terminal_matrix)?;
+    let arc_specs = selected_terminal_arc_specs(entry, family_spec)?;
     let seed_specs = terminal_seed_specs(entry.seed_tier);
     let mut runs = Vec::new();
 
@@ -1933,7 +2021,7 @@ fn resolve_terminal_matrix_runs(
             lane.controller.as_str(),
             lane.controller_config.as_deref(),
         )?;
-        for arc in family_spec.arc_points {
+        for arc in &arc_specs {
             for band in TERMINAL_BANDS {
                 for seed_spec in seed_specs {
                     let run_id = resolved_terminal_matrix_run_id(
@@ -1982,6 +2070,32 @@ fn resolve_terminal_matrix_runs(
     Ok(runs)
 }
 
+fn selected_terminal_arc_specs<'a>(
+    entry: &TerminalMatrixEntry,
+    family_spec: &'a TerminalArrivalFamilySpec,
+) -> Result<Vec<&'a TerminalArcPointSpec>> {
+    if entry.arc_points.is_empty() {
+        return Ok(family_spec.arc_points.iter().collect());
+    }
+
+    entry
+        .arc_points
+        .iter()
+        .map(|arc_point| {
+            family_spec
+                .arc_points
+                .iter()
+                .find(|candidate| candidate.id == arc_point)
+                .with_context(|| {
+                    format!(
+                        "terminal matrix entry '{}' arc_point selector '{}' is not supported by matrix '{}'",
+                        entry.id, arc_point, entry.terminal_matrix
+                    )
+                })
+        })
+        .collect()
+}
+
 fn terminal_arrival_family_spec(name: &str) -> Result<&'static TerminalArrivalFamilySpec> {
     match name {
         "half_arc_terminal_v1" => Ok(&HALF_ARC_TERMINAL_V1_SPEC),
@@ -1996,29 +2110,77 @@ fn terminal_seed_specs(seed_tier: TerminalSeedTier) -> &'static [TerminalSeedSpe
     }
 }
 
-fn terminal_condition_spec(condition_set: &str) -> Result<Option<TerminalProjectedErrorSpec>> {
+fn terminal_condition_spec(condition_set: &str) -> Result<TerminalConditionSpec> {
     match condition_set {
-        "clean" => Ok(None),
-        "traj_undershoot_small" => Ok(Some(TerminalProjectedErrorSpec {
-            kind: TerminalProjectedErrorKind::Undershoot,
-            severity: "small",
-            magnitudes_m: [30.0, 45.0, 60.0],
-        })),
-        "traj_undershoot_large" => Ok(Some(TerminalProjectedErrorSpec {
-            kind: TerminalProjectedErrorKind::Undershoot,
-            severity: "large",
-            magnitudes_m: [75.0, 90.0, 105.0],
-        })),
-        "traj_overshoot_small" => Ok(Some(TerminalProjectedErrorSpec {
-            kind: TerminalProjectedErrorKind::Overshoot,
-            severity: "small",
-            magnitudes_m: [30.0, 45.0, 60.0],
-        })),
-        "traj_overshoot_large" => Ok(Some(TerminalProjectedErrorSpec {
-            kind: TerminalProjectedErrorKind::Overshoot,
-            severity: "large",
-            magnitudes_m: [75.0, 90.0, 105.0],
-        })),
+        "clean" => Ok(TerminalConditionSpec::Clean),
+        "traj_undershoot_small" => Ok(TerminalConditionSpec::ProjectedError(
+            TerminalProjectedErrorSpec {
+                kind: TerminalProjectedErrorKind::Undershoot,
+                severity: "small",
+                magnitudes_m: [30.0, 45.0, 60.0],
+            },
+        )),
+        "traj_undershoot_large" => Ok(TerminalConditionSpec::ProjectedError(
+            TerminalProjectedErrorSpec {
+                kind: TerminalProjectedErrorKind::Undershoot,
+                severity: "large",
+                magnitudes_m: [75.0, 90.0, 105.0],
+            },
+        )),
+        "traj_overshoot_small" => Ok(TerminalConditionSpec::ProjectedError(
+            TerminalProjectedErrorSpec {
+                kind: TerminalProjectedErrorKind::Overshoot,
+                severity: "small",
+                magnitudes_m: [30.0, 45.0, 60.0],
+            },
+        )),
+        "traj_overshoot_large" => Ok(TerminalConditionSpec::ProjectedError(
+            TerminalProjectedErrorSpec {
+                kind: TerminalProjectedErrorKind::Overshoot,
+                severity: "large",
+                magnitudes_m: [75.0, 90.0, 105.0],
+            },
+        )),
+        "terrain_backstop_wall" => Ok(TerminalConditionSpec::ReactiveTerrain(
+            TerminalReactiveTerrainSpec {
+                hazard: TerminalReactiveTerrainHazard::ContainmentBackstop,
+                variant: "wall",
+                height_offset_m: 400.0,
+                pad_clearance_gap_m: 30.0,
+                shoulder_width_m: 8.0,
+                top_width_m: 120.0,
+            },
+        )),
+        "terrain_backstop_slanted" => Ok(TerminalConditionSpec::ReactiveTerrain(
+            TerminalReactiveTerrainSpec {
+                hazard: TerminalReactiveTerrainHazard::ContainmentBackstop,
+                variant: "slanted",
+                height_offset_m: 400.0,
+                pad_clearance_gap_m: 30.0,
+                shoulder_width_m: 90.0,
+                top_width_m: 70.0,
+            },
+        )),
+        "terrain_clip_low" => Ok(TerminalConditionSpec::ReactiveTerrain(
+            TerminalReactiveTerrainSpec {
+                hazard: TerminalReactiveTerrainHazard::DescentClip,
+                variant: "low",
+                height_offset_m: 120.0,
+                pad_clearance_gap_m: 22.0,
+                shoulder_width_m: 32.0,
+                top_width_m: 28.0,
+            },
+        )),
+        "terrain_clip_medium" => Ok(TerminalConditionSpec::ReactiveTerrain(
+            TerminalReactiveTerrainSpec {
+                hazard: TerminalReactiveTerrainHazard::DescentClip,
+                variant: "medium",
+                height_offset_m: 220.0,
+                pad_clearance_gap_m: 24.0,
+                shoulder_width_m: 36.0,
+                top_width_m: 34.0,
+            },
+        )),
         _ => bail!("unsupported condition_set '{condition_set}'"),
     }
 }
@@ -2200,7 +2362,11 @@ fn resolve_terminal_matrix_scenario(
 
     let (clean_vx_mps, clean_vy_mps) =
         solve_ballistic_velocity(x_m, y_m, ttg_s, family_spec.gravity_mps2);
-    let projected_error_spec = terminal_condition_spec(&entry.condition_set)?;
+    let condition_spec = terminal_condition_spec(&entry.condition_set)?;
+    scenario.metadata.insert(
+        "resolved.condition_kind".to_owned(),
+        condition_spec.kind_label().to_owned(),
+    );
     let mut vx_mps = clean_vx_mps;
     let mut vy_mps = clean_vy_mps;
     let mut speed_scale = 1.0;
@@ -2214,7 +2380,7 @@ fn resolve_terminal_matrix_scenario(
         1.0
     };
 
-    if let Some(error_spec) = projected_error_spec {
+    if let TerminalConditionSpec::ProjectedError(error_spec) = condition_spec {
         let magnitude_index = seed_spec
             .error_level_index
             .min(error_spec.magnitudes_m.len().saturating_sub(1));
@@ -2276,6 +2442,16 @@ fn resolve_terminal_matrix_scenario(
     scenario.initial_state.velocity_mps.x = vx_mps;
     scenario.initial_state.velocity_mps.y = vy_mps;
 
+    if let TerminalConditionSpec::ReactiveTerrain(terrain_spec) = condition_spec {
+        apply_terminal_reactive_terrain(
+            &mut scenario,
+            terrain_spec,
+            side_sign,
+            seed_spec.index,
+            &mut resolved_parameters,
+        )?;
+    }
+
     scenario
         .validate()
         .map_err(anyhow::Error::msg)
@@ -2335,6 +2511,225 @@ fn solve_ballistic_velocity(x_m: f64, y_m: f64, ttg_s: f64, gravity_mps2: f64) -
     let vx_mps = -x_m / ttg_s;
     let vy_mps = ((0.5 * gravity_mps2 * ttg_s * ttg_s) - y_m) / ttg_s;
     (vx_mps, vy_mps)
+}
+
+fn apply_terminal_reactive_terrain(
+    scenario: &mut ScenarioSpec,
+    terrain_spec: TerminalReactiveTerrainSpec,
+    side_sign: f64,
+    seed_index: u64,
+    resolved_parameters: &mut BTreeMap<String, f64>,
+) -> Result<()> {
+    let Some(target_pad) = scenario
+        .world
+        .landing_pads
+        .iter()
+        .find(|pad| pad.id == scenario.mission.goal.target_pad_id())
+    else {
+        bail!(
+            "terminal reactive terrain condition requires target pad '{}'",
+            scenario.mission.goal.target_pad_id()
+        );
+    };
+    let target_center_x_m = target_pad.center_x_m;
+    let target_surface_y_m = target_pad.surface_y_m;
+    let pad_half_width_m = target_pad.half_width_m();
+    let approach_side_sign = terminal_terrain_approach_side_sign(side_sign, seed_index);
+    let feature_side_sign = match terrain_spec.hazard {
+        TerminalReactiveTerrainHazard::ContainmentBackstop => -approach_side_sign,
+        TerminalReactiveTerrainHazard::DescentClip => approach_side_sign,
+    };
+    let inner_offset_m = pad_half_width_m + terrain_spec.pad_clearance_gap_m;
+    let far_offset_m = (scenario.initial_state.position_m.x - target_center_x_m)
+        .abs()
+        .max(900.0)
+        + 240.0;
+    let terrain_points = match terrain_spec.hazard {
+        TerminalReactiveTerrainHazard::ContainmentBackstop => terminal_backstop_profile_points(
+            target_center_x_m,
+            target_surface_y_m,
+            feature_side_sign,
+            far_offset_m,
+            inner_offset_m,
+            terrain_spec,
+        ),
+        TerminalReactiveTerrainHazard::DescentClip => terminal_clip_profile_points(
+            target_center_x_m,
+            target_surface_y_m,
+            feature_side_sign,
+            far_offset_m,
+            inner_offset_m,
+            terrain_spec,
+        ),
+    }?;
+
+    scenario.world.terrain = TerrainDefinition::Heightfield {
+        points_m: terrain_points,
+    };
+    scenario.metadata.insert(
+        "resolved.reactive_contract".to_owned(),
+        "execution_guardrail".to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.reactive_trigger".to_owned(),
+        "execution_drift".to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.primary_navigation_owner".to_owned(),
+        "terminal_guidance".to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.nominal_route_must_clear".to_owned(),
+        "true".to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.hazard_driver".to_owned(),
+        terrain_spec.hazard.as_str().to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.obstacle_kind".to_owned(),
+        terrain_spec.hazard.obstacle_kind().to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.obstacle_placement".to_owned(),
+        terrain_spec.hazard.obstacle_placement().to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.terrain_variant".to_owned(),
+        terrain_spec.variant.to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.terrain_feature_side".to_owned(),
+        side_label_for_sign(feature_side_sign).to_owned(),
+    );
+    scenario.metadata.insert(
+        "resolved.terrain_visibility".to_owned(),
+        "startup_context".to_owned(),
+    );
+
+    resolved_parameters.insert("terrain_feature_side_sign".to_owned(), feature_side_sign);
+    resolved_parameters.insert("terrain_approach_side_sign".to_owned(), approach_side_sign);
+    resolved_parameters.insert(
+        "terrain_height_offset_m".to_owned(),
+        terrain_spec.height_offset_m,
+    );
+    resolved_parameters.insert("terrain_inner_offset_m".to_owned(), inner_offset_m);
+    resolved_parameters.insert(
+        "terrain_pad_clearance_gap_m".to_owned(),
+        terrain_spec.pad_clearance_gap_m,
+    );
+    resolved_parameters.insert(
+        "terrain_shoulder_width_m".to_owned(),
+        terrain_spec.shoulder_width_m,
+    );
+    resolved_parameters.insert("terrain_top_width_m".to_owned(), terrain_spec.top_width_m);
+    resolved_parameters.insert("terrain_far_offset_m".to_owned(), far_offset_m);
+
+    Ok(())
+}
+
+fn terminal_terrain_approach_side_sign(side_sign: f64, seed_index: u64) -> f64 {
+    if side_sign.abs() > f64::EPSILON {
+        side_sign.signum()
+    } else if seed_index % 2 == 0 {
+        -1.0
+    } else {
+        1.0
+    }
+}
+
+fn side_label_for_sign(side_sign: f64) -> &'static str {
+    if side_sign < 0.0 { "left" } else { "right" }
+}
+
+fn terminal_backstop_profile_points(
+    target_center_x_m: f64,
+    target_surface_y_m: f64,
+    feature_side_sign: f64,
+    far_offset_m: f64,
+    inner_offset_m: f64,
+    terrain_spec: TerminalReactiveTerrainSpec,
+) -> Result<Vec<Vec2>> {
+    let ramp_end_m = inner_offset_m + terrain_spec.shoulder_width_m;
+    let plateau_end_m = ramp_end_m + terrain_spec.top_width_m;
+    terrain_points_from_signed_profile(
+        target_center_x_m,
+        feature_side_sign,
+        &[
+            (-far_offset_m, target_surface_y_m),
+            (inner_offset_m, target_surface_y_m),
+            (
+                ramp_end_m,
+                target_surface_y_m + terrain_spec.height_offset_m,
+            ),
+            (
+                plateau_end_m,
+                target_surface_y_m + terrain_spec.height_offset_m,
+            ),
+            (
+                far_offset_m,
+                target_surface_y_m + terrain_spec.height_offset_m,
+            ),
+        ],
+    )
+}
+
+fn terminal_clip_profile_points(
+    target_center_x_m: f64,
+    target_surface_y_m: f64,
+    feature_side_sign: f64,
+    far_offset_m: f64,
+    inner_offset_m: f64,
+    terrain_spec: TerminalReactiveTerrainSpec,
+) -> Result<Vec<Vec2>> {
+    let ramp_up_end_m = inner_offset_m + terrain_spec.shoulder_width_m;
+    let plateau_end_m = ramp_up_end_m + terrain_spec.top_width_m;
+    let outer_end_m = plateau_end_m + terrain_spec.shoulder_width_m;
+    terrain_points_from_signed_profile(
+        target_center_x_m,
+        feature_side_sign,
+        &[
+            (-far_offset_m, target_surface_y_m),
+            (inner_offset_m, target_surface_y_m),
+            (
+                ramp_up_end_m,
+                target_surface_y_m + terrain_spec.height_offset_m,
+            ),
+            (
+                plateau_end_m,
+                target_surface_y_m + terrain_spec.height_offset_m,
+            ),
+            (outer_end_m, target_surface_y_m),
+            (far_offset_m, target_surface_y_m),
+        ],
+    )
+}
+
+fn terrain_points_from_signed_profile(
+    target_center_x_m: f64,
+    feature_side_sign: f64,
+    signed_profile: &[(f64, f64)],
+) -> Result<Vec<Vec2>> {
+    let mut points: Vec<Vec2> = signed_profile
+        .iter()
+        .map(|(signed_offset_m, y_m)| {
+            Vec2::new(
+                target_center_x_m + (feature_side_sign * signed_offset_m),
+                *y_m,
+            )
+        })
+        .collect();
+    points.sort_by(|left, right| {
+        left.x
+            .partial_cmp(&right.x)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for pair in points.windows(2) {
+        if pair[1].x <= pair[0].x {
+            bail!("terminal reactive terrain produced duplicate terrain x coordinates");
+        }
+    }
+    Ok(points)
 }
 
 fn family_entry_seeds(entry: &ScenarioFamilyEntry) -> Vec<u64> {
@@ -5219,6 +5614,7 @@ mod tests {
                 condition_set: "clean".to_owned(),
                 vehicle_variant: "nominal".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: Vec::new(),
                 tags: vec!["terminal".to_owned(), "smoke".to_owned()],
                 metadata: BTreeMap::from([("difficulty".to_owned(), "nominal".to_owned())]),
@@ -5295,6 +5691,44 @@ mod tests {
     }
 
     #[test]
+    fn terminal_matrix_entry_respects_arc_point_selectors() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_selected_arcs".to_owned(),
+            name: "Terminal matrix selected arcs".to_owned(),
+            description: "terminal matrix selected arcs".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                id: "terminal_guidance_selected_arcs".to_owned(),
+                terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TerminalMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "staged".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TerminalSeedTier::Smoke,
+                condition_set: "clean".to_owned(),
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                arc_points: vec!["a70".to_owned(), "a80".to_owned()],
+                adjustments: Vec::new(),
+                tags: Vec::new(),
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+
+        assert_eq!(resolved_runs.len(), 2 * 3 * 3);
+        assert!(
+            resolved_runs
+                .iter()
+                .all(|run| matches!(run.descriptor.selector.arc_point.as_str(), "a70" | "a80"))
+        );
+    }
+
+    #[test]
     fn terminal_matrix_eval_timeout_must_not_shorten_reachability_window() {
         let base_dir = fixtures_root();
         let pack = ScenarioPackSpec {
@@ -5315,6 +5749,7 @@ mod tests {
                 condition_set: "clean".to_owned(),
                 vehicle_variant: "nominal".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: Vec::new(),
                 tags: vec!["terminal".to_owned(), "smoke".to_owned()],
                 metadata: BTreeMap::new(),
@@ -5348,6 +5783,7 @@ mod tests {
                 condition_set: "traj_overshoot_small".to_owned(),
                 vehicle_variant: "half".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: vec![NumericAdjustmentSpec {
                     id: "payload_half_mass_kg".to_owned(),
                     path: "vehicle.dry_mass_kg".to_owned(),
@@ -5393,6 +5829,175 @@ mod tests {
     }
 
     #[test]
+    fn terminal_matrix_reactive_terrain_conditions_resolve_geometry() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "terminal_matrix_reactive_terrain".to_owned(),
+            name: "Terminal matrix reactive terrain".to_owned(),
+            description: "terminal matrix reactive terrain".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![
+                ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                    id: "terminal_guidance_terrain_backstop_wall_half".to_owned(),
+                    terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                    base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    lanes: vec![TerminalMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "terminal_pdg".to_owned(),
+                        controller_config: None,
+                    }],
+                    seed_tier: TerminalSeedTier::Smoke,
+                    condition_set: "terrain_backstop_wall".to_owned(),
+                    vehicle_variant: "half".to_owned(),
+                    expectation_tier: "core".to_owned(),
+                    arc_points: Vec::new(),
+                    adjustments: vec![NumericAdjustmentSpec {
+                        id: "payload_half_mass_kg".to_owned(),
+                        path: "vehicle.dry_mass_kg".to_owned(),
+                        mode: NumericPerturbationMode::Offset,
+                        value: 2250.0,
+                    }],
+                    tags: vec!["terminal".to_owned(), "terrain".to_owned()],
+                    metadata: BTreeMap::new(),
+                }),
+                ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                    id: "terminal_guidance_terrain_clip_low_half".to_owned(),
+                    terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                    base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    lanes: vec![TerminalMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "terminal_pdg".to_owned(),
+                        controller_config: None,
+                    }],
+                    seed_tier: TerminalSeedTier::Smoke,
+                    condition_set: "terrain_clip_low".to_owned(),
+                    vehicle_variant: "half".to_owned(),
+                    expectation_tier: "core".to_owned(),
+                    arc_points: Vec::new(),
+                    adjustments: vec![NumericAdjustmentSpec {
+                        id: "payload_half_mass_kg".to_owned(),
+                        path: "vehicle.dry_mass_kg".to_owned(),
+                        mode: NumericPerturbationMode::Offset,
+                        value: 2250.0,
+                    }],
+                    tags: vec!["terminal".to_owned(), "terrain".to_owned()],
+                    metadata: BTreeMap::new(),
+                }),
+            ],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+        let backstop = resolved_runs
+            .iter()
+            .find(|run| {
+                run.descriptor.entry_id == "terminal_guidance_terrain_backstop_wall_half"
+                    && run.descriptor.selector.arc_point == "a30"
+                    && run.descriptor.selector.velocity_band == "mid"
+                    && run.descriptor.resolved_seed == 0
+            })
+            .expect("backstop terrain matrix record present");
+        let backstop_params = &backstop.descriptor.resolved_parameters;
+        let backstop_feature_side = backstop_params["terrain_feature_side_sign"];
+        let backstop_plateau_x = backstop_feature_side
+            * (backstop_params["terrain_inner_offset_m"]
+                + backstop_params["terrain_shoulder_width_m"]
+                + (0.5 * backstop_params["terrain_top_width_m"]));
+
+        assert_eq!(
+            backstop
+                .scenario
+                .metadata
+                .get("resolved.condition_kind")
+                .map(String::as_str),
+            Some("reactive_terrain")
+        );
+        assert_eq!(
+            backstop
+                .scenario
+                .metadata
+                .get("resolved.hazard_driver")
+                .map(String::as_str),
+            Some("containment_backstop")
+        );
+        assert_eq!(
+            backstop
+                .scenario
+                .metadata
+                .get("resolved.reactive_contract")
+                .map(String::as_str),
+            Some("execution_guardrail")
+        );
+        assert_eq!(
+            backstop
+                .scenario
+                .metadata
+                .get("resolved.terrain_variant")
+                .map(String::as_str),
+            Some("wall")
+        );
+        assert_eq!(backstop_params["terrain_height_offset_m"], 400.0);
+        assert_eq!(backstop_feature_side, 1.0);
+        assert_eq!(backstop.scenario.world.terrain.sample_height(0.0), 0.0);
+        assert!(
+            (backstop
+                .scenario
+                .world
+                .terrain
+                .sample_height(backstop_plateau_x)
+                - backstop_params["terrain_height_offset_m"])
+                .abs()
+                < 1e-9
+        );
+        assert_eq!(
+            backstop
+                .scenario
+                .world
+                .terrain
+                .sample_height(-backstop_plateau_x),
+            0.0
+        );
+
+        let clip = resolved_runs
+            .iter()
+            .find(|run| {
+                run.descriptor.entry_id == "terminal_guidance_terrain_clip_low_half"
+                    && run.descriptor.selector.arc_point == "a30"
+                    && run.descriptor.selector.velocity_band == "mid"
+                    && run.descriptor.resolved_seed == 0
+            })
+            .expect("clip terrain matrix record present");
+        let clip_params = &clip.descriptor.resolved_parameters;
+        let clip_feature_side = clip_params["terrain_feature_side_sign"];
+        let clip_plateau_x = clip_feature_side
+            * (clip_params["terrain_inner_offset_m"]
+                + clip_params["terrain_shoulder_width_m"]
+                + (0.5 * clip_params["terrain_top_width_m"]));
+
+        assert_eq!(
+            clip.scenario
+                .metadata
+                .get("resolved.hazard_driver")
+                .map(String::as_str),
+            Some("descent_clip")
+        );
+        assert_eq!(
+            clip.scenario
+                .metadata
+                .get("resolved.obstacle_placement")
+                .map(String::as_str),
+            Some("terminal_approach")
+        );
+        assert_eq!(clip_feature_side, -1.0);
+        assert_eq!(clip.scenario.world.terrain.sample_height(0.0), 0.0);
+        assert!(
+            (clip.scenario.world.terrain.sample_height(clip_plateau_x)
+                - clip_params["terrain_height_offset_m"])
+                .abs()
+                < 1e-9
+        );
+    }
+
+    #[test]
     fn terminal_matrix_entry_rejects_unknown_condition_set() {
         let pack = ScenarioPackSpec {
             id: "terminal_matrix_unknown_condition".to_owned(),
@@ -5412,6 +6017,7 @@ mod tests {
                 condition_set: "traj_overshot_small".to_owned(),
                 vehicle_variant: "half".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: vec![],
                 tags: vec![],
                 metadata: BTreeMap::new(),
@@ -5444,6 +6050,7 @@ mod tests {
                 condition_set: "clean".to_owned(),
                 vehicle_variant: "heavy_cargo".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: vec![NumericAdjustmentSpec {
                     id: "payload_full_mass_kg".to_owned(),
                     path: "vehicle.dry_mass_kg".to_owned(),
@@ -5513,6 +6120,7 @@ mod tests {
                     condition_set: "clean".to_owned(),
                     vehicle_variant: "half".to_owned(),
                     expectation_tier: "core".to_owned(),
+                    arc_points: Vec::new(),
                     adjustments: vec![NumericAdjustmentSpec {
                         id: "payload_half_mass_kg".to_owned(),
                         path: "vehicle.dry_mass_kg".to_owned(),
@@ -5535,6 +6143,7 @@ mod tests {
                     condition_set: "clean".to_owned(),
                     vehicle_variant: "full".to_owned(),
                     expectation_tier: "stress".to_owned(),
+                    arc_points: Vec::new(),
                     adjustments: vec![NumericAdjustmentSpec {
                         id: "payload_full_mass_kg".to_owned(),
                         path: "vehicle.dry_mass_kg".to_owned(),
@@ -5663,6 +6272,7 @@ mod tests {
                 condition_set: "traj_overshoot_large".to_owned(),
                 vehicle_variant: "half".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: vec![NumericAdjustmentSpec {
                     id: "payload_half_mass_kg".to_owned(),
                     path: "vehicle.dry_mass_kg".to_owned(),
@@ -5732,6 +6342,7 @@ mod tests {
                     condition_set: "clean".to_owned(),
                     vehicle_variant: "nominal".to_owned(),
                     expectation_tier: "core".to_owned(),
+                    arc_points: Vec::new(),
                     adjustments: vec![NumericAdjustmentSpec {
                         id: "invalid".to_owned(),
                         path: path.to_owned(),

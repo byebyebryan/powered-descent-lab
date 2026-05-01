@@ -1,5 +1,60 @@
 # Progress
 
+## 2026-05-01
+
+### Reactive terrain terminal-corpus slice
+
+- Added the first terminal reactive terrain condition sets:
+  - `terrain_backstop_wall`
+  - `terrain_backstop_slanted`
+  - `terrain_clip_low`
+  - `terrain_clip_medium`
+- Backstop variants are shape variants, not height/severity bands: both use a
+  `400m` rise, with `wall` testing a steep target-side face and `slanted`
+  testing a longer ramp face.
+- The condition sets mutate scenario terrain geometry only. They do not introduce
+  controller-visible mode switches, and fixture metadata such as
+  `hazard_driver=containment_backstop` remains report context.
+- Added current-lane-only terrain packs:
+  - `fixtures/packs/terminal_reactive_terrain_suite.json`
+  - `fixtures/packs/terminal_reactive_terrain_full.json`
+- Added terminal-matrix `arc_points` entry selectors so terrain packs can drop
+  terrain-blind high-arc cells without cloning matrix definitions.
+- The maintained reactive terrain matrix now keeps backstop on `a70/a80` and
+  clip on `a60/a70/a80`.
+- Clip shoulders now use `120m` and `220m` rises so they intersect shallow
+  terminal descent paths instead of producing all-pass lanes.
+- The first terrain packs intentionally cover `empty` and `half` payload tiers
+  only. Full payload remains a separate authority-frontier concern until generic
+  terrain clearance is understood.
+- Verified the smoke terrain pack locally with `8` workers:
+  - `terminal_reactive_terrain_suite`: `68 / 180` scored successes
+  - `112` scored crashes
+  - `0` invalidations
+  - `2.01s` wall clock
+- Verified the full terrain pack locally with `8` workers:
+  - `terminal_reactive_terrain_full`: `276 / 720` scored successes
+  - `444` scored crashes
+  - `0` invalidations
+  - `7.75s` wall clock
+- The immediate controller signal is clean:
+  - pruned backstop cases expose the containment gap without all-pass high-arc
+    clutter
+  - raised clip cases now expose descent-path terrain intersections
+  - these gaps are expected because `terminal_pdg_v1` still lacks a generic
+    candidate-path terrain-clearance constraint
+
+### Active implementation focus
+
+1. Add a controller-side terrain-clearance evaluator:
+   - build/cache immutable terrain context at reset/setup time
+   - sample bounded candidate paths during update
+   - report minimum clearance and first violation timing
+2. Integrate clearance into terminal candidate selection without branching on
+   condition names such as `backstop` or `clip`.
+3. Keep full-payload terrain cases out of the core terrain corpus until the
+   clearance mechanism is in place.
+
 ## 2026-04-29
 
 ### Regression-policy checkpoint

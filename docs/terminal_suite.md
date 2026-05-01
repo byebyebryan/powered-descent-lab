@@ -477,12 +477,55 @@ That keeps `empty / half / full` comparisons local to the exact same arrival
 cell, which is easier to scan once multiple trajectory-error conditions are in
 the same report.
 
-Later conditions can include:
+### Reactive Terrain Conditions
 
-- `terrain_obstacle_low`
-- `terrain_obstacle_medium`
+Reactive terrain conditions should test terrain clearance without telling the
+controller which special case it is in. The condition set owns only fixture
+geometry; the controller should see the same immutable terrain definition it
+would see in any other scenario.
 
-but those should only come after the clean matrix is real.
+The first maintained reactive terrain condition sets are:
+
+- `terrain_backstop_wall`
+- `terrain_backstop_slanted`
+- `terrain_clip_low`
+- `terrain_clip_medium`
+
+These names are intentionally behavior-specific instead of generic
+`terrain_obstacle_*` labels:
+
+- `terrain_backstop_wall` places a `400m` steep target-side face beyond the pad.
+  The same landing target remains valid; the useful failure mode is overshoot or
+  lateral containment into terrain.
+- `terrain_backstop_slanted` keeps the same `400m` rise, but presents it as a
+  longer sloped face instead of a wall.
+- `terrain_clip_*` places an approach-side shoulder near terminal descent. The
+  low and medium variants use `120m` and `220m` rises. The same landing target
+  remains valid; the useful failure mode is descent-path terrain intersection.
+
+The controller contract is still generalized:
+
+- full immutable terrain is setup-time run context
+- per-tick observations stay compact
+- runtime guidance should reason about terrain clearance constraints, not branch
+  on `backstop` or `clip` metadata
+- fixture metadata such as `hazard_driver=containment_backstop` is for reports
+  and review, not controller behavior
+
+The first packs keep terrain cases current-lane-only and limited to `empty` and
+`half` payload tiers:
+
+- `terminal_reactive_terrain_suite`
+- `terminal_reactive_terrain_full`
+
+They also restrict the terminal arc cells to terrain-relevant shallow cases:
+
+- backstop: `a70/a80`
+- clip: `a60/a70/a80`
+
+Full payload should stay out of the first terrain corpus until clearance
+behavior is understood, because it would mix terrain response with the existing
+low-thrust/high-energy authority frontier.
 
 ## Vehicle Variants
 
@@ -596,10 +639,15 @@ Current implementation:
 - `terminal_bot_lab_full` is the full-tier matrix pack
 - `terminal_traj_err_suite` is the smoke-tier projected trajectory-error pack
 - `terminal_traj_err_full` is the full-tier projected trajectory-error pack
+- `terminal_reactive_terrain_suite` is the smoke-tier reactive terrain pack
+- `terminal_reactive_terrain_full` is the full-tier reactive terrain pack
 - the maintained clean payload tiers are:
   - `empty`
   - `half`
   - `full`
+- the first reactive terrain payload tiers are:
+  - `empty`
+  - `half`
 - `pd-eval` now supports:
   - cache reuse and promotion
   - default current-lane history compare against cached clean checkpoints
@@ -716,6 +764,36 @@ The current interpretation is:
 - trajectory-error `full` is the main scored low-thrust/high-energy frontier
   stress tier
 
+Current reactive terrain checkpoint:
+
+- `terminal_reactive_terrain_suite`
+  - current lane only
+  - `68 / 180` scored successes
+  - `112` scored crashes
+  - `0` invalidations
+  - `2.01s` wall clock with `8` workers
+- `terminal_reactive_terrain_full`
+  - current lane only
+  - `276 / 720` scored successes
+  - `444` scored crashes
+  - `0` invalidations
+  - `7.75s` wall clock with `8` workers
+- terrain-blind high-arc cells are pruned from this pack:
+  - backstop keeps `a70/a80`
+  - clip keeps `a60/a70/a80`
+- backstop cases expose the first useful terrain-clearance gap:
+  - smoke `terrain_backstop_wall`: `8 / 36`
+  - smoke `terrain_backstop_slanted`: `8 / 36`
+  - full `terrain_backstop_wall`: `32 / 144`
+  - full `terrain_backstop_slanted`: `35 / 144`
+- clip cases now expose descent-path terrain intersections:
+  - smoke `terrain_clip_low`: `40 / 54`
+  - smoke `terrain_clip_medium`: `12 / 54`
+  - full `terrain_clip_low`: `161 / 216`
+  - full `terrain_clip_medium`: `48 / 216`
+- these failures are expected at this slice because `terminal_pdg_v1` still has
+  no generic terrain-clearance candidate constraint
+
 The standing sparse trajectory-error outliers are:
 
 - `traj_overshoot_large / half / a60 / high / seed 2`
@@ -741,15 +819,17 @@ aligned, the next concrete milestones are:
 2. deepen feasibility/frontier semantics:
    - authority-limited full-payload annotations
    - broader coupled stop bounds beyond the current invalidation rules
-3. add the next physical condition space now that clean and trajectory-error
-   semantics are stable enough:
-   - terrain and obstacle terminal cases
-   - later transfer-style cases
+3. integrate a generic terrain-clearance evaluator into terminal guidance:
+   - setup-time terrain cache
+   - bounded per-update clearance sampling
+   - no scenario-name or hazard-driver branches in controller logic
 4. keep additional controller tuning optional and narrow:
    - pinned failing runs
    - general mechanism
    - no scored smoke-suite regressions
+5. later transfer-style terrain cases once terminal reactive behavior is
+   understood
 
-Richer terrain-driven condition sets are now appropriate as the next physical
-corpus slice. More specialized matrix-review UI should wait until those cases
-create real report pressure.
+More specialized matrix-review UI should wait until the new terrain cases create
+real report pressure. The next implementation pressure is controller-side
+clearance evaluation, not report layout.

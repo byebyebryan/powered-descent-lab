@@ -171,6 +171,12 @@ Status:
     - `terminal_traj_err_full` as the full-seed matrix
     - split condition sets for undershoot/overshoot and small/large projected
       miss distances
+  - a first reactive terrain corpus on the same Earth matrix:
+    - `terminal_reactive_terrain_suite` as the smoke matrix
+    - `terminal_reactive_terrain_full` as the full-seed matrix
+    - current-lane-only `empty` and `half` payload tiers
+    - backstop and clip terrain fixtures that remain scenario geometry, not
+      controller mode switches
   - batch review trees that surface the terminal matrix directly:
     - `mission -> arrival_family -> condition_set`
     - `arc_point -> velocity_band -> vehicle_variant -> lane -> seed`
@@ -199,8 +205,10 @@ Status:
   - optional targeted controller robustness work on the two remaining
     half-payload trajectory-error outliers, but this should not block Phase 2
     corpus/evaluation progress
-  - broader curated terminal conditions built on top of that selector model:
-    - later terrain and obstacle conditions
+  - generic terminal terrain-clearance guidance:
+    - setup-time terrain cache
+    - bounded candidate-path clearance checks
+    - no scenario-name or hazard-driver branching in controller logic
   - broader feasibility/frontier classification while keeping
     authority-frontier cells scored
   - deeper report polish that depends on real matrix scenarios and controller
@@ -242,13 +250,18 @@ Planned scope:
 
 - setup-time terrain query API
 - closest-point, ray, and clearance queries
-- curated terrain-reactive scenarios
+- curated terrain-reactive scenarios beyond the first terminal fixtures
 - terrain-focused telemetry and replay markers
 
 Exit criteria:
 
 - terrain-aware guidance can be evaluated without exposing engine internals
 - terrain failures are explainable from captured artifacts
+
+Status:
+
+- initial terminal reactive-terrain fixtures exist in Phase 2 packs
+- generic controller-side terrain-clearance evaluation is still missing
 
 ### Phase 5: Report UX
 
@@ -367,10 +380,11 @@ The next useful work is:
 3. Keep refining feasibility/frontier semantics where the vehicle is authority
    limited, while keeping frontier cells scored so regressions do not disappear
    into warning buckets.
-4. Add the next corpus layer, starting with terrain or obstacle terminal
-   conditions.
+4. Integrate generic terrain-clearance checks for the new reactive terrain
+   terminal corpus without adding scenario-name controller branches.
 
 The immediate controller direction should stay conservative. Recent broad
 landing-time and touchdown shortcuts either did not move outcomes or added
 scored crashes, so another broad tuning loop is lower value than regression
-policy and the next physical condition space.
+policy and the terrain-clearance mechanism exposed by the new physical condition
+space.

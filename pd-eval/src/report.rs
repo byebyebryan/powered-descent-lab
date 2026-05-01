@@ -4252,6 +4252,10 @@ fn selector_sort_rank(key: &str) -> u8 {
         "traj_undershoot_large" => 2,
         "traj_overshoot_small" => 3,
         "traj_overshoot_large" => 4,
+        "terrain_backstop_wall" => 5,
+        "terrain_backstop_slanted" => 6,
+        "terrain_clip_low" => 7,
+        "terrain_clip_medium" => 8,
         "low" => 0,
         "mid" => 1,
         "high" => 2,
@@ -6316,6 +6320,7 @@ mod report_tests {
                 condition_set: "clean".to_owned(),
                 vehicle_variant: "nominal".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: Vec::new(),
                 tags: vec!["terminal".to_owned(), "bot_lab".to_owned()],
                 metadata: BTreeMap::new(),
@@ -6376,6 +6381,7 @@ mod report_tests {
                 condition_set: "clean".to_owned(),
                 vehicle_variant: "heavy_cargo".to_owned(),
                 expectation_tier: "core".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: vec![crate::NumericAdjustmentSpec {
                     id: "payload_full_mass_kg".to_owned(),
                     path: "vehicle.dry_mass_kg".to_owned(),
@@ -6420,6 +6426,7 @@ mod report_tests {
                 condition_set: "clean".to_owned(),
                 vehicle_variant: "full".to_owned(),
                 expectation_tier: "stress".to_owned(),
+                arc_points: Vec::new(),
                 adjustments: vec![crate::NumericAdjustmentSpec {
                     id: "payload_full_mass_kg".to_owned(),
                     path: "vehicle.dry_mass_kg".to_owned(),
@@ -6496,6 +6503,10 @@ mod report_tests {
             "clean".to_owned(),
             "traj_overshoot_small".to_owned(),
             "traj_undershoot_large".to_owned(),
+            "terrain_clip_medium".to_owned(),
+            "terrain_backstop_slanted".to_owned(),
+            "terrain_clip_low".to_owned(),
+            "terrain_backstop_wall".to_owned(),
         ];
         sort_selector_keys(&mut keys);
         assert_eq!(
@@ -6506,6 +6517,10 @@ mod report_tests {
                 "traj_undershoot_large".to_owned(),
                 "traj_overshoot_small".to_owned(),
                 "traj_overshoot_large".to_owned(),
+                "terrain_backstop_wall".to_owned(),
+                "terrain_backstop_slanted".to_owned(),
+                "terrain_clip_low".to_owned(),
+                "terrain_clip_medium".to_owned(),
             ]
         );
     }
