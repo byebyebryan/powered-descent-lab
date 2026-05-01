@@ -488,8 +488,7 @@ The first maintained reactive terrain condition sets are:
 
 - `terrain_backstop_wall`
 - `terrain_backstop_slanted`
-- `terrain_clip_low`
-- `terrain_clip_medium`
+- `terrain_clip`
 
 These names are intentionally behavior-specific instead of generic
 `terrain_obstacle_*` labels:
@@ -499,9 +498,9 @@ These names are intentionally behavior-specific instead of generic
   lateral containment into terrain.
 - `terrain_backstop_slanted` keeps the same `400m` rise, but presents it as a
   longer sloped face instead of a wall.
-- `terrain_clip_*` places an approach-side shoulder near terminal descent. The
-  low and medium variants use `120m` and `220m` rises. The same landing target
-  remains valid; the useful failure mode is descent-path terrain intersection.
+- `terrain_clip` places an approach-side shoulder near terminal descent. It uses
+  a `220m` rise so the same landing target remains valid while the useful
+  failure mode is descent-path terrain intersection.
 
 The controller contract is still generalized:
 
@@ -768,31 +767,34 @@ Current reactive terrain checkpoint:
 
 - `terminal_reactive_terrain_suite`
   - current lane only
-  - `68 / 180` scored successes
-  - `112` scored crashes
+  - `69 / 126` scored successes
+  - `57` scored crashes
   - `0` invalidations
-  - `2.01s` wall clock with `8` workers
+  - `4.75s` wall clock with `8` workers
 - `terminal_reactive_terrain_full`
   - current lane only
-  - `276 / 720` scored successes
-  - `444` scored crashes
+  - `276 / 504` scored successes
+  - `228` scored crashes
   - `0` invalidations
-  - `7.75s` wall clock with `8` workers
+  - `19.00s` wall clock with `8` workers
 - terrain-blind high-arc cells are pruned from this pack:
   - backstop keeps `a70/a80`
   - clip keeps `a60/a70/a80`
 - backstop cases expose the first useful terrain-clearance gap:
-  - smoke `terrain_backstop_wall`: `8 / 36`
-  - smoke `terrain_backstop_slanted`: `8 / 36`
-  - full `terrain_backstop_wall`: `32 / 144`
-  - full `terrain_backstop_slanted`: `35 / 144`
+  - smoke `terrain_backstop_wall`: `28 / 36`
+  - smoke `terrain_backstop_slanted`: `29 / 36`
+  - full `terrain_backstop_wall`: `113 / 144`
+  - full `terrain_backstop_slanted`: `115 / 144`
 - clip cases now expose descent-path terrain intersections:
-  - smoke `terrain_clip_low`: `40 / 54`
-  - smoke `terrain_clip_medium`: `12 / 54`
-  - full `terrain_clip_low`: `161 / 216`
-  - full `terrain_clip_medium`: `48 / 216`
-- these failures are expected at this slice because `terminal_pdg_v1` still has
-  no generic terrain-clearance candidate constraint
+  - smoke `terrain_clip`: `12 / 54`
+  - full `terrain_clip`: `48 / 216`
+- the first generic terrain-clearance candidate constraint is now in place:
+  it samples planned hull clearance against elevated terrain geometry and
+  keeps low-relief target-surface contact out of the obstacle constraint
+- remaining terrain failures are concentrated in `terrain_clip`,
+  especially the shallowest `a80` cells, so the next terrain pass should inspect
+  whether those need better clearance shaping, different timing, or explicit
+  frontier semantics
 
 The standing sparse trajectory-error outliers are:
 
@@ -819,10 +821,11 @@ aligned, the next concrete milestones are:
 2. deepen feasibility/frontier semantics:
    - authority-limited full-payload annotations
    - broader coupled stop bounds beyond the current invalidation rules
-3. integrate a generic terrain-clearance evaluator into terminal guidance:
-   - setup-time terrain cache
-   - bounded per-update clearance sampling
-   - no scenario-name or hazard-driver branches in controller logic
+3. refine the first generic terrain-clearance evaluator:
+   - analyze remaining `terrain_clip` per-seed failures
+   - decide whether the next mechanism is clearance shaping, path timing, or
+     authority/frontier annotation
+   - keep no scenario-name or hazard-driver branches in controller logic
 4. keep additional controller tuning optional and narrow:
    - pinned failing runs
    - general mechanism
@@ -831,5 +834,5 @@ aligned, the next concrete milestones are:
    understood
 
 More specialized matrix-review UI should wait until the new terrain cases create
-real report pressure. The next implementation pressure is controller-side
-clearance evaluation, not report layout.
+real report pressure. The next implementation pressure is understanding the
+remaining `terrain_clip` failures, not report layout.

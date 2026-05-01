@@ -2,13 +2,45 @@
 
 ## 2026-05-01
 
+### Generic terminal terrain-clearance guidance slice
+
+- Added a first controller-side candidate-path terrain-clearance evaluator to
+  `terminal_pdg_v1`.
+- The evaluator samples the planned hull trajectory for each terminal
+  gate candidate and feeds minimum clearance / first violation timing back into
+  candidate ordering.
+- The controller still does not branch on condition names such as `backstop` or
+  `clip`. Clearance is derived from terrain geometry.
+- Low-relief terrain at the target surface is ignored for the clearance
+  constraint, so normal pad contact and flat-ground touchdown do not look like
+  obstacle violations.
+- Added guidance telemetry:
+  - `guidance.terrain_min_clearance_m`
+  - `guidance.terrain_first_violation_time_s`
+  - `guidance.terrain_clearance_safe`
+- Verified the smoke terrain pack locally with `8` workers:
+  - `terminal_reactive_terrain_suite`: `69 / 126` scored successes
+  - `57` scored crashes
+  - `0` invalidations
+  - `4.75s` wall clock
+- Verified the full terrain pack locally with `8` workers:
+  - `terminal_reactive_terrain_full`: `276 / 504` scored successes
+  - `228` scored crashes
+  - `0` invalidations
+  - `19.00s` wall clock
+- The first-pass terrain read is:
+  - backstop cases are mostly solved for `empty`, with `half` still exposing
+    authority / path-clearance pressure
+  - the mostly-solved low clip guard lane was removed from the maintained pack
+  - `terrain_clip` remains the main scored terrain stressor, especially
+    in `a80`
+
 ### Reactive terrain terminal-corpus slice
 
 - Added the first terminal reactive terrain condition sets:
   - `terrain_backstop_wall`
   - `terrain_backstop_slanted`
-  - `terrain_clip_low`
-  - `terrain_clip_medium`
+  - `terrain_clip`
 - Backstop variants are shape variants, not height/severity bands: both use a
   `400m` rise, with `wall` testing a steep target-side face and `slanted`
   testing a longer ramp face.
@@ -22,38 +54,30 @@
   terrain-blind high-arc cells without cloning matrix definitions.
 - The maintained reactive terrain matrix now keeps backstop on `a70/a80` and
   clip on `a60/a70/a80`.
-- Clip shoulders now use `120m` and `220m` rises so they intersect shallow
-  terminal descent paths instead of producing all-pass lanes.
+- The clip shoulder uses a `220m` rise so it intersects shallow terminal descent
+  paths and remains a meaningful scored challenge.
 - The first terrain packs intentionally cover `empty` and `half` payload tiers
   only. Full payload remains a separate authority-frontier concern until generic
   terrain clearance is understood.
-- Verified the smoke terrain pack locally with `8` workers:
-  - `terminal_reactive_terrain_suite`: `68 / 180` scored successes
-  - `112` scored crashes
-  - `0` invalidations
-  - `2.01s` wall clock
-- Verified the full terrain pack locally with `8` workers:
-  - `terminal_reactive_terrain_full`: `276 / 720` scored successes
-  - `444` scored crashes
-  - `0` invalidations
-  - `7.75s` wall clock
-- The immediate controller signal is clean:
+- The first broader draft included both low and medium clip variants, but the
+  low clip lane was removed after it proved to be mostly a guard lane rather
+  than a meaningful terrain challenge.
+- The initial pre-clearance controller signal was clean:
   - pruned backstop cases expose the containment gap without all-pass high-arc
     clutter
   - raised clip cases now expose descent-path terrain intersections
-  - these gaps are expected because `terminal_pdg_v1` still lacks a generic
-    candidate-path terrain-clearance constraint
+  - these gaps justified adding the generic candidate-path terrain-clearance
+    constraint described above
 
 ### Active implementation focus
 
-1. Add a controller-side terrain-clearance evaluator:
-   - build/cache immutable terrain context at reset/setup time
-   - sample bounded candidate paths during update
-   - report minimum clearance and first violation timing
-2. Integrate clearance into terminal candidate selection without branching on
-   condition names such as `backstop` or `clip`.
-3. Keep full-payload terrain cases out of the core terrain corpus until the
-   clearance mechanism is in place.
+1. Analyze the remaining `terrain_clip` failures from telemetry and
+   per-seed trajectories before adding another controller mechanism.
+2. If the next terrain fix is controller-side, keep it geometry-derived:
+   clearance shaping, path timing, or authority-aware candidate generation, not
+   condition-name branches.
+3. Keep full-payload terrain cases out of the core terrain corpus until
+   `empty` / `half` terrain behavior is better understood.
 
 ## 2026-04-29
 

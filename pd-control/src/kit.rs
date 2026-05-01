@@ -36,6 +36,10 @@ pub mod metric {
     pub const GUIDANCE_REQUIRED_ACCEL_RATIO: &str = "guidance.required_accel_ratio";
     pub const GUIDANCE_MAX_TILT_RAD: &str = "guidance.max_tilt_rad";
     pub const GUIDANCE_LATEST_SAFE_MARGIN_S: &str = "guidance.latest_safe_margin_s";
+    pub const GUIDANCE_TERRAIN_MIN_CLEARANCE_M: &str = "guidance.terrain_min_clearance_m";
+    pub const GUIDANCE_TERRAIN_FIRST_VIOLATION_TIME_S: &str =
+        "guidance.terrain_first_violation_time_s";
+    pub const GUIDANCE_TERRAIN_CLEARANCE_SAFE: &str = "guidance.terrain_clearance_safe";
 }
 
 pub mod marker {

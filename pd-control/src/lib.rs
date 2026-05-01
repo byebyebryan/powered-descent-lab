@@ -823,11 +823,55 @@ mod tests {
                 .metrics
                 .contains_key(metric::GUIDANCE_REQUIRED_ACCEL_RATIO)
         );
+        assert!(frame_metric_f64(&frame, metric::GUIDANCE_TERRAIN_MIN_CLEARANCE_M).is_finite());
+        assert_eq!(
+            frame_metric_f64(&frame, metric::GUIDANCE_TERRAIN_FIRST_VIOLATION_TIME_S),
+            -1.0
+        );
+        assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_TERRAIN_CLEARANCE_SAFE),
+            Some(&TelemetryValue::from(true))
+        );
         assert!(
             frame
                 .markers
                 .iter()
                 .any(|marker| marker.id == marker::TERMINAL_GATE)
         );
+    }
+
+    #[test]
+    fn terminal_pdg_controller_flags_elevated_terrain_candidate_clearance() {
+        let mut scenario = flat_scenario();
+        scenario.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-120.0, 0.0),
+                Vec2::new(-50.0, 0.0),
+                Vec2::new(-49.0, 120.0),
+                Vec2::new(-10.0, 120.0),
+                Vec2::new(-9.0, 0.0),
+                Vec2::new(120.0, 0.0),
+            ],
+        };
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut observation = pd_core::SimulationState::new(&ctx)
+            .unwrap()
+            .build_observation(&ctx);
+        observation.position_m = Vec2::new(-60.0, 80.0);
+        observation.velocity_mps = Vec2::new(0.0, -8.0);
+        observation.target_dx_m = 60.0;
+        observation.height_above_target_m = 80.0;
+        observation.touchdown_clearance_m = 75.0;
+        observation.min_hull_clearance_m = 75.0;
+
+        let mut controller = TerminalPdgController::default();
+        let frame = controller.update(&ctx, &observation);
+
+        assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_TERRAIN_CLEARANCE_SAFE),
+            Some(&TelemetryValue::from(false))
+        );
+        assert!(frame_metric_f64(&frame, metric::GUIDANCE_TERRAIN_MIN_CLEARANCE_M) < 10.0);
+        assert!(frame_metric_f64(&frame, metric::GUIDANCE_TERRAIN_FIRST_VIOLATION_TIME_S) >= 0.0);
     }
 }

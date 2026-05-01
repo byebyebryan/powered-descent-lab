@@ -4254,8 +4254,7 @@ fn selector_sort_rank(key: &str) -> u8 {
         "traj_overshoot_large" => 4,
         "terrain_backstop_wall" => 5,
         "terrain_backstop_slanted" => 6,
-        "terrain_clip_low" => 7,
-        "terrain_clip_medium" => 8,
+        "terrain_clip" => 7,
         "low" => 0,
         "mid" => 1,
         "high" => 2,
@@ -6503,9 +6502,8 @@ mod report_tests {
             "clean".to_owned(),
             "traj_overshoot_small".to_owned(),
             "traj_undershoot_large".to_owned(),
-            "terrain_clip_medium".to_owned(),
+            "terrain_clip".to_owned(),
             "terrain_backstop_slanted".to_owned(),
-            "terrain_clip_low".to_owned(),
             "terrain_backstop_wall".to_owned(),
         ];
         sort_selector_keys(&mut keys);
@@ -6519,8 +6517,7 @@ mod report_tests {
                 "traj_overshoot_large".to_owned(),
                 "terrain_backstop_wall".to_owned(),
                 "terrain_backstop_slanted".to_owned(),
-                "terrain_clip_low".to_owned(),
-                "terrain_clip_medium".to_owned(),
+                "terrain_clip".to_owned(),
             ]
         );
     }

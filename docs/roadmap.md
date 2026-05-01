@@ -201,13 +201,18 @@ Status:
   - trajectory-error `empty` is solved; `half` has only two high-energy
     overshoot-large outliers; `full` is represented as the main scored
     authority-frontier tier
+  - reactive terrain full current lane:
+    `276 / 504` scored successes, `228` scored failures
+  - the first generic terminal terrain-clearance candidate constraint is in
+    place, with remaining terrain failures concentrated in
+    `terrain_clip`
 - still missing:
   - optional targeted controller robustness work on the two remaining
     half-payload trajectory-error outliers, but this should not block Phase 2
     corpus/evaluation progress
-  - generic terminal terrain-clearance guidance:
-    - setup-time terrain cache
-    - bounded candidate-path clearance checks
+  - deeper generic terminal terrain-clearance behavior:
+    - analysis of the remaining `terrain_clip` failures
+    - clearance shaping or timing improvements if telemetry supports them
     - no scenario-name or hazard-driver branching in controller logic
   - broader feasibility/frontier classification while keeping
     authority-frontier cells scored
@@ -261,7 +266,9 @@ Exit criteria:
 Status:
 
 - initial terminal reactive-terrain fixtures exist in Phase 2 packs
-- generic controller-side terrain-clearance evaluation is still missing
+- first-pass generic controller-side terrain-clearance evaluation is in place
+- remaining terrain failures need telemetry-led analysis before adding another
+  guidance mechanism
 
 ### Phase 5: Report UX
 
@@ -380,11 +387,11 @@ The next useful work is:
 3. Keep refining feasibility/frontier semantics where the vehicle is authority
    limited, while keeping frontier cells scored so regressions do not disappear
    into warning buckets.
-4. Integrate generic terrain-clearance checks for the new reactive terrain
-   terminal corpus without adding scenario-name controller branches.
+4. Analyze and refine the first generic terrain-clearance pass for the new
+   reactive terrain terminal corpus without adding scenario-name controller
+   branches.
 
 The immediate controller direction should stay conservative. Recent broad
 landing-time and touchdown shortcuts either did not move outcomes or added
 scored crashes, so another broad tuning loop is lower value than regression
-policy and the terrain-clearance mechanism exposed by the new physical condition
-space.
+policy and telemetry-led terrain-clip analysis.

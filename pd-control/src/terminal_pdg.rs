@@ -11,6 +11,13 @@ const TERMINAL_GATE_CANDIDATE_TIME_EPS_S: f64 = 1e-6;
 // Local hover-avoidance horizon for centered terminal settle; intentionally
 // independent of the scenario's simulation stop time.
 const SETTLED_DESCENT_TIME_HORIZON_S: f64 = 3.0;
+const TERRAIN_CLEARANCE_MIN_SAMPLE_COUNT: usize = 16;
+const TERRAIN_CLEARANCE_MAX_SAMPLE_COUNT: usize = 96;
+const TERRAIN_CLEARANCE_MAX_TIME_STEP_S: f64 = 0.35;
+const TERRAIN_CLEARANCE_MAX_HORIZONTAL_STEP_M: f64 = 8.0;
+const TERRAIN_CLEARANCE_MARGIN_M: f64 = 10.0;
+const TERRAIN_OBSTACLE_RELIEF_FLOOR_M: f64 = TERRAIN_CLEARANCE_MARGIN_M;
+const TERRAIN_CLEARANCE_UNCONSTRAINED_M: f64 = 1.0e6;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalPdgControllerConfig {
@@ -148,12 +155,22 @@ struct BallisticProjection {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+struct TerrainClearanceEstimate {
+    min_clearance_m: f64,
+    first_violation_time_s: Option<f64>,
+    safe: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct TerminalGateCandidate {
     burn_time_s: f64,
     required_accel_ratio: f64,
     upward_accel_mps2: f64,
     tilt_feasible: bool,
     ready: bool,
+    terrain_min_clearance_m: f64,
+    terrain_first_violation_time_s: Option<f64>,
+    terrain_clearance_safe: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -238,6 +255,7 @@ impl TerminalPdgController {
             .max(0.0);
 
         let latest_safe = self.latest_safe_candidate(
+            view,
             dx_m,
             dy_m,
             touchdown_clearance_m,
@@ -250,6 +268,7 @@ impl TerminalPdgController {
             touchdown_center_limit_m,
         );
         let nominal = self.best_nominal_candidate(
+            view,
             dx_m,
             dy_m,
             touchdown_clearance_m,
@@ -670,8 +689,10 @@ impl TerminalPdgController {
         (candidate_times, max_tilt, target_vy_up)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn evaluate_candidate(
         &self,
+        view: &ControllerView<'_>,
         dx_m: f64,
         dy_m: f64,
         vx_mps: f64,
@@ -698,19 +719,38 @@ impl TerminalPdgController {
         let required_ratio = required_norm / thrust_accel_mps2.max(1e-6);
         let tilt_tan = max_tilt_rad.max(0.02).tan();
         let tilt_feasible = ay_req > 0.0 && ax_req.abs() <= (tilt_tan * ay_req);
-        let ready =
+        let dynamics_ready =
             ay_req >= min_upward_accel_mps2 && tilt_feasible && required_ratio <= ratio_limit;
+        let target_attitude_rad = ax_req
+            .atan2(ay_req.max(0.2))
+            .clamp(-max_tilt_rad, max_tilt_rad);
+        let terrain_clearance = estimate_candidate_terrain_clearance(
+            view,
+            dx_m,
+            dy_m,
+            vx_mps,
+            vy_up_mps,
+            burn_time_s,
+            target_vy_up_mps,
+            target_attitude_rad,
+            gravity_mps2,
+        );
         TerminalGateCandidate {
             burn_time_s,
             required_accel_ratio: required_ratio,
             upward_accel_mps2: ay_req,
             tilt_feasible,
-            ready,
+            ready: dynamics_ready && terrain_clearance.safe,
+            terrain_min_clearance_m: terrain_clearance.min_clearance_m,
+            terrain_first_violation_time_s: terrain_clearance.first_violation_time_s,
+            terrain_clearance_safe: terrain_clearance.safe,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn latest_safe_candidate(
         &self,
+        view: &ControllerView<'_>,
         dx_m: f64,
         dy_m: f64,
         altitude_m: f64,
@@ -760,6 +800,7 @@ impl TerminalPdgController {
             .into_iter()
             .map(|burn_time_s| {
                 self.evaluate_candidate(
+                    view,
                     dx_m,
                     dy_m,
                     vx_mps,
@@ -785,6 +826,7 @@ impl TerminalPdgController {
         ) {
             self.add_latest_safe_long_capture_candidates(
                 &mut candidates,
+                view,
                 dx_m,
                 dy_m,
                 vx_mps,
@@ -807,8 +849,10 @@ impl TerminalPdgController {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn best_nominal_candidate(
         &self,
+        view: &ControllerView<'_>,
         dx_m: f64,
         dy_m: f64,
         altitude_m: f64,
@@ -839,6 +883,7 @@ impl TerminalPdgController {
             .into_iter()
             .map(|burn_time_s| {
                 self.evaluate_candidate(
+                    view,
                     dx_m,
                     dy_m,
                     vx_mps,
@@ -1347,6 +1392,7 @@ impl TerminalPdgController {
     fn add_latest_safe_long_capture_candidates(
         &self,
         candidates: &mut Vec<TerminalGateCandidate>,
+        view: &ControllerView<'_>,
         dx_m: f64,
         dy_m: f64,
         vx_mps: f64,
@@ -1369,6 +1415,7 @@ impl TerminalPdgController {
                 continue;
             }
             candidates.push(self.evaluate_candidate(
+                view,
                 dx_m,
                 dy_m,
                 vx_mps,
@@ -1480,6 +1527,21 @@ impl Controller for TerminalPdgController {
                 command_state.latest_safe_margin_s,
             )
             .metric(
+                metric::GUIDANCE_TERRAIN_MIN_CLEARANCE_M,
+                command_state.candidate.terrain_min_clearance_m,
+            )
+            .metric(
+                metric::GUIDANCE_TERRAIN_FIRST_VIOLATION_TIME_S,
+                command_state
+                    .candidate
+                    .terrain_first_violation_time_s
+                    .unwrap_or(-1.0),
+            )
+            .metric(
+                metric::GUIDANCE_TERRAIN_CLEARANCE_SAFE,
+                command_state.candidate.terrain_clearance_safe,
+            )
+            .metric(
                 metric::VERTICAL_ERROR_MPS,
                 desired_vertical_speed_mps - view.vertical_speed_mps(),
             )
@@ -1504,6 +1566,10 @@ impl Controller for TerminalPdgController {
                     (
                         metric::GUIDANCE_REQUIRED_ACCEL_RATIO.to_owned(),
                         TelemetryValue::from(command_state.candidate.required_accel_ratio),
+                    ),
+                    (
+                        metric::GUIDANCE_TERRAIN_MIN_CLEARANCE_M.to_owned(),
+                        TelemetryValue::from(command_state.candidate.terrain_min_clearance_m),
                     ),
                 ]),
             ));
@@ -1531,15 +1597,23 @@ fn candidate_preference_order(
     lhs: &TerminalGateCandidate,
     rhs: &TerminalGateCandidate,
 ) -> std::cmp::Ordering {
+    let primary = (!lhs.tilt_feasible, !lhs.terrain_clearance_safe)
+        .cmp(&(!rhs.tilt_feasible, !rhs.terrain_clearance_safe));
+    if primary != std::cmp::Ordering::Equal {
+        return primary;
+    }
+    if !lhs.terrain_clearance_safe && !rhs.terrain_clearance_safe {
+        return terrain_constrained_preference_order(lhs, rhs);
+    }
     (
-        !lhs.tilt_feasible,
         OrderedF64(lhs.required_accel_ratio),
         OrderedF64(lhs.burn_time_s),
+        OrderedF64(-lhs.terrain_min_clearance_m),
     )
         .cmp(&(
-            !rhs.tilt_feasible,
             OrderedF64(rhs.required_accel_ratio),
             OrderedF64(rhs.burn_time_s),
+            OrderedF64(-rhs.terrain_min_clearance_m),
         ))
 }
 
@@ -1547,17 +1621,25 @@ fn latest_safe_preference_order(
     lhs: &TerminalGateCandidate,
     rhs: &TerminalGateCandidate,
 ) -> std::cmp::Ordering {
+    let primary = (!lhs.tilt_feasible, !lhs.terrain_clearance_safe)
+        .cmp(&(!rhs.tilt_feasible, !rhs.terrain_clearance_safe));
+    if primary != std::cmp::Ordering::Equal {
+        return primary;
+    }
+    if !lhs.terrain_clearance_safe && !rhs.terrain_clearance_safe {
+        return terrain_constrained_preference_order(lhs, rhs);
+    }
     (
-        !lhs.tilt_feasible,
         lhs.required_accel_ratio > 1.0,
         OrderedF64(lhs.burn_time_s),
         OrderedF64(lhs.required_accel_ratio),
+        OrderedF64(-lhs.terrain_min_clearance_m),
     )
         .cmp(&(
-            !rhs.tilt_feasible,
             rhs.required_accel_ratio > 1.0,
             OrderedF64(rhs.burn_time_s),
             OrderedF64(rhs.required_accel_ratio),
+            OrderedF64(-rhs.terrain_min_clearance_m),
         ))
 }
 
@@ -1565,15 +1647,39 @@ fn aggressive_latest_safe_preference_order(
     lhs: &TerminalGateCandidate,
     rhs: &TerminalGateCandidate,
 ) -> std::cmp::Ordering {
+    let primary = (!lhs.tilt_feasible, !lhs.terrain_clearance_safe)
+        .cmp(&(!rhs.tilt_feasible, !rhs.terrain_clearance_safe));
+    if primary != std::cmp::Ordering::Equal {
+        return primary;
+    }
+    if !lhs.terrain_clearance_safe && !rhs.terrain_clearance_safe {
+        return terrain_constrained_preference_order(lhs, rhs);
+    }
     (
-        !lhs.tilt_feasible,
         OrderedF64(lhs.burn_time_s),
         OrderedF64(lhs.required_accel_ratio),
+        OrderedF64(-lhs.terrain_min_clearance_m),
     )
         .cmp(&(
-            !rhs.tilt_feasible,
             OrderedF64(rhs.burn_time_s),
             OrderedF64(rhs.required_accel_ratio),
+            OrderedF64(-rhs.terrain_min_clearance_m),
+        ))
+}
+
+fn terrain_constrained_preference_order(
+    lhs: &TerminalGateCandidate,
+    rhs: &TerminalGateCandidate,
+) -> std::cmp::Ordering {
+    (
+        OrderedF64(-lhs.terrain_min_clearance_m),
+        OrderedF64(lhs.required_accel_ratio),
+        OrderedF64(lhs.burn_time_s),
+    )
+        .cmp(&(
+            OrderedF64(-rhs.terrain_min_clearance_m),
+            OrderedF64(rhs.required_accel_ratio),
+            OrderedF64(rhs.burn_time_s),
         ))
 }
 
@@ -1640,24 +1746,31 @@ impl PartialOrd for OrderedF64 {
 mod tests {
     use super::*;
 
+    fn gate_candidate(
+        burn_time_s: f64,
+        required_accel_ratio: f64,
+        upward_accel_mps2: f64,
+        tilt_feasible: bool,
+        ready: bool,
+    ) -> TerminalGateCandidate {
+        TerminalGateCandidate {
+            burn_time_s,
+            required_accel_ratio,
+            upward_accel_mps2,
+            tilt_feasible,
+            ready,
+            terrain_min_clearance_m: TERRAIN_CLEARANCE_UNCONSTRAINED_M,
+            terrain_first_violation_time_s: None,
+            terrain_clearance_safe: true,
+        }
+    }
+
     #[test]
     fn urgent_lateral_latest_safe_prefers_shorter_candidate() {
         let controller = TerminalPdgController::default();
         let mut candidates = vec![
-            TerminalGateCandidate {
-                burn_time_s: 14.0,
-                required_accel_ratio: 0.9,
-                upward_accel_mps2: 3.0,
-                tilt_feasible: true,
-                ready: true,
-            },
-            TerminalGateCandidate {
-                burn_time_s: 6.0,
-                required_accel_ratio: 1.2,
-                upward_accel_mps2: 5.0,
-                tilt_feasible: true,
-                ready: false,
-            },
+            gate_candidate(14.0, 0.9, 3.0, true, true),
+            gate_candidate(6.0, 1.2, 5.0, true, false),
         ];
 
         let selected = controller.select_latest_safe_candidate(&mut candidates, 32.0, 18.0);
@@ -1669,13 +1782,7 @@ mod tests {
     #[test]
     fn long_capture_only_activates_for_high_urgent_over_authority_candidate() {
         let controller = TerminalPdgController::default();
-        let candidate = TerminalGateCandidate {
-            burn_time_s: 6.0,
-            required_accel_ratio: 1.01,
-            upward_accel_mps2: 5.0,
-            tilt_feasible: true,
-            ready: false,
-        };
+        let candidate = gate_candidate(6.0, 1.01, 5.0, true, false);
 
         assert!(controller.latest_safe_long_capture_needed(candidate, 80.0, -40.0, 32.0, 18.0));
 
@@ -1700,34 +1807,10 @@ mod tests {
     fn long_capture_prefers_added_lower_ratio_candidate() {
         let controller = TerminalPdgController::default();
         let mut candidates = vec![
-            TerminalGateCandidate {
-                burn_time_s: 6.0,
-                required_accel_ratio: 1.2,
-                upward_accel_mps2: 5.0,
-                tilt_feasible: true,
-                ready: false,
-            },
-            TerminalGateCandidate {
-                burn_time_s: 14.0,
-                required_accel_ratio: 0.9,
-                upward_accel_mps2: 3.0,
-                tilt_feasible: true,
-                ready: true,
-            },
-            TerminalGateCandidate {
-                burn_time_s: 22.0,
-                required_accel_ratio: 1.2,
-                upward_accel_mps2: 2.0,
-                tilt_feasible: true,
-                ready: false,
-            },
-            TerminalGateCandidate {
-                burn_time_s: 30.0,
-                required_accel_ratio: 1.05,
-                upward_accel_mps2: 2.0,
-                tilt_feasible: true,
-                ready: false,
-            },
+            gate_candidate(6.0, 1.2, 5.0, true, false),
+            gate_candidate(14.0, 0.9, 3.0, true, true),
+            gate_candidate(22.0, 1.2, 2.0, true, false),
+            gate_candidate(30.0, 1.05, 2.0, true, false),
         ];
 
         let selected = controller
@@ -1736,6 +1819,38 @@ mod tests {
 
         assert_eq!(selected.burn_time_s, 30.0);
         assert_eq!(selected.required_accel_ratio, 1.05);
+    }
+
+    #[test]
+    fn terrain_constrained_order_prefers_more_clearance_when_both_candidates_clip_terrain() {
+        let mut lower_clearance = gate_candidate(6.0, 0.8, 4.0, true, true);
+        lower_clearance.terrain_min_clearance_m = -40.0;
+        lower_clearance.terrain_first_violation_time_s = Some(2.0);
+        lower_clearance.terrain_clearance_safe = false;
+
+        let mut higher_clearance = gate_candidate(9.0, 1.1, 4.0, true, true);
+        higher_clearance.terrain_min_clearance_m = -5.0;
+        higher_clearance.terrain_first_violation_time_s = Some(4.0);
+        higher_clearance.terrain_clearance_safe = false;
+
+        let mut candidates = vec![lower_clearance, higher_clearance];
+        candidates.sort_by(candidate_preference_order);
+
+        assert_eq!(candidates[0], higher_clearance);
+    }
+
+    #[test]
+    fn terrain_constrained_order_keeps_safe_candidates_ahead_of_unsafe_candidates() {
+        let safe_high_ratio = gate_candidate(6.0, 1.4, 4.0, true, false);
+        let mut unsafe_low_ratio = gate_candidate(6.0, 0.5, 4.0, true, true);
+        unsafe_low_ratio.terrain_min_clearance_m = 0.0;
+        unsafe_low_ratio.terrain_first_violation_time_s = Some(1.0);
+        unsafe_low_ratio.terrain_clearance_safe = false;
+
+        let mut candidates = vec![unsafe_low_ratio, safe_high_ratio];
+        candidates.sort_by(latest_safe_preference_order);
+
+        assert_eq!(candidates[0], safe_high_ratio);
     }
 }
 
@@ -1758,6 +1873,109 @@ fn required_control_accel(
     let ax = ((6.0 * zem_x) / t2) - ((2.0 * zev_x) / t);
     let ay = ((6.0 * zem_y) / t2) - ((2.0 * zev_y) / t);
     (ax, ay)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn estimate_candidate_terrain_clearance(
+    view: &ControllerView<'_>,
+    dx_m: f64,
+    dy_m: f64,
+    vx_mps: f64,
+    vy_up_mps: f64,
+    burn_time_s: f64,
+    target_vy_up_mps: f64,
+    target_attitude_rad: f64,
+    gravity_mps2: f64,
+) -> TerrainClearanceEstimate {
+    let touchdown_center_dy_m = dy_m + view.ctx.vehicle.geometry.touchdown_base_offset_m;
+    let (ax_req, ay_req) = required_control_accel(
+        dx_m,
+        touchdown_center_dy_m,
+        vx_mps,
+        vy_up_mps,
+        0.0,
+        target_vy_up_mps,
+        burn_time_s,
+        gravity_mps2,
+    );
+    let mut min_clearance_m = TERRAIN_CLEARANCE_UNCONSTRAINED_M;
+    let mut first_violation_time_s = None;
+    let sample_count = terrain_clearance_sample_count(vx_mps, ax_req, burn_time_s);
+    for sample_index in 0..=sample_count {
+        let ratio = sample_index as f64 / sample_count as f64;
+        let t = burn_time_s.max(0.0) * ratio;
+        let t2 = t * t;
+        let center_x_m = view.observation.position_m.x + (vx_mps * t) + (0.5 * ax_req * t2);
+        let center_y_m =
+            view.observation.position_m.y + (vy_up_mps * t) + (0.5 * (ay_req - gravity_mps2) * t2);
+        let Some(clearance_m) =
+            planned_hull_clearance_m(view, center_x_m, center_y_m, target_attitude_rad)
+        else {
+            continue;
+        };
+        min_clearance_m = min_clearance_m.min(clearance_m);
+        if first_violation_time_s.is_none() && clearance_m < TERRAIN_CLEARANCE_MARGIN_M {
+            first_violation_time_s = Some(t);
+        }
+    }
+
+    TerrainClearanceEstimate {
+        min_clearance_m,
+        first_violation_time_s,
+        safe: first_violation_time_s.is_none(),
+    }
+}
+
+fn terrain_clearance_sample_count(vx_mps: f64, ax_mps2: f64, burn_time_s: f64) -> usize {
+    let burn_time_s = burn_time_s.max(0.0);
+    let time_samples = (burn_time_s / TERRAIN_CLEARANCE_MAX_TIME_STEP_S).ceil() as usize;
+    let peak_horizontal_speed_mps = vx_mps.abs().max((vx_mps + (ax_mps2 * burn_time_s)).abs());
+    let horizontal_samples = ((peak_horizontal_speed_mps * burn_time_s)
+        / TERRAIN_CLEARANCE_MAX_HORIZONTAL_STEP_M)
+        .ceil() as usize;
+    TERRAIN_CLEARANCE_MIN_SAMPLE_COUNT
+        .max(time_samples)
+        .max(horizontal_samples)
+        .min(TERRAIN_CLEARANCE_MAX_SAMPLE_COUNT)
+        .max(1)
+}
+
+fn planned_hull_clearance_m(
+    view: &ControllerView<'_>,
+    center_x_m: f64,
+    center_y_m: f64,
+    attitude_rad: f64,
+) -> Option<f64> {
+    let geometry = &view.ctx.vehicle.geometry;
+    let half_width_m = geometry.hull_width_m * 0.5;
+    let half_height_m = geometry.hull_height_m * 0.5;
+    let cos_a = attitude_rad.cos();
+    let sin_a = attitude_rad.sin();
+    let mut min_clearance_m = f64::INFINITY;
+    let mut sampled_any = false;
+
+    for (local_x_m, local_y_m) in [
+        (-half_width_m, -half_height_m),
+        (half_width_m, -half_height_m),
+        (half_width_m, half_height_m),
+        (-half_width_m, half_height_m),
+    ] {
+        let point_x_m = center_x_m + (local_x_m * cos_a) - (local_y_m * sin_a);
+        let point_y_m = center_y_m + (local_x_m * sin_a) + (local_y_m * cos_a);
+        let terrain_y_m = view.terrain_height_at(point_x_m);
+        if !planned_terrain_obstacle_sample(view, terrain_y_m) {
+            continue;
+        }
+        let clearance_m = point_y_m - terrain_y_m;
+        min_clearance_m = min_clearance_m.min(clearance_m);
+        sampled_any = true;
+    }
+
+    sampled_any.then_some(min_clearance_m)
+}
+
+fn planned_terrain_obstacle_sample(view: &ControllerView<'_>, terrain_y_m: f64) -> bool {
+    terrain_y_m > view.ctx.target_pad.surface_y_m + TERRAIN_OBSTACLE_RELIEF_FLOOR_M
 }
 
 fn estimate_target_y_projection(

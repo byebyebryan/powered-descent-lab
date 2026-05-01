@@ -143,7 +143,7 @@
       }
     },
     {
-      "id": "terminal_guidance_terrain_clip_low_empty",
+      "id": "terminal_guidance_terrain_clip_empty",
       "terminal_matrix": "half_arc_terminal_v1",
       "arc_points": ["a60", "a70", "a80"],
       "base_scenario": "../scenarios/flat_terminal_descent.json",
@@ -154,7 +154,7 @@
         }
       ],
       "seed_tier": "smoke",
-      "condition_set": "terrain_clip_low",
+      "condition_set": "terrain_clip",
       "vehicle_variant": "empty",
       "expectation_tier": "reference",
       "adjustments": [],
@@ -162,7 +162,6 @@
         "terminal_guidance",
         "reactive_terrain",
         "clip",
-        "low",
         "empty",
         "bot_lab",
         "reference"
@@ -170,11 +169,11 @@
       "metadata": {
         "difficulty": "empty",
         "hazard_driver": "descent_clip",
-        "terrain_variant": "low"
+        "terrain_variant": "clip"
       }
     },
     {
-      "id": "terminal_guidance_terrain_clip_low_half",
+      "id": "terminal_guidance_terrain_clip_half",
       "terminal_matrix": "half_arc_terminal_v1",
       "arc_points": ["a60", "a70", "a80"],
       "base_scenario": "../scenarios/flat_terminal_descent.json",
@@ -185,7 +184,7 @@
         }
       ],
       "seed_tier": "smoke",
-      "condition_set": "terrain_clip_low",
+      "condition_set": "terrain_clip",
       "vehicle_variant": "half",
       "expectation_tier": "core",
       "adjustments": [
@@ -200,7 +199,6 @@
         "terminal_guidance",
         "reactive_terrain",
         "clip",
-        "low",
         "half",
         "bot_lab",
         "core"
@@ -208,76 +206,7 @@
       "metadata": {
         "difficulty": "half",
         "hazard_driver": "descent_clip",
-        "terrain_variant": "low"
-      }
-    },
-    {
-      "id": "terminal_guidance_terrain_clip_medium_empty",
-      "terminal_matrix": "half_arc_terminal_v1",
-      "arc_points": ["a60", "a70", "a80"],
-      "base_scenario": "../scenarios/flat_terminal_descent.json",
-      "lanes": [
-        {
-          "id": "current",
-          "controller": "terminal_pdg"
-        }
-      ],
-      "seed_tier": "smoke",
-      "condition_set": "terrain_clip_medium",
-      "vehicle_variant": "empty",
-      "expectation_tier": "reference",
-      "adjustments": [],
-      "tags": [
-        "terminal_guidance",
-        "reactive_terrain",
-        "clip",
-        "medium",
-        "empty",
-        "bot_lab",
-        "reference"
-      ],
-      "metadata": {
-        "difficulty": "empty",
-        "hazard_driver": "descent_clip",
-        "terrain_variant": "medium"
-      }
-    },
-    {
-      "id": "terminal_guidance_terrain_clip_medium_half",
-      "terminal_matrix": "half_arc_terminal_v1",
-      "arc_points": ["a60", "a70", "a80"],
-      "base_scenario": "../scenarios/flat_terminal_descent.json",
-      "lanes": [
-        {
-          "id": "current",
-          "controller": "terminal_pdg"
-        }
-      ],
-      "seed_tier": "smoke",
-      "condition_set": "terrain_clip_medium",
-      "vehicle_variant": "half",
-      "expectation_tier": "core",
-      "adjustments": [
-        {
-          "id": "payload_half_mass_kg",
-          "path": "vehicle.dry_mass_kg",
-          "mode": "offset",
-          "value": 2250.0
-        }
-      ],
-      "tags": [
-        "terminal_guidance",
-        "reactive_terrain",
-        "clip",
-        "medium",
-        "half",
-        "bot_lab",
-        "core"
-      ],
-      "metadata": {
-        "difficulty": "half",
-        "hazard_driver": "descent_clip",
-        "terrain_variant": "medium"
+        "terrain_variant": "clip"
       }
     }
   ]

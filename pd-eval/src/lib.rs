@@ -2161,20 +2161,10 @@ fn terminal_condition_spec(condition_set: &str) -> Result<TerminalConditionSpec>
                 top_width_m: 70.0,
             },
         )),
-        "terrain_clip_low" => Ok(TerminalConditionSpec::ReactiveTerrain(
+        "terrain_clip" => Ok(TerminalConditionSpec::ReactiveTerrain(
             TerminalReactiveTerrainSpec {
                 hazard: TerminalReactiveTerrainHazard::DescentClip,
-                variant: "low",
-                height_offset_m: 120.0,
-                pad_clearance_gap_m: 22.0,
-                shoulder_width_m: 32.0,
-                top_width_m: 28.0,
-            },
-        )),
-        "terrain_clip_medium" => Ok(TerminalConditionSpec::ReactiveTerrain(
-            TerminalReactiveTerrainSpec {
-                hazard: TerminalReactiveTerrainHazard::DescentClip,
-                variant: "medium",
+                variant: "clip",
                 height_offset_m: 220.0,
                 pad_clearance_gap_m: 24.0,
                 shoulder_width_m: 36.0,
@@ -5861,7 +5851,7 @@ mod tests {
                     metadata: BTreeMap::new(),
                 }),
                 ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
-                    id: "terminal_guidance_terrain_clip_low_half".to_owned(),
+                    id: "terminal_guidance_terrain_clip_half".to_owned(),
                     terminal_matrix: "half_arc_terminal_v1".to_owned(),
                     base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
                     lanes: vec![TerminalMatrixLaneSpec {
@@ -5870,7 +5860,7 @@ mod tests {
                         controller_config: None,
                     }],
                     seed_tier: TerminalSeedTier::Smoke,
-                    condition_set: "terrain_clip_low".to_owned(),
+                    condition_set: "terrain_clip".to_owned(),
                     vehicle_variant: "half".to_owned(),
                     expectation_tier: "core".to_owned(),
                     arc_points: Vec::new(),
@@ -5960,7 +5950,7 @@ mod tests {
         let clip = resolved_runs
             .iter()
             .find(|run| {
-                run.descriptor.entry_id == "terminal_guidance_terrain_clip_low_half"
+                run.descriptor.entry_id == "terminal_guidance_terrain_clip_half"
                     && run.descriptor.selector.arc_point == "a30"
                     && run.descriptor.selector.velocity_band == "mid"
                     && run.descriptor.resolved_seed == 0

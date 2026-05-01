@@ -264,17 +264,16 @@ sets:
 
 - `terrain_backstop_wall`
 - `terrain_backstop_slanted`
-- `terrain_clip_low`
-- `terrain_clip_medium`
+- `terrain_clip`
 
 The two backstop variants are shape variants, not low/medium height bands: both
 use a `400m` terrain rise so they behave more like a wall or cliff than a small
 obstacle.
 
 The reactive terrain packs intentionally prune terrain-blind high-arc cells:
-backstop entries keep `a70/a80`, while clip entries keep `a60/a70/a80`. Clip
-shoulders use `120m` and `220m` rises so they actually intersect shallow terminal
-descent paths.
+backstop entries keep `a70/a80`, while clip entries keep `a60/a70/a80`. The
+clip shoulder uses a `220m` rise so it remains a meaningful descent-path
+terrain-intersection challenge rather than a mostly-solved guard lane.
 
 The terrain condition metadata is for reporting. Controller behavior should
 generalize through terrain clearance constraints rather than branching on
@@ -358,11 +357,11 @@ Trajectory-error checkpoint:
 Reactive-terrain checkpoint:
 
 - `terminal_reactive_terrain_suite`
-  - `current`: `68 / 180` scored successes, `112` scored failures
+  - `current`: `69 / 126` scored successes, `57` scored failures
 - `terminal_reactive_terrain_full`
-  - `current`: `276 / 720` scored successes, `444` scored failures
-  - backstop and clip cases now both expose the current lack of a generic
-    terrain-clearance candidate constraint
+  - `current`: `276 / 504` scored successes, `228` scored failures
+  - the first generic terrain-clearance candidate constraint is in place
+  - `terrain_clip` remains the main scored terrain stressor
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
@@ -370,12 +369,12 @@ is still the low-thrust/high-energy frontier and its failed cells remain
 scored, trajectory-error `empty` is solved, trajectory-error `half` has sparse
 high-energy scored failures concentrated in `traj_overshoot_large / a60`, and
 trajectory-error `full` is the main frontier-annotated stress tier. The first
-terrain corpus is live and points at controller-side clearance evaluation as the
-next real mechanism gap. Detailed checkpoint history lives in
+terrain corpus now has a first generic clearance pass, with the remaining signal
+concentrated in `terrain_clip`. Detailed checkpoint history lives in
 `docs/progress.md` and `docs/terminal_suite.md`.
 
 The next useful slice is Phase 2 closure work that uses the regression-policy
 gate, refines frontier/feasibility semantics where they still affect
-interpretation, and integrates generic terrain-clearance checks without
+interpretation, and analyzes the remaining terrain failures without
 scenario-name branches. Broad terminal-controller tuning should now be optional
 and hypothesis-gated rather than the default path.
