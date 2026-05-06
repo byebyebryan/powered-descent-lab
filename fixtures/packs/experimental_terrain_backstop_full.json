@@ -1,11 +1,11 @@
 {
-  "id": "terminal_reactive_terrain_suite",
-  "name": "Terminal reactive-terrain suite",
-  "description": "Smoke-tier half-arc terminal guidance matrix with reactive terrain clearance fixtures on the maintained Earth baseline.",
+  "id": "experimental_terrain_backstop_full",
+  "name": "Experimental terrain backstop full",
+  "description": "Full-tier non-blocking terrain diagnostic pack for backstop containment experiments on the Earth terminal matrix.",
   "terminal_matrix_max_time_s": 90.0,
   "entries": [
     {
-      "id": "terminal_guidance_terrain_backstop_wall_empty",
+      "id": "experimental_terrain_backstop_wall_empty",
       "terminal_matrix": "half_arc_terminal_v1",
       "arc_points": ["a70", "a80"],
       "base_scenario": "../scenarios/flat_terminal_descent.json",
@@ -15,19 +15,19 @@
           "controller": "terminal_pdg"
         }
       ],
-      "seed_tier": "smoke",
+      "seed_tier": "full",
       "condition_set": "terrain_backstop_wall",
       "vehicle_variant": "empty",
-      "expectation_tier": "reference",
+      "expectation_tier": "diagnostic",
       "adjustments": [],
       "tags": [
-        "terminal_guidance",
+        "experimental_terrain",
         "reactive_terrain",
         "backstop",
         "wall",
         "empty",
-        "bot_lab",
-        "reference"
+        "terrain_diagnostic",
+        "diagnostic"
       ],
       "metadata": {
         "difficulty": "empty",
@@ -36,7 +36,7 @@
       }
     },
     {
-      "id": "terminal_guidance_terrain_backstop_wall_half",
+      "id": "experimental_terrain_backstop_wall_half",
       "terminal_matrix": "half_arc_terminal_v1",
       "arc_points": ["a70", "a80"],
       "base_scenario": "../scenarios/flat_terminal_descent.json",
@@ -46,10 +46,10 @@
           "controller": "terminal_pdg"
         }
       ],
-      "seed_tier": "smoke",
+      "seed_tier": "full",
       "condition_set": "terrain_backstop_wall",
       "vehicle_variant": "half",
-      "expectation_tier": "core",
+      "expectation_tier": "diagnostic",
       "adjustments": [
         {
           "id": "payload_half_mass_kg",
@@ -59,13 +59,13 @@
         }
       ],
       "tags": [
-        "terminal_guidance",
+        "experimental_terrain",
         "reactive_terrain",
         "backstop",
         "wall",
         "half",
-        "bot_lab",
-        "core"
+        "terrain_diagnostic",
+        "diagnostic"
       ],
       "metadata": {
         "difficulty": "half",
@@ -74,7 +74,7 @@
       }
     },
     {
-      "id": "terminal_guidance_terrain_backstop_slanted_empty",
+      "id": "experimental_terrain_backstop_slanted_empty",
       "terminal_matrix": "half_arc_terminal_v1",
       "arc_points": ["a70", "a80"],
       "base_scenario": "../scenarios/flat_terminal_descent.json",
@@ -84,19 +84,19 @@
           "controller": "terminal_pdg"
         }
       ],
-      "seed_tier": "smoke",
+      "seed_tier": "full",
       "condition_set": "terrain_backstop_slanted",
       "vehicle_variant": "empty",
-      "expectation_tier": "reference",
+      "expectation_tier": "diagnostic",
       "adjustments": [],
       "tags": [
-        "terminal_guidance",
+        "experimental_terrain",
         "reactive_terrain",
         "backstop",
         "slanted",
         "empty",
-        "bot_lab",
-        "reference"
+        "terrain_diagnostic",
+        "diagnostic"
       ],
       "metadata": {
         "difficulty": "empty",
@@ -105,7 +105,7 @@
       }
     },
     {
-      "id": "terminal_guidance_terrain_backstop_slanted_half",
+      "id": "experimental_terrain_backstop_slanted_half",
       "terminal_matrix": "half_arc_terminal_v1",
       "arc_points": ["a70", "a80"],
       "base_scenario": "../scenarios/flat_terminal_descent.json",
@@ -115,10 +115,10 @@
           "controller": "terminal_pdg"
         }
       ],
-      "seed_tier": "smoke",
+      "seed_tier": "full",
       "condition_set": "terrain_backstop_slanted",
       "vehicle_variant": "half",
-      "expectation_tier": "core",
+      "expectation_tier": "diagnostic",
       "adjustments": [
         {
           "id": "payload_half_mass_kg",
@@ -128,13 +128,13 @@
         }
       ],
       "tags": [
-        "terminal_guidance",
+        "experimental_terrain",
         "reactive_terrain",
         "backstop",
         "slanted",
         "half",
-        "bot_lab",
-        "core"
+        "terrain_diagnostic",
+        "diagnostic"
       ],
       "metadata": {
         "difficulty": "half",

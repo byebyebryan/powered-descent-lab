@@ -171,9 +171,10 @@ Status:
     - `terminal_traj_err_full` as the full-seed matrix
     - split condition sets for undershoot/overshoot and small/large projected
       miss distances
-  - a first reactive terrain corpus on the same Earth matrix:
-    - `terminal_reactive_terrain_suite` as the smoke matrix
-    - `terminal_reactive_terrain_full` as the full-seed matrix
+  - experimental terrain diagnostics outside the maintained terminal guidance
+    scorecard:
+    - `experimental_terrain_backstop_suite` as the smoke matrix
+    - `experimental_terrain_backstop_full` as the full-seed matrix
     - current-lane-only `empty` and `half` payload tiers
     - backstop terrain fixtures that remain scenario geometry, not controller
       mode switches
@@ -201,22 +202,24 @@ Status:
   - trajectory-error `empty` is solved; `half` has only two high-energy
     overshoot-large outliers; `full` is represented as the main scored
     authority-frontier tier
-  - reactive terrain full current lane:
-    `228 / 288` scored successes, `60` scored failures
-  - the first generic terminal terrain-clearance candidate constraint is in
-    place
-  - `terrain_clip` is parked for redesign after the latest version proved too
-    path-blocking for a localized-avoidance test
+  - terrain avoidance is parked outside the maintained terminal guidance
+    scorecard; the latest experimental backstop full snapshot was
+    `228 / 288` scored successes with `60` scored failures
+  - the first generic terminal terrain-clearance candidate constraint remains
+    available as telemetry/diagnostic plumbing, not a Phase 2 blocker
+  - `terrain_clip` and backstop containment are parked until terrain work is
+    reframed as approach-corridor validation, collision warning, or waypoint
+    planning
 - still missing:
   - optional targeted controller robustness work on the two remaining
     half-payload trajectory-error outliers, but this should not block Phase 2
     corpus/evaluation progress
-  - deeper generic terminal terrain-clearance behavior:
-    - analysis of the remaining backstop containment failures
-    - clearance shaping or timing improvements if telemetry supports them
-    - no scenario-name or hazard-driver branching in controller logic
   - broader feasibility/frontier classification while keeping
     authority-frontier cells scored
+  - future terrain boundary definition above terminal guidance:
+    - valid approach-corridor checks for target/route selection
+    - collision-course warnings for co-pilot use
+    - waypoint/path planning for pure bots
   - deeper report polish that depends on real matrix scenarios and controller
     signal rather than the old provisional corpus
 
@@ -256,7 +259,8 @@ Planned scope:
 
 - setup-time terrain query API
 - closest-point, ray, and clearance queries
-- curated terrain-reactive scenarios beyond the first terminal fixtures
+- curated terrain-reactive scenarios after approach-corridor or waypoint
+  semantics exist
 - terrain-focused telemetry and replay markers
 
 Exit criteria:
@@ -266,10 +270,12 @@ Exit criteria:
 
 Status:
 
-- initial terminal reactive-terrain fixtures exist in Phase 2 packs
-- first-pass generic controller-side terrain-clearance evaluation is in place
-- remaining terrain failures need telemetry-led analysis before adding another
-  guidance mechanism
+- initial backstop terrain fixtures exist as experimental, non-blocking packs
+- first-pass generic controller-side terrain-clearance evaluation is in place as
+  telemetry/diagnostic plumbing
+- terrain-aware guidance is parked until approach-corridor validation,
+  collision-course warnings, or waypoint planning define the higher-level
+  boundary
 
 ### Phase 5: Report UX
 
@@ -388,11 +394,10 @@ The next useful work is:
 3. Keep refining feasibility/frontier semantics where the vehicle is authority
    limited, while keeping frontier cells scored so regressions do not disappear
    into warning buckets.
-4. Analyze and refine the first generic terrain-clearance pass for the new
-   reactive terrain terminal corpus without adding scenario-name controller
-   branches.
+4. Keep terrain avoidance out of terminal-guidance pass/fail gates until the lab
+   has a higher-level approach-corridor or waypoint-planning layer.
 
 The immediate controller direction should stay conservative. Recent broad
 landing-time and touchdown shortcuts either did not move outcomes or added
 scored crashes, so another broad tuning loop is lower value than regression
-policy and telemetry-led terrain-containment analysis.
+policy and frontier/feasibility semantics.

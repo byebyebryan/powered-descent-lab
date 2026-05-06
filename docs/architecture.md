@@ -181,11 +181,25 @@ sensors.
 This should be a simple controller-facing terrain package, not a hidden view
 over engine internals and not a sensor-gated approximation.
 
-Reactive avoidance should be expressed as terrain-clearance guidance, not as
-scenario-specific controller modes. Scenario metadata can identify a fixture as a
-backstop or descent-clip case for reports, but the controller should still plan
-against terrain geometry and clearance margins rather than branching on those
-labels.
+Terrain avoidance is not a core terminal-controller objective for the current
+lab slice. The terminal controller should assume a reachable, terrain-valid
+approach corridor or target and focus on the high-frequency work it already owns:
+braking, lateral cleanup, descent-rate control, attitude, and touchdown.
+
+Terrain responsibilities sit above that controller boundary:
+
+- co-pilot use should favor target/route validation and collision-course
+  warnings before handoff to terminal guidance
+- pure non-human bots should eventually use waypoint or corridor planning so
+  terrain clearance is handled before terminal landing begins
+- any reactive avoidance that remains inside terminal guidance should be small
+  and local, such as holding descent or rejecting an unsafe candidate, not
+  rerouting around arbitrary terrain
+
+Reactive terrain diagnostics should still be expressed as terrain geometry and
+clearance observations, not scenario-specific controller modes. Scenario
+metadata can identify a fixture as a backstop or descent-clip case for reports,
+but the controller should not branch on those labels.
 
 Optional obstacle layers can be added later for structures or hazards without
 discarding the heightfield as the canonical ground model.

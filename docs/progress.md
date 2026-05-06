@@ -1,27 +1,48 @@
 # Progress
 
+## 2026-05-06
+
+### Terrain avoidance design pivot
+
+- Pulled terrain avoidance out of the maintained terminal guidance scorecard.
+- The terminal controller contract is now narrower: given a reachable,
+  terrain-valid approach corridor or target, handle braking, lateral cleanup,
+  descent-rate control, attitude, and touchdown.
+- General terrain navigation is parked until it can live in a higher-level
+  layer:
+  - approach-corridor validity checks for target/route selection
+  - collision-course warnings for player co-pilot use
+  - waypoint/path planning for pure non-human bots
+- Renamed the retained backstop packs as experimental diagnostics:
+  - `fixtures/packs/experimental_terrain_backstop_suite.json`
+  - `fixtures/packs/experimental_terrain_backstop_full.json`
+- Reclassified those entries under the `diagnostic` expectation tier and
+  `terrain_diagnostic` tag so they are visibly outside the core bot-lab
+  scorecard.
+- The latest backstop results remain useful as a snapshot, but they are no
+  longer blockers for terminal controller tuning or Phase 2 progress.
+
 ## 2026-05-02
 
-### Reactive terrain backstop-only checkpoint
+### Former reactive terrain backstop-only checkpoint
 
-- Removed `terrain_clip` from the maintained reactive terrain packs.
+- Removed `terrain_clip` from the then-maintained reactive terrain packs.
 - The latest clip calibration made the terrain-blind controller fail
   `194 / 216` focused runs, but it did so by blocking enough of the path to
   force a larger trajectory change than the localized terminal-avoidance
   behavior the suite should test.
 - The `terrain_clip` condition implementation remains parked for later
-  redesign, but it is no longer part of `terminal_reactive_terrain_suite` or
-  `terminal_reactive_terrain_full`.
+  redesign, but it is no longer part of the active terrain diagnostics.
 - Added a diagnostic `terminal_pdg_no_terrain` / `tpdg_no_terrain` controller
   alias that leaves the terminal controller intact but disables candidate-path
   terrain clearance.
-- Regenerated the maintained backstop-only terrain reports:
-  - `terminal_reactive_terrain_suite`: `57 / 72` scored successes,
-    `15` scored crashes, `0` invalidations, `3.13s` wall clock with `8` workers
-  - `terminal_reactive_terrain_full`: `228 / 288` scored successes,
-    `60` scored crashes, `0` invalidations, `12.36s` wall clock with `8` workers
+- Regenerated the backstop-only terrain reports:
+  - `experimental_terrain_backstop_suite`: `57 / 72` scored successes,
+    `15` scored crashes, `0` invalidations, `3.24s` wall clock with `8` workers
+  - `experimental_terrain_backstop_full`: `228 / 288` scored successes,
+    `60` scored crashes, `0` invalidations, `12.73s` wall clock with `8` workers
 - The current terrain read is backstop containment only. The next clip attempt
-  should be redesigned before it re-enters the maintained corpus.
+  should be redesigned before it re-enters any experimental terrain pack.
 
 ## 2026-05-01
 
@@ -42,15 +63,15 @@
   - `guidance.terrain_first_violation_time_s`
   - `guidance.terrain_clearance_safe`
 - Verified the smoke terrain pack locally with `8` workers:
-  - `terminal_reactive_terrain_suite`: `57 / 72` scored successes
+  - `experimental_terrain_backstop_suite`: `57 / 72` scored successes
   - `15` scored crashes
   - `0` invalidations
-  - `3.13s` wall clock
+  - `3.24s` wall clock
 - Verified the full terrain pack locally with `8` workers:
-  - `terminal_reactive_terrain_full`: `228 / 288` scored successes
+  - `experimental_terrain_backstop_full`: `228 / 288` scored successes
   - `60` scored crashes
   - `0` invalidations
-  - `12.36s` wall clock
+  - `12.73s` wall clock
 - The first-pass terrain read is:
   - backstop cases are mostly solved for `empty`, with `half` still exposing
     authority / path-clearance pressure
@@ -58,7 +79,7 @@
   - the later clip retune was also removed from the maintained pack after it
     proved too path-blocking for a localized-avoidance test
 
-### Reactive terrain terminal-corpus slice
+### Former reactive terrain terminal-corpus slice
 
 - Added the first terminal reactive terrain condition sets:
   - `terrain_backstop_wall`
@@ -70,15 +91,14 @@
   controller-visible mode switches, and fixture metadata such as
   `hazard_driver=containment_backstop` remains report context.
 - Added current-lane-only terrain packs:
-  - `fixtures/packs/terminal_reactive_terrain_suite.json`
-  - `fixtures/packs/terminal_reactive_terrain_full.json`
+  - `fixtures/packs/experimental_terrain_backstop_suite.json`
+  - `fixtures/packs/experimental_terrain_backstop_full.json`
 - Added terminal-matrix `arc_points` entry selectors so terrain packs can drop
   terrain-blind high-arc cells without cloning matrix definitions.
-- The maintained reactive terrain matrix now keeps backstop on `a70/a80`.
+- The experimental terrain matrix now keeps backstop on `a70/a80`.
 - `terrain_clip` is parked for redesign rather than kept as a scored pack entry.
 - The first terrain packs intentionally cover `empty` and `half` payload tiers
-  only. Full payload remains a separate authority-frontier concern until generic
-  terrain clearance is understood.
+  only. Full payload remains a separate authority-frontier concern.
 - The first broader draft included both low and medium clip variants, but the
   low clip lane was removed after it proved to be mostly a guard lane rather
   than a meaningful terrain challenge.
@@ -91,13 +111,11 @@
 
 ### Active implementation focus
 
-1. Analyze the remaining backstop containment failures from telemetry and
-   per-seed trajectories before adding another controller mechanism.
-2. If the next terrain fix is controller-side, keep it geometry-derived:
-   clearance shaping, path timing, or authority-aware candidate generation, not
+1. Keep terminal guidance focused on valid-approach landing behavior.
+2. Treat terrain packs as non-blocking diagnostics until approach-corridor or
+   waypoint-planning semantics exist.
+3. If terrain work resumes, keep controller behavior geometry-derived and avoid
    condition-name branches.
-3. Keep full-payload terrain cases out of the core terrain corpus until
-   `empty` / `half` terrain behavior is better understood.
 
 ## 2026-04-29
 

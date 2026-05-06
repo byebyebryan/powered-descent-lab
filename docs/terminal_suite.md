@@ -477,14 +477,15 @@ That keeps `empty / half / full` comparisons local to the exact same arrival
 cell, which is easier to scan once multiple trajectory-error conditions are in
 the same report.
 
-### Reactive Terrain Conditions
+### Terrain Diagnostics
 
-Reactive terrain conditions should test terrain clearance without telling the
-controller which special case it is in. The condition set owns only fixture
-geometry; the controller should see the same immutable terrain definition it
-would see in any other scenario.
+Terrain is no longer a maintained terminal guidance objective. The controller's
+core contract is: given a reachable, terrain-valid approach corridor or target,
+land safely. General terrain navigation belongs above terminal guidance as
+target selection, approach-corridor validation, waypoint planning, or
+collision-course warning.
 
-The first maintained reactive terrain condition sets are:
+The parked diagnostic condition sets are:
 
 - `terrain_backstop_wall`
 - `terrain_backstop_slanted`
@@ -500,32 +501,34 @@ These names are intentionally behavior-specific instead of generic
 
 `terrain_clip` is parked for redesign. The latest version could make a
 terrain-blind controller fail, but it did so by blocking enough of the path to
-force route-level trajectory changes. The maintained suite should only restore
-clip once it exercises localized terminal clearance without changing the primary
-landing route.
+force route-level trajectory changes. Experimental terrain diagnostics should
+only restore clip once it exercises localized clearance without changing the
+primary landing route.
 
-The controller contract is still generalized:
+The terrain diagnostic contract is still generalized:
 
 - full immutable terrain is setup-time run context
 - per-tick observations stay compact
-- runtime guidance should reason about terrain clearance constraints, not branch
-  on `backstop` metadata
+- any future terrain response should reason about terrain clearance constraints,
+  not branch on `backstop` metadata
 - fixture metadata such as `hazard_driver=containment_backstop` is for reports
   and review, not controller behavior
 
-The first packs keep terrain cases current-lane-only and limited to `empty` and
-`half` payload tiers:
+The retained terrain packs are experimental and non-blocking:
 
-- `terminal_reactive_terrain_suite`
-- `terminal_reactive_terrain_full`
+- `experimental_terrain_backstop_suite`
+- `experimental_terrain_backstop_full`
+
+They keep terrain cases current-lane-only and limited to `empty` and `half`
+payload tiers. Entries use the `diagnostic` expectation tier and
+`terrain_diagnostic` tag so they do not look like core bot-lab scorecard rows.
 
 They also restrict the terminal arc cells to terrain-relevant shallow cases:
 
 - backstop: `a70/a80`
 
-Full payload should stay out of the first terrain corpus until clearance
-behavior is understood, because it would mix terrain response with the existing
-low-thrust/high-energy authority frontier.
+Full payload stays out of the experimental terrain corpus because it would mix
+terrain response with the existing low-thrust/high-energy authority frontier.
 
 ## Vehicle Variants
 
@@ -639,15 +642,10 @@ Current implementation:
 - `terminal_bot_lab_full` is the full-tier matrix pack
 - `terminal_traj_err_suite` is the smoke-tier projected trajectory-error pack
 - `terminal_traj_err_full` is the full-tier projected trajectory-error pack
-- `terminal_reactive_terrain_suite` is the smoke-tier reactive terrain pack
-- `terminal_reactive_terrain_full` is the full-tier reactive terrain pack
 - the maintained clean payload tiers are:
   - `empty`
   - `half`
   - `full`
-- the first reactive terrain payload tiers are:
-  - `empty`
-  - `half`
 - `pd-eval` now supports:
   - cache reuse and promotion
   - default current-lane history compare against cached clean checkpoints
@@ -764,20 +762,20 @@ The current interpretation is:
 - trajectory-error `full` is the main scored low-thrust/high-energy frontier
   stress tier
 
-Current reactive terrain checkpoint:
+Parked terrain diagnostic snapshot:
 
-- `terminal_reactive_terrain_suite`
+- `experimental_terrain_backstop_suite`
   - current lane only
   - `57 / 72` scored successes
   - `15` scored crashes
   - `0` invalidations
-  - `3.13s` wall clock with `8` workers
-- `terminal_reactive_terrain_full`
+  - `3.24s` wall clock with `8` workers
+- `experimental_terrain_backstop_full`
   - current lane only
   - `228 / 288` scored successes
   - `60` scored crashes
   - `0` invalidations
-  - `12.36s` wall clock with `8` workers
+  - `12.73s` wall clock with `8` workers
 - terrain-blind high-arc cells are pruned from this pack:
   - backstop keeps `a70/a80`
 - backstop cases expose the first useful terrain-clearance gap:
@@ -788,7 +786,8 @@ Current reactive terrain checkpoint:
 - the first generic terrain-clearance candidate constraint is now in place:
   it samples planned hull clearance against elevated terrain geometry and
   keeps low-relief target-surface contact out of the obstacle constraint
-- remaining terrain failures are concentrated in backstop containment
+- the pack remains available for diagnostics, but it is no longer part of the
+  maintained terminal guidance scorecard
 
 The standing sparse trajectory-error outliers are:
 
@@ -815,18 +814,16 @@ aligned, the next concrete milestones are:
 2. deepen feasibility/frontier semantics:
    - authority-limited full-payload annotations
    - broader coupled stop bounds beyond the current invalidation rules
-3. refine the first generic terrain-clearance evaluator:
-   - analyze remaining backstop containment per-seed failures
-   - decide whether the next mechanism is clearance shaping, path timing, or
-     authority/frontier annotation
-   - keep no scenario-name or hazard-driver branches in controller logic
+3. define the future terrain boundary above terminal guidance:
+   - approach-corridor validity checks
+   - collision-course warnings for co-pilot use
+   - waypoint/path planning for pure bots
 4. keep additional controller tuning optional and narrow:
    - pinned failing runs
    - general mechanism
    - no scored smoke-suite regressions
-5. later transfer-style terrain cases once terminal reactive behavior is
-   understood
+5. later terrain diagnostics only after that higher-level boundary exists
 
-More specialized matrix-review UI should wait until the new terrain cases create
-real report pressure. The next implementation pressure is understanding the
-remaining backstop containment failures, not report layout.
+More specialized matrix-review UI should wait until a new non-terminal terrain
+layer creates real report pressure. The next implementation pressure is terminal
+guidance policy and frontier semantics, not terrain avoidance.
