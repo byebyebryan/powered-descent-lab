@@ -1,5 +1,28 @@
 # Progress
 
+## 2026-05-02
+
+### Reactive terrain backstop-only checkpoint
+
+- Removed `terrain_clip` from the maintained reactive terrain packs.
+- The latest clip calibration made the terrain-blind controller fail
+  `194 / 216` focused runs, but it did so by blocking enough of the path to
+  force a larger trajectory change than the localized terminal-avoidance
+  behavior the suite should test.
+- The `terrain_clip` condition implementation remains parked for later
+  redesign, but it is no longer part of `terminal_reactive_terrain_suite` or
+  `terminal_reactive_terrain_full`.
+- Added a diagnostic `terminal_pdg_no_terrain` / `tpdg_no_terrain` controller
+  alias that leaves the terminal controller intact but disables candidate-path
+  terrain clearance.
+- Regenerated the maintained backstop-only terrain reports:
+  - `terminal_reactive_terrain_suite`: `57 / 72` scored successes,
+    `15` scored crashes, `0` invalidations, `3.13s` wall clock with `8` workers
+  - `terminal_reactive_terrain_full`: `228 / 288` scored successes,
+    `60` scored crashes, `0` invalidations, `12.36s` wall clock with `8` workers
+- The current terrain read is backstop containment only. The next clip attempt
+  should be redesigned before it re-enters the maintained corpus.
+
 ## 2026-05-01
 
 ### Generic terminal terrain-clearance guidance slice
@@ -19,28 +42,27 @@
   - `guidance.terrain_first_violation_time_s`
   - `guidance.terrain_clearance_safe`
 - Verified the smoke terrain pack locally with `8` workers:
-  - `terminal_reactive_terrain_suite`: `69 / 126` scored successes
-  - `57` scored crashes
+  - `terminal_reactive_terrain_suite`: `57 / 72` scored successes
+  - `15` scored crashes
   - `0` invalidations
-  - `4.75s` wall clock
+  - `3.13s` wall clock
 - Verified the full terrain pack locally with `8` workers:
-  - `terminal_reactive_terrain_full`: `276 / 504` scored successes
-  - `228` scored crashes
+  - `terminal_reactive_terrain_full`: `228 / 288` scored successes
+  - `60` scored crashes
   - `0` invalidations
-  - `19.00s` wall clock
+  - `12.36s` wall clock
 - The first-pass terrain read is:
   - backstop cases are mostly solved for `empty`, with `half` still exposing
     authority / path-clearance pressure
   - the mostly-solved low clip guard lane was removed from the maintained pack
-  - `terrain_clip` remains the main scored terrain stressor, especially
-    in `a80`
+  - the later clip retune was also removed from the maintained pack after it
+    proved too path-blocking for a localized-avoidance test
 
 ### Reactive terrain terminal-corpus slice
 
 - Added the first terminal reactive terrain condition sets:
   - `terrain_backstop_wall`
   - `terrain_backstop_slanted`
-  - `terrain_clip`
 - Backstop variants are shape variants, not height/severity bands: both use a
   `400m` rise, with `wall` testing a steep target-side face and `slanted`
   testing a longer ramp face.
@@ -52,10 +74,8 @@
   - `fixtures/packs/terminal_reactive_terrain_full.json`
 - Added terminal-matrix `arc_points` entry selectors so terrain packs can drop
   terrain-blind high-arc cells without cloning matrix definitions.
-- The maintained reactive terrain matrix now keeps backstop on `a70/a80` and
-  clip on `a60/a70/a80`.
-- The clip shoulder uses a `220m` rise so it intersects shallow terminal descent
-  paths and remains a meaningful scored challenge.
+- The maintained reactive terrain matrix now keeps backstop on `a70/a80`.
+- `terrain_clip` is parked for redesign rather than kept as a scored pack entry.
 - The first terrain packs intentionally cover `empty` and `half` payload tiers
   only. Full payload remains a separate authority-frontier concern until generic
   terrain clearance is understood.
@@ -71,7 +91,7 @@
 
 ### Active implementation focus
 
-1. Analyze the remaining `terrain_clip` failures from telemetry and
+1. Analyze the remaining backstop containment failures from telemetry and
    per-seed trajectories before adding another controller mechanism.
 2. If the next terrain fix is controller-side, keep it geometry-derived:
    clearance shaping, path timing, or authority-aware candidate generation, not

@@ -151,6 +151,11 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
         "terminal_pdg" | "terminal_pdg_v1" | "tpdg" => Some(ControllerSpec::TerminalPdgV1 {
             config: TerminalPdgControllerConfig::default(),
         }),
+        "terminal_pdg_no_terrain" | "tpdg_no_terrain" => {
+            let mut config = TerminalPdgControllerConfig::default();
+            config.terrain_clearance_enabled = false;
+            Some(ControllerSpec::TerminalPdgV1 { config })
+        }
         _ => None,
     }
 }

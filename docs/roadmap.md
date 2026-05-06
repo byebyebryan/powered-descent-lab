@@ -175,8 +175,8 @@ Status:
     - `terminal_reactive_terrain_suite` as the smoke matrix
     - `terminal_reactive_terrain_full` as the full-seed matrix
     - current-lane-only `empty` and `half` payload tiers
-    - backstop and clip terrain fixtures that remain scenario geometry, not
-      controller mode switches
+    - backstop terrain fixtures that remain scenario geometry, not controller
+      mode switches
   - batch review trees that surface the terminal matrix directly:
     - `mission -> arrival_family -> condition_set`
     - `arc_point -> velocity_band -> vehicle_variant -> lane -> seed`
@@ -202,16 +202,17 @@ Status:
     overshoot-large outliers; `full` is represented as the main scored
     authority-frontier tier
   - reactive terrain full current lane:
-    `276 / 504` scored successes, `228` scored failures
+    `228 / 288` scored successes, `60` scored failures
   - the first generic terminal terrain-clearance candidate constraint is in
-    place, with remaining terrain failures concentrated in
-    `terrain_clip`
+    place
+  - `terrain_clip` is parked for redesign after the latest version proved too
+    path-blocking for a localized-avoidance test
 - still missing:
   - optional targeted controller robustness work on the two remaining
     half-payload trajectory-error outliers, but this should not block Phase 2
     corpus/evaluation progress
   - deeper generic terminal terrain-clearance behavior:
-    - analysis of the remaining `terrain_clip` failures
+    - analysis of the remaining backstop containment failures
     - clearance shaping or timing improvements if telemetry supports them
     - no scenario-name or hazard-driver branching in controller logic
   - broader feasibility/frontier classification while keeping
@@ -394,4 +395,4 @@ The next useful work is:
 The immediate controller direction should stay conservative. Recent broad
 landing-time and touchdown shortcuts either did not move outcomes or added
 scored crashes, so another broad tuning loop is lower value than regression
-policy and telemetry-led terrain-clip analysis.
+policy and telemetry-led terrain-containment analysis.

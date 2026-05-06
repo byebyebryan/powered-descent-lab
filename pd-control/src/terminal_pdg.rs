@@ -19,8 +19,14 @@ const TERRAIN_CLEARANCE_MARGIN_M: f64 = 10.0;
 const TERRAIN_OBSTACLE_RELIEF_FLOOR_M: f64 = TERRAIN_CLEARANCE_MARGIN_M;
 const TERRAIN_CLEARANCE_UNCONSTRAINED_M: f64 = 1.0e6;
 
+fn default_terrain_clearance_enabled() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalPdgControllerConfig {
+    #[serde(default = "default_terrain_clearance_enabled")]
+    pub terrain_clearance_enabled: bool,
     pub max_tilt_rad: f64,
     pub terminal_dynamic_tilt_max_rad: f64,
     pub max_tilt_low_alt_rad: f64,
@@ -77,6 +83,7 @@ pub struct TerminalPdgControllerConfig {
 impl Default for TerminalPdgControllerConfig {
     fn default() -> Self {
         Self {
+            terrain_clearance_enabled: true,
             max_tilt_rad: 0.78,
             terminal_dynamic_tilt_max_rad: 0.95,
             max_tilt_low_alt_rad: 0.18,
@@ -724,17 +731,25 @@ impl TerminalPdgController {
         let target_attitude_rad = ax_req
             .atan2(ay_req.max(0.2))
             .clamp(-max_tilt_rad, max_tilt_rad);
-        let terrain_clearance = estimate_candidate_terrain_clearance(
-            view,
-            dx_m,
-            dy_m,
-            vx_mps,
-            vy_up_mps,
-            burn_time_s,
-            target_vy_up_mps,
-            target_attitude_rad,
-            gravity_mps2,
-        );
+        let terrain_clearance = if self.config.terrain_clearance_enabled {
+            estimate_candidate_terrain_clearance(
+                view,
+                dx_m,
+                dy_m,
+                vx_mps,
+                vy_up_mps,
+                burn_time_s,
+                target_vy_up_mps,
+                target_attitude_rad,
+                gravity_mps2,
+            )
+        } else {
+            TerrainClearanceEstimate {
+                min_clearance_m: TERRAIN_CLEARANCE_UNCONSTRAINED_M,
+                first_violation_time_s: None,
+                safe: true,
+            }
+        };
         TerminalGateCandidate {
             burn_time_s,
             required_accel_ratio: required_ratio,
