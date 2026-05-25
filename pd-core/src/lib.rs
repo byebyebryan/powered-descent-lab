@@ -10,7 +10,7 @@ pub use model::{
     ActionLogEntry, CheckpointRunSummary, Command, EndReason, EvaluationGoal, EventKind,
     EventRecord, LandingPadSpec, LandingRunSummary, MissionOutcome, MissionSpec, Observation,
     PhysicalOutcome, RunArtifacts, RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec,
-    SimConfig, VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec,
+    SimConfig, TransferRouteSpec, VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec,
 };
 pub use sim::{SimulationError, SimulationState, replay_simulation, run_simulation};
 pub use terrain::TerrainDefinition;

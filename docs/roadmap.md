@@ -233,6 +233,18 @@ Target:
 Planned scope:
 
 - source/target transfers
+- one-sided signed route-arc scenarios around the target, covering descent,
+  flat transfer, and climb without duplicating left/right sides
+- route-angle labels such as `r-80`, `r00`, and `r+80`, where positive route
+  angle means the target is uphill from the source
+- a fixed target pad at `(0, 0)` with the source pad resolved from
+  `source = (-radius * cos(route_angle), -radius * sin(route_angle))` after
+  side normalization and route-angle label conversion
+- one nominal route radius for the first transfer matrix, with route radius
+  kept as a later axis because travel distance materially changes transfer
+  shape and difficulty
+- optional simple monotonic source-to-target slope terrain for physical
+  miss/crash containment, not terrain-avoidance behavior
 - boost/coast/terminal mission definitions
 - early-stop evaluation checkpoints such as boost-cutoff trajectory validation
 - richer target geometry
@@ -245,9 +257,14 @@ Exit criteria:
 
 Status:
 
-- not started as a full phase
-- one early-stop evaluation primitive (`timed_checkpoint`) is in place as a
-  contract probe only
+- first-class transfer matrix infrastructure exists for
+  `signed_route_arc_transfer_v1`
+- `MissionSpec` can carry an optional source-to-target `transfer_route`
+- `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
+  handoff controller
+- `transfer_bot_lab_suite` is the smoke workbench for the initial route family
+- one early-stop evaluation primitive (`timed_checkpoint`) remains available as
+  a contract probe only, not as the transfer v1 scoring goal
 
 ### Phase 4: Terrain-aware lab
 
@@ -381,8 +398,8 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Keep Phase 2 focused on controller/corpus/evaluation signal rather than new
-infrastructure.
+Keep Phase 2 terminal work conservative while using the new Phase 3 transfer
+workbench to expose launch, boost, coast, and terminal-handoff issues.
 
 The next useful work is:
 
@@ -396,8 +413,15 @@ The next useful work is:
    into warning buckets.
 4. Keep terrain avoidance out of terminal-guidance pass/fail gates until the lab
    has a higher-level approach-corridor or waypoint-planning layer.
+5. Keep a later terminal-arrival extension on the roadmap: a signed
+   climb/descent arrival family that expands the current one-sided quarter-arc
+   into a half-arc around the target and exercises climbing arrivals.
+6. Run `transfer_bot_lab_suite`, inspect staged transfer telemetry, and tune the
+   transfer-specific takeoff/boost/coast handoff before broadening route radius
+   or full-seed coverage.
 
 The immediate controller direction should stay conservative. Recent broad
 landing-time and touchdown shortcuts either did not move outcomes or added
-scored crashes, so another broad tuning loop is lower value than regression
-policy and frontier/feasibility semantics.
+scored crashes, so another broad terminal tuning loop is lower value than
+transfer-handoff analysis, regression policy, and frontier/feasibility
+semantics.

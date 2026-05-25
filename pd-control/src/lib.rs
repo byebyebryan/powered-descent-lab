@@ -10,7 +10,8 @@ mod terminal_pdg;
 
 pub use controllers::{
     BaselineController, BaselineControllerConfig, ControllerSpec, IdleController,
-    StagedDescentController, StagedDescentControllerConfig, built_in_controller_spec,
+    StagedDescentController, StagedDescentControllerConfig, TransferPdgController,
+    TransferPdgControllerConfig, built_in_controller_spec,
 };
 pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, standard_marker};
 pub use terminal_pdg::{TerminalPdgController, TerminalPdgControllerConfig};
@@ -252,6 +253,7 @@ mod tests {
                 angular_rate_radps: 0.0,
             },
             mission: MissionSpec {
+                transfer_route: None,
                 goal: EvaluationGoal::LandingOnPad {
                     target_pad_id: "pad_a".to_owned(),
                 },

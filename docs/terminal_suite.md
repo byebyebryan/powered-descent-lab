@@ -822,8 +822,21 @@ aligned, the next concrete milestones are:
    - pinned failing runs
    - general mechanism
    - no scored smoke-suite regressions
-5. later terrain diagnostics only after that higher-level boundary exists
+5. keep transfer-guidance geometry in the separate
+   [Transfer Suite Design](transfer_suite.md) doc:
+   - transfer route angle and radius are source-to-target axes, not terminal
+     arrival axes
+   - transfer terrain is for containment, not terminal terrain avoidance
+6. note a later terminal-arrival extension for climbing arrivals:
+   - the current maintained terminal suite is effectively a one-sided
+     quarter-arc after side normalization: from near-overhead to shallow
+     above-target arrivals
+   - a future signed terminal family should extend that quarter-arc into a
+     half-arc around the target so terminal guidance also sees below-target
+     climbing arrival cases
+7. later terrain diagnostics only after that higher-level boundary exists
 
-More specialized matrix-review UI should wait until a new non-terminal terrain
-layer creates real report pressure. The next implementation pressure is terminal
-guidance policy and frontier semantics, not terrain avoidance.
+More specialized matrix-review UI should wait until the transfer or higher-level
+route layer creates real report pressure. The next implementation pressure for
+this document remains terminal policy and frontier semantics; transfer work now
+lives in its own suite design.

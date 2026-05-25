@@ -98,6 +98,38 @@ impl Default for StagedDescentControllerConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TransferPdgControllerConfig {
+    pub takeoff_clearance_m: f64,
+    pub takeoff_min_vertical_speed_mps: f64,
+    pub max_takeoff_time_s: f64,
+    pub boost_max_time_s: f64,
+    pub boost_tilt_rad: f64,
+    pub boost_speed_mps: f64,
+    pub coast_min_altitude_m: f64,
+    pub terminal_gate_dx_m: f64,
+    pub terminal_gate_altitude_m: f64,
+    #[serde(default)]
+    pub terminal: TerminalPdgControllerConfig,
+}
+
+impl Default for TransferPdgControllerConfig {
+    fn default() -> Self {
+        Self {
+            takeoff_clearance_m: 45.0,
+            takeoff_min_vertical_speed_mps: 8.0,
+            max_takeoff_time_s: 5.0,
+            boost_max_time_s: 12.0,
+            boost_tilt_rad: 0.72,
+            boost_speed_mps: 75.0,
+            coast_min_altitude_m: 80.0,
+            terminal_gate_dx_m: 260.0,
+            terminal_gate_altitude_m: 260.0,
+            terminal: TerminalPdgControllerConfig::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ControllerSpec {
     Idle,
@@ -113,6 +145,10 @@ pub enum ControllerSpec {
         #[serde(flatten)]
         config: TerminalPdgControllerConfig,
     },
+    TransferPdgV1 {
+        #[serde(flatten)]
+        config: TransferPdgControllerConfig,
+    },
 }
 
 impl ControllerSpec {
@@ -122,6 +158,7 @@ impl ControllerSpec {
             Self::BaselineV1 { .. } => "baseline_v1",
             Self::StagedDescentV1 { .. } => "staged_descent_v1",
             Self::TerminalPdgV1 { .. } => "terminal_pdg_v1",
+            Self::TransferPdgV1 { .. } => "transfer_pdg_v1",
         }
     }
 
@@ -133,6 +170,7 @@ impl ControllerSpec {
                 Box::new(StagedDescentController::new(config.clone()))
             }
             Self::TerminalPdgV1 { config } => Box::new(TerminalPdgController::new(config.clone())),
+            Self::TransferPdgV1 { config } => Box::new(TransferPdgController::new(config.clone())),
         }
     }
 }
@@ -150,6 +188,9 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
         }
         "terminal_pdg" | "terminal_pdg_v1" | "tpdg" => Some(ControllerSpec::TerminalPdgV1 {
             config: TerminalPdgControllerConfig::default(),
+        }),
+        "transfer_pdg" | "transfer_pdg_v1" | "xpdg" => Some(ControllerSpec::TransferPdgV1 {
+            config: TransferPdgControllerConfig::default(),
         }),
         "terminal_pdg_no_terrain" | "tpdg_no_terrain" => {
             let mut config = TerminalPdgControllerConfig::default();
@@ -478,5 +519,178 @@ impl Controller for StagedDescentController {
 
         self.last_phase = Some(phase);
         builder.build()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TransferPhase {
+    Takeoff,
+    Boost,
+    Coast,
+    Terminal,
+}
+
+impl TransferPhase {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Takeoff => "takeoff",
+            Self::Boost => "boost",
+            Self::Coast => "coast",
+            Self::Terminal => "terminal",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TransferPdgController {
+    config: TransferPdgControllerConfig,
+    terminal: TerminalPdgController,
+    phase: TransferPhase,
+    last_phase: Option<String>,
+}
+
+impl Default for TransferPdgController {
+    fn default() -> Self {
+        Self::new(TransferPdgControllerConfig::default())
+    }
+}
+
+impl TransferPdgController {
+    pub fn new(config: TransferPdgControllerConfig) -> Self {
+        let terminal = TerminalPdgController::new(config.terminal.clone());
+        Self {
+            config,
+            terminal,
+            phase: TransferPhase::Takeoff,
+            last_phase: None,
+        }
+    }
+
+    fn choose_phase(&self, ctx: &RunContext, observation: &Observation) -> TransferPhase {
+        let Some(route) = ctx.mission.transfer_route.as_ref() else {
+            return TransferPhase::Terminal;
+        };
+        let Some(source_pad) = ctx.world.landing_pad(&route.source_pad_id) else {
+            return TransferPhase::Terminal;
+        };
+
+        let source_clearance_m = observation.position_m.y
+            - source_pad.surface_y_m
+            - ctx.vehicle.geometry.touchdown_base_offset_m;
+        if source_clearance_m < self.config.takeoff_clearance_m
+            && observation.velocity_mps.y < self.config.takeoff_min_vertical_speed_mps
+            && observation.sim_time_s < self.config.max_takeoff_time_s
+        {
+            return TransferPhase::Takeoff;
+        }
+
+        if self.phase == TransferPhase::Terminal {
+            return TransferPhase::Terminal;
+        }
+
+        let route_direction = observation.target_dx_m.signum();
+        let along_speed_mps = observation.velocity_mps.x * route_direction;
+        if observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
+            && along_speed_mps < self.config.boost_speed_mps
+            && observation.sim_time_s < self.config.boost_max_time_s
+        {
+            return TransferPhase::Boost;
+        }
+
+        if observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
+            && observation.height_above_target_m > self.config.terminal_gate_altitude_m
+            && observation.touchdown_clearance_m > self.config.coast_min_altitude_m
+            && observation.velocity_mps.y > -18.0
+        {
+            return TransferPhase::Coast;
+        }
+
+        TransferPhase::Terminal
+    }
+
+    fn frame_for_open_loop_phase(
+        &mut self,
+        ctx: &RunContext,
+        observation: &Observation,
+        phase_name: TransferPhase,
+        command: Command,
+        status: &'static str,
+    ) -> ControllerFrame {
+        let view = ControllerView::new(ctx, observation);
+        let phase = phase_name.as_str().to_owned();
+        let frame = ControllerFrameBuilder::new(command)
+            .status(status)
+            .phase(phase.clone())
+            .standard_kinematics(&view)
+            .phase_transition_marker(self.last_phase.as_deref(), &phase, &view)
+            .metric(metric::GUIDANCE_ACTIVE, true)
+            .metric("transfer.phase", phase.as_str())
+            .metric("transfer.route_dx_m", observation.target_dx_m)
+            .metric("transfer.route_dy_m", -observation.height_above_target_m)
+            .build();
+        self.last_phase = Some(phase);
+        frame
+    }
+}
+
+impl Controller for TransferPdgController {
+    fn id(&self) -> &str {
+        "transfer_pdg_v1"
+    }
+
+    fn reset(&mut self, ctx: &RunContext) {
+        self.phase = TransferPhase::Takeoff;
+        self.last_phase = None;
+        self.terminal.reset(ctx);
+    }
+
+    fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
+        let phase = self.choose_phase(ctx, observation);
+        self.phase = phase;
+        match phase {
+            TransferPhase::Takeoff => self.frame_for_open_loop_phase(
+                ctx,
+                observation,
+                phase,
+                Command {
+                    throttle_frac: 1.0,
+                    target_attitude_rad: 0.0,
+                },
+                "lifting off from source pad",
+            ),
+            TransferPhase::Boost => {
+                let direction = observation.target_dx_m.signum();
+                self.frame_for_open_loop_phase(
+                    ctx,
+                    observation,
+                    phase,
+                    Command {
+                        throttle_frac: 1.0,
+                        target_attitude_rad: direction * self.config.boost_tilt_rad,
+                    },
+                    "boosting toward terminal gate",
+                )
+            }
+            TransferPhase::Coast => self.frame_for_open_loop_phase(
+                ctx,
+                observation,
+                phase,
+                Command {
+                    throttle_frac: 0.0,
+                    target_attitude_rad: 0.0,
+                },
+                "coasting before terminal handoff",
+            ),
+            TransferPhase::Terminal => {
+                let mut frame = self.terminal.update(ctx, observation);
+                frame.metrics.insert(
+                    "transfer.phase".to_owned(),
+                    TelemetryValue::from("terminal"),
+                );
+                frame.status = format!("transfer handoff: {}", frame.status);
+                self.last_phase = frame.phase.clone();
+                frame
+            }
+        }
     }
 }

@@ -933,7 +933,9 @@ fn render_batch_report(
           case "arrival": return 1;
           case "condition": return 2;
           case "arc": return 3;
+          case "route": return 3;
           case "band": return 4;
+          case "radius": return 4;
           case "vehicle": return 5;
           case "lane": return 6;
           default: return 0;
@@ -2981,7 +2983,7 @@ fn render_condition_arc_review_section(
         depth,
         parent_group_id,
         (!child_rows.is_empty()).then_some(group_id.as_str()),
-        "arc",
+        matrix_route_level_kind(mission),
         current_row_aggregate,
         baseline_row_aggregate,
         SummaryMetricStyle::MeanDelta,
@@ -3093,7 +3095,7 @@ fn render_condition_velocity_review_section(
         depth,
         parent_group_id,
         (!vehicle_rows.is_empty()).then_some(group_id.as_str()),
-        "band",
+        matrix_radius_level_kind(mission),
         current_row_aggregate,
         baseline_row_aggregate,
         SummaryMetricStyle::MeanDelta,
@@ -3516,7 +3518,7 @@ fn render_arc_review_section(
         depth,
         parent_group_id,
         ((!velocity_keys.is_empty()) || !child_rows.is_empty()).then_some(group_id.as_str()),
-        "arc",
+        matrix_route_level_kind(mission),
         current_row_aggregate,
         baseline_row_aggregate,
         SummaryMetricStyle::MeanDelta,
@@ -3633,7 +3635,7 @@ fn render_velocity_review_section(
         depth,
         parent_group_id,
         (!lane_keys.is_empty()).then_some(group_id.as_str()),
-        "band",
+        matrix_radius_level_kind(mission),
         current_row_aggregate,
         baseline_row_aggregate,
         SummaryMetricStyle::MeanDelta,
@@ -3858,6 +3860,12 @@ fn tree_group_id(parts: &[&str]) -> String {
                 let ch = ch.to_ascii_lowercase();
                 if ch.is_ascii_alphanumeric() {
                     out.push(ch);
+                    last_dash = false;
+                } else if ch == '+' {
+                    out.push_str("plus");
+                    last_dash = false;
+                } else if ch == '-' {
+                    out.push_str("minus");
                     last_dash = false;
                 } else if !last_dash {
                     out.push('-');
@@ -4255,6 +4263,17 @@ fn selector_sort_rank(key: &str) -> u8 {
         "terrain_backstop_wall" => 5,
         "terrain_backstop_slanted" => 6,
         "terrain_clip" => 7,
+        "r-80" => 0,
+        "r-60" => 1,
+        "r-45" => 2,
+        "r-30" => 3,
+        "r-15" => 4,
+        "r00" => 5,
+        "r+15" => 6,
+        "r+30" => 7,
+        "r+45" => 8,
+        "r+60" => 9,
+        "r+80" => 10,
         "low" => 0,
         "mid" => 1,
         "high" => 2,
@@ -4266,6 +4285,22 @@ fn selector_sort_rank(key: &str) -> u8 {
         "low_fuel" => 12,
         "heavy_cargo" => 13,
         _ => 20,
+    }
+}
+
+fn matrix_route_level_kind(mission: &str) -> &'static str {
+    if mission == "transfer_guidance" {
+        "route"
+    } else {
+        "arc"
+    }
+}
+
+fn matrix_radius_level_kind(mission: &str) -> &'static str {
+    if mission == "transfer_guidance" {
+        "radius"
+    } else {
+        "band"
     }
 }
 
@@ -4473,9 +4508,13 @@ fn selector_case_key(selector: &crate::SelectorAxes) -> String {
     ];
     if selector.arc_point != UNSPECIFIED_SELECTOR_VALUE {
         parts.push(selector.arc_point.as_str());
+    } else if selector.route_angle != UNSPECIFIED_SELECTOR_VALUE {
+        parts.push(selector.route_angle.as_str());
     }
     if selector.velocity_band != UNSPECIFIED_SELECTOR_VALUE {
         parts.push(selector.velocity_band.as_str());
+    } else if selector.radius_tier != UNSPECIFIED_SELECTOR_VALUE {
+        parts.push(selector.radius_tier.as_str());
     }
     parts.join(" / ")
 }
@@ -6091,11 +6130,11 @@ mod report_tests {
     use crate::{
         ConcreteScenarioPackEntry, NumericPerturbationMode, NumericPerturbationSpec,
         ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec, SeedRangeSpec,
-        TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier, compare_batch_reports,
-        run_pack_with_workers,
+        TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier, TransferMatrixEntry,
+        TransferMatrixLaneSpec, TransferSeedTier, compare_batch_reports, run_pack_with_workers,
     };
 
-    use super::{render_batch_report, sort_selector_keys};
+    use super::{render_batch_report, sort_selector_keys, tree_group_id};
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
@@ -6358,6 +6397,56 @@ mod report_tests {
         );
         assert!(html.contains(r#"case "band": return 4;"#));
         assert!(html.contains(r#"case "vehicle": return 5;"#));
+    }
+
+    #[test]
+    fn transfer_matrix_report_renders_route_and_radius_levels() {
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_tree_unit".to_owned(),
+            name: "Transfer matrix tree unit".to_owned(),
+            description: "transfer matrix tree unit".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_clean_nominal".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                route_angles: vec!["r00".to_owned()],
+                adjustments: Vec::new(),
+                tags: vec!["transfer".to_owned(), "bot_lab".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_matrix_tree_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("selector-inline\">route</span>"));
+        assert!(html.contains("selector-inline\">radius</span>"));
+        assert!(html.contains("selector-code\">r00</span>"));
+        assert!(html.contains("selector-code\">nominal</span>"));
+        assert!(html.contains(r#"case "route": return 3;"#));
+        assert!(html.contains(r#"case "radius": return 4;"#));
+    }
+
+    #[test]
+    fn tree_group_ids_preserve_signed_route_labels() {
+        assert_ne!(
+            tree_group_id(&["arc", "r-30"]),
+            tree_group_id(&["arc", "r+30"])
+        );
     }
 
     #[test]

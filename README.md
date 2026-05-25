@@ -93,6 +93,7 @@ without treating the old scenario files as fixtures to transliterate directly.
 - [Roadmap](docs/roadmap.md)
 - [Progress](docs/progress.md)
 - [Terminal Suite Design](docs/terminal_suite.md)
+- [Transfer Suite Design](docs/transfer_suite.md)
 - [Early Design Scratchpad](docs/early_design.md)
 
 ## Report Serving
@@ -193,6 +194,12 @@ cargo run -p pd-eval -- run-pack fixtures/packs/experimental_terrain_backstop_su
 cargo run -p pd-eval -- run-pack fixtures/packs/experimental_terrain_backstop_full.json --workers 8
 ```
 
+Run the first transfer-guidance smoke matrix:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_bot_lab_suite.json --workers 8
+```
+
 Force a rerun and skip cache reuse if needed:
 
 ```bash
@@ -279,6 +286,12 @@ approach-corridor validation, waypoint planning, or collision-course warning.
 The terminal controller contract is narrower: given a reachable, terrain-valid
 approach corridor or target, land safely. Terrain condition metadata is for
 diagnostics and reports, not controller mode switches.
+
+`transfer_bot_lab_suite` is the first Phase 3 source-to-target matrix. It uses
+`transfer_matrix = signed_route_arc_transfer_v1`, a fixed `800m` route radius,
+route-angle labels from `r-60` through `r+60` in smoke tier, and the staged
+`transfer_pdg_v1` controller. Transfer reports label the matrix axes as route
+and radius instead of terminal arc and velocity band.
 
 That writes:
 
@@ -379,7 +392,8 @@ avoidance is no longer a terminal guidance blocker; it is parked until the lab
 has an approach-corridor or waypoint-planning layer. Detailed checkpoint history
 lives in `docs/progress.md` and `docs/terminal_suite.md`.
 
-The next useful slice is Phase 2 closure work that uses the regression-policy
-gate, refines frontier/feasibility semantics where they still affect
-interpretation, and keeps broad terminal-controller tuning optional and
-hypothesis-gated rather than the default path.
+The next useful slice is to make the first Phase 3 transfer workbench useful:
+keep `transfer_bot_lab_suite` runnable, inspect transfer handoff telemetry, and
+tune only the staged transfer phases needed before terminal handoff. Broad
+terminal-controller tuning should stay optional and hypothesis-gated rather than
+the default path.

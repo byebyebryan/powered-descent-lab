@@ -324,6 +324,7 @@ mod tests {
                 angular_rate_radps: 0.0,
             },
             mission: MissionSpec {
+                transfer_route: None,
                 goal: EvaluationGoal::TimedCheckpoint {
                     target_pad_id: "pad_a".to_owned(),
                     end_time_s: 1.0,

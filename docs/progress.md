@@ -145,11 +145,22 @@
 1. Use the regression-policy gate for future controller and corpus changes.
 2. Keep refining feasibility / annotation semantics only where the vehicle is
    authority limited, while keeping frontier failures scored.
-3. Add the next terminal corpus now that the current clean and trajectory-error
-   semantics are stable enough:
-   - terrain / obstacle conditions
-   - later transfer-style conditions
-4. Keep controller tuning hypothesis-driven and smoke-suite gated rather than
+3. Keep the next terminal-family expansion separate from transfer work:
+   - the deferred terminal extension is a signed arrival family for climbing
+     arrivals into the target
+   - terrain and obstacle cases stay outside terminal pass/fail gates until a
+     higher-level approach-corridor or waypoint layer exists
+4. Shape the first transfer slice around a one-sided signed route arc:
+   - descent, flat, and climb are route-angle cells in one family
+   - radius starts fixed but remains a deferred axis because travel distance
+     changes the trajectory shape
+   - simple monotonic route terrain may be used for miss/crash containment, not
+     as a terrain-avoidance objective.
+   - first-class transfer matrix expansion, route metadata, monotonic route
+     terrain, and the `transfer_bot_lab_suite` smoke pack are now in place
+   - `transfer_pdg_v1` is staged and delegates final landing to
+     `terminal_pdg_v1`
+5. Keep controller tuning hypothesis-driven and smoke-suite gated rather than
    restarting broad parameter loops.
 
 ## 2026-04-28

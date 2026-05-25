@@ -228,12 +228,47 @@ impl VehicleInitialState {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MissionSpec {
+    #[serde(default)]
+    pub transfer_route: Option<TransferRouteSpec>,
     pub goal: EvaluationGoal,
 }
 
 impl MissionSpec {
     pub fn validate(&self) -> Result<(), String> {
-        self.goal.validate()
+        self.goal.validate()?;
+        if let Some(route) = &self.transfer_route {
+            route.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TransferRouteSpec {
+    pub source_pad_id: String,
+    pub target_pad_id: String,
+    pub route_angle_deg: f64,
+    pub route_radius_m: f64,
+}
+
+impl TransferRouteSpec {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.source_pad_id.trim().is_empty() {
+            return Err("transfer_route source_pad_id must not be empty".to_owned());
+        }
+        if self.target_pad_id.trim().is_empty() {
+            return Err("transfer_route target_pad_id must not be empty".to_owned());
+        }
+        if self.source_pad_id == self.target_pad_id {
+            return Err("transfer_route source_pad_id and target_pad_id must differ".to_owned());
+        }
+        if !self.route_angle_deg.is_finite() {
+            return Err("transfer_route route_angle_deg must be finite".to_owned());
+        }
+        if !self.route_radius_m.is_finite() || self.route_radius_m <= 0.0 {
+            return Err("transfer_route route_radius_m must be positive and finite".to_owned());
+        }
+        Ok(())
     }
 }
 
@@ -362,6 +397,26 @@ impl ScenarioSpec {
             return Err(format!(
                 "mission target pad '{target_pad_id}' is not present in world.landing_pads"
             ));
+        }
+        if let Some(route) = &self.mission.transfer_route {
+            if self.world.landing_pad(&route.source_pad_id).is_none() {
+                return Err(format!(
+                    "transfer_route source pad '{}' is not present in world.landing_pads",
+                    route.source_pad_id
+                ));
+            }
+            if self.world.landing_pad(&route.target_pad_id).is_none() {
+                return Err(format!(
+                    "transfer_route target pad '{}' is not present in world.landing_pads",
+                    route.target_pad_id
+                ));
+            }
+            if route.target_pad_id != target_pad_id {
+                return Err(format!(
+                    "transfer_route target pad '{}' must match mission goal target pad '{target_pad_id}'",
+                    route.target_pad_id
+                ));
+            }
         }
         if let EvaluationGoal::TimedCheckpoint { end_time_s, .. } = &self.mission.goal
             && *end_time_s > self.sim.max_time_s
@@ -593,7 +648,10 @@ pub struct RunArtifacts {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
+    use crate::{math::Vec2, terrain::TerrainDefinition};
 
     #[test]
     fn sim_config_rejects_non_divisible_rates() {
@@ -605,5 +663,97 @@ mod tests {
         };
 
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn transfer_route_requires_source_and_matching_target_pad() {
+        let scenario = ScenarioSpec {
+            id: "transfer_validation".to_owned(),
+            name: "Transfer validation".to_owned(),
+            description: "validation fixture".to_owned(),
+            seed: 1,
+            tags: vec!["test".to_owned()],
+            metadata: BTreeMap::new(),
+            sim: SimConfig {
+                physics_hz: 120,
+                controller_hz: 60,
+                max_time_s: 90.0,
+                sample_hz: Some(10),
+            },
+            world: WorldSpec {
+                gravity_mps2: 9.81,
+                terrain: TerrainDefinition::Heightfield {
+                    points_m: vec![Vec2::new(-120.0, 0.0), Vec2::new(120.0, 0.0)],
+                },
+                landing_pads: vec![
+                    LandingPadSpec {
+                        id: "source".to_owned(),
+                        center_x_m: -100.0,
+                        surface_y_m: 0.0,
+                        width_m: 30.0,
+                    },
+                    LandingPadSpec {
+                        id: "target".to_owned(),
+                        center_x_m: 0.0,
+                        surface_y_m: 0.0,
+                        width_m: 30.0,
+                    },
+                ],
+            },
+            vehicle: VehicleSpec {
+                geometry: VehicleGeometry {
+                    hull_width_m: 4.0,
+                    hull_height_m: 6.0,
+                    touchdown_half_span_m: 2.0,
+                    touchdown_base_offset_m: 3.0,
+                },
+                dry_mass_kg: 700.0,
+                initial_fuel_kg: 240.0,
+                max_fuel_kg: 240.0,
+                max_thrust_n: 16_000.0,
+                max_fuel_burn_kgps: 11.0,
+                min_throttle_frac: 0.0,
+                max_rotation_rate_radps: 1.2,
+                safe_touchdown_normal_speed_mps: 3.0,
+                safe_touchdown_tangential_speed_mps: 2.0,
+                safe_touchdown_attitude_error_rad: 0.15,
+                safe_touchdown_angular_rate_radps: 0.35,
+            },
+            initial_state: VehicleInitialState {
+                position_m: Vec2::new(-100.0, 3.0),
+                velocity_mps: Vec2::new(0.0, 0.0),
+                attitude_rad: 0.0,
+                angular_rate_radps: 0.0,
+            },
+            mission: MissionSpec {
+                transfer_route: Some(TransferRouteSpec {
+                    source_pad_id: "source".to_owned(),
+                    target_pad_id: "target".to_owned(),
+                    route_angle_deg: 0.0,
+                    route_radius_m: 100.0,
+                }),
+                goal: EvaluationGoal::LandingOnPad {
+                    target_pad_id: "target".to_owned(),
+                },
+            },
+        };
+
+        assert!(scenario.validate().is_ok());
+
+        let mut mismatched_target = scenario.clone();
+        mismatched_target
+            .mission
+            .transfer_route
+            .as_mut()
+            .expect("route present")
+            .target_pad_id = "source".to_owned();
+        assert!(mismatched_target.validate().is_err());
+
+        let mut missing_source = scenario;
+        missing_source
+            .world
+            .landing_pads
+            .retain(|pad| pad.id != "source");
+        assert!(missing_source.validate().is_err());
     }
 }

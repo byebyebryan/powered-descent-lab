@@ -247,9 +247,17 @@ impl SimulationState {
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
         let min_hull_clearance_m = self.min_hull_clearance_m(ctx);
-        let normal_speed_mps = (-self.velocity_mps.y).max(0.0);
-        let tangential_speed_mps = self.velocity_mps.x.abs();
-        let attitude_error_rad = self.attitude_rad.abs();
+        let target_surface_normal = ctx
+            .world
+            .terrain
+            .sample_surface_normal(ctx.target_pad.center_x_m);
+        let target_surface_tangent = Vec2::new(target_surface_normal.y, -target_surface_normal.x);
+        let normal_speed_mps = (-dot(self.velocity_mps, target_surface_normal)).max(0.0);
+        let tangential_speed_mps = dot(self.velocity_mps, target_surface_tangent).abs();
+        let vehicle_up = Vec2::new(self.attitude_rad.sin(), self.attitude_rad.cos());
+        let attitude_error_rad = dot(vehicle_up, target_surface_normal)
+            .clamp(-1.0, 1.0)
+            .acos();
         let angular_rate_radps = self.angular_rate_radps.abs();
         let touchdown_x_min = touchdown_points
             .iter()
@@ -722,6 +730,10 @@ fn shortest_angle_delta(current_rad: f64, target_rad: f64) -> f64 {
     delta
 }
 
+fn dot(lhs: Vec2, rhs: Vec2) -> f64 {
+    (lhs.x * rhs.x) + (lhs.y * rhs.y)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -785,6 +797,7 @@ mod tests {
                 angular_rate_radps: 0.0,
             },
             mission: MissionSpec {
+                transfer_route: None,
                 goal: EvaluationGoal::LandingOnPad {
                     target_pad_id: "pad_a".to_owned(),
                 },
@@ -863,5 +876,29 @@ mod tests {
             state.detect_contact_classification(&ctx),
             ContactClassification::Crash
         ));
+    }
+
+    #[test]
+    fn landing_snapshot_uses_target_surface_frame_for_speed_and_attitude() {
+        let mut scenario = smoke_scenario();
+        scenario.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![Vec2::new(-10.0, -10.0), Vec2::new(10.0, 10.0)],
+        };
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut state = SimulationState::new(&ctx).unwrap();
+        let surface_normal = ctx
+            .world
+            .terrain
+            .sample_surface_normal(ctx.target_pad.center_x_m);
+        let surface_tangent = Vec2::new(surface_normal.y, -surface_normal.x);
+
+        state.velocity_mps = surface_tangent * 5.0;
+        state.attitude_rad = -std::f64::consts::FRAC_PI_4;
+
+        let snapshot = state.landing_snapshot(&ctx);
+
+        assert!(snapshot.normal_speed_mps.abs() < 1e-9);
+        assert!((snapshot.tangential_speed_mps - 5.0).abs() < 1e-9);
+        assert!(snapshot.attitude_error_rad.abs() < 1e-6);
     }
 }

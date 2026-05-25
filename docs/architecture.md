@@ -149,6 +149,28 @@ Examples of scenario families:
 - terrain-reactive transfer
 - named regressions for past failures
 
+### Transfer Missions
+
+Transfer guidance is now a first-class mission family rather than a terminal
+condition. A transfer mission can carry an optional `transfer_route` alongside
+the single authoritative evaluation goal:
+
+- `source_pad_id`
+- `target_pad_id`
+- `route_angle_deg`
+- `route_radius_m`
+
+The transfer route describes source-to-target setup and controller context. The
+v1 scored goal remains landing on the target pad. This keeps boost/coast/handoff
+diagnostics available without turning every transfer slice into multiple
+pass/fail objectives.
+
+The first transfer matrix uses a signed one-sided route arc with the target at
+`(0, 0)` and the source resolved from route angle and radius. Positive route
+angle means the target is uphill from the source. The matrix records
+transfer-specific report axes (`route_family`, `route_angle`, `radius_tier`) and
+uses terminal-compatible aliases only as report plumbing.
+
 ## 4. Terrain Direction
 
 The canonical terrain model should remain a 1D piecewise-linear heightfield in
