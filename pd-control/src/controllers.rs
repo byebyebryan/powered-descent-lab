@@ -807,7 +807,12 @@ impl TransferPdgController {
         );
     }
 
-    fn choose_phase(&self, ctx: &RunContext, observation: &Observation) -> TransferPhase {
+    fn choose_phase(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> TransferPhase {
         let Some(route) = ctx.mission.transfer_route.as_ref() else {
             return TransferPhase::Terminal;
         };
@@ -829,24 +834,103 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         }
 
-        let route_direction = observation.target_dx_m.signum();
-        let along_speed_mps = observation.velocity_mps.x * route_direction;
-        if observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
-            && along_speed_mps < self.config.boost_speed_mps
-            && observation.sim_time_s < self.config.boost_max_time_s
+        let needs_transfer_burn = observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
+            || diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m;
+        if self.phase != TransferPhase::Coast
+            && needs_transfer_burn
+            && self.boost_should_continue(observation, diagnostics)
         {
             return TransferPhase::Boost;
         }
 
-        if observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
-            && observation.height_above_target_m > self.config.terminal_gate_altitude_m
-            && observation.touchdown_clearance_m > self.config.coast_min_altitude_m
-            && observation.velocity_mps.y > -18.0
-        {
+        if self.should_coast(observation, diagnostics) {
             return TransferPhase::Coast;
         }
 
         TransferPhase::Terminal
+    }
+
+    fn boost_should_continue(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> bool {
+        if observation.sim_time_s >= self.config.boost_max_time_s {
+            return false;
+        }
+        if diagnostics.boost_quality.passed {
+            return false;
+        }
+        if self.boost_projected_overshot(observation, diagnostics) {
+            return false;
+        }
+
+        true
+    }
+
+    fn boost_projected_overshot(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> bool {
+        diagnostics
+            .projection
+            .projected_dx_m
+            .is_some_and(|projected_dx_m| {
+                projected_dx_m.abs() > observation.target_pad_half_width_m
+                    && projected_dx_m.signum() != observation.target_dx_m.signum()
+            })
+    }
+
+    fn should_coast(&self, observation: &Observation, diagnostics: TransferDiagnostics) -> bool {
+        let clear_to_coast = observation.touchdown_clearance_m > self.config.coast_min_altitude_m;
+        if !clear_to_coast {
+            return false;
+        }
+
+        if observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
+            && observation.height_above_target_m > self.config.terminal_gate_altitude_m
+            && observation.velocity_mps.y > -18.0
+        {
+            return true;
+        }
+
+        diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m
+            && (observation.height_above_target_m < 0.0 || observation.velocity_mps.y > 0.0)
+    }
+
+    fn boost_attitude_rad(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> f64 {
+        let direction = observation.target_dx_m.signum();
+        if direction == 0.0 {
+            return 0.0;
+        }
+
+        let needs_uphill_bias = diagnostics.route_dy_m >= self.config.uphill_boost_dy_min_m
+            && (!diagnostics.projection.has_target_y_solution
+                || diagnostics.projection.apex_over_target_m
+                    < diagnostics.boost_quality.apex_target_over_target_m);
+        let tilt_rad = if needs_uphill_bias {
+            self.config.uphill_boost_tilt_rad
+        } else {
+            self.config.boost_tilt_rad
+        };
+        direction * tilt_rad
+    }
+
+    fn coast_attitude_rad(&self, observation: &Observation) -> f64 {
+        let tilt_limit_rad = self
+            .config
+            .terminal
+            .terminal_overshoot_tilt_max_rad
+            .max(self.config.terminal.terminal_dynamic_tilt_max_rad);
+        let upright_retrograde_y = (-observation.velocity_mps.y).max(1.0);
+        (-observation.velocity_mps.x)
+            .atan2(upright_retrograde_y)
+            .clamp(-tilt_limit_rad, tilt_limit_rad)
     }
 
     fn frame_for_open_loop_phase(
@@ -856,10 +940,10 @@ impl TransferPdgController {
         phase_name: TransferPhase,
         command: Command,
         status: &'static str,
+        diagnostics: TransferDiagnostics,
     ) -> ControllerFrame {
         let view = ControllerView::new(ctx, observation);
         let phase = phase_name.as_str().to_owned();
-        let diagnostics = self.transfer_diagnostics(observation);
         let builder = ControllerFrameBuilder::new(command)
             .status(status)
             .phase(phase.clone())
@@ -932,7 +1016,8 @@ impl Controller for TransferPdgController {
     }
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
-        let phase = self.choose_phase(ctx, observation);
+        let diagnostics = self.transfer_diagnostics(observation);
+        let phase = self.choose_phase(ctx, observation, diagnostics);
         self.phase = phase;
         match phase {
             TransferPhase::Takeoff => self.frame_for_open_loop_phase(
@@ -944,33 +1029,32 @@ impl Controller for TransferPdgController {
                     target_attitude_rad: 0.0,
                 },
                 "lifting off from source pad",
+                diagnostics,
             ),
-            TransferPhase::Boost => {
-                let direction = observation.target_dx_m.signum();
-                self.frame_for_open_loop_phase(
-                    ctx,
-                    observation,
-                    phase,
-                    Command {
-                        throttle_frac: 1.0,
-                        target_attitude_rad: direction * self.config.boost_tilt_rad,
-                    },
-                    "boosting toward terminal gate",
-                )
-            }
+            TransferPhase::Boost => self.frame_for_open_loop_phase(
+                ctx,
+                observation,
+                phase,
+                Command {
+                    throttle_frac: 1.0,
+                    target_attitude_rad: self.boost_attitude_rad(observation, diagnostics),
+                },
+                "boosting toward terminal gate",
+                diagnostics,
+            ),
             TransferPhase::Coast => self.frame_for_open_loop_phase(
                 ctx,
                 observation,
                 phase,
                 Command {
                     throttle_frac: 0.0,
-                    target_attitude_rad: 0.0,
+                    target_attitude_rad: self.coast_attitude_rad(observation),
                 },
                 "coasting before terminal handoff",
+                diagnostics,
             ),
             TransferPhase::Terminal => {
                 let mut frame = self.terminal.update(ctx, observation);
-                let diagnostics = self.transfer_diagnostics(observation);
                 self.insert_transfer_metrics(&mut frame, diagnostics);
                 frame.metrics.insert(
                     metric::TRANSFER_PHASE.to_owned(),
@@ -987,6 +1071,32 @@ impl Controller for TransferPdgController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pd_core::Vec2;
+
+    fn transfer_observation(
+        target_dx_m: f64,
+        height_above_target_m: f64,
+        velocity_mps: Vec2,
+        sim_time_s: f64,
+    ) -> Observation {
+        Observation {
+            sim_time_s,
+            physics_step: 0,
+            position_m: Vec2::new(0.0, height_above_target_m),
+            velocity_mps,
+            attitude_rad: 0.0,
+            angular_rate_radps: 0.0,
+            mass_kg: 1_000.0,
+            fuel_kg: 100.0,
+            gravity_mps2: 9.81,
+            target_dx_m,
+            height_above_target_m,
+            target_surface_y_m: 0.0,
+            target_pad_half_width_m: 18.0,
+            touchdown_clearance_m: height_above_target_m.abs() + 100.0,
+            min_hull_clearance_m: height_above_target_m.abs() + 100.0,
+        }
+    }
 
     #[test]
     fn transfer_projection_reports_descending_target_crossing() {
@@ -1027,5 +1137,48 @@ mod tests {
         let dx_quality = controller.transfer_boost_quality(500.0, -50.0, dx_miss);
         assert_eq!(dx_quality.verdict, "dx");
         assert!(!dx_quality.passed);
+    }
+
+    #[test]
+    fn transfer_boost_continues_until_ballistic_quality_passes() {
+        let controller = TransferPdgController::default();
+        let passing_observation = transfer_observation(100.0, 50.0, Vec2::new(10.0, 20.0), 6.0);
+        let passing_diagnostics = controller.transfer_diagnostics(&passing_observation);
+        assert!(passing_diagnostics.boost_quality.passed);
+        assert!(!controller.boost_should_continue(&passing_observation, passing_diagnostics));
+
+        let missing_observation = transfer_observation(500.0, -100.0, Vec2::new(15.0, 5.0), 6.0);
+        let missing_diagnostics = controller.transfer_diagnostics(&missing_observation);
+        assert!(!missing_diagnostics.boost_quality.passed);
+        assert!(controller.boost_should_continue(&missing_observation, missing_diagnostics));
+    }
+
+    #[test]
+    fn transfer_uphill_boost_uses_vertical_bias_until_apex_is_safe() {
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(400.0, -250.0, Vec2::new(30.0, 10.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert!(diagnostics.route_dy_m > controller.config.uphill_boost_dy_min_m);
+        assert!(
+            !diagnostics.projection.has_target_y_solution
+                || diagnostics.projection.apex_over_target_m
+                    < diagnostics.boost_quality.apex_target_over_target_m
+        );
+        assert_eq!(
+            controller.boost_attitude_rad(&observation, diagnostics),
+            controller.config.uphill_boost_tilt_rad
+        );
+    }
+
+    #[test]
+    fn transfer_coast_prealigns_upright_retrograde() {
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(400.0, 300.0, Vec2::new(45.0, -8.0), 10.0);
+
+        let attitude_rad = controller.coast_attitude_rad(&observation);
+
+        assert!(attitude_rad < -0.5);
+        assert!(attitude_rad.abs() <= controller.config.terminal.terminal_overshoot_tilt_max_rad);
     }
 }
