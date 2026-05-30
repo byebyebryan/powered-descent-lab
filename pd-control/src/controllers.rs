@@ -5,6 +5,11 @@ use pd_core::{Command, Observation, RunContext};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+const TRANSFER_UPHILL_STEEP_TILT_SCALE: f64 = 0.25;
+const TRANSFER_UPHILL_STEEP_TILT_MIN_RAD: f64 = 0.0;
+const TRANSFER_UPHILL_LOW_CLEARANCE_M: f64 = 240.0;
+const TRANSFER_UPHILL_CLEARANCE_BLEND_FLOOR_M: f64 = 20.0;
+
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
 }
@@ -172,7 +177,7 @@ impl Default for TransferPdgControllerConfig {
             takeoff_clearance_m: 45.0,
             takeoff_min_vertical_speed_mps: 8.0,
             max_takeoff_time_s: 5.0,
-            boost_max_time_s: 12.0,
+            boost_max_time_s: 18.0,
             boost_tilt_rad: 0.72,
             boost_speed_mps: 75.0,
             boost_projected_dx_limit_m: default_transfer_boost_projected_dx_limit_m(),
@@ -861,25 +866,8 @@ impl TransferPdgController {
         if diagnostics.boost_quality.passed {
             return false;
         }
-        if self.boost_projected_overshot(observation, diagnostics) {
-            return false;
-        }
 
         true
-    }
-
-    fn boost_projected_overshot(
-        &self,
-        observation: &Observation,
-        diagnostics: TransferDiagnostics,
-    ) -> bool {
-        diagnostics
-            .projection
-            .projected_dx_m
-            .is_some_and(|projected_dx_m| {
-                projected_dx_m.abs() > observation.target_pad_half_width_m
-                    && projected_dx_m.signum() != observation.target_dx_m.signum()
-            })
     }
 
     fn should_coast(&self, observation: &Observation, diagnostics: TransferDiagnostics) -> bool {
@@ -904,21 +892,55 @@ impl TransferPdgController {
         observation: &Observation,
         diagnostics: TransferDiagnostics,
     ) -> f64 {
-        let direction = observation.target_dx_m.signum();
+        let direction = self.boost_lateral_direction(observation, diagnostics);
         if direction == 0.0 {
             return 0.0;
         }
 
         let needs_uphill_bias = diagnostics.route_dy_m >= self.config.uphill_boost_dy_min_m
-            && (!diagnostics.projection.has_target_y_solution
+            && (observation.height_above_target_m < 0.0
+                || !diagnostics.projection.has_target_y_solution
                 || diagnostics.projection.apex_over_target_m
                     < diagnostics.boost_quality.apex_target_over_target_m);
         let tilt_rad = if needs_uphill_bias {
-            self.config.uphill_boost_tilt_rad
+            self.uphill_clearance_limited_boost_tilt_rad(observation, diagnostics)
         } else {
             self.config.boost_tilt_rad
         };
         direction * tilt_rad
+    }
+
+    fn boost_lateral_direction(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> f64 {
+        diagnostics
+            .projection
+            .projected_dx_m
+            .filter(|projected_dx_m| projected_dx_m.abs() > observation.target_pad_half_width_m)
+            .map_or_else(|| observation.target_dx_m.signum(), f64::signum)
+    }
+
+    fn uphill_clearance_limited_boost_tilt_rad(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> f64 {
+        let route_tilt_rad = observation
+            .target_dx_m
+            .abs()
+            .atan2(diagnostics.route_dy_m.max(1.0));
+        let steep_tilt_rad = (route_tilt_rad * TRANSFER_UPHILL_STEEP_TILT_SCALE).clamp(
+            TRANSFER_UPHILL_STEEP_TILT_MIN_RAD,
+            self.config.uphill_boost_tilt_rad,
+        );
+        let clearance_blend = ((observation.touchdown_clearance_m
+            - TRANSFER_UPHILL_CLEARANCE_BLEND_FLOOR_M)
+            / (TRANSFER_UPHILL_LOW_CLEARANCE_M - TRANSFER_UPHILL_CLEARANCE_BLEND_FLOOR_M))
+            .clamp(0.0, 1.0);
+
+        steep_tilt_rad + ((self.config.uphill_boost_tilt_rad - steep_tilt_rad) * clearance_blend)
     }
 
     fn coast_attitude_rad(&self, observation: &Observation) -> f64 {
@@ -927,7 +949,7 @@ impl TransferPdgController {
             .terminal
             .terminal_overshoot_tilt_max_rad
             .max(self.config.terminal.terminal_dynamic_tilt_max_rad);
-        let upright_retrograde_y = (-observation.velocity_mps.y).max(1.0);
+        let upright_retrograde_y = observation.velocity_mps.y.abs().max(1.0);
         (-observation.velocity_mps.x)
             .atan2(upright_retrograde_y)
             .clamp(-tilt_limit_rad, tilt_limit_rad)
@@ -1172,6 +1194,29 @@ mod tests {
     }
 
     #[test]
+    fn transfer_steep_uphill_boost_stays_vertical_when_clearance_is_low() {
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(140.0, -780.0, Vec2::new(10.0, 15.0), 4.0);
+        observation.touchdown_clearance_m = 35.0;
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let attitude_rad = controller.boost_attitude_rad(&observation, diagnostics);
+
+        assert!(attitude_rad > 0.0);
+        assert!(attitude_rad < controller.config.uphill_boost_tilt_rad);
+    }
+
+    #[test]
+    fn transfer_boost_uses_projected_miss_direction_when_target_y_is_reachable() {
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(100.0, -50.0, Vec2::new(50.0, 50.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert!(diagnostics.projection.projected_dx_m.unwrap() < 0.0);
+        assert!(controller.boost_attitude_rad(&observation, diagnostics) < 0.0);
+    }
+
+    #[test]
     fn transfer_coast_prealigns_upright_retrograde() {
         let controller = TransferPdgController::default();
         let observation = transfer_observation(400.0, 300.0, Vec2::new(45.0, -8.0), 10.0);
@@ -1180,5 +1225,16 @@ mod tests {
 
         assert!(attitude_rad < -0.5);
         assert!(attitude_rad.abs() <= controller.config.terminal.terminal_overshoot_tilt_max_rad);
+    }
+
+    #[test]
+    fn transfer_coast_avoids_max_retrograde_tilt_while_climbing() {
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(400.0, 300.0, Vec2::new(26.0, 35.0), 10.0);
+
+        let attitude_rad = controller.coast_attitude_rad(&observation);
+
+        assert!(attitude_rad < 0.0);
+        assert!(attitude_rad.abs() < 0.8);
     }
 }
