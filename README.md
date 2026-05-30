@@ -399,15 +399,14 @@ Experimental terrain diagnostic snapshot:
 Transfer route-angle checkpoint:
 
 - `transfer_route_angle_suite`
-  - `current`: `57 / 99` successes, `42` crashes, `0` invalidations
-  - wall clock `4.05s` with `8` workers
-  - all downhill and flat routes from `r-80` through `r00` are solved across
-    `empty`, `half`, and `full`
-  - positive uphill routes are the active transfer-control gap:
-    `empty/r+15` solves, while `half/full r+15` and all `r+30`, `r+45`,
-    `r+60`, and `r+80` cells expose boost or terminal-handoff failures
-  - `75 / 99` runs reached terminal handoff; `24 / 99` crashed while still in
-    boost
+  - `current`: `90 / 99` successes, `9` crashes, `0` invalidations
+  - latest local tuning run used `8` workers and completed the same 99-run pack
+    with `43.08s` mean sim time
+  - all downhill, flat, and moderate uphill routes from `r-80` through `r+60`
+    are solved across `empty`, `half`, and `full`
+  - the only remaining route-shape failures are `r+80` across payload tiers;
+    treat that as near-cliff launch/waypoint debt rather than terminal
+    guidance debt
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`

@@ -2,6 +2,34 @@
 
 ## 2026-05-30
 
+### Transfer boost/handoff tuning checkpoint
+
+- Added ballistic transfer diagnostics and surfaced boost/handoff fields in
+  batch review records:
+  - projected target-y crossing time and `dx`
+  - impact angle
+  - ballistic apex over target
+  - boost quality and boost cutoff quality
+- Tuned `transfer_pdg_v1` without adding route-label-specific branches:
+  - boost now gates on ballistic quality instead of along-speed alone
+  - boost steering uses projected miss direction when the target-y crossing is
+    reachable
+  - steep uphill boosts stay more vertical while touchdown clearance is low
+  - coast prealignment avoids max retrograde tilt while the craft is still
+    climbing
+- Regenerated transfer packs locally with `8` workers:
+  - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations
+  - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
+    invalidations
+  - `43.08s` mean sim time and `61.35s` max sim time for the 99-run
+    route-angle pack
+- Current transfer read:
+  - all route-angle cells from `r-80` through `r+60` solve across `empty`,
+    `half`, and `full`
+  - only `r+80` remains failed across payload tiers
+  - `r+80` is now best treated as near-cliff launch/waypoint debt, not as
+    terminal handoff debt
+
 ### Transfer route-angle corpus baseline
 
 - Added `fixtures/packs/transfer_route_angle_suite.json` as the first

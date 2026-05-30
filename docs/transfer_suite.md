@@ -138,7 +138,18 @@ changing controller behavior:
 These appear in `summary.json` per-run review records and in seed-row details
 for transfer batch reports.
 
-## Current Baseline
+The current staged controller uses the transfer diagnostics directly:
+
+- boost continues until the ballistic target-y crossing is in-band instead of
+  stopping on along-track speed alone
+- uphill boost tilt is limited by route steepness and current touchdown
+  clearance so source-slope climbs stay more vertical
+- when the target-y crossing is reachable but the projected `dx` misses, boost
+  steers by projected miss direction rather than current `dx` alone
+- coast pre-aligns upright retrograde without commanding max tilt during
+  ascent
+
+## Current Checkpoint
 
 Initial `transfer_route_angle_suite` baseline:
 
@@ -167,8 +178,19 @@ Handoff read:
 
 - `75 / 99` runs reached terminal handoff
 - `24 / 99` runs ended while still in boost
-- the next controller work should focus on boost/coast/handoff geometry for
-  uphill transfer routes before broadening radius or seed count
+
+Latest transfer tuning checkpoint:
+
+- generated locally after the ballistic boost-quality and uphill handoff pass
+  with `8` workers
+- `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations
+- `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
+  invalidations
+- `43.08s` mean sim time and `61.35s` max sim time for the 99-run
+  route-angle pack
+- all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
+- only `r+80` remains failed across all payload tiers; this behaves more like
+  near-cliff launch/waypoint debt than terminal handoff debt
 
 ## Deferred Work
 

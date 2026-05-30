@@ -271,13 +271,15 @@ Status:
   fixed nominal `800m` radius, smoke seeds, and all 11 signed route angles
   across `empty`, `half`, and `full` payload tiers
 - batch review metrics now capture transfer final phase and first terminal
-  handoff time, `dx`, height, and speed per run
-- initial route-angle baseline:
-  - `57 / 99` successes
-  - `42` crashes
+  handoff time, `dx`, height, speed, boost quality, projected boost miss, and
+  boost cutoff quality per run
+- current route-angle checkpoint after the first boost/handoff tuning pass:
+  - `90 / 99` successes
+  - `9` crashes
   - `0` invalidations
-  - all downhill and flat cells solve; uphill routes expose the active
-    boost/coast/handoff control gap
+  - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
+  - only `r+80` remains failed across payload tiers, and that should be treated
+    as near-cliff launch/waypoint debt before broadening radius or seed count
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
