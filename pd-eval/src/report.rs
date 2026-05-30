@@ -4744,6 +4744,15 @@ fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String 
     if let Some(quality) = review.transfer_boost_quality.as_deref() {
         parts.push(format!("boost {quality}"));
     }
+    if let Some(settled_quality) = review.transfer_boost_settled_quality.as_deref()
+        && settled_quality != review.transfer_boost_quality.as_deref().unwrap_or("")
+    {
+        let settled_dx = review
+            .transfer_boost_settled_projected_dx_m
+            .map(|value| format!(" pdx {value:.0}m"))
+            .unwrap_or_default();
+        parts.push(format!("settled {settled_quality}{settled_dx}"));
+    }
     if let Some(cutoff_quality) = review.transfer_boost_cutoff_quality.as_deref() {
         let cutoff = review
             .transfer_boost_cutoff_time_s
@@ -4779,6 +4788,9 @@ fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String 
     }
     if let Some(gate_mode) = review.transfer_terminal_gate_mode.as_deref() {
         parts.push(format!("gate {gate_mode}"));
+    }
+    if review.transfer_terminal_gate_deferred == Some(true) {
+        parts.push("gate deferred".to_owned());
     }
     if let Some(latest_safe_margin_s) = review.transfer_terminal_gate_latest_safe_margin_s {
         parts.push(format!("margin {latest_safe_margin_s:.1}s"));

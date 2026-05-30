@@ -25,7 +25,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 19;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 20;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -149,6 +149,12 @@ pub struct BatchRunReviewMetrics {
     #[serde(default)]
     pub transfer_boost_quality: Option<String>,
     #[serde(default)]
+    pub transfer_boost_selected_score: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_settled_quality: Option<String>,
+    #[serde(default)]
+    pub transfer_boost_settled_projected_dx_m: Option<f64>,
+    #[serde(default)]
     pub transfer_boost_cutoff_time_s: Option<f64>,
     #[serde(default)]
     pub transfer_boost_cutoff_projected_dx_m: Option<f64>,
@@ -170,6 +176,8 @@ pub struct BatchRunReviewMetrics {
     pub transfer_terminal_gate_latest_safe_margin_s: Option<f64>,
     #[serde(default)]
     pub transfer_terminal_gate_required_accel_ratio: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_gate_deferred: Option<bool>,
     #[serde(default)]
     pub transfer_corridor_mode: Option<String>,
     #[serde(default)]
@@ -4614,6 +4622,9 @@ fn derive_run_review_metrics(
         transfer_boost_impact_angle_deg: transfer.boost_impact_angle_deg,
         transfer_boost_apex_over_target_m: transfer.boost_apex_over_target_m,
         transfer_boost_quality: transfer.boost_quality,
+        transfer_boost_selected_score: transfer.boost_selected_score,
+        transfer_boost_settled_quality: transfer.boost_settled_quality,
+        transfer_boost_settled_projected_dx_m: transfer.boost_settled_projected_dx_m,
         transfer_boost_cutoff_time_s: transfer.boost_cutoff_time_s,
         transfer_boost_cutoff_projected_dx_m: transfer.boost_cutoff_projected_dx_m,
         transfer_boost_cutoff_impact_angle_deg: transfer.boost_cutoff_impact_angle_deg,
@@ -4625,6 +4636,7 @@ fn derive_run_review_metrics(
         transfer_terminal_gate_mode: transfer.terminal_gate_mode,
         transfer_terminal_gate_latest_safe_margin_s: transfer.terminal_gate_latest_safe_margin_s,
         transfer_terminal_gate_required_accel_ratio: transfer.terminal_gate_required_accel_ratio,
+        transfer_terminal_gate_deferred: transfer.terminal_gate_deferred,
         transfer_corridor_mode: transfer.corridor_mode,
         transfer_corridor_min_margin_m: transfer.corridor_min_margin_m,
     }
@@ -4641,6 +4653,9 @@ struct TransferReviewMetrics {
     boost_impact_angle_deg: Option<f64>,
     boost_apex_over_target_m: Option<f64>,
     boost_quality: Option<String>,
+    boost_selected_score: Option<f64>,
+    boost_settled_quality: Option<String>,
+    boost_settled_projected_dx_m: Option<f64>,
     boost_cutoff_time_s: Option<f64>,
     boost_cutoff_projected_dx_m: Option<f64>,
     boost_cutoff_impact_angle_deg: Option<f64>,
@@ -4652,6 +4667,7 @@ struct TransferReviewMetrics {
     terminal_gate_mode: Option<String>,
     terminal_gate_latest_safe_margin_s: Option<f64>,
     terminal_gate_required_accel_ratio: Option<f64>,
+    terminal_gate_deferred: Option<bool>,
     corridor_mode: Option<String>,
     corridor_min_margin_m: Option<f64>,
 }
@@ -4699,19 +4715,36 @@ fn transfer_review_metrics_without_handoff(
         telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
             && telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY).is_some()
     });
-    let (boost_projected_dx_m, boost_impact_angle_deg, boost_apex_over_target_m, boost_quality) =
-        last_boost_update
-            .map(|update| {
-                (
-                    telemetry_float(&update.frame.metrics, metric::TRANSFER_PROJECTED_DX_M),
-                    telemetry_float(&update.frame.metrics, metric::TRANSFER_IMPACT_ANGLE_DEG)
-                        .filter(|value| *value >= 0.0),
-                    telemetry_float(&update.frame.metrics, metric::TRANSFER_APEX_OVER_TARGET_M),
-                    telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY)
-                        .map(ToOwned::to_owned),
+    let (
+        boost_projected_dx_m,
+        boost_impact_angle_deg,
+        boost_apex_over_target_m,
+        boost_quality,
+        boost_selected_score,
+        boost_settled_quality,
+        boost_settled_projected_dx_m,
+    ) = last_boost_update
+        .map(|update| {
+            (
+                telemetry_float(&update.frame.metrics, metric::TRANSFER_PROJECTED_DX_M),
+                telemetry_float(&update.frame.metrics, metric::TRANSFER_IMPACT_ANGLE_DEG)
+                    .filter(|value| *value >= 0.0),
+                telemetry_float(&update.frame.metrics, metric::TRANSFER_APEX_OVER_TARGET_M),
+                telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY)
+                    .map(ToOwned::to_owned),
+                telemetry_float(&update.frame.metrics, metric::TRANSFER_BOOST_SELECTED_SCORE),
+                telemetry_text(
+                    &update.frame.metrics,
+                    metric::TRANSFER_BOOST_SETTLED_QUALITY,
                 )
-            })
-            .unwrap_or((None, None, None, None));
+                .map(ToOwned::to_owned),
+                telemetry_float(
+                    &update.frame.metrics,
+                    metric::TRANSFER_BOOST_SETTLED_PROJECTED_DX_M,
+                ),
+            )
+        })
+        .unwrap_or((None, None, None, None, None, None, None));
     let boost_cutoff = transfer_boost_cutoff_update(controller_updates);
     let (
         boost_cutoff_time_s,
@@ -4736,6 +4769,21 @@ fn transfer_review_metrics_without_handoff(
     let terminal_gate_update = controller_updates.iter().rev().find(|update| {
         telemetry_text(&update.frame.metrics, metric::TRANSFER_TERMINAL_GATE_MODE).is_some()
     });
+    let terminal_gate_deferred = if controller_updates.iter().any(|update| {
+        telemetry_bool(
+            &update.frame.metrics,
+            metric::TRANSFER_TERMINAL_GATE_DEFERRED,
+        ) == Some(true)
+    }) {
+        Some(true)
+    } else {
+        terminal_gate_update.and_then(|update| {
+            telemetry_bool(
+                &update.frame.metrics,
+                metric::TRANSFER_TERMINAL_GATE_DEFERRED,
+            )
+        })
+    };
     let (
         terminal_gate_mode,
         terminal_gate_latest_safe_margin_s,
@@ -4786,6 +4834,9 @@ fn transfer_review_metrics_without_handoff(
         boost_impact_angle_deg,
         boost_apex_over_target_m,
         boost_quality,
+        boost_selected_score,
+        boost_settled_quality,
+        boost_settled_projected_dx_m,
         boost_cutoff_time_s,
         boost_cutoff_projected_dx_m,
         boost_cutoff_impact_angle_deg,
@@ -4797,6 +4848,7 @@ fn transfer_review_metrics_without_handoff(
         terminal_gate_mode,
         terminal_gate_latest_safe_margin_s,
         terminal_gate_required_accel_ratio,
+        terminal_gate_deferred,
         corridor_mode,
         corridor_min_margin_m,
         ..TransferReviewMetrics::default()
@@ -7228,6 +7280,35 @@ mod tests {
 
         assert_eq!(metrics.corridor_mode.as_deref(), Some("active"));
         assert_eq!(metrics.corridor_min_margin_m, Some(-32.0));
+    }
+
+    #[test]
+    fn transfer_review_metrics_preserve_any_deferred_gate() {
+        let mut updates = vec![
+            transfer_update(0, 0.0, "boost", 200.0, 80.0, 1.0),
+            transfer_update(60, 0.5, "terminal", 20.0, 0.0, 0.0),
+        ];
+        updates[0].frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_MODE.to_owned(),
+            TelemetryValue::from("pending"),
+        );
+        updates[0].frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_DEFERRED.to_owned(),
+            TelemetryValue::from(true),
+        );
+        updates[1].frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_MODE.to_owned(),
+            TelemetryValue::from("latest_safe"),
+        );
+        updates[1].frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_DEFERRED.to_owned(),
+            TelemetryValue::from(false),
+        );
+
+        let metrics = transfer_review_metrics(&updates, &[]);
+
+        assert_eq!(metrics.terminal_gate_mode.as_deref(), Some("latest_safe"));
+        assert_eq!(metrics.terminal_gate_deferred, Some(true));
     }
 
     #[test]

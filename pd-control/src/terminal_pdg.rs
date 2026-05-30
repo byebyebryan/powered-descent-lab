@@ -224,6 +224,7 @@ pub(crate) struct TransferGateReadiness {
     pub(crate) required_accel_ratio: f64,
     pub(crate) terrain_min_clearance_m: f64,
     pub(crate) terrain_clearance_safe: bool,
+    pub(crate) deferred: bool,
 }
 
 impl TransferGateReadiness {
@@ -234,6 +235,13 @@ impl TransferGateReadiness {
     pub(crate) fn forced_pending(mut self) -> Self {
         self.mode = TransferGateReadinessMode::Pending;
         self.ready_ticks = 0;
+        self
+    }
+
+    pub(crate) fn deferred_pending(mut self) -> Self {
+        self.mode = TransferGateReadinessMode::Pending;
+        self.ready_ticks = 0;
+        self.deferred = true;
         self
     }
 }
@@ -355,6 +363,7 @@ impl TerminalPdgController {
             required_accel_ratio: selected.required_accel_ratio,
             terrain_min_clearance_m: selected.terrain_min_clearance_m,
             terrain_clearance_safe: selected.terrain_clearance_safe,
+            deferred: false,
         }
     }
 

@@ -53,11 +53,15 @@ pub mod metric {
     pub const TRANSFER_BOOST_APEX_TARGET_M: &str = "transfer.boost_apex_target_m";
     pub const TRANSFER_BOOST_QUALITY: &str = "transfer.boost_quality";
     pub const TRANSFER_BOOST_QUALITY_PASS: &str = "transfer.boost_quality_pass";
+    pub const TRANSFER_BOOST_SELECTED_SCORE: &str = "transfer.boost_selected_score";
+    pub const TRANSFER_BOOST_SETTLED_QUALITY: &str = "transfer.boost_settled_quality";
+    pub const TRANSFER_BOOST_SETTLED_PROJECTED_DX_M: &str = "transfer.boost_settled_projected_dx_m";
     pub const TRANSFER_TERMINAL_GATE_MODE: &str = "transfer.terminal_gate_mode";
     pub const TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S: &str =
         "transfer.terminal_gate_latest_safe_margin_s";
     pub const TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO: &str =
         "transfer.terminal_gate_required_accel_ratio";
+    pub const TRANSFER_TERMINAL_GATE_DEFERRED: &str = "transfer.terminal_gate_deferred";
     pub const TRANSFER_CORRIDOR_MODE: &str = "transfer.corridor_mode";
     pub const TRANSFER_CORRIDOR_MARGIN_M: &str = "transfer.corridor_margin_m";
 }

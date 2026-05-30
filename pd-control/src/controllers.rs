@@ -1,9 +1,10 @@
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
 use crate::terminal_pdg::{
     TerminalPdgController, TerminalPdgControllerConfig, TransferGateReadiness,
+    TransferGateReadinessMode,
 };
 use crate::{Controller, ControllerFrame, TelemetryValue};
-use pd_core::{Command, Observation, RunContext};
+use pd_core::{Command, Observation, RunContext, Vec2};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -20,6 +21,16 @@ const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MIN_M: f64 = 35.0;
 const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MAX_M: f64 = 160.0;
 const TRANSFER_UPHILL_CORRIDOR_TILT_SLOPE_MIN: f64 = 1.25;
 const TRANSFER_CORRIDOR_SAMPLE_COUNT: usize = 24;
+const TRANSFER_BOOST_SCORE_NO_TARGET_Y: f64 = 10_000.0;
+const TRANSFER_BOOST_SCORE_PROJECTED_DX: f64 = 100.0;
+const TRANSFER_BOOST_SCORE_SHORTFALL: f64 = 45.0;
+const TRANSFER_BOOST_SCORE_MIN_ANGLE: f64 = 60.0;
+const TRANSFER_BOOST_SCORE_TARGET_ANGLE: f64 = 20.0;
+const TRANSFER_BOOST_SCORE_APEX_UNDERSHOOT: f64 = 18.0;
+const TRANSFER_BOOST_SCORE_APEX_OVERSHOOT: f64 = 10.0;
+const TRANSFER_BOOST_SCORE_THROTTLE_EFFORT: f64 = 1.0;
+const TRANSFER_BOOST_SCORE_TILT_EFFORT: f64 = 0.4;
+const TRANSFER_GATE_DEFER_MAX_NEGATIVE_MARGIN_S: f64 = -0.75;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -55,6 +66,30 @@ fn default_transfer_uphill_boost_dy_min_m() -> f64 {
 
 fn default_transfer_uphill_boost_tilt_rad() -> f64 {
     0.30
+}
+
+fn default_transfer_boost_candidate_horizon_s() -> f64 {
+    3.0
+}
+
+fn default_transfer_boost_candidate_step_s() -> f64 {
+    0.25
+}
+
+fn default_transfer_boost_settle_lookahead_s() -> f64 {
+    0.35
+}
+
+fn default_transfer_gate_defer_lookahead_s() -> f64 {
+    2.0
+}
+
+fn default_transfer_gate_defer_step_s() -> f64 {
+    0.25
+}
+
+fn default_transfer_gate_defer_min_ratio_improvement() -> f64 {
+    0.03
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -175,6 +210,18 @@ pub struct TransferPdgControllerConfig {
     pub uphill_boost_dy_min_m: f64,
     #[serde(default = "default_transfer_uphill_boost_tilt_rad")]
     pub uphill_boost_tilt_rad: f64,
+    #[serde(default = "default_transfer_boost_candidate_horizon_s")]
+    pub boost_candidate_horizon_s: f64,
+    #[serde(default = "default_transfer_boost_candidate_step_s")]
+    pub boost_candidate_step_s: f64,
+    #[serde(default = "default_transfer_boost_settle_lookahead_s")]
+    pub boost_settle_lookahead_s: f64,
+    #[serde(default = "default_transfer_gate_defer_lookahead_s")]
+    pub transfer_gate_defer_lookahead_s: f64,
+    #[serde(default = "default_transfer_gate_defer_step_s")]
+    pub transfer_gate_defer_step_s: f64,
+    #[serde(default = "default_transfer_gate_defer_min_ratio_improvement")]
+    pub transfer_gate_defer_min_ratio_improvement: f64,
     pub coast_min_altitude_m: f64,
     pub terminal_gate_dx_m: f64,
     pub terminal_gate_altitude_m: f64,
@@ -200,6 +247,13 @@ impl Default for TransferPdgControllerConfig {
             boost_apex_height_max_m: default_transfer_boost_apex_height_max_m(),
             uphill_boost_dy_min_m: default_transfer_uphill_boost_dy_min_m(),
             uphill_boost_tilt_rad: default_transfer_uphill_boost_tilt_rad(),
+            boost_candidate_horizon_s: default_transfer_boost_candidate_horizon_s(),
+            boost_candidate_step_s: default_transfer_boost_candidate_step_s(),
+            boost_settle_lookahead_s: default_transfer_boost_settle_lookahead_s(),
+            transfer_gate_defer_lookahead_s: default_transfer_gate_defer_lookahead_s(),
+            transfer_gate_defer_step_s: default_transfer_gate_defer_step_s(),
+            transfer_gate_defer_min_ratio_improvement:
+                default_transfer_gate_defer_min_ratio_improvement(),
             coast_min_altitude_m: 80.0,
             terminal_gate_dx_m: 260.0,
             terminal_gate_altitude_m: 260.0,
@@ -651,6 +705,36 @@ struct TransferDiagnostics {
     boost_quality: TransferBoostQuality,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TransferSimState {
+    position_m: Vec2,
+    velocity_mps: Vec2,
+    attitude_rad: f64,
+    fuel_kg: f64,
+    dry_mass_kg: f64,
+}
+
+impl TransferSimState {
+    fn mass_kg(self) -> f64 {
+        (self.dry_mass_kg + self.fuel_kg.max(0.0)).max(1.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TransferBoostCandidateScore {
+    score: f64,
+    projection: TransferBallisticProjection,
+    quality: TransferBoostQuality,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TransferBoostCommandSelection {
+    command: Command,
+    selected_score: f64,
+    settled_projection: TransferBallisticProjection,
+    settled_quality: TransferBoostQuality,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct TransferCorridorState {
     mode: &'static str,
@@ -775,8 +859,9 @@ impl TransferPdgController {
         diagnostics: TransferDiagnostics,
         gate: TransferGateReadiness,
         corridor: TransferCorridorState,
+        boost_selection: Option<TransferBoostCommandSelection>,
     ) -> ControllerFrameBuilder {
-        builder
+        let builder = builder
             .metric(metric::TRANSFER_ROUTE_DX_M, diagnostics.route_dx_m)
             .metric(metric::TRANSFER_ROUTE_DY_M, diagnostics.route_dy_m)
             .metric(
@@ -837,8 +922,30 @@ impl TransferPdgController {
                 metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO,
                 gate.required_accel_ratio,
             )
+            .metric(metric::TRANSFER_TERMINAL_GATE_DEFERRED, gate.deferred)
             .metric(metric::TRANSFER_CORRIDOR_MODE, corridor.mode)
-            .metric(metric::TRANSFER_CORRIDOR_MARGIN_M, corridor.margin_m)
+            .metric(metric::TRANSFER_CORRIDOR_MARGIN_M, corridor.margin_m);
+
+        if let Some(selection) = boost_selection {
+            builder
+                .metric(
+                    metric::TRANSFER_BOOST_SELECTED_SCORE,
+                    selection.selected_score,
+                )
+                .metric(
+                    metric::TRANSFER_BOOST_SETTLED_QUALITY,
+                    selection.settled_quality.verdict,
+                )
+                .metric(
+                    metric::TRANSFER_BOOST_SETTLED_PROJECTED_DX_M,
+                    selection
+                        .settled_projection
+                        .projected_dx_m
+                        .unwrap_or(diagnostics.route_dx_m),
+                )
+        } else {
+            builder
+        }
     }
 
     fn insert_transfer_metrics(
@@ -924,6 +1031,10 @@ impl TransferPdgController {
             TelemetryValue::from(gate.required_accel_ratio),
         );
         frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_DEFERRED.to_owned(),
+            TelemetryValue::from(gate.deferred),
+        );
+        frame.metrics.insert(
             metric::TRANSFER_CORRIDOR_MODE.to_owned(),
             TelemetryValue::from(corridor.mode),
         );
@@ -951,6 +1062,106 @@ impl TransferPdgController {
             self.transfer_gate_ready_ticks,
         );
 
+        if !diagnostics.projection.has_target_y_solution || observation.height_above_target_m <= 0.0
+        {
+            return gate.forced_pending();
+        }
+
+        if self.should_defer_latest_safe_transfer_gate(ctx, observation, diagnostics, gate) {
+            gate.deferred_pending()
+        } else {
+            gate
+        }
+    }
+
+    fn should_defer_latest_safe_transfer_gate(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
+    ) -> bool {
+        if gate.mode != TransferGateReadinessMode::LatestSafe {
+            return false;
+        }
+        if gate.latest_safe_margin_s < TRANSFER_GATE_DEFER_MAX_NEGATIVE_MARGIN_S {
+            return false;
+        }
+        if observation.velocity_mps.y <= 0.0 || !diagnostics.projection.has_target_y_solution {
+            return false;
+        }
+        let Some(projected_dx_m) = diagnostics.projection.projected_dx_m else {
+            return false;
+        };
+        let dx_tolerance_m = self.config.boost_projected_dx_limit_m.max(1.0);
+        if projected_dx_m.abs() > dx_tolerance_m {
+            return false;
+        }
+
+        let lookahead_s = self.config.transfer_gate_defer_lookahead_s.max(0.0);
+        let step_s = self
+            .config
+            .transfer_gate_defer_step_s
+            .clamp(1.0e-3, lookahead_s.max(1.0e-3));
+        let mut elapsed_s = 0.0;
+        let mut ready_ticks = self.transfer_gate_ready_ticks;
+        while elapsed_s + 1.0e-9 < lookahead_s {
+            elapsed_s = (elapsed_s + step_s).min(lookahead_s);
+            let predicted = self.passive_coast_observation(ctx, observation, elapsed_s);
+            if predicted.height_above_target_m <= 0.0 || predicted.velocity_mps.y <= 0.0 {
+                return false;
+            }
+            let predicted_diagnostics = self.transfer_diagnostics(&predicted);
+            if !predicted_diagnostics.projection.has_target_y_solution {
+                return false;
+            }
+            let Some(predicted_projected_dx_m) = predicted_diagnostics.projection.projected_dx_m
+            else {
+                return false;
+            };
+            if predicted_projected_dx_m.abs() > dx_tolerance_m {
+                return false;
+            }
+
+            let future_gate = self.transfer_gate_readiness_without_deferral(
+                ctx,
+                &predicted,
+                predicted_diagnostics,
+                ready_ticks,
+            );
+            if !future_gate.terrain_clearance_safe {
+                return false;
+            }
+            if future_gate.mode == TransferGateReadinessMode::NominalReady {
+                return true;
+            }
+            let ratio_improvement = gate.required_accel_ratio - future_gate.required_accel_ratio;
+            if future_gate.mode == TransferGateReadinessMode::LatestSafe
+                && ratio_improvement >= self.config.transfer_gate_defer_min_ratio_improvement
+            {
+                return true;
+            }
+            ready_ticks = future_gate.ready_ticks;
+        }
+
+        false
+    }
+
+    fn transfer_gate_readiness_without_deferral(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        ready_ticks: u32,
+    ) -> TransferGateReadiness {
+        let lateral_dx_m = diagnostics
+            .projection
+            .projected_dx_m
+            .filter(|_| diagnostics.projection.has_target_y_solution)
+            .unwrap_or(diagnostics.route_dx_m);
+        let gate =
+            self.terminal
+                .evaluate_transfer_gate(ctx, observation, lateral_dx_m, ready_ticks);
         if !diagnostics.projection.has_target_y_solution || observation.height_above_target_m <= 0.0
         {
             gate.forced_pending()
@@ -1054,7 +1265,7 @@ impl TransferPdgController {
 
         if self.phase != TransferPhase::Coast
             && needs_transfer_burn
-            && (self.boost_should_continue(observation, diagnostics)
+            && (self.boost_should_continue(ctx, observation, diagnostics)
                 || self.transfer_recovery_boost_should_continue(observation, diagnostics))
         {
             return TransferPhase::Boost;
@@ -1064,7 +1275,7 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         }
 
-        if diagnostics.boost_quality.passed && self.should_coast(observation, diagnostics) {
+        if diagnostics.boost_quality.passed && self.should_coast(ctx, observation, diagnostics) {
             return TransferPhase::Coast;
         }
 
@@ -1077,13 +1288,19 @@ impl TransferPdgController {
 
     fn boost_should_continue(
         &self,
+        ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
     ) -> bool {
         if observation.sim_time_s >= self.config.boost_max_time_s {
             return false;
         }
-        if diagnostics.boost_quality.passed {
+        if diagnostics.boost_quality.passed
+            && self
+                .boost_settled_quality(ctx, observation, diagnostics)
+                .quality
+                .passed
+        {
             return false;
         }
 
@@ -1100,10 +1317,26 @@ impl TransferPdgController {
             && observation.height_above_target_m <= 0.0
     }
 
-    fn should_coast(&self, observation: &Observation, diagnostics: TransferDiagnostics) -> bool {
+    fn should_coast(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> bool {
+        if !self
+            .boost_settled_quality(ctx, observation, diagnostics)
+            .quality
+            .passed
+        {
+            return false;
+        }
         let clear_to_coast = observation.touchdown_clearance_m > self.config.coast_min_altitude_m;
         if !clear_to_coast {
             return false;
+        }
+
+        if observation.velocity_mps.y > 0.0 {
+            return true;
         }
 
         if observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
@@ -1150,6 +1383,13 @@ impl TransferPdgController {
         observation: &Observation,
         diagnostics: TransferDiagnostics,
     ) -> f64 {
+        if let Some(anchor) = diagnostics.anchor {
+            let anchor_direction = anchor.route_dx_m.signum();
+            if anchor_direction != 0.0 {
+                return anchor_direction;
+            }
+        }
+
         diagnostics
             .projection
             .projected_dx_m
@@ -1205,6 +1445,224 @@ impl TransferPdgController {
         (1.0 - (weight * (1.0 - hover_throttle))).clamp(ctx.vehicle.min_throttle_frac, 1.0)
     }
 
+    fn select_boost_command(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+    ) -> TransferBoostCommandSelection {
+        let base_attitude = self.boost_attitude_rad(observation, diagnostics, corridor);
+        let eased_throttle =
+            self.boost_throttle_frac(ctx, observation, diagnostics, corridor, base_attitude);
+        let settled = self.boost_settled_quality(ctx, observation, diagnostics);
+
+        let mut attitude_candidates = Vec::new();
+        if base_attitude.abs() <= 1.0e-6 {
+            self.push_unique_candidate(&mut attitude_candidates, 0.0);
+        } else {
+            self.push_unique_candidate(&mut attitude_candidates, base_attitude * 0.6);
+            self.push_unique_candidate(&mut attitude_candidates, base_attitude);
+        }
+        let uphill_attitude = self.apply_corridor_tilt_cap(
+            self.boost_lateral_direction(observation, diagnostics)
+                * self.uphill_clearance_limited_boost_tilt_rad(observation, diagnostics),
+            corridor,
+        );
+        self.push_unique_candidate(&mut attitude_candidates, uphill_attitude);
+
+        let mut throttle_candidates = Vec::new();
+        for throttle in [0.45, 0.70, 1.0, eased_throttle] {
+            self.push_unique_candidate(
+                &mut throttle_candidates,
+                throttle.clamp(ctx.vehicle.min_throttle_frac, 1.0),
+            );
+        }
+
+        let mut best_command = Command {
+            throttle_frac: eased_throttle,
+            target_attitude_rad: base_attitude,
+        };
+        let mut best_score =
+            self.score_boost_candidate(ctx, observation, diagnostics, corridor, best_command);
+        for attitude in attitude_candidates {
+            for throttle in &throttle_candidates {
+                let command = Command {
+                    throttle_frac: *throttle,
+                    target_attitude_rad: self.apply_corridor_tilt_cap(attitude, corridor),
+                };
+                let score =
+                    self.score_boost_candidate(ctx, observation, diagnostics, corridor, command);
+                if score.score < best_score.score {
+                    best_command = command;
+                    best_score = score;
+                }
+            }
+        }
+
+        TransferBoostCommandSelection {
+            command: best_command.clamped(),
+            selected_score: best_score.score,
+            settled_projection: settled.projection,
+            settled_quality: settled.quality,
+        }
+    }
+
+    fn score_boost_candidate(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+        command: Command,
+    ) -> TransferBoostCandidateScore {
+        let simulated = self.simulate_transfer_command(
+            ctx,
+            observation,
+            command,
+            self.config.boost_candidate_horizon_s,
+            self.config.boost_candidate_step_s,
+        );
+        let predicted = self.observation_from_sim_state(ctx, observation, simulated);
+        let predicted_diagnostics = self.transfer_diagnostics(&predicted);
+        let projection = predicted_diagnostics.projection;
+        let quality = predicted_diagnostics.boost_quality;
+        let mut score = 0.0;
+        let dx_limit_m = self
+            .config
+            .boost_projected_dx_limit_m
+            .max(observation.target_pad_half_width_m)
+            .max(1.0);
+
+        let projected_dx_m = projection.projected_dx_m.unwrap_or(predicted.target_dx_m);
+        if projection.has_target_y_solution {
+            let projected_dx_excess_ratio =
+                ((projected_dx_m.abs() - dx_limit_m).max(0.0) / dx_limit_m).min(8.0);
+            score += TRANSFER_BOOST_SCORE_PROJECTED_DX
+                * projected_dx_excess_ratio
+                * projected_dx_excess_ratio;
+            if projected_dx_m * diagnostics.route_dx_m.signum() > 0.0 {
+                let shortfall_ratio = (projected_dx_m.abs() / dx_limit_m).min(8.0);
+                score += TRANSFER_BOOST_SCORE_SHORTFALL * shortfall_ratio * shortfall_ratio;
+            }
+            if let Some(impact_angle_deg) = projection.impact_angle_deg {
+                let min_angle_gap = (self.config.boost_descent_angle_min_deg - impact_angle_deg)
+                    .max(0.0)
+                    / self.config.boost_descent_angle_min_deg.max(1.0);
+                score += TRANSFER_BOOST_SCORE_MIN_ANGLE * min_angle_gap * min_angle_gap;
+                let target_angle_gap =
+                    (self.config.boost_descent_angle_target_deg - impact_angle_deg).max(0.0)
+                        / self.config.boost_descent_angle_target_deg.max(1.0);
+                score += TRANSFER_BOOST_SCORE_TARGET_ANGLE * target_angle_gap * target_angle_gap;
+            } else {
+                score += TRANSFER_BOOST_SCORE_MIN_ANGLE;
+            }
+        } else {
+            score += TRANSFER_BOOST_SCORE_NO_TARGET_Y;
+            let no_solution_lateral_ratio = (predicted.target_dx_m.abs() / dx_limit_m).min(20.0);
+            score += TRANSFER_BOOST_SCORE_SHORTFALL
+                * no_solution_lateral_ratio
+                * no_solution_lateral_ratio;
+            let current_dx_abs_m = observation.target_dx_m.abs().max(1.0);
+            let progress_deficit_ratio =
+                (predicted.target_dx_m.abs() / current_dx_abs_m).clamp(0.0, 2.0);
+            score +=
+                TRANSFER_BOOST_SCORE_PROJECTED_DX * progress_deficit_ratio * progress_deficit_ratio;
+        }
+
+        let apex_scale_m = quality.apex_target_over_target_m.abs().max(50.0);
+        let apex_error_m = projection.apex_over_target_m - quality.apex_target_over_target_m;
+        let apex_error_ratio = (apex_error_m.abs() / apex_scale_m).min(8.0);
+        if apex_error_m < 0.0 {
+            score += TRANSFER_BOOST_SCORE_APEX_UNDERSHOOT * apex_error_ratio * apex_error_ratio;
+        } else {
+            score += TRANSFER_BOOST_SCORE_APEX_OVERSHOOT * apex_error_ratio * apex_error_ratio;
+        }
+
+        if corridor.active {
+            let predicted_corridor =
+                self.transfer_corridor_state(ctx, &predicted, predicted_diagnostics);
+            if predicted_corridor.margin_m < 0.0 {
+                let corridor_error_ratio = (-predicted_corridor.margin_m / 100.0).min(8.0);
+                score += 80.0 * corridor_error_ratio * corridor_error_ratio;
+            }
+            if predicted_corridor.tilt_limited {
+                score += 250.0;
+            }
+        }
+
+        score += TRANSFER_BOOST_SCORE_THROTTLE_EFFORT
+            * command.throttle_frac.clamp(0.0, 1.0)
+            * command.throttle_frac.clamp(0.0, 1.0);
+        let tilt_ratio = (command.target_attitude_rad.abs()
+            / self
+                .config
+                .boost_tilt_rad
+                .max(self.config.uphill_boost_tilt_rad)
+                .max(1.0e-6))
+        .min(4.0);
+        score += TRANSFER_BOOST_SCORE_TILT_EFFORT * tilt_ratio * tilt_ratio;
+
+        TransferBoostCandidateScore {
+            score,
+            projection,
+            quality,
+        }
+    }
+
+    fn boost_settled_quality(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        _diagnostics: TransferDiagnostics,
+    ) -> TransferBoostCandidateScore {
+        let simulated = self.simulate_transfer_command(
+            ctx,
+            observation,
+            Command {
+                throttle_frac: 0.0,
+                target_attitude_rad: self.coast_attitude_rad(observation),
+            },
+            self.config.boost_settle_lookahead_s,
+            self.config.boost_candidate_step_s,
+        );
+        let predicted = self.observation_from_sim_state(ctx, observation, simulated);
+        let predicted_diagnostics = self.transfer_diagnostics(&predicted);
+        TransferBoostCandidateScore {
+            score: 0.0,
+            projection: predicted_diagnostics.projection,
+            quality: predicted_diagnostics.boost_quality,
+        }
+    }
+
+    fn apply_corridor_tilt_cap(
+        &self,
+        target_attitude_rad: f64,
+        corridor: TransferCorridorState,
+    ) -> f64 {
+        if corridor.tilt_limited {
+            target_attitude_rad.clamp(
+                -TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD,
+                TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD,
+            )
+        } else {
+            target_attitude_rad
+        }
+    }
+
+    fn push_unique_candidate(&self, candidates: &mut Vec<f64>, value: f64) {
+        if !value.is_finite() {
+            return;
+        }
+        if candidates
+            .iter()
+            .any(|candidate| (candidate - value).abs() <= 1.0e-6)
+        {
+            return;
+        }
+        candidates.push(value);
+    }
+
     fn coast_attitude_rad(&self, observation: &Observation) -> f64 {
         let tilt_limit_rad = self
             .config
@@ -1217,6 +1675,101 @@ impl TransferPdgController {
             .clamp(-tilt_limit_rad, tilt_limit_rad)
     }
 
+    fn passive_coast_observation(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        duration_s: f64,
+    ) -> Observation {
+        let simulated = self.simulate_transfer_command(
+            ctx,
+            observation,
+            Command {
+                throttle_frac: 0.0,
+                target_attitude_rad: observation.attitude_rad,
+            },
+            duration_s,
+            self.config.transfer_gate_defer_step_s,
+        );
+        self.observation_from_sim_state(ctx, observation, simulated)
+    }
+
+    fn simulate_transfer_command(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        command: Command,
+        duration_s: f64,
+        step_s: f64,
+    ) -> TransferSimState {
+        let mut state = TransferSimState {
+            position_m: observation.position_m,
+            velocity_mps: observation.velocity_mps,
+            attitude_rad: observation.attitude_rad,
+            fuel_kg: observation.fuel_kg.max(0.0),
+            dry_mass_kg: (observation.mass_kg - observation.fuel_kg.max(0.0)).max(0.0),
+        };
+        let duration_s = duration_s.max(0.0);
+        let step_s = step_s.clamp(1.0e-3, duration_s.max(1.0e-3));
+        let mut elapsed_s = 0.0;
+        while elapsed_s + 1.0e-9 < duration_s {
+            let dt_s = (duration_s - elapsed_s).min(step_s);
+            let max_delta = ctx.vehicle.max_rotation_rate_radps.max(0.0) * dt_s;
+            let delta = shortest_angle_delta(state.attitude_rad, command.target_attitude_rad);
+            let applied_delta = delta.clamp(-max_delta, max_delta);
+            state.attitude_rad += applied_delta;
+
+            let throttle_frac = applied_throttle_frac(ctx, command.throttle_frac, state.fuel_kg);
+            let fuel_used_kg =
+                (ctx.vehicle.max_fuel_burn_kgps.max(0.0) * throttle_frac * dt_s).min(state.fuel_kg);
+            state.fuel_kg -= fuel_used_kg;
+
+            let thrust_n = ctx.vehicle.max_thrust_n.max(0.0) * throttle_frac;
+            let mass_kg = state.mass_kg();
+            let (sin_a, cos_a) = state.attitude_rad.sin_cos();
+            let thrust_accel_mps2 =
+                Vec2::new((thrust_n / mass_kg) * sin_a, (thrust_n / mass_kg) * cos_a);
+            let total_accel_mps2 = Vec2::new(
+                thrust_accel_mps2.x,
+                thrust_accel_mps2.y - observation.gravity_mps2,
+            );
+            state.velocity_mps += total_accel_mps2 * dt_s;
+            state.position_m += state.velocity_mps * dt_s;
+            elapsed_s += dt_s;
+        }
+        state
+    }
+
+    fn observation_from_sim_state(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        state: TransferSimState,
+    ) -> Observation {
+        let target_x_m = observation.position_m.x + observation.target_dx_m;
+        let target_y_m = observation.target_surface_y_m;
+        let terrain_y_m = ctx.world.terrain.sample_height(state.position_m.x);
+        let clearance_m =
+            state.position_m.y - terrain_y_m - ctx.vehicle.geometry.touchdown_base_offset_m;
+        Observation {
+            sim_time_s: observation.sim_time_s,
+            physics_step: observation.physics_step,
+            position_m: state.position_m,
+            velocity_mps: state.velocity_mps,
+            attitude_rad: state.attitude_rad,
+            angular_rate_radps: 0.0,
+            mass_kg: state.mass_kg(),
+            fuel_kg: state.fuel_kg,
+            gravity_mps2: observation.gravity_mps2,
+            target_dx_m: target_x_m - state.position_m.x,
+            height_above_target_m: state.position_m.y - target_y_m,
+            target_surface_y_m: target_y_m,
+            target_pad_half_width_m: observation.target_pad_half_width_m,
+            touchdown_clearance_m: clearance_m,
+            min_hull_clearance_m: clearance_m,
+        }
+    }
+
     fn frame_for_open_loop_phase(
         &mut self,
         ctx: &RunContext,
@@ -1227,6 +1780,7 @@ impl TransferPdgController {
         diagnostics: TransferDiagnostics,
         gate: TransferGateReadiness,
         corridor: TransferCorridorState,
+        boost_selection: Option<TransferBoostCommandSelection>,
     ) -> ControllerFrame {
         let view = ControllerView::new(ctx, observation);
         let phase = phase_name.as_str().to_owned();
@@ -1238,7 +1792,7 @@ impl TransferPdgController {
             .metric(metric::GUIDANCE_ACTIVE, true)
             .metric(metric::TRANSFER_PHASE, phase.as_str());
         let frame = self
-            .transfer_metrics_builder(builder, diagnostics, gate, corridor)
+            .transfer_metrics_builder(builder, diagnostics, gate, corridor, boost_selection)
             .build();
         self.last_phase = Some(phase);
         frame
@@ -1292,6 +1846,23 @@ fn transfer_ballistic_projection(
     }
 }
 
+fn applied_throttle_frac(ctx: &RunContext, commanded_throttle_frac: f64, fuel_kg: f64) -> f64 {
+    if fuel_kg <= 0.0 {
+        return 0.0;
+    }
+    let commanded = commanded_throttle_frac.clamp(0.0, 1.0);
+    if commanded <= 0.0 {
+        return 0.0;
+    }
+    let min_throttle = ctx.vehicle.min_throttle_frac.clamp(0.0, 1.0);
+    min_throttle + (commanded * (1.0 - min_throttle))
+}
+
+fn shortest_angle_delta(from_rad: f64, to_rad: f64) -> f64 {
+    let tau = std::f64::consts::TAU;
+    (to_rad - from_rad + std::f64::consts::PI).rem_euclid(tau) - std::f64::consts::PI
+}
+
 impl Controller for TransferPdgController {
     fn id(&self) -> &str {
         "transfer_pdg_v1"
@@ -1337,30 +1908,22 @@ impl Controller for TransferPdgController {
                 diagnostics,
                 gate,
                 corridor,
+                None,
             ),
-            TransferPhase::Boost => self.frame_for_open_loop_phase(
-                ctx,
-                observation,
-                phase,
-                {
-                    let target_attitude_rad =
-                        self.boost_attitude_rad(observation, diagnostics, corridor);
-                    Command {
-                        throttle_frac: self.boost_throttle_frac(
-                            ctx,
-                            observation,
-                            diagnostics,
-                            corridor,
-                            target_attitude_rad,
-                        ),
-                        target_attitude_rad,
-                    }
-                },
-                "boosting toward terminal gate",
-                diagnostics,
-                gate,
-                corridor,
-            ),
+            TransferPhase::Boost => {
+                let selection = self.select_boost_command(ctx, observation, diagnostics, corridor);
+                self.frame_for_open_loop_phase(
+                    ctx,
+                    observation,
+                    phase,
+                    selection.command,
+                    "boosting toward terminal gate",
+                    diagnostics,
+                    gate,
+                    corridor,
+                    Some(selection),
+                )
+            }
             TransferPhase::Coast => self.frame_for_open_loop_phase(
                 ctx,
                 observation,
@@ -1373,6 +1936,7 @@ impl Controller for TransferPdgController {
                 diagnostics,
                 gate,
                 corridor,
+                None,
             ),
             TransferPhase::Terminal => {
                 let mut frame = self.terminal.update(ctx, observation);
@@ -1547,16 +2111,17 @@ mod tests {
 
     #[test]
     fn transfer_boost_continues_until_ballistic_quality_passes() {
+        let ctx = uphill_transfer_context();
         let controller = TransferPdgController::default();
         let passing_observation = transfer_observation(100.0, 50.0, Vec2::new(10.0, 20.0), 6.0);
         let passing_diagnostics = controller.transfer_diagnostics(&passing_observation);
         assert!(passing_diagnostics.boost_quality.passed);
-        assert!(!controller.boost_should_continue(&passing_observation, passing_diagnostics));
+        assert!(!controller.boost_should_continue(&ctx, &passing_observation, passing_diagnostics));
 
         let missing_observation = transfer_observation(500.0, -100.0, Vec2::new(15.0, 5.0), 6.0);
         let missing_diagnostics = controller.transfer_diagnostics(&missing_observation);
         assert!(!missing_diagnostics.boost_quality.passed);
-        assert!(controller.boost_should_continue(&missing_observation, missing_diagnostics));
+        assert!(controller.boost_should_continue(&ctx, &missing_observation, missing_diagnostics));
     }
 
     #[test]
@@ -1635,6 +2200,47 @@ mod tests {
     }
 
     #[test]
+    fn transfer_boost_keeps_anchor_direction_after_projected_overshoot() {
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 700.0,
+            route_dy_m: 400.0,
+        });
+        let observation = transfer_observation(100.0, -50.0, Vec2::new(50.0, 50.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert!(diagnostics.projection.projected_dx_m.unwrap() < 0.0);
+        assert!(
+            controller.boost_attitude_rad(
+                &observation,
+                diagnostics,
+                TransferCorridorState::inactive()
+            ) > 0.0
+        );
+    }
+
+    #[test]
+    fn transfer_coast_accepts_settled_ascending_solution_above_target_height() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 700.0,
+            route_dy_m: 400.0,
+        });
+        let observation = transfer_observation(300.0, 200.0, Vec2::new(25.0, 45.0), 12.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert!(diagnostics.boost_quality.passed);
+        assert!(
+            controller
+                .boost_settled_quality(&ctx, &observation, diagnostics)
+                .quality
+                .passed
+        );
+        assert!(controller.should_coast(&ctx, &observation, diagnostics));
+    }
+
+    #[test]
     fn transfer_coast_prealigns_upright_retrograde() {
         let controller = TransferPdgController::default();
         let observation = transfer_observation(400.0, 300.0, Vec2::new(45.0, -8.0), 10.0);
@@ -1673,6 +2279,7 @@ mod tests {
             required_accel_ratio: 0.4,
             terrain_min_clearance_m: 20.0,
             terrain_clearance_safe: true,
+            deferred: false,
         });
         controller.last_corridor = TransferCorridorState {
             mode: "active",
@@ -1765,6 +2372,128 @@ mod tests {
         );
         assert!(throttle < 1.0);
         assert!(throttle >= ctx.vehicle.min_throttle_frac);
+    }
+
+    #[test]
+    fn transfer_boost_scorer_reduces_throttle_when_apex_is_high() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 100.0,
+            route_dy_m: -50.0,
+        });
+        let observation = transfer_observation(100.0, 50.0, Vec2::new(10.0, 100.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let selection = controller.select_boost_command(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+        );
+
+        assert!(selection.selected_score.is_finite());
+        assert!(selection.command.throttle_frac < 1.0);
+        assert!(selection.command.throttle_frac >= ctx.vehicle.min_throttle_frac);
+    }
+
+    #[test]
+    fn transfer_boost_scorer_keeps_targetward_tilt_for_shortfall() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 500.0,
+            route_dy_m: 120.0,
+        });
+        let observation = transfer_observation(500.0, -120.0, Vec2::new(5.0, 30.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let selection = controller.select_boost_command(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+        );
+
+        assert!(selection.command.target_attitude_rad > 0.0);
+        assert!(selection.command.throttle_frac >= 0.7);
+    }
+
+    #[test]
+    fn transfer_boost_scorer_respects_corridor_tilt_cap() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 140.0,
+            route_dy_m: 780.0,
+        });
+        let mut observation = transfer_observation(140.0, -780.0, Vec2::new(10.0, 15.0), 6.0);
+        observation.position_m = Vec2::new(-140.0, -780.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        let selection = controller.select_boost_command(&ctx, &observation, diagnostics, corridor);
+
+        assert!(corridor.tilt_limited);
+        assert!(
+            selection.command.target_attitude_rad.abs() <= TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD
+        );
+    }
+
+    #[test]
+    fn transfer_boost_settled_quality_keeps_passive_projection_stable() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 100.0,
+            route_dy_m: -50.0,
+        });
+        let observation = transfer_observation(100.0, 50.0, Vec2::new(10.0, 20.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let settled = controller.boost_settled_quality(&ctx, &observation, diagnostics);
+
+        assert!(diagnostics.boost_quality.passed);
+        assert!(settled.quality.passed);
+        assert!(
+            (settled.projection.projected_dx_m.unwrap()
+                - diagnostics.projection.projected_dx_m.unwrap())
+            .abs()
+                < 2.0
+        );
+    }
+
+    #[test]
+    fn transfer_latest_safe_deferral_respects_guard_conditions() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let gate = TransferGateReadiness {
+            mode: TransferGateReadinessMode::LatestSafe,
+            ready_ticks: 0,
+            burn_time_s: 5.0,
+            latest_safe_margin_s: 0.0,
+            required_accel_ratio: 0.8,
+            terrain_min_clearance_m: 20.0,
+            terrain_clearance_safe: true,
+            deferred: false,
+        };
+        let descending = transfer_observation(100.0, 80.0, Vec2::new(8.0, -2.0), 6.0);
+        let descending_diagnostics = controller.transfer_diagnostics(&descending);
+        assert!(!controller.should_defer_latest_safe_transfer_gate(
+            &ctx,
+            &descending,
+            descending_diagnostics,
+            gate
+        ));
+
+        let out_of_band = transfer_observation(500.0, 80.0, Vec2::new(5.0, 12.0), 6.0);
+        let out_of_band_diagnostics = controller.transfer_diagnostics(&out_of_band);
+        assert!(!controller.should_defer_latest_safe_transfer_gate(
+            &ctx,
+            &out_of_band,
+            out_of_band_diagnostics,
+            gate
+        ));
     }
 
     #[test]
