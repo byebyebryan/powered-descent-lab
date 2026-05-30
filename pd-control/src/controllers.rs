@@ -11,11 +11,14 @@ const TRANSFER_UPHILL_STEEP_TILT_SCALE: f64 = 0.25;
 const TRANSFER_UPHILL_STEEP_TILT_MIN_RAD: f64 = 0.0;
 const TRANSFER_UPHILL_LOW_CLEARANCE_M: f64 = 240.0;
 const TRANSFER_UPHILL_CLEARANCE_BLEND_FLOOR_M: f64 = 20.0;
+const TRANSFER_BOOST_APEX_THROTTLE_DEADBAND_M: f64 = 25.0;
+const TRANSFER_BOOST_APEX_THROTTLE_RANGE_M: f64 = 160.0;
 const TRANSFER_UPHILL_CORRIDOR_CLEARANCE_MARGIN_M: f64 = 35.0;
 const TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD: f64 = 0.12;
 const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_FRAC: f64 = 0.35;
 const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MIN_M: f64 = 35.0;
 const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MAX_M: f64 = 160.0;
+const TRANSFER_UPHILL_CORRIDOR_TILT_SLOPE_MIN: f64 = 1.25;
 const TRANSFER_CORRIDOR_SAMPLE_COUNT: usize = 24;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
@@ -652,6 +655,7 @@ struct TransferDiagnostics {
 struct TransferCorridorState {
     mode: &'static str,
     active: bool,
+    tilt_limited: bool,
     margin_m: f64,
 }
 
@@ -660,6 +664,7 @@ impl TransferCorridorState {
         Self {
             mode: "inactive",
             active: false,
+            tilt_limited: false,
             margin_m: 1.0e9,
         }
     }
@@ -977,25 +982,36 @@ impl TransferPdgController {
             )
             .min(route_dx_m.abs());
         let x1_m = x0_m + (route_dx_m.signum() * lookahead_m);
-        let max_terrain_y_m = (0..=TRANSFER_CORRIDOR_SAMPLE_COUNT)
+        let sample_points = (0..=TRANSFER_CORRIDOR_SAMPLE_COUNT)
             .map(|sample_index| sample_index as f64 / TRANSFER_CORRIDOR_SAMPLE_COUNT as f64)
             .map(|t| x0_m + ((x1_m - x0_m) * t))
-            .map(|x_m| ctx.world.terrain.sample_height(x_m))
+            .collect::<Vec<_>>();
+        let max_terrain_y_m = sample_points
+            .iter()
+            .map(|x_m| ctx.world.terrain.sample_height(*x_m))
             .fold(f64::NEG_INFINITY, f64::max);
+        let max_slope_abs = sample_points
+            .iter()
+            .map(|x_m| ctx.world.terrain.sample_slope(*x_m).abs())
+            .fold(0.0, f64::max);
         let required_y_m = max_terrain_y_m
             + ctx.vehicle.geometry.touchdown_base_offset_m
             + TRANSFER_UPHILL_CORRIDOR_CLEARANCE_MARGIN_M;
         let margin_m = observation.position_m.y - required_y_m;
+        let tilt_limited =
+            margin_m < 0.0 && max_slope_abs >= TRANSFER_UPHILL_CORRIDOR_TILT_SLOPE_MIN;
         if margin_m < 0.0 {
             TransferCorridorState {
                 mode: "active",
                 active: true,
+                tilt_limited,
                 margin_m,
             }
         } else {
             TransferCorridorState {
                 mode: "clear",
                 active: false,
+                tilt_limited: false,
                 margin_m,
             }
         }
@@ -1007,7 +1023,7 @@ impl TransferPdgController {
         observation: &Observation,
         diagnostics: TransferDiagnostics,
         gate: TransferGateReadiness,
-        corridor: TransferCorridorState,
+        _corridor: TransferCorridorState,
     ) -> TransferPhase {
         let Some(route) = ctx.mission.transfer_route.as_ref() else {
             return TransferPhase::Terminal;
@@ -1028,10 +1044,6 @@ impl TransferPdgController {
 
         if self.phase == TransferPhase::Terminal {
             return TransferPhase::Terminal;
-        }
-
-        if corridor.active {
-            return TransferPhase::Boost;
         }
 
         let needs_transfer_burn = observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
@@ -1126,7 +1138,7 @@ impl TransferPdgController {
         } else {
             self.config.boost_tilt_rad
         };
-        if corridor.active {
+        if corridor.tilt_limited {
             return direction * tilt_rad.min(TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
         }
 
@@ -1164,6 +1176,33 @@ impl TransferPdgController {
             .clamp(0.0, 1.0);
 
         steep_tilt_rad + ((self.config.uphill_boost_tilt_rad - steep_tilt_rad) * clearance_blend)
+    }
+
+    fn boost_throttle_frac(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+        target_attitude_rad: f64,
+    ) -> f64 {
+        if corridor.tilt_limited {
+            return 1.0;
+        }
+
+        let apex_excess_m = diagnostics.projection.apex_over_target_m
+            - diagnostics.boost_quality.apex_target_over_target_m
+            - TRANSFER_BOOST_APEX_THROTTLE_DEADBAND_M;
+        if apex_excess_m <= 0.0 {
+            return 1.0;
+        }
+
+        let max_accel_mps2 = ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0);
+        let attitude_vertical = target_attitude_rad.cos().max(0.2);
+        let hover_throttle = (observation.gravity_mps2 / (max_accel_mps2 * attitude_vertical))
+            .clamp(ctx.vehicle.min_throttle_frac, 1.0);
+        let weight = (apex_excess_m / TRANSFER_BOOST_APEX_THROTTLE_RANGE_M).clamp(0.0, 1.0);
+        (1.0 - (weight * (1.0 - hover_throttle))).clamp(ctx.vehicle.min_throttle_frac, 1.0)
     }
 
     fn coast_attitude_rad(&self, observation: &Observation) -> f64 {
@@ -1303,13 +1342,19 @@ impl Controller for TransferPdgController {
                 ctx,
                 observation,
                 phase,
-                Command {
-                    throttle_frac: 1.0,
-                    target_attitude_rad: self.boost_attitude_rad(
-                        observation,
-                        diagnostics,
-                        corridor,
-                    ),
+                {
+                    let target_attitude_rad =
+                        self.boost_attitude_rad(observation, diagnostics, corridor);
+                    Command {
+                        throttle_frac: self.boost_throttle_frac(
+                            ctx,
+                            observation,
+                            diagnostics,
+                            corridor,
+                            target_attitude_rad,
+                        ),
+                        target_attitude_rad,
+                    }
                 },
                 "boosting toward terminal gate",
                 diagnostics,
@@ -1517,7 +1562,7 @@ mod tests {
     #[test]
     fn transfer_uphill_boost_uses_vertical_bias_until_apex_is_safe() {
         let controller = TransferPdgController::default();
-        let observation = transfer_observation(400.0, -250.0, Vec2::new(30.0, 10.0), 6.0);
+        let observation = transfer_observation(180.0, -360.0, Vec2::new(30.0, 10.0), 6.0);
         let diagnostics = controller.transfer_diagnostics(&observation);
 
         assert!(diagnostics.route_dy_m > controller.config.uphill_boost_dy_min_m);
@@ -1632,6 +1677,7 @@ mod tests {
         controller.last_corridor = TransferCorridorState {
             mode: "active",
             active: true,
+            tilt_limited: true,
             margin_m: -10.0,
         };
 
@@ -1670,9 +1716,55 @@ mod tests {
         let attitude_rad = controller.boost_attitude_rad(&observation, diagnostics, corridor);
 
         assert!(corridor.active);
+        assert!(corridor.tilt_limited);
         assert!(corridor.margin_m < 0.0);
         assert!(attitude_rad.abs() <= TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
         assert!(attitude_rad.abs() < controller.config.uphill_boost_tilt_rad);
+    }
+
+    #[test]
+    fn transfer_moderate_uphill_corridor_does_not_cap_boost_tilt() {
+        let mut ctx = uphill_transfer_context();
+        ctx.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-740.0, -400.0),
+                Vec2::new(-700.0, -400.0),
+                Vec2::new(-18.0, 0.0),
+                Vec2::new(18.0, 0.0),
+                Vec2::new(180.0, 0.0),
+            ],
+        };
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(700.0, -400.0, Vec2::new(10.0, 15.0), 6.0);
+        observation.position_m = Vec2::new(-700.0, -400.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        assert!(corridor.active);
+        assert!(!corridor.tilt_limited);
+    }
+
+    #[test]
+    fn transfer_boost_throttle_eases_when_apex_is_already_high() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(700.0, -200.0, Vec2::new(10.0, 100.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let throttle = controller.boost_throttle_frac(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+            0.3,
+        );
+
+        assert!(
+            diagnostics.projection.apex_over_target_m
+                > diagnostics.boost_quality.apex_target_over_target_m
+        );
+        assert!(throttle < 1.0);
+        assert!(throttle >= ctx.vehicle.min_throttle_frac);
     }
 
     #[test]
