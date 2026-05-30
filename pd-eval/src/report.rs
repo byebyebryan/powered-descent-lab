@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path, PathBuf},
@@ -220,6 +221,7 @@ fn render_batch_report(
     }}
     .header-context h2,
     .header-overview h2,
+    .transfer-shape-section h2,
     .review-tree-section h2 {{
       margin: 0;
       font-size: 1rem;
@@ -820,6 +822,18 @@ fn render_batch_report(
     .review-tree-root.compare-hidden .compare-toggle-target {{
       display: none;
     }}
+    .transfer-shape-section {{
+      margin-bottom: 16px;
+    }}
+    .transfer-shape-table {{
+      min-width: 1160px;
+    }}
+    .transfer-shape-table tbody td {{
+      vertical-align: top;
+    }}
+    .transfer-shape-table .overview-main {{
+      white-space: nowrap;
+    }}
     .review-tree-section {{
       border-top: 1px solid rgba(215,205,189,0.88);
       padding-top: 16px;
@@ -884,6 +898,8 @@ fn render_batch_report(
     {context_html}
 
     {overview_html}
+
+    {transfer_shape_triage_html}
 
     <section class="review-tree-section">
       <div class="section-head">
@@ -1109,6 +1125,13 @@ fn render_batch_report(
             baseline.map(|(_, report)| report),
             comparison,
             render_view_controls(has_compare_view).as_str(),
+        ),
+        transfer_shape_triage_html = render_transfer_shape_triage_section(
+            candidate,
+            baseline.map(|(_, report)| report),
+            comparison,
+            &output_dir,
+            &candidate_record_links,
         ),
         tree_controls = render_tree_controls(comparison.is_some()),
         review_tree = render_review_tree(
@@ -2372,6 +2395,523 @@ fn render_view_controls(has_compare_view: bool) -> String {
 }
 
 const UNSPECIFIED_SELECTOR_VALUE: &str = "unspecified";
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct TransferShapeCellKey {
+    condition_set: String,
+    vehicle_variant: String,
+    route_angle: String,
+    radius_tier: String,
+}
+
+struct TransferShapeCellSummary<'a> {
+    key: TransferShapeCellKey,
+    total_runs: usize,
+    scored_runs: usize,
+    success_runs: usize,
+    shape_rmse_m: Option<crate::BatchMetricSummary>,
+    apex_error_m: Option<crate::BatchMetricSummary>,
+    shortfall_pct: Option<crate::BatchMetricSummary>,
+    projected_dx_abs_max_m: Option<crate::BatchMetricSummary>,
+    handoff_time_s: Option<crate::BatchMetricSummary>,
+    boost_burn_duration_s: Option<crate::BatchMetricSummary>,
+    boost_quality: Option<String>,
+    gate_mode: Option<String>,
+    corridor_mode: Option<String>,
+    worst_shape_rmse_m: f64,
+    worst_record: Option<&'a crate::BatchRunRecord>,
+}
+
+fn render_transfer_shape_triage_section(
+    candidate: &BatchReport,
+    baseline: Option<&BatchReport>,
+    comparison: Option<&BatchComparison>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let candidate_records = preferred_current_lane_focus(candidate)
+        .map(|focus| focus.records)
+        .unwrap_or_else(|| candidate.records.iter().collect::<Vec<_>>());
+    if !candidate_records
+        .iter()
+        .any(|record| transfer_shape_record_has_transfer(record))
+    {
+        return String::new();
+    }
+
+    let mut rows = transfer_shape_cell_summaries(candidate_records.as_slice())
+        .into_iter()
+        .filter(|summary| summary.shape_rmse_m.is_some())
+        .collect::<Vec<_>>();
+    rows.sort_by(|lhs, rhs| {
+        rhs.worst_shape_rmse_m
+            .partial_cmp(&lhs.worst_shape_rmse_m)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                selector_sort_rank(&lhs.key.condition_set)
+                    .cmp(&selector_sort_rank(&rhs.key.condition_set))
+            })
+            .then_with(|| {
+                selector_sort_rank(&lhs.key.route_angle)
+                    .cmp(&selector_sort_rank(&rhs.key.route_angle))
+            })
+            .then_with(|| {
+                selector_sort_rank(&lhs.key.radius_tier)
+                    .cmp(&selector_sort_rank(&rhs.key.radius_tier))
+            })
+            .then_with(|| {
+                selector_sort_rank(&lhs.key.vehicle_variant)
+                    .cmp(&selector_sort_rank(&rhs.key.vehicle_variant))
+            })
+            .then_with(|| lhs.key.cmp(&rhs.key))
+    });
+
+    if rows.is_empty() {
+        return r#"<section class="transfer-shape-section">
+  <div class="section-head">
+    <h2>Transfer Shape Triage</h2>
+  </div>
+  <p class="muted">No successful current-lane transfer runs with shape metrics were available; failure-only cells remain in the Review Tree.</p>
+</section>"#
+            .to_owned();
+    }
+
+    let baseline_records = if comparison.is_some() {
+        baseline.map(|report| {
+            preferred_current_lane_focus(report)
+                .map(|focus| focus.records)
+                .unwrap_or_else(|| report.records.iter().collect::<Vec<_>>())
+        })
+    } else {
+        None
+    };
+    let baseline_cells = baseline_records.as_ref().map(|records| {
+        transfer_shape_cell_summaries(records.as_slice())
+            .into_iter()
+            .filter(|summary| summary.shape_rmse_m.is_some())
+            .map(|summary| (summary.key.clone(), summary))
+            .collect::<BTreeMap<_, _>>()
+    });
+    let show_deltas = comparison.is_some()
+        && baseline_cells
+            .as_ref()
+            .is_some_and(|cells| rows.iter().any(|summary| cells.contains_key(&summary.key)));
+
+    let delta_headers = if show_deltas {
+        r#"<th class="compare-toggle-target">Δ Shape</th>
+          <th class="compare-toggle-target">Δ Success</th>"#
+            .to_owned()
+    } else {
+        String::new()
+    };
+    let row_html = rows
+        .iter()
+        .map(|summary| {
+            let baseline_summary = baseline_cells
+                .as_ref()
+                .and_then(|cells| cells.get(&summary.key));
+            render_transfer_shape_triage_row(
+                summary,
+                baseline_summary,
+                show_deltas,
+                output_dir,
+                candidate_record_map,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        r#"<section class="transfer-shape-section">
+  <div class="section-head">
+    <h2>Transfer Shape Triage</h2>
+    <div class="section-note">Current-lane transfer cells, sorted by worst successful shape RMSE.</div>
+  </div>
+  <div class="table-wrap">
+    <table class="transfer-shape-table">
+      <thead>
+        <tr>
+          <th>Route</th>
+          <th>Vehicle</th>
+          <th>Success</th>
+          <th>Shape RMSE</th>
+          <th>Apex Error</th>
+          <th>Shortfall</th>
+          <th>Projected dx max</th>
+          <th>Handoff</th>
+          <th>Boost Burn</th>
+          <th>Modes</th>
+          <th>Worst Seed</th>
+          {delta_headers}
+        </tr>
+      </thead>
+      <tbody>{row_html}</tbody>
+    </table>
+  </div>
+</section>"#
+    )
+}
+
+fn render_transfer_shape_triage_row(
+    summary: &TransferShapeCellSummary<'_>,
+    baseline: Option<&TransferShapeCellSummary<'_>>,
+    show_deltas: bool,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let cell_id = transfer_shape_cell_id(&summary.key);
+    let route_html = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
+        escape_html(&summary.key.route_angle),
+        escape_html(&summary.key.condition_set),
+        escape_html(&summary.key.radius_tier),
+    );
+    let vehicle_html = format!(
+        r#"<code>{}</code>"#,
+        escape_html(&summary.key.vehicle_variant)
+    );
+    let success_html = render_transfer_shape_success_cell(summary);
+    let shape_html = escape_html(&format_metric_summary(
+        summary.shape_rmse_m.as_ref(),
+        MetricDisplayKind::Meters,
+    ));
+    let apex_html = escape_html(&format_metric_summary(
+        summary.apex_error_m.as_ref(),
+        MetricDisplayKind::Meters,
+    ));
+    let shortfall_html = escape_html(&format_metric_summary(
+        summary.shortfall_pct.as_ref(),
+        MetricDisplayKind::Percent,
+    ));
+    let projected_dx_html = escape_html(&format_metric_mean(
+        summary.projected_dx_abs_max_m.as_ref(),
+        MetricDisplayKind::Meters,
+    ));
+    let handoff_html = escape_html(&format_metric_mean(
+        summary.handoff_time_s.as_ref(),
+        MetricDisplayKind::Seconds,
+    ));
+    let boost_burn_html = escape_html(&format_metric_mean(
+        summary.boost_burn_duration_s.as_ref(),
+        MetricDisplayKind::Seconds,
+    ));
+    let modes_html = render_transfer_shape_modes(summary);
+    let worst_seed_html =
+        render_transfer_shape_worst_seed(summary, output_dir, candidate_record_map);
+    let delta_cells = render_transfer_shape_delta_cells(summary, baseline, show_deltas);
+
+    format!(
+        r#"<tr data-transfer-shape-cell="{cell_id}">
+  <td>{route}</td>
+  <td>{vehicle}</td>
+  <td>{success}</td>
+  <td>{shape}</td>
+  <td>{apex}</td>
+  <td>{shortfall}</td>
+  <td>{projected_dx}</td>
+  <td>{handoff}</td>
+  <td>{boost_burn}</td>
+  <td>{modes}</td>
+  <td>{worst_seed}</td>
+  {delta_cells}
+</tr>"#,
+        cell_id = escape_html(&cell_id),
+        route = route_html,
+        vehicle = vehicle_html,
+        success = success_html,
+        shape = shape_html,
+        apex = apex_html,
+        shortfall = shortfall_html,
+        projected_dx = projected_dx_html,
+        handoff = handoff_html,
+        boost_burn = boost_burn_html,
+        modes = modes_html,
+        worst_seed = worst_seed_html,
+        delta_cells = delta_cells,
+    )
+}
+
+fn transfer_shape_cell_summaries<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> Vec<TransferShapeCellSummary<'a>> {
+    let mut grouped = BTreeMap::<TransferShapeCellKey, Vec<&'a crate::BatchRunRecord>>::new();
+    for &record in records {
+        let Some(key) = transfer_shape_cell_key(record) else {
+            continue;
+        };
+        grouped.entry(key).or_default().push(record);
+    }
+    grouped
+        .into_iter()
+        .map(|(key, records)| summarize_transfer_shape_cell(key, records.as_slice()))
+        .collect()
+}
+
+fn summarize_transfer_shape_cell<'a>(
+    key: TransferShapeCellKey,
+    records: &[&'a crate::BatchRunRecord],
+) -> TransferShapeCellSummary<'a> {
+    let success_records = records
+        .iter()
+        .copied()
+        .filter(|record| transfer_shape_record_success(record))
+        .collect::<Vec<_>>();
+    let mode_records = if success_records.is_empty() {
+        records
+    } else {
+        success_records.as_slice()
+    };
+    let worst = success_records
+        .iter()
+        .filter_map(|record| {
+            record
+                .review
+                .transfer_shape_curve_rmse_m
+                .map(|value| (*record, value))
+        })
+        .max_by(|(_, lhs), (_, rhs)| lhs.partial_cmp(rhs).unwrap_or(Ordering::Equal));
+    TransferShapeCellSummary {
+        key,
+        total_runs: records.len(),
+        scored_runs: records
+            .iter()
+            .filter(|record| record.analytic.is_scored())
+            .count(),
+        success_runs: success_records.len(),
+        shape_rmse_m: transfer_shape_metric_summary(success_records.as_slice(), |review| {
+            review.transfer_shape_curve_rmse_m
+        }),
+        apex_error_m: transfer_shape_metric_summary(success_records.as_slice(), |review| {
+            review.transfer_shape_apex_error_m
+        }),
+        shortfall_pct: transfer_shape_metric_summary(success_records.as_slice(), |review| {
+            review
+                .transfer_shape_shortfall_ratio
+                .map(|value| value * 100.0)
+        }),
+        projected_dx_abs_max_m: transfer_shape_metric_summary(
+            success_records.as_slice(),
+            |review| review.transfer_shape_projected_dx_abs_max_m,
+        ),
+        handoff_time_s: transfer_shape_metric_summary(success_records.as_slice(), |review| {
+            review.transfer_terminal_handoff_time_s
+        }),
+        boost_burn_duration_s: transfer_shape_metric_summary(
+            success_records.as_slice(),
+            |review| review.transfer_boost_burn_duration_s,
+        ),
+        boost_quality: dominant_transfer_shape_mode(mode_records, |review| {
+            review.transfer_boost_quality.as_deref()
+        }),
+        gate_mode: dominant_transfer_shape_mode(mode_records, |review| {
+            review.transfer_terminal_gate_mode.as_deref()
+        }),
+        corridor_mode: dominant_transfer_shape_mode(mode_records, |review| {
+            review.transfer_corridor_mode.as_deref()
+        }),
+        worst_shape_rmse_m: worst.map(|(_, value)| value).unwrap_or(0.0),
+        worst_record: worst.map(|(record, _)| record),
+    }
+}
+
+fn transfer_shape_record_has_transfer(record: &crate::BatchRunRecord) -> bool {
+    record.resolved.selector.mission == "transfer_guidance"
+        || record.resolved.selector.route_angle != UNSPECIFIED_SELECTOR_VALUE
+        || record.review.transfer_shape_curve_rmse_m.is_some()
+        || record.review.transfer_final_phase.is_some()
+}
+
+fn transfer_shape_record_success(record: &crate::BatchRunRecord) -> bool {
+    record.analytic.is_scored()
+        && matches!(
+            record.manifest.mission_outcome,
+            pd_core::MissionOutcome::Success
+        )
+}
+
+fn transfer_shape_cell_key(record: &crate::BatchRunRecord) -> Option<TransferShapeCellKey> {
+    if !transfer_shape_record_has_transfer(record) {
+        return None;
+    }
+    let selector = &record.resolved.selector;
+    Some(TransferShapeCellKey {
+        condition_set: selector_value_or_unspecified(&selector.condition_set),
+        vehicle_variant: selector_value_or_unspecified(&selector.vehicle_variant),
+        route_angle: selector_preferred_value(&selector.route_angle, &selector.arc_point),
+        radius_tier: selector_preferred_value(&selector.radius_tier, &selector.velocity_band),
+    })
+}
+
+fn selector_value_or_unspecified(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        UNSPECIFIED_SELECTOR_VALUE.to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+fn selector_preferred_value(primary: &str, fallback: &str) -> String {
+    let primary = primary.trim();
+    if !primary.is_empty() && primary != UNSPECIFIED_SELECTOR_VALUE {
+        primary.to_owned()
+    } else {
+        selector_value_or_unspecified(fallback)
+    }
+}
+
+fn transfer_shape_metric_summary<F>(
+    records: &[&crate::BatchRunRecord],
+    extractor: F,
+) -> Option<crate::BatchMetricSummary>
+where
+    F: Fn(&crate::BatchRunReviewMetrics) -> Option<f64>,
+{
+    let values = records
+        .iter()
+        .filter_map(|record| extractor(&record.review))
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    crate::metric_summary(&values)
+}
+
+fn dominant_transfer_shape_mode<F>(
+    records: &[&crate::BatchRunRecord],
+    extractor: F,
+) -> Option<String>
+where
+    F: Fn(&crate::BatchRunReviewMetrics) -> Option<&str>,
+{
+    let mut counts = BTreeMap::<String, usize>::new();
+    for record in records {
+        let Some(value) = extractor(&record.review) else {
+            continue;
+        };
+        let value = value.trim();
+        if value.is_empty() {
+            continue;
+        }
+        *counts.entry(value.to_owned()).or_insert(0) += 1;
+    }
+    let mut ranked = counts.into_iter().collect::<Vec<_>>();
+    ranked.sort_by(|(lhs_value, lhs_count), (rhs_value, rhs_count)| {
+        rhs_count
+            .cmp(lhs_count)
+            .then_with(|| lhs_value.cmp(rhs_value))
+    });
+    ranked.into_iter().next().map(|(value, _)| value)
+}
+
+fn render_transfer_shape_success_cell(summary: &TransferShapeCellSummary<'_>) -> String {
+    let scored_runs = summary.scored_runs;
+    let main = format!("{}/{}", summary.success_runs, scored_runs);
+    let sub = if scored_runs == 0 {
+        format!("{} total", summary.total_runs)
+    } else {
+        format!(
+            "{:.1}% scored",
+            percentage(summary.success_runs, scored_runs)
+        )
+    };
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&main),
+        escape_html(&sub),
+    )
+}
+
+fn render_transfer_shape_modes(summary: &TransferShapeCellSummary<'_>) -> String {
+    let boost = summary.boost_quality.as_deref().unwrap_or("-");
+    let gate = summary.gate_mode.as_deref().unwrap_or("-");
+    let corridor = summary.corridor_mode.as_deref().unwrap_or("-");
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">boost {}</div><div class="overview-sub">gate {} · corridor {}</div></div>"#,
+        escape_html(boost),
+        escape_html(gate),
+        escape_html(corridor),
+    )
+}
+
+fn render_transfer_shape_worst_seed(
+    summary: &TransferShapeCellSummary<'_>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let Some(record) = summary.worst_record else {
+        return r#"<span class="muted">-</span>"#.to_owned();
+    };
+    let label = format!("seed {:04}", record.resolved.resolved_seed);
+    let shape = format!("{:.2}m", summary.worst_shape_rmse_m);
+    let Some(bundle_dir) = candidate_record_map
+        .get(&record.resolved.run_id)
+        .map(String::as_str)
+        .or(record.bundle_dir.as_deref())
+    else {
+        return format!(
+            r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">shape {}</div></div>"#,
+            escape_html(&label),
+            escape_html(&shape),
+        );
+    };
+    let bundle_dir = resolve_repo_relative(Path::new(bundle_dir));
+    let href = best_bundle_href(&bundle_dir, output_dir);
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main"><a href="{}">{}</a></div><div class="overview-sub">shape {}</div></div>"#,
+        escape_html(&href),
+        escape_html(&label),
+        escape_html(&shape),
+    )
+}
+
+fn render_transfer_shape_delta_cells(
+    summary: &TransferShapeCellSummary<'_>,
+    baseline: Option<&TransferShapeCellSummary<'_>>,
+    show_deltas: bool,
+) -> String {
+    if !show_deltas {
+        return String::new();
+    }
+    let shape_delta = metric_delta_value(
+        summary.shape_rmse_m.as_ref(),
+        baseline.and_then(|summary| summary.shape_rmse_m.as_ref()),
+    );
+    let shape_html = shape_delta
+        .map(|delta| {
+            format!(
+                r#"<span class="{}">{}</span>"#,
+                delta_class(delta),
+                escape_html(&format_metric_delta_value(delta, MetricDisplayKind::Meters))
+            )
+        })
+        .unwrap_or_else(|| r#"<span class="muted">-</span>"#.to_owned());
+    let success_delta = baseline.map(|baseline| {
+        success_rate_ratio(summary.success_runs, summary.scored_runs)
+            - success_rate_ratio(baseline.success_runs, baseline.scored_runs)
+    });
+    let success_html = success_delta
+        .map(|delta| {
+            format!(
+                r#"<span class="{}">{}</span>"#,
+                delta_class(-delta),
+                escape_html(&format_percent_delta(delta))
+            )
+        })
+        .unwrap_or_else(|| r#"<span class="muted">-</span>"#.to_owned());
+    format!(
+        r#"<td class="compare-toggle-target">{shape_html}</td>
+  <td class="compare-toggle-target">{success_html}</td>"#
+    )
+}
+
+fn transfer_shape_cell_id(key: &TransferShapeCellKey) -> String {
+    [
+        key.condition_set.as_str(),
+        key.vehicle_variant.as_str(),
+        key.route_angle.as_str(),
+        key.radius_tier.as_str(),
+    ]
+    .join("|")
+}
 
 #[derive(Clone, Debug)]
 struct ReviewAggregate {
@@ -4825,6 +5365,15 @@ fn format_metric_delta_value(delta: f64, kind: MetricDisplayKind) -> String {
     }
 }
 
+fn format_metric_mean(
+    summary: Option<&crate::BatchMetricSummary>,
+    kind: MetricDisplayKind,
+) -> String {
+    summary
+        .map(|summary| format_metric_value(summary, kind))
+        .unwrap_or_else(|| "-".to_owned())
+}
+
 fn format_metric_summary(
     summary: Option<&crate::BatchMetricSummary>,
     kind: MetricDisplayKind,
@@ -6226,10 +6775,11 @@ mod report_tests {
     };
 
     use crate::{
-        ConcreteScenarioPackEntry, NumericPerturbationMode, NumericPerturbationSpec,
-        ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec, SeedRangeSpec,
-        TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier, TransferMatrixEntry,
-        TransferMatrixLaneSpec, TransferSeedTier, compare_batch_reports, run_pack_with_workers,
+        BatchReport, BatchRunRecord, ConcreteScenarioPackEntry, NumericPerturbationMode,
+        NumericPerturbationSpec, ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec,
+        SeedRangeSpec, TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier,
+        TransferMatrixEntry, TransferMatrixLaneSpec, TransferSeedTier, compare_batch_reports,
+        run_pack_with_workers,
     };
 
     use super::{render_batch_report, sort_selector_keys, tree_group_id};
@@ -6309,6 +6859,95 @@ mod report_tests {
         })
     }
 
+    fn report_with_records(mut report: BatchReport, records: Vec<BatchRunRecord>) -> BatchReport {
+        report.total_runs = records.len();
+        report.resolved_runs = records
+            .iter()
+            .map(|record| record.resolved.clone())
+            .collect();
+        report.summary = crate::summarize_records(&records);
+        report.records = records;
+        report
+    }
+
+    fn synthetic_transfer_shape_report(id: &str, cells: &[(&str, &str, f64, u64)]) -> BatchReport {
+        let pack = ScenarioPackSpec {
+            id: id.to_owned(),
+            name: format!("{id} report"),
+            description: "synthetic transfer shape report".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![checkpoint_entry()],
+        };
+        let base_report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
+        let template = base_report
+            .records
+            .first()
+            .expect("checkpoint report should contain one record")
+            .clone();
+        let records = cells
+            .iter()
+            .map(|(route_angle, vehicle_variant, shape_rmse_m, seed)| {
+                synthetic_transfer_shape_record(
+                    &template,
+                    route_angle,
+                    vehicle_variant,
+                    *shape_rmse_m,
+                    *seed,
+                )
+            })
+            .collect::<Vec<_>>();
+        report_with_records(base_report, records)
+    }
+
+    fn synthetic_transfer_shape_record(
+        template: &BatchRunRecord,
+        route_angle: &str,
+        vehicle_variant: &str,
+        shape_rmse_m: f64,
+        seed: u64,
+    ) -> BatchRunRecord {
+        let mut record = template.clone();
+        record.resolved.run_id = tree_group_id(&[
+            "transfer_shape",
+            route_angle,
+            vehicle_variant,
+            &format!("seed_{seed:02}"),
+            "current",
+        ]);
+        record.resolved.entry_id = "transfer_guidance_clean".to_owned();
+        record.resolved.family_id = Some("transfer_guidance_clean".to_owned());
+        record.resolved.selector.mission = "transfer_guidance".to_owned();
+        record.resolved.selector.arrival_family = "signed_route_arc_transfer_v1".to_owned();
+        record.resolved.selector.condition_set = "clean".to_owned();
+        record.resolved.selector.vehicle_variant = vehicle_variant.to_owned();
+        record.resolved.selector.arc_point = route_angle.to_owned();
+        record.resolved.selector.velocity_band = "nominal".to_owned();
+        record.resolved.selector.route_family = "signed_route_arc_transfer_v1".to_owned();
+        record.resolved.selector.route_angle = route_angle.to_owned();
+        record.resolved.selector.radius_tier = "nominal".to_owned();
+        record.resolved.selector.expectation_tier = Some("core".to_owned());
+        record.resolved.lane_id = "current".to_owned();
+        record.resolved.resolved_seed = seed;
+        record.resolved.controller_id = "transfer_pdg_v1".to_owned();
+        record.manifest.scenario_seed = seed;
+        record.manifest.sim_time_s = 20.0 + seed as f64;
+        record.manifest.physical_outcome = pd_core::PhysicalOutcome::LandedOnTarget;
+        record.manifest.mission_outcome = pd_core::MissionOutcome::Success;
+        record.manifest.end_reason = pd_core::EndReason::TouchdownOnTarget;
+        record.review.transfer_shape_curve_rmse_m = Some(shape_rmse_m);
+        record.review.transfer_shape_apex_error_m = Some(shape_rmse_m * 0.25);
+        record.review.transfer_shape_projected_dx_abs_max_m = Some(shape_rmse_m * 1.5);
+        record.review.transfer_shape_shortfall_ratio = Some(0.04);
+        record.review.transfer_terminal_handoff_time_s = Some(12.0);
+        record.review.transfer_final_phase = Some("terminal".to_owned());
+        record.review.transfer_boost_quality = Some("balanced".to_owned());
+        record.review.transfer_boost_burn_duration_s = Some(5.0);
+        record.review.transfer_terminal_gate_mode = Some("ready".to_owned());
+        record.review.transfer_corridor_mode = Some("inactive".to_owned());
+        record.bundle_dir = None;
+        record
+    }
+
     #[test]
     fn standalone_report_prefers_current_lane_context() {
         let pack = ScenarioPackSpec {
@@ -6354,6 +6993,7 @@ mod report_tests {
         assert!(html.contains("not cached"));
         assert!(!html.contains("data-view-mode=\"compare\""));
         assert!(!html.contains("baseline controller lane <code>baseline</code>"));
+        assert!(!html.contains("<h2>Transfer Shape Triage</h2>"));
         assert!(!html.contains(
             r#"selector-inline">lane</span> <span class="selector-code">baseline</span>"#
         ));
@@ -6539,6 +7179,78 @@ mod report_tests {
         assert!(html.contains(r#"case "radius": return 4;"#));
         assert!(html.contains("transfer terminal"));
         assert!(html.contains("handoff"));
+    }
+
+    #[test]
+    fn transfer_shape_triage_renders_for_transfer_records_without_standalone_deltas() {
+        let report =
+            synthetic_transfer_shape_report("transfer_shape_unit", &[("r00", "empty", 24.0, 0)]);
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_shape_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("<h2>Transfer Shape Triage</h2>"));
+        assert!(html.contains("Current-lane transfer cells"));
+        assert!(html.contains("Shape RMSE"));
+        assert!(html.contains("Worst Seed"));
+        assert!(html.contains(r#"data-transfer-shape-cell="clean|empty|r00|nominal""#));
+        assert!(!html.contains("Δ Shape"));
+        assert!(!html.contains("Δ Success"));
+    }
+
+    #[test]
+    fn transfer_shape_triage_sorts_by_worst_successful_shape_rmse() {
+        let report = synthetic_transfer_shape_report(
+            "transfer_shape_sort_unit",
+            &[("r00", "empty", 12.0, 0), ("r+60", "empty", 88.0, 1)],
+        );
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_shape_sort_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        let high_pos = html
+            .find(r#"data-transfer-shape-cell="clean|empty|r+60|nominal""#)
+            .expect("higher RMSE cell should render");
+        let low_pos = html
+            .find(r#"data-transfer-shape-cell="clean|empty|r00|nominal""#)
+            .expect("lower RMSE cell should render");
+        assert!(
+            high_pos < low_pos,
+            "transfer shape rows should sort by descending worst successful RMSE"
+        );
+    }
+
+    #[test]
+    fn transfer_shape_triage_renders_compare_deltas_for_matching_cells() {
+        let candidate = synthetic_transfer_shape_report(
+            "transfer_shape_candidate_unit",
+            &[("r+60", "empty", 50.0, 0), ("r00", "empty", 10.0, 1)],
+        );
+        let baseline = synthetic_transfer_shape_report(
+            "transfer_shape_baseline_unit",
+            &[("r+60", "empty", 20.0, 0), ("r00", "empty", 10.0, 1)],
+        );
+        let comparison = compare_batch_reports(&candidate, &baseline);
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_shape_candidate_unit"),
+            &candidate,
+            Some((
+                Path::new("outputs/eval/transfer_shape_baseline_unit"),
+                &baseline,
+            )),
+            Some(&comparison),
+        );
+
+        assert!(html.contains("Δ Shape"));
+        assert!(html.contains("Δ Success"));
+        assert!(html.contains("+30.00m"));
+        assert!(html.contains("+0.0 pp"));
     }
 
     #[test]
