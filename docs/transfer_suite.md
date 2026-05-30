@@ -78,6 +78,22 @@ Transfer packs use a first-class pack entry:
 }
 ```
 
+Current corpus tiers:
+
+- `transfer_bot_lab_suite`
+  - 45 runs
+  - 3 payload tiers: `empty`, `half`, `full`
+  - smoke route angles: `r-60`, `r-30`, `r00`, `r+30`, `r+60`
+  - smoke seeds: `0`, `1`, `2`
+  - intended as the fast transfer controller gate
+- `transfer_route_angle_suite`
+  - 99 runs
+  - the same 3 payload tiers and smoke seeds
+  - all 11 signed route angles from `r-80` through `r+80`
+  - still fixed at `radius_tier = nominal`
+  - intended as the route-shape diagnostic pack before adding radius tiers or
+    full seeds
+
 Resolved transfer runs use transfer-specific selector fields:
 
 - `mission = transfer_guidance`
@@ -110,10 +126,54 @@ This keeps the terminal controller contract narrow: given a reachable,
 terrain-valid approach corridor, handle braking, lateral cleanup, descent rate,
 attitude, and touchdown.
 
+Transfer reports derive handoff review metrics from controller telemetry without
+changing controller behavior:
+
+- `transfer_final_phase`
+- `transfer_terminal_handoff_time_s`
+- `transfer_terminal_handoff_dx_m`
+- `transfer_terminal_handoff_height_m`
+- `transfer_terminal_handoff_speed_mps`
+
+These appear in `summary.json` per-run review records and in seed-row details
+for transfer batch reports.
+
+## Current Baseline
+
+Initial `transfer_route_angle_suite` baseline:
+
+- generated at commit `b32eb2f` with `8` workers
+- `57 / 99` successes
+- `42` crashes
+- `0` invalidations
+- `4.05s` wall clock
+- `33.22s` mean sim time
+- `72.33s` max sim time
+
+Route-shape read:
+
+- all downhill and flat cells from `r-80` through `r00` solve across all
+  payload tiers
+- `empty/r+15` solves
+- `half/full r+15` fail after reaching terminal handoff
+- `empty/r+30` reaches terminal handoff but fails; `half/full r+30` crash
+  before handoff
+- `r+45` and `r+60` crash during boost across all payload tiers
+- `r+80` reaches terminal handoff but fails across all payload tiers
+- all failing route/payload cells failed all three smoke seeds, so the current
+  signal is route-shape and payload dependent rather than seed-noise dependent
+
+Handoff read:
+
+- `75 / 99` runs reached terminal handoff
+- `24 / 99` runs ended while still in boost
+- the next controller work should focus on boost/coast/handoff geometry for
+  uphill transfer routes before broadening radius or seed count
+
 ## Deferred Work
 
 - route radius tiers
-- route-angle full packs
+- full-seed transfer packs
 - terminal climbing-arrival suite extension
-- handoff quality metrics in batch summaries
+- aggregate handoff quality thresholds in batch summaries
 - waypoint/corridor planning above terminal guidance

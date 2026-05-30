@@ -1,5 +1,44 @@
 # Progress
 
+## 2026-05-30
+
+### Transfer route-angle corpus baseline
+
+- Added `fixtures/packs/transfer_route_angle_suite.json` as the first
+  full-route-angle diagnostic transfer pack.
+- The pack keeps the v1 transfer scope intentionally narrow:
+  - `signed_route_arc_transfer_v1`
+  - fixed `800m` nominal route radius
+  - current lane only
+  - payload tiers `empty`, `half`, `full`
+  - smoke seeds `0`, `1`, `2`
+  - all route angles from `r-80` through `r+80`
+- Kept `transfer_bot_lab_suite` as the fast 45-run smoke gate.
+- Added transfer handoff review metrics to batch records and reports:
+  - final transfer phase
+  - first terminal handoff time
+  - handoff target `dx`
+  - handoff height
+  - handoff speed
+- Regenerated `transfer_route_angle_suite` locally with `8` workers:
+  - `57 / 99` successes
+  - `42` crashes
+  - `0` invalidations
+  - `4.05s` wall clock
+  - `33.22s` mean sim time
+  - `72.33s` max sim time
+- Current transfer read:
+  - downhill and flat routes from `r-80` through `r00` solve across every
+    payload tier
+  - `empty/r+15` also solves
+  - the active gap is uphill transfer control: `half/full r+15` and all
+    `r+30`, `r+45`, `r+60`, and `r+80` cells expose boost or terminal-handoff
+    failures
+  - `75 / 99` runs reached terminal handoff and `24 / 99` ended in boost
+- Next transfer work should tune launch/boost/coast/handoff behavior on the
+  route-angle pack before adding route radius tiers or full-seed transfer
+  coverage.
+
 ## 2026-05-06
 
 ### Terrain avoidance design pivot

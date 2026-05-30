@@ -200,6 +200,12 @@ Run the first transfer-guidance smoke matrix:
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_bot_lab_suite.json --workers 8
 ```
 
+Run the full route-angle diagnostic matrix at the same nominal radius:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_suite.json --workers 8
+```
+
 Force a rerun and skip cache reuse if needed:
 
 ```bash
@@ -293,6 +299,11 @@ route-angle labels from `r-60` through `r+60` in smoke tier, and the staged
 `transfer_pdg_v1` controller. Transfer reports label the matrix axes as route
 and radius instead of terminal arc and velocity band.
 
+`transfer_route_angle_suite` runs the same controller, payload tiers, and fixed
+`800m` radius, but expands to all 11 signed route angles from `r-80` through
+`r+80` with smoke seeds. It is the route-shape diagnostic pack, not a full-seed
+or radius-tier expansion.
+
 That writes:
 
 - `pack.json`
@@ -330,6 +341,9 @@ enough for real controller iteration. The evaluator can now:
   scoring
 - evaluate a default thresholded regression policy over compare runs, scoped to
   the preferred current controller lane when both reports contain one
+- record transfer handoff diagnostics in per-run review metrics:
+  `transfer_final_phase`, terminal handoff time, handoff `dx`, handoff height,
+  and handoff speed
 
 Current checkpoint on the maintained Earth payload tiers:
 
@@ -382,6 +396,19 @@ Experimental terrain diagnostic snapshot:
   - the backstop packs are also parked outside the maintained terminal guidance
     scorecard
 
+Transfer route-angle checkpoint:
+
+- `transfer_route_angle_suite`
+  - `current`: `57 / 99` successes, `42` crashes, `0` invalidations
+  - wall clock `4.05s` with `8` workers
+  - all downhill and flat routes from `r-80` through `r00` are solved across
+    `empty`, `half`, and `full`
+  - positive uphill routes are the active transfer-control gap:
+    `empty/r+15` solves, while `half/full r+15` and all `r+30`, `r+45`,
+    `r+60`, and `r+80` cells expose boost or terminal-handoff failures
+  - `75 / 99` runs reached terminal handoff; `24 / 99` crashed while still in
+    boost
+
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
 is still the low-thrust/high-energy frontier and its failed cells remain
@@ -393,7 +420,7 @@ has an approach-corridor or waypoint-planning layer. Detailed checkpoint history
 lives in `docs/progress.md` and `docs/terminal_suite.md`.
 
 The next useful slice is to make the first Phase 3 transfer workbench useful:
-keep `transfer_bot_lab_suite` runnable, inspect transfer handoff telemetry, and
-tune only the staged transfer phases needed before terminal handoff. Broad
-terminal-controller tuning should stay optional and hypothesis-gated rather than
-the default path.
+keep `transfer_bot_lab_suite` runnable as the fast gate, use
+`transfer_route_angle_suite` for route-shape diagnosis, and tune only the staged
+transfer phases needed before terminal handoff. Broad terminal-controller tuning
+should stay optional and hypothesis-gated rather than the default path.

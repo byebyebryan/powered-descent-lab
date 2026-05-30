@@ -38,9 +38,13 @@ Current implementation status:
   - scored authority-frontier annotations for low-thrust/high-energy cells
   - default thresholded regression policy over batch comparisons, scoped to the
     preferred current controller lane when both reports contain one
-- One Phase 3 contract probe has been pulled forward intentionally:
-  `timed_checkpoint`, to validate early-termination mission evaluation without
-  committing to the full transfer stack yet.
+- Phase 3 has started as an evaluation workbench rather than a finished
+  transfer controller:
+  - `timed_checkpoint` remains available as an early-termination contract probe
+  - `signed_route_arc_transfer_v1` now exists as the first source-to-target
+    matrix family
+  - `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
+    handoff controller
 
 ## 2. What Not To Build First
 
@@ -263,6 +267,17 @@ Status:
 - `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
   handoff controller
 - `transfer_bot_lab_suite` is the smoke workbench for the initial route family
+- `transfer_route_angle_suite` is the current route-shape diagnostic workbench:
+  fixed nominal `800m` radius, smoke seeds, and all 11 signed route angles
+  across `empty`, `half`, and `full` payload tiers
+- batch review metrics now capture transfer final phase and first terminal
+  handoff time, `dx`, height, and speed per run
+- initial route-angle baseline:
+  - `57 / 99` successes
+  - `42` crashes
+  - `0` invalidations
+  - all downhill and flat cells solve; uphill routes expose the active
+    boost/coast/handoff control gap
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
@@ -416,7 +431,8 @@ The next useful work is:
 5. Keep a later terminal-arrival extension on the roadmap: a signed
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
-6. Run `transfer_bot_lab_suite`, inspect staged transfer telemetry, and tune the
+6. Keep `transfer_bot_lab_suite` as the fast gate, use
+   `transfer_route_angle_suite` for route-shape diagnosis, and tune the
    transfer-specific takeoff/boost/coast handoff before broadening route radius
    or full-seed coverage.
 
