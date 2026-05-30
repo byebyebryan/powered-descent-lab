@@ -25,7 +25,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 16;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 17;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -130,6 +130,24 @@ pub struct BatchRunReviewMetrics {
     pub transfer_terminal_handoff_speed_mps: Option<f64>,
     #[serde(default)]
     pub transfer_final_phase: Option<String>,
+    #[serde(default)]
+    pub transfer_boost_projected_dx_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_impact_angle_deg: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_apex_over_target_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_quality: Option<String>,
+    #[serde(default)]
+    pub transfer_boost_cutoff_time_s: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_cutoff_quality: Option<String>,
+    #[serde(default)]
+    pub transfer_terminal_gate_mode: Option<String>,
+    #[serde(default)]
+    pub transfer_terminal_gate_latest_safe_margin_s: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_gate_required_accel_ratio: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -4527,6 +4545,15 @@ fn derive_run_review_metrics(
         transfer_terminal_handoff_height_m: transfer.terminal_handoff_height_m,
         transfer_terminal_handoff_speed_mps: transfer.terminal_handoff_speed_mps,
         transfer_final_phase: transfer.final_phase,
+        transfer_boost_projected_dx_m: transfer.boost_projected_dx_m,
+        transfer_boost_impact_angle_deg: transfer.boost_impact_angle_deg,
+        transfer_boost_apex_over_target_m: transfer.boost_apex_over_target_m,
+        transfer_boost_quality: transfer.boost_quality,
+        transfer_boost_cutoff_time_s: transfer.boost_cutoff_time_s,
+        transfer_boost_cutoff_quality: transfer.boost_cutoff_quality,
+        transfer_terminal_gate_mode: transfer.terminal_gate_mode,
+        transfer_terminal_gate_latest_safe_margin_s: transfer.terminal_gate_latest_safe_margin_s,
+        transfer_terminal_gate_required_accel_ratio: transfer.terminal_gate_required_accel_ratio,
     }
 }
 
@@ -4537,6 +4564,15 @@ struct TransferReviewMetrics {
     terminal_handoff_height_m: Option<f64>,
     terminal_handoff_speed_mps: Option<f64>,
     final_phase: Option<String>,
+    boost_projected_dx_m: Option<f64>,
+    boost_impact_angle_deg: Option<f64>,
+    boost_apex_over_target_m: Option<f64>,
+    boost_quality: Option<String>,
+    boost_cutoff_time_s: Option<f64>,
+    boost_cutoff_quality: Option<String>,
+    terminal_gate_mode: Option<String>,
+    terminal_gate_latest_safe_margin_s: Option<f64>,
+    terminal_gate_required_accel_ratio: Option<f64>,
 }
 
 fn transfer_review_metrics(
@@ -4545,16 +4581,14 @@ fn transfer_review_metrics(
     let final_phase = controller_updates
         .iter()
         .rev()
-        .find_map(|update| telemetry_text(&update.frame.metrics, "transfer.phase"))
+        .find_map(|update| telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE))
         .map(ToOwned::to_owned);
-    let Some(handoff) = controller_updates
-        .iter()
-        .find(|update| telemetry_text(&update.frame.metrics, "transfer.phase") == Some("terminal"))
-    else {
-        return TransferReviewMetrics {
-            final_phase,
-            ..TransferReviewMetrics::default()
-        };
+    let Some(handoff) = controller_updates.iter().find(|update| {
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("terminal")
+    }) else {
+        let mut metrics = transfer_review_metrics_without_handoff(controller_updates);
+        metrics.final_phase = final_phase;
+        return metrics;
     };
     let terminal_handoff_dx_m = telemetry_float(&handoff.frame.metrics, metric::TARGET_DX_M);
     let terminal_handoff_height_m =
@@ -4566,14 +4600,94 @@ fn transfer_review_metrics(
                 metric::TANGENTIAL_SPEED_MPS,
             ))
             .map(|(vertical, tangential)| vertical.hypot(tangential));
+    let mut metrics = transfer_review_metrics_without_handoff(controller_updates);
+    metrics.terminal_handoff_time_s = Some(handoff.sim_time_s);
+    metrics.terminal_handoff_dx_m = terminal_handoff_dx_m;
+    metrics.terminal_handoff_height_m = terminal_handoff_height_m;
+    metrics.terminal_handoff_speed_mps = terminal_handoff_speed_mps;
+    metrics.final_phase = final_phase;
+    metrics
+}
+
+fn transfer_review_metrics_without_handoff(
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+) -> TransferReviewMetrics {
+    let last_boost_update = controller_updates.iter().rev().find(|update| {
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY).is_some()
+    });
+    let (boost_projected_dx_m, boost_impact_angle_deg, boost_apex_over_target_m, boost_quality) =
+        last_boost_update
+            .map(|update| {
+                (
+                    telemetry_float(&update.frame.metrics, metric::TRANSFER_PROJECTED_DX_M),
+                    telemetry_float(&update.frame.metrics, metric::TRANSFER_IMPACT_ANGLE_DEG)
+                        .filter(|value| *value >= 0.0),
+                    telemetry_float(&update.frame.metrics, metric::TRANSFER_APEX_OVER_TARGET_M),
+                    telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY)
+                        .map(ToOwned::to_owned),
+                )
+            })
+            .unwrap_or((None, None, None, None));
+    let boost_cutoff = transfer_boost_cutoff_update(controller_updates);
+    let (boost_cutoff_time_s, boost_cutoff_quality) = boost_cutoff
+        .map(|update| {
+            (
+                Some(update.sim_time_s),
+                telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY)
+                    .map(ToOwned::to_owned),
+            )
+        })
+        .unwrap_or((None, None));
+    let terminal_gate_update = controller_updates.iter().rev().find(|update| {
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_TERMINAL_GATE_MODE).is_some()
+    });
+    let (
+        terminal_gate_mode,
+        terminal_gate_latest_safe_margin_s,
+        terminal_gate_required_accel_ratio,
+    ) = terminal_gate_update
+        .map(|update| {
+            (
+                telemetry_text(&update.frame.metrics, metric::TRANSFER_TERMINAL_GATE_MODE)
+                    .map(ToOwned::to_owned),
+                telemetry_float(
+                    &update.frame.metrics,
+                    metric::TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S,
+                ),
+                telemetry_float(
+                    &update.frame.metrics,
+                    metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO,
+                ),
+            )
+        })
+        .unwrap_or((None, None, None));
 
     TransferReviewMetrics {
-        terminal_handoff_time_s: Some(handoff.sim_time_s),
-        terminal_handoff_dx_m,
-        terminal_handoff_height_m,
-        terminal_handoff_speed_mps,
-        final_phase,
+        boost_projected_dx_m,
+        boost_impact_angle_deg,
+        boost_apex_over_target_m,
+        boost_quality,
+        boost_cutoff_time_s,
+        boost_cutoff_quality,
+        terminal_gate_mode,
+        terminal_gate_latest_safe_margin_s,
+        terminal_gate_required_accel_ratio,
+        ..TransferReviewMetrics::default()
     }
+}
+
+fn transfer_boost_cutoff_update(
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+) -> Option<&pd_control::ControllerUpdateRecord> {
+    let mut last_boost = None;
+    for update in controller_updates {
+        match telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) {
+            Some("boost") => last_boost = Some(update),
+            Some(_) if last_boost.is_some() => return last_boost,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn telemetry_text<'a>(metrics: &'a BTreeMap<String, TelemetryValue>, key: &str) -> Option<&'a str> {
@@ -6543,10 +6657,28 @@ mod tests {
                     command: pd_core::Command::idle(),
                     status: "boosting".to_owned(),
                     phase: Some("boost".to_owned()),
-                    metrics: BTreeMap::from([(
-                        "transfer.phase".to_owned(),
-                        TelemetryValue::from("boost"),
-                    )]),
+                    metrics: BTreeMap::from([
+                        (
+                            metric::TRANSFER_PHASE.to_owned(),
+                            TelemetryValue::from("boost"),
+                        ),
+                        (
+                            metric::TRANSFER_PROJECTED_DX_M.to_owned(),
+                            TelemetryValue::from(42.0),
+                        ),
+                        (
+                            metric::TRANSFER_IMPACT_ANGLE_DEG.to_owned(),
+                            TelemetryValue::from(61.0),
+                        ),
+                        (
+                            metric::TRANSFER_APEX_OVER_TARGET_M.to_owned(),
+                            TelemetryValue::from(120.0),
+                        ),
+                        (
+                            metric::TRANSFER_BOOST_QUALITY.to_owned(),
+                            TelemetryValue::from("pass"),
+                        ),
+                    ]),
                     markers: Vec::new(),
                 },
             },
@@ -6561,7 +6693,7 @@ mod tests {
                     phase: Some("terminal".to_owned()),
                     metrics: BTreeMap::from([
                         (
-                            "transfer.phase".to_owned(),
+                            metric::TRANSFER_PHASE.to_owned(),
                             TelemetryValue::from("terminal"),
                         ),
                         (metric::TARGET_DX_M.to_owned(), TelemetryValue::from(120.0)),
@@ -6590,6 +6722,12 @@ mod tests {
         assert_eq!(metrics.terminal_handoff_dx_m, Some(120.0));
         assert_eq!(metrics.terminal_handoff_height_m, Some(80.0));
         assert_eq!(metrics.terminal_handoff_speed_mps, Some(13.0));
+        assert_eq!(metrics.boost_projected_dx_m, Some(42.0));
+        assert_eq!(metrics.boost_impact_angle_deg, Some(61.0));
+        assert_eq!(metrics.boost_apex_over_target_m, Some(120.0));
+        assert_eq!(metrics.boost_quality.as_deref(), Some("pass"));
+        assert_eq!(metrics.boost_cutoff_time_s, Some(1.0));
+        assert_eq!(metrics.boost_cutoff_quality.as_deref(), Some("pass"));
     }
 
     #[test]

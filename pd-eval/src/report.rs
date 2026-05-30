@@ -4186,6 +4186,28 @@ fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String 
     if let Some(time_s) = review.transfer_terminal_handoff_time_s {
         parts.push(format!("handoff {time_s:.1}s"));
     }
+    if let Some(quality) = review.transfer_boost_quality.as_deref() {
+        parts.push(format!("boost {quality}"));
+    }
+    if let Some(projected_dx_m) = review.transfer_boost_projected_dx_m {
+        parts.push(format!("pdx {projected_dx_m:.0}m"));
+    }
+    if let Some(impact_angle_deg) = review.transfer_boost_impact_angle_deg {
+        parts.push(format!("impact {impact_angle_deg:.0}deg"));
+    }
+    if let Some(cutoff_quality) = review.transfer_boost_cutoff_quality.as_deref() {
+        let cutoff = review
+            .transfer_boost_cutoff_time_s
+            .map(|time_s| format!("{time_s:.1}s"))
+            .unwrap_or_else(|| "?".to_owned());
+        parts.push(format!("cut {cutoff} {cutoff_quality}"));
+    }
+    if let Some(gate_mode) = review.transfer_terminal_gate_mode.as_deref() {
+        parts.push(format!("gate {gate_mode}"));
+    }
+    if let Some(latest_safe_margin_s) = review.transfer_terminal_gate_latest_safe_margin_s {
+        parts.push(format!("margin {latest_safe_margin_s:.1}s"));
+    }
     if let Some(dx_m) = review.transfer_terminal_handoff_dx_m {
         parts.push(format!("dx {dx_m:.0}m"));
     }

@@ -40,6 +40,22 @@ pub mod metric {
     pub const GUIDANCE_TERRAIN_FIRST_VIOLATION_TIME_S: &str =
         "guidance.terrain_first_violation_time_s";
     pub const GUIDANCE_TERRAIN_CLEARANCE_SAFE: &str = "guidance.terrain_clearance_safe";
+    pub const TRANSFER_PHASE: &str = "transfer.phase";
+    pub const TRANSFER_ROUTE_DX_M: &str = "transfer.route_dx_m";
+    pub const TRANSFER_ROUTE_DY_M: &str = "transfer.route_dy_m";
+    pub const TRANSFER_TARGET_Y_SOLUTION: &str = "transfer.target_y_solution";
+    pub const TRANSFER_PROJECTED_TIME_S: &str = "transfer.projected_time_s";
+    pub const TRANSFER_PROJECTED_DX_M: &str = "transfer.projected_dx_m";
+    pub const TRANSFER_IMPACT_ANGLE_DEG: &str = "transfer.impact_angle_deg";
+    pub const TRANSFER_APEX_OVER_TARGET_M: &str = "transfer.apex_over_target_m";
+    pub const TRANSFER_BOOST_APEX_TARGET_M: &str = "transfer.boost_apex_target_m";
+    pub const TRANSFER_BOOST_QUALITY: &str = "transfer.boost_quality";
+    pub const TRANSFER_BOOST_QUALITY_PASS: &str = "transfer.boost_quality_pass";
+    pub const TRANSFER_TERMINAL_GATE_MODE: &str = "transfer.terminal_gate_mode";
+    pub const TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S: &str =
+        "transfer.terminal_gate_latest_safe_margin_s";
+    pub const TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO: &str =
+        "transfer.terminal_gate_required_accel_ratio";
 }
 
 pub mod marker {

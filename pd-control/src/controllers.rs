@@ -5,6 +5,42 @@ use pd_core::{Command, Observation, RunContext};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+fn default_transfer_boost_projected_dx_limit_m() -> f64 {
+    55.0
+}
+
+fn default_transfer_boost_descent_angle_min_deg() -> f64 {
+    45.0
+}
+
+fn default_transfer_boost_descent_angle_target_deg() -> f64 {
+    55.0
+}
+
+fn default_transfer_boost_apex_height_per_dx() -> f64 {
+    0.18
+}
+
+fn default_transfer_boost_apex_height_per_uphill_dy() -> f64 {
+    0.15
+}
+
+fn default_transfer_boost_apex_height_min_m() -> f64 {
+    30.0
+}
+
+fn default_transfer_boost_apex_height_max_m() -> f64 {
+    240.0
+}
+
+fn default_transfer_uphill_boost_dy_min_m() -> f64 {
+    20.0
+}
+
+fn default_transfer_uphill_boost_tilt_rad() -> f64 {
+    0.30
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BaselineControllerConfig {
     pub horizontal_position_gain: f64,
@@ -105,6 +141,24 @@ pub struct TransferPdgControllerConfig {
     pub boost_max_time_s: f64,
     pub boost_tilt_rad: f64,
     pub boost_speed_mps: f64,
+    #[serde(default = "default_transfer_boost_projected_dx_limit_m")]
+    pub boost_projected_dx_limit_m: f64,
+    #[serde(default = "default_transfer_boost_descent_angle_min_deg")]
+    pub boost_descent_angle_min_deg: f64,
+    #[serde(default = "default_transfer_boost_descent_angle_target_deg")]
+    pub boost_descent_angle_target_deg: f64,
+    #[serde(default = "default_transfer_boost_apex_height_per_dx")]
+    pub boost_apex_height_per_dx: f64,
+    #[serde(default = "default_transfer_boost_apex_height_per_uphill_dy")]
+    pub boost_apex_height_per_uphill_dy: f64,
+    #[serde(default = "default_transfer_boost_apex_height_min_m")]
+    pub boost_apex_height_min_m: f64,
+    #[serde(default = "default_transfer_boost_apex_height_max_m")]
+    pub boost_apex_height_max_m: f64,
+    #[serde(default = "default_transfer_uphill_boost_dy_min_m")]
+    pub uphill_boost_dy_min_m: f64,
+    #[serde(default = "default_transfer_uphill_boost_tilt_rad")]
+    pub uphill_boost_tilt_rad: f64,
     pub coast_min_altitude_m: f64,
     pub terminal_gate_dx_m: f64,
     pub terminal_gate_altitude_m: f64,
@@ -121,6 +175,15 @@ impl Default for TransferPdgControllerConfig {
             boost_max_time_s: 12.0,
             boost_tilt_rad: 0.72,
             boost_speed_mps: 75.0,
+            boost_projected_dx_limit_m: default_transfer_boost_projected_dx_limit_m(),
+            boost_descent_angle_min_deg: default_transfer_boost_descent_angle_min_deg(),
+            boost_descent_angle_target_deg: default_transfer_boost_descent_angle_target_deg(),
+            boost_apex_height_per_dx: default_transfer_boost_apex_height_per_dx(),
+            boost_apex_height_per_uphill_dy: default_transfer_boost_apex_height_per_uphill_dy(),
+            boost_apex_height_min_m: default_transfer_boost_apex_height_min_m(),
+            boost_apex_height_max_m: default_transfer_boost_apex_height_max_m(),
+            uphill_boost_dy_min_m: default_transfer_uphill_boost_dy_min_m(),
+            uphill_boost_tilt_rad: default_transfer_uphill_boost_tilt_rad(),
             coast_min_altitude_m: 80.0,
             terminal_gate_dx_m: 260.0,
             terminal_gate_altitude_m: 260.0,
@@ -541,6 +604,30 @@ impl TransferPhase {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TransferBallisticProjection {
+    has_target_y_solution: bool,
+    projected_time_s: Option<f64>,
+    projected_dx_m: Option<f64>,
+    impact_angle_deg: Option<f64>,
+    apex_over_target_m: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TransferBoostQuality {
+    verdict: &'static str,
+    passed: bool,
+    apex_target_over_target_m: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TransferDiagnostics {
+    route_dx_m: f64,
+    route_dy_m: f64,
+    projection: TransferBallisticProjection,
+    boost_quality: TransferBoostQuality,
+}
+
 #[derive(Debug)]
 pub struct TransferPdgController {
     config: TransferPdgControllerConfig,
@@ -564,6 +651,160 @@ impl TransferPdgController {
             phase: TransferPhase::Takeoff,
             last_phase: None,
         }
+    }
+
+    fn transfer_diagnostics(&self, observation: &Observation) -> TransferDiagnostics {
+        let route_dx_m = observation.target_dx_m;
+        let route_dy_m = -observation.height_above_target_m;
+        let projection = transfer_ballistic_projection(
+            route_dx_m,
+            route_dy_m,
+            observation.velocity_mps.x,
+            observation.velocity_mps.y,
+            observation.gravity_mps2,
+        );
+        let boost_quality = self.transfer_boost_quality(route_dx_m, route_dy_m, projection);
+
+        TransferDiagnostics {
+            route_dx_m,
+            route_dy_m,
+            projection,
+            boost_quality,
+        }
+    }
+
+    fn transfer_boost_quality(
+        &self,
+        route_dx_m: f64,
+        route_dy_m: f64,
+        projection: TransferBallisticProjection,
+    ) -> TransferBoostQuality {
+        let apex_target_over_target_m =
+            self.boost_apex_target_over_target_m(route_dx_m, route_dy_m);
+        let (verdict, passed) = if !projection.has_target_y_solution {
+            ("no_target_y_solution", false)
+        } else if projection.projected_dx_m.is_none_or(|projected_dx_m| {
+            projected_dx_m.abs() > self.config.boost_projected_dx_limit_m
+        }) {
+            ("dx", false)
+        } else if projection.impact_angle_deg.is_none_or(|impact_angle_deg| {
+            impact_angle_deg < self.config.boost_descent_angle_min_deg
+        }) {
+            ("angle", false)
+        } else {
+            ("pass", true)
+        };
+        TransferBoostQuality {
+            verdict,
+            passed,
+            apex_target_over_target_m,
+        }
+    }
+
+    fn boost_apex_target_over_target_m(&self, route_dx_m: f64, route_dy_m: f64) -> f64 {
+        let base = (self.config.boost_apex_height_per_dx * route_dx_m.abs()).clamp(
+            self.config.boost_apex_height_min_m,
+            self.config.boost_apex_height_max_m,
+        );
+        base + (route_dy_m * self.config.boost_apex_height_per_uphill_dy).max(0.0)
+            + (-route_dy_m).max(0.0)
+    }
+
+    fn transfer_metrics_builder(
+        &self,
+        builder: ControllerFrameBuilder,
+        diagnostics: TransferDiagnostics,
+    ) -> ControllerFrameBuilder {
+        builder
+            .metric(metric::TRANSFER_ROUTE_DX_M, diagnostics.route_dx_m)
+            .metric(metric::TRANSFER_ROUTE_DY_M, diagnostics.route_dy_m)
+            .metric(
+                metric::TRANSFER_TARGET_Y_SOLUTION,
+                diagnostics.projection.has_target_y_solution,
+            )
+            .metric(
+                metric::TRANSFER_PROJECTED_TIME_S,
+                diagnostics.projection.projected_time_s.unwrap_or(-1.0),
+            )
+            .metric(
+                metric::TRANSFER_PROJECTED_DX_M,
+                diagnostics
+                    .projection
+                    .projected_dx_m
+                    .unwrap_or(diagnostics.route_dx_m),
+            )
+            .metric(
+                metric::TRANSFER_IMPACT_ANGLE_DEG,
+                diagnostics.projection.impact_angle_deg.unwrap_or(-1.0),
+            )
+            .metric(
+                metric::TRANSFER_APEX_OVER_TARGET_M,
+                diagnostics.projection.apex_over_target_m,
+            )
+            .metric(
+                metric::TRANSFER_BOOST_APEX_TARGET_M,
+                diagnostics.boost_quality.apex_target_over_target_m,
+            )
+            .metric(
+                metric::TRANSFER_BOOST_QUALITY,
+                diagnostics.boost_quality.verdict,
+            )
+            .metric(
+                metric::TRANSFER_BOOST_QUALITY_PASS,
+                diagnostics.boost_quality.passed,
+            )
+    }
+
+    fn insert_transfer_metrics(
+        &self,
+        frame: &mut ControllerFrame,
+        diagnostics: TransferDiagnostics,
+    ) {
+        frame.metrics.insert(
+            metric::TRANSFER_ROUTE_DX_M.to_owned(),
+            TelemetryValue::from(diagnostics.route_dx_m),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_ROUTE_DY_M.to_owned(),
+            TelemetryValue::from(diagnostics.route_dy_m),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_TARGET_Y_SOLUTION.to_owned(),
+            TelemetryValue::from(diagnostics.projection.has_target_y_solution),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_PROJECTED_TIME_S.to_owned(),
+            TelemetryValue::from(diagnostics.projection.projected_time_s.unwrap_or(-1.0)),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_PROJECTED_DX_M.to_owned(),
+            TelemetryValue::from(
+                diagnostics
+                    .projection
+                    .projected_dx_m
+                    .unwrap_or(diagnostics.route_dx_m),
+            ),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_IMPACT_ANGLE_DEG.to_owned(),
+            TelemetryValue::from(diagnostics.projection.impact_angle_deg.unwrap_or(-1.0)),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_APEX_OVER_TARGET_M.to_owned(),
+            TelemetryValue::from(diagnostics.projection.apex_over_target_m),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_BOOST_APEX_TARGET_M.to_owned(),
+            TelemetryValue::from(diagnostics.boost_quality.apex_target_over_target_m),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_BOOST_QUALITY.to_owned(),
+            TelemetryValue::from(diagnostics.boost_quality.verdict),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_BOOST_QUALITY_PASS.to_owned(),
+            TelemetryValue::from(diagnostics.boost_quality.passed),
+        );
     }
 
     fn choose_phase(&self, ctx: &RunContext, observation: &Observation) -> TransferPhase {
@@ -618,18 +859,64 @@ impl TransferPdgController {
     ) -> ControllerFrame {
         let view = ControllerView::new(ctx, observation);
         let phase = phase_name.as_str().to_owned();
-        let frame = ControllerFrameBuilder::new(command)
+        let diagnostics = self.transfer_diagnostics(observation);
+        let builder = ControllerFrameBuilder::new(command)
             .status(status)
             .phase(phase.clone())
             .standard_kinematics(&view)
             .phase_transition_marker(self.last_phase.as_deref(), &phase, &view)
             .metric(metric::GUIDANCE_ACTIVE, true)
-            .metric("transfer.phase", phase.as_str())
-            .metric("transfer.route_dx_m", observation.target_dx_m)
-            .metric("transfer.route_dy_m", -observation.height_above_target_m)
-            .build();
+            .metric(metric::TRANSFER_PHASE, phase.as_str());
+        let frame = self.transfer_metrics_builder(builder, diagnostics).build();
         self.last_phase = Some(phase);
         frame
+    }
+}
+
+fn transfer_ballistic_projection(
+    dx_m: f64,
+    dy_m: f64,
+    vx_mps: f64,
+    vy_up_mps: f64,
+    gravity_mps2: f64,
+) -> TransferBallisticProjection {
+    let gravity_mps2 = gravity_mps2.max(1.0e-6);
+    let discriminant = (vy_up_mps * vy_up_mps) - (2.0 * gravity_mps2 * dy_m);
+    let apex_over_target_m = if vy_up_mps > 0.0 {
+        -dy_m + ((vy_up_mps * vy_up_mps) / (2.0 * gravity_mps2))
+    } else {
+        -dy_m
+    };
+
+    if discriminant < 0.0 {
+        return TransferBallisticProjection {
+            has_target_y_solution: false,
+            projected_time_s: None,
+            projected_dx_m: None,
+            impact_angle_deg: None,
+            apex_over_target_m,
+        };
+    }
+
+    let sqrt_discriminant = discriminant.sqrt();
+    let t0 = (vy_up_mps - sqrt_discriminant) / gravity_mps2;
+    let t1 = (vy_up_mps + sqrt_discriminant) / gravity_mps2;
+    let projected_time_s = [t0, t1]
+        .into_iter()
+        .filter(|time_s| *time_s >= 0.0)
+        .max_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap())
+        .unwrap_or(0.0);
+    let projected_dx_m = dx_m - (vx_mps * projected_time_s);
+    let impact_vy_up_mps = vy_up_mps - (gravity_mps2 * projected_time_s);
+    let impact_down_speed_mps = (-impact_vy_up_mps).max(0.0);
+    let impact_angle_deg = impact_down_speed_mps.atan2(vx_mps.abs()).to_degrees();
+
+    TransferBallisticProjection {
+        has_target_y_solution: true,
+        projected_time_s: Some(projected_time_s),
+        projected_dx_m: Some(projected_dx_m),
+        impact_angle_deg: Some(impact_angle_deg),
+        apex_over_target_m,
     }
 }
 
@@ -683,8 +970,10 @@ impl Controller for TransferPdgController {
             ),
             TransferPhase::Terminal => {
                 let mut frame = self.terminal.update(ctx, observation);
+                let diagnostics = self.transfer_diagnostics(observation);
+                self.insert_transfer_metrics(&mut frame, diagnostics);
                 frame.metrics.insert(
-                    "transfer.phase".to_owned(),
+                    metric::TRANSFER_PHASE.to_owned(),
                     TelemetryValue::from("terminal"),
                 );
                 frame.status = format!("transfer handoff: {}", frame.status);
@@ -692,5 +981,51 @@ impl Controller for TransferPdgController {
                 frame
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transfer_projection_reports_descending_target_crossing() {
+        let projection = transfer_ballistic_projection(100.0, -50.0, 10.0, 20.0, 10.0);
+
+        assert!(projection.has_target_y_solution);
+        assert!((projection.projected_time_s.unwrap() - 5.7416573868).abs() < 1.0e-6);
+        assert!((projection.projected_dx_m.unwrap() - 42.583426132).abs() < 1.0e-6);
+        assert!(projection.impact_angle_deg.unwrap() > 70.0);
+        assert!((projection.apex_over_target_m - 70.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn transfer_projection_rejects_unreachable_target_y() {
+        let projection = transfer_ballistic_projection(100.0, 100.0, 10.0, 20.0, 10.0);
+
+        assert!(!projection.has_target_y_solution);
+        assert_eq!(projection.projected_time_s, None);
+        assert_eq!(projection.projected_dx_m, None);
+        assert_eq!(projection.impact_angle_deg, None);
+        assert!((projection.apex_over_target_m + 80.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn transfer_boost_quality_uses_projection_and_angle() {
+        let controller = TransferPdgController::default();
+        let good_projection = transfer_ballistic_projection(100.0, -50.0, 10.0, 20.0, 10.0);
+        let good = controller.transfer_boost_quality(100.0, -50.0, good_projection);
+        assert_eq!(good.verdict, "pass");
+        assert!(good.passed);
+
+        let no_solution = transfer_ballistic_projection(100.0, 100.0, 10.0, 20.0, 10.0);
+        let no_solution_quality = controller.transfer_boost_quality(100.0, 100.0, no_solution);
+        assert_eq!(no_solution_quality.verdict, "no_target_y_solution");
+        assert!(!no_solution_quality.passed);
+
+        let dx_miss = transfer_ballistic_projection(500.0, -50.0, 0.0, 20.0, 10.0);
+        let dx_quality = controller.transfer_boost_quality(500.0, -50.0, dx_miss);
+        assert_eq!(dx_quality.verdict, "dx");
+        assert!(!dx_quality.passed);
     }
 }
