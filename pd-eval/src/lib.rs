@@ -8,7 +8,8 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use pd_control::{
-    ControlledRunArtifacts, ControllerSpec, built_in_controller_spec, run_controller_spec,
+    ControlledRunArtifacts, ControllerSpec, TelemetryValue, built_in_controller_spec, metric,
+    run_controller_spec,
 };
 use pd_core::{
     EvaluationGoal, LandingPadSpec, MissionOutcome, RunContext, RunManifest, RunSummary,
@@ -24,7 +25,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 15;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 16;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -119,6 +120,16 @@ pub struct BatchRunReviewMetrics {
     pub reference_gap_mean_m: Option<f64>,
     #[serde(default)]
     pub reference_gap_max_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_time_s: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_dx_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_height_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub transfer_final_phase: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -3952,7 +3963,7 @@ fn execute_resolved_run(
         )?;
     }
 
-    let review = derive_run_review_metrics(&resolved_run.scenario, &artifacts.run);
+    let review = derive_run_review_metrics(&resolved_run.scenario, &artifacts);
     let analytic = analytic_feasibility_for_run(resolved_run);
 
     Ok(BatchRunRecord {
@@ -4479,22 +4490,22 @@ fn metric_summary(values: &[f64]) -> Option<BatchMetricSummary> {
 
 fn derive_run_review_metrics(
     scenario: &ScenarioSpec,
-    artifacts: &pd_core::RunArtifacts,
+    artifacts: &ControlledRunArtifacts,
 ) -> BatchRunReviewMetrics {
+    let run = &artifacts.run;
     let fuel_used_pct_of_max = (scenario.vehicle.max_fuel_kg > 1e-9)
-        .then(|| (artifacts.manifest.summary.fuel_used_kg / scenario.vehicle.max_fuel_kg) * 100.0);
-    let landing_offset_abs_m = artifacts
+        .then(|| (run.manifest.summary.fuel_used_kg / scenario.vehicle.max_fuel_kg) * 100.0);
+    let landing_offset_abs_m = run
         .manifest
         .summary
         .landing
         .as_ref()
         .map(|landing| landing.touchdown_center_offset_m.abs());
-    let (reference_gap_mean_m, reference_gap_max_m) =
-        reference_gap_metrics(scenario, &artifacts.samples)
-            .map(|metrics| (Some(metrics.gap_mean_m), Some(metrics.gap_max_m)))
-            .unwrap_or((None, None));
+    let (reference_gap_mean_m, reference_gap_max_m) = reference_gap_metrics(scenario, &run.samples)
+        .map(|metrics| (Some(metrics.gap_mean_m), Some(metrics.gap_max_m)))
+        .unwrap_or((None, None));
     let (low_altitude_dwell_s, low_altitude_unsafe_recovery_s) =
-        low_altitude_recovery_metrics(scenario, &artifacts.samples)
+        low_altitude_recovery_metrics(scenario, &run.samples)
             .map(|metrics| {
                 (
                     Some(metrics.low_altitude_dwell_s),
@@ -4502,6 +4513,7 @@ fn derive_run_review_metrics(
                 )
             })
             .unwrap_or((None, None));
+    let transfer = transfer_review_metrics(&artifacts.controller_updates);
 
     BatchRunReviewMetrics {
         fuel_used_pct_of_max,
@@ -4510,6 +4522,72 @@ fn derive_run_review_metrics(
         low_altitude_unsafe_recovery_s,
         reference_gap_mean_m,
         reference_gap_max_m,
+        transfer_terminal_handoff_time_s: transfer.terminal_handoff_time_s,
+        transfer_terminal_handoff_dx_m: transfer.terminal_handoff_dx_m,
+        transfer_terminal_handoff_height_m: transfer.terminal_handoff_height_m,
+        transfer_terminal_handoff_speed_mps: transfer.terminal_handoff_speed_mps,
+        transfer_final_phase: transfer.final_phase,
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct TransferReviewMetrics {
+    terminal_handoff_time_s: Option<f64>,
+    terminal_handoff_dx_m: Option<f64>,
+    terminal_handoff_height_m: Option<f64>,
+    terminal_handoff_speed_mps: Option<f64>,
+    final_phase: Option<String>,
+}
+
+fn transfer_review_metrics(
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+) -> TransferReviewMetrics {
+    let final_phase = controller_updates
+        .iter()
+        .rev()
+        .find_map(|update| telemetry_text(&update.frame.metrics, "transfer.phase"))
+        .map(ToOwned::to_owned);
+    let Some(handoff) = controller_updates
+        .iter()
+        .find(|update| telemetry_text(&update.frame.metrics, "transfer.phase") == Some("terminal"))
+    else {
+        return TransferReviewMetrics {
+            final_phase,
+            ..TransferReviewMetrics::default()
+        };
+    };
+    let terminal_handoff_dx_m = telemetry_float(&handoff.frame.metrics, metric::TARGET_DX_M);
+    let terminal_handoff_height_m =
+        telemetry_float(&handoff.frame.metrics, metric::HEIGHT_ABOVE_TARGET_M);
+    let terminal_handoff_speed_mps =
+        telemetry_float(&handoff.frame.metrics, metric::VERTICAL_SPEED_MPS)
+            .zip(telemetry_float(
+                &handoff.frame.metrics,
+                metric::TANGENTIAL_SPEED_MPS,
+            ))
+            .map(|(vertical, tangential)| vertical.hypot(tangential));
+
+    TransferReviewMetrics {
+        terminal_handoff_time_s: Some(handoff.sim_time_s),
+        terminal_handoff_dx_m,
+        terminal_handoff_height_m,
+        terminal_handoff_speed_mps,
+        final_phase,
+    }
+}
+
+fn telemetry_text<'a>(metrics: &'a BTreeMap<String, TelemetryValue>, key: &str) -> Option<&'a str> {
+    match metrics.get(key)? {
+        TelemetryValue::Text(value) => Some(value),
+        _ => None,
+    }
+}
+
+fn telemetry_float(metrics: &BTreeMap<String, TelemetryValue>, key: &str) -> Option<f64> {
+    match metrics.get(key)? {
+        TelemetryValue::Float(value) => Some(*value),
+        TelemetryValue::Integer(value) => Some(*value as f64),
+        _ => None,
     }
 }
 
@@ -6451,6 +6529,67 @@ mod tests {
         assert!((route.route_radius_m - 800.0).abs() < 1e-9);
         assert!((route.route_angle_deg - 60.0).abs() < 1e-9);
         assert_eq!(run.scenario.initial_state.velocity_mps, Vec2::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn transfer_review_metrics_capture_terminal_handoff() {
+        let updates = vec![
+            pd_control::ControllerUpdateRecord {
+                sim_time_s: 1.0,
+                physics_step: 120,
+                controller_update_index: 0,
+                compute_time_us: None,
+                frame: pd_control::ControllerFrame {
+                    command: pd_core::Command::idle(),
+                    status: "boosting".to_owned(),
+                    phase: Some("boost".to_owned()),
+                    metrics: BTreeMap::from([(
+                        "transfer.phase".to_owned(),
+                        TelemetryValue::from("boost"),
+                    )]),
+                    markers: Vec::new(),
+                },
+            },
+            pd_control::ControllerUpdateRecord {
+                sim_time_s: 3.5,
+                physics_step: 420,
+                controller_update_index: 1,
+                compute_time_us: None,
+                frame: pd_control::ControllerFrame {
+                    command: pd_core::Command::idle(),
+                    status: "terminal handoff".to_owned(),
+                    phase: Some("terminal".to_owned()),
+                    metrics: BTreeMap::from([
+                        (
+                            "transfer.phase".to_owned(),
+                            TelemetryValue::from("terminal"),
+                        ),
+                        (metric::TARGET_DX_M.to_owned(), TelemetryValue::from(120.0)),
+                        (
+                            metric::HEIGHT_ABOVE_TARGET_M.to_owned(),
+                            TelemetryValue::from(80.0),
+                        ),
+                        (
+                            metric::VERTICAL_SPEED_MPS.to_owned(),
+                            TelemetryValue::from(-12.0),
+                        ),
+                        (
+                            metric::TANGENTIAL_SPEED_MPS.to_owned(),
+                            TelemetryValue::from(5.0),
+                        ),
+                    ]),
+                    markers: Vec::new(),
+                },
+            },
+        ];
+
+        let metrics = transfer_review_metrics(&updates);
+
+        assert_eq!(metrics.final_phase.as_deref(), Some("terminal"));
+        assert_eq!(metrics.terminal_handoff_time_s, Some(3.5));
+        assert_eq!(metrics.terminal_handoff_dx_m, Some(120.0));
+        assert_eq!(metrics.terminal_handoff_height_m, Some(80.0));
+        assert_eq!(metrics.terminal_handoff_speed_mps, Some(13.0));
     }
 
     #[test]

@@ -4143,9 +4143,11 @@ fn render_seed_run_row(
         ),
         (true, None) => String::new(),
     };
+    let transfer_note = render_transfer_review_note(&record.review);
     let details = format!(
-        r#"{detail_note}<div class="preview-cell">{preview}</div>"#,
+        r#"{detail_note}{transfer_note}<div class="preview-cell">{preview}</div>"#,
         detail_note = detail_note,
+        transfer_note = transfer_note,
         preview = render_run_preview(record, output_dir),
     );
 
@@ -4173,6 +4175,29 @@ fn render_seed_run_row(
         landing_offset = escape_html(&landing_offset),
         reference_gap = escape_html(&reference_gap),
         details = details,
+    )
+}
+
+fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String {
+    let Some(final_phase) = review.transfer_final_phase.as_deref() else {
+        return String::new();
+    };
+    let mut parts = vec![format!("transfer {final_phase}")];
+    if let Some(time_s) = review.transfer_terminal_handoff_time_s {
+        parts.push(format!("handoff {time_s:.1}s"));
+    }
+    if let Some(dx_m) = review.transfer_terminal_handoff_dx_m {
+        parts.push(format!("dx {dx_m:.0}m"));
+    }
+    if let Some(height_m) = review.transfer_terminal_handoff_height_m {
+        parts.push(format!("h {height_m:.0}m"));
+    }
+    if let Some(speed_mps) = review.transfer_terminal_handoff_speed_mps {
+        parts.push(format!("v {speed_mps:.1}m/s"));
+    }
+    format!(
+        r#"<span class="row-note transfer-note">{}</span>"#,
+        escape_html(&parts.join(" · "))
     )
 }
 
@@ -6439,6 +6464,8 @@ mod report_tests {
         assert!(html.contains("selector-code\">nominal</span>"));
         assert!(html.contains(r#"case "route": return 3;"#));
         assert!(html.contains(r#"case "radius": return 4;"#));
+        assert!(html.contains("transfer terminal"));
+        assert!(html.contains("handoff"));
     }
 
     #[test]
