@@ -1423,9 +1423,8 @@ fn render_overview_tracking_cell(
     baseline: Option<&ReviewAggregate>,
     show_delta: bool,
 ) -> String {
-    let reference = review
-        .reference_gap_mean_m
-        .as_ref()
+    let reference_label = aggregate_ref_dev_label(review);
+    let reference = aggregate_ref_dev_metric(review)
         .map(|summary| format_metric_value(summary, MetricDisplayKind::Meters))
         .unwrap_or_else(|| "-".to_owned());
     let low_unsafe = review
@@ -1435,8 +1434,8 @@ fn render_overview_tracking_cell(
         .unwrap_or_else(|| "-".to_owned());
     let sub_html = if show_delta {
         let reference_delta = metric_delta_value(
-            review.reference_gap_mean_m.as_ref(),
-            baseline.and_then(|item| item.reference_gap_mean_m.as_ref()),
+            aggregate_ref_dev_metric(review),
+            baseline.and_then(aggregate_ref_dev_metric),
         )
         .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Meters))
         .unwrap_or_else(|| "-".to_owned());
@@ -1447,13 +1446,14 @@ fn render_overview_tracking_cell(
         .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Seconds))
         .unwrap_or_else(|| "-".to_owned());
         format!(
-            r#"<span class="compare-toggle-target">low unsafe {low_unsafe} · Δ ref {reference_delta} · Δ low {low_unsafe_delta}</span><span class="standalone-toggle-target">low unsafe {low_unsafe}</span>"#,
+            r#"<span class="compare-toggle-target">low unsafe {low_unsafe} · Δ {reference_label} {reference_delta} · Δ low {low_unsafe_delta}</span><span class="standalone-toggle-target">low unsafe {low_unsafe}</span>"#,
             low_unsafe = escape_html(&low_unsafe),
+            reference_label = escape_html(reference_label),
             reference_delta = escape_html(&reference_delta),
             low_unsafe_delta = escape_html(&low_unsafe_delta),
         )
     } else {
-        escape_html(&format!("low unsafe {low_unsafe}"))
+        escape_html(&format!("{reference_label} dev · low unsafe {low_unsafe}"))
     };
     format!(
         r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
@@ -1496,8 +1496,8 @@ fn render_overview_tracking_diff_cell(
         return r#"<div class="overview-stack"><div class="overview-main">-</div><div class="overview-sub">-</div></div>"#.to_owned();
     };
     let delta = metric_delta_value(
-        candidate.reference_gap_mean_m.as_ref(),
-        baseline.reference_gap_mean_m.as_ref(),
+        aggregate_ref_dev_metric(candidate),
+        aggregate_ref_dev_metric(baseline),
     )
     .map(|delta| format_metric_delta_value(delta, MetricDisplayKind::Meters))
     .unwrap_or_else(|| "-".to_owned());
@@ -2385,7 +2385,23 @@ struct ReviewAggregate {
     low_altitude_dwell_s: Option<crate::BatchMetricSummary>,
     low_altitude_unsafe_recovery_s: Option<crate::BatchMetricSummary>,
     reference_gap_mean_m: Option<crate::BatchMetricSummary>,
+    transfer_shape_curve_rmse_m: Option<crate::BatchMetricSummary>,
     failed_seeds: Vec<u64>,
+}
+
+fn aggregate_ref_dev_metric(aggregate: &ReviewAggregate) -> Option<&crate::BatchMetricSummary> {
+    aggregate
+        .transfer_shape_curve_rmse_m
+        .as_ref()
+        .or(aggregate.reference_gap_mean_m.as_ref())
+}
+
+fn aggregate_ref_dev_label(aggregate: &ReviewAggregate) -> &'static str {
+    if aggregate.transfer_shape_curve_rmse_m.is_some() {
+        "shape"
+    } else {
+        "ref"
+    }
 }
 
 type LaneRecordGroups<'a> = BTreeMap<String, Vec<&'a crate::BatchRunRecord>>;
@@ -2621,9 +2637,7 @@ fn render_mission_review_section(
             MetricDisplayKind::Meters
         ),
         reference_gap = format_metric_summary(
-            aggregate
-                .as_ref()
-                .and_then(|item| item.reference_gap_mean_m.as_ref()),
+            aggregate.as_ref().and_then(aggregate_ref_dev_metric),
             MetricDisplayKind::Meters
         ),
         low_unsafe = format_metric_summary(
@@ -4006,8 +4020,8 @@ fn render_summary_row(
         metric_style,
     );
     let ref_html = format_metric_cell(
-        aggregate.and_then(|aggregate| aggregate.reference_gap_mean_m.as_ref()),
-        secondary_aggregate.and_then(|aggregate| aggregate.reference_gap_mean_m.as_ref()),
+        aggregate.and_then(aggregate_ref_dev_metric),
+        secondary_aggregate.and_then(aggregate_ref_dev_metric),
         MetricDisplayKind::Meters,
         metric_style,
     );
@@ -4114,7 +4128,8 @@ fn render_seed_run_row(
         .unwrap_or_else(|| "-".to_owned());
     let reference_gap = record
         .review
-        .reference_gap_mean_m
+        .transfer_shape_curve_rmse_m
+        .or(record.review.reference_gap_mean_m)
         .map(|value| format!("{value:.2}m"))
         .unwrap_or_else(|| "-".to_owned());
     let change_note = change
@@ -4189,18 +4204,38 @@ fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String 
     if let Some(quality) = review.transfer_boost_quality.as_deref() {
         parts.push(format!("boost {quality}"));
     }
-    if let Some(projected_dx_m) = review.transfer_boost_projected_dx_m {
-        parts.push(format!("pdx {projected_dx_m:.0}m"));
-    }
-    if let Some(impact_angle_deg) = review.transfer_boost_impact_angle_deg {
-        parts.push(format!("impact {impact_angle_deg:.0}deg"));
-    }
     if let Some(cutoff_quality) = review.transfer_boost_cutoff_quality.as_deref() {
         let cutoff = review
             .transfer_boost_cutoff_time_s
             .map(|time_s| format!("{time_s:.1}s"))
             .unwrap_or_else(|| "?".to_owned());
-        parts.push(format!("cut {cutoff} {cutoff_quality}"));
+        let cutoff_dx = review
+            .transfer_boost_cutoff_projected_dx_m
+            .map(|value| format!(" pdx {value:.0}m"))
+            .unwrap_or_default();
+        let cutoff_angle = review
+            .transfer_boost_cutoff_impact_angle_deg
+            .map(|value| format!(" angle {value:.0}deg"))
+            .unwrap_or_default();
+        parts.push(format!(
+            "cut {cutoff} {cutoff_quality}{cutoff_dx}{cutoff_angle}"
+        ));
+    }
+    if let Some(shape_rmse_m) = review.transfer_shape_curve_rmse_m {
+        parts.push(format!("shape {shape_rmse_m:.0}m"));
+    }
+    if let Some(apex_error_m) = review.transfer_shape_apex_error_m {
+        parts.push(format!("apex err {apex_error_m:.0}m"));
+    }
+    if let Some(shortfall_ratio) = review.transfer_shape_shortfall_ratio {
+        parts.push(format!("short {:.0}%", shortfall_ratio * 100.0));
+    }
+    if let Some(burn_duration_s) = review.transfer_boost_burn_duration_s {
+        if let Some(fuel_used_kg) = review.transfer_boost_burn_fuel_used_kg {
+            parts.push(format!("burn {burn_duration_s:.1}s/{fuel_used_kg:.0}kg"));
+        } else {
+            parts.push(format!("burn {burn_duration_s:.1}s"));
+        }
     }
     if let Some(gate_mode) = review.transfer_terminal_gate_mode.as_deref() {
         parts.push(format!("gate {gate_mode}"));
@@ -4731,6 +4766,10 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
         .iter()
         .filter_map(|record| record.review.reference_gap_mean_m)
         .collect::<Vec<_>>();
+    let transfer_shape_curve_values = success_records
+        .iter()
+        .filter_map(|record| record.review.transfer_shape_curve_rmse_m)
+        .collect::<Vec<_>>();
     ReviewAggregate {
         total_runs,
         success_runs,
@@ -4742,6 +4781,7 @@ fn review_aggregate_from_records(records: &[&crate::BatchRunRecord]) -> ReviewAg
         low_altitude_dwell_s: crate::metric_summary(&low_altitude_dwell_values),
         low_altitude_unsafe_recovery_s: crate::metric_summary(&low_altitude_unsafe_values),
         reference_gap_mean_m: crate::metric_summary(&reference_gap_values),
+        transfer_shape_curve_rmse_m: crate::metric_summary(&transfer_shape_curve_values),
         failed_seeds,
     }
 }
@@ -4951,8 +4991,8 @@ fn aggregate_changed(
         )
         .is_some_and(|delta| delta.abs() > 1e-9)
         || metric_delta_value(
-            candidate.reference_gap_mean_m.as_ref(),
-            baseline.reference_gap_mean_m.as_ref(),
+            aggregate_ref_dev_metric(candidate),
+            aggregate_ref_dev_metric(baseline),
         )
         .is_some_and(|delta| delta.abs() > 1e-9)
 }
@@ -5263,18 +5303,24 @@ fn render_lane_preview(records: &[&crate::BatchRunRecord]) -> Option<String> {
         else {
             continue;
         };
-        loaded.push((scenario, samples, &record.manifest));
+        let controller_updates = load_json_file::<Vec<pd_control::ControllerUpdateRecord>>(
+            &bundle_dir.join("controller_updates.json"),
+        );
+        loaded.push((scenario, samples, controller_updates, &record.manifest));
     }
     if loaded.is_empty() {
         return None;
     }
     let series = loaded
         .iter()
-        .map(|(scenario, samples, manifest)| PreviewSeries {
-            scenario,
-            manifest: *manifest,
-            samples,
-        })
+        .map(
+            |(scenario, samples, controller_updates, manifest)| PreviewSeries {
+                scenario,
+                manifest: *manifest,
+                samples,
+                controller_updates: controller_updates.as_deref(),
+            },
+        )
         .collect::<Vec<_>>();
     Some(format!(
         r#"<div class="run-preview lane-preview">{}</div>"#,

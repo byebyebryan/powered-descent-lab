@@ -270,9 +270,9 @@ Status:
 - `transfer_route_angle_suite` is the current route-shape diagnostic workbench:
   fixed nominal `800m` radius, smoke seeds, and all 11 signed route angles
   across `empty`, `half`, and `full` payload tiers
-- batch review metrics now capture transfer final phase and first terminal
-  handoff time, `dx`, height, speed, boost quality, projected boost miss, and
-  boost cutoff quality per run
+- batch review metrics now capture transfer final phase, first terminal handoff,
+  boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
+  per run
 - current route-angle checkpoint after the first boost/handoff tuning pass:
   - `90 / 99` successes
   - `9` crashes

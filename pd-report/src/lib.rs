@@ -1,7 +1,9 @@
 use std::{collections::BTreeMap, fmt::Write as _, fs, path::Path};
 
 use anyhow::{Context, Result};
-use pd_control::{ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue};
+use pd_control::{
+    ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue, metric,
+};
 use pd_core::{EvaluationGoal, EventKind, EventRecord, RunManifest, SampleRecord, ScenarioSpec};
 use serde::Serialize;
 
@@ -51,8 +53,9 @@ pub fn write_run_preview_svg(
     scenario: &ScenarioSpec,
     manifest: &RunManifest,
     samples: &[SampleRecord],
+    controller_updates: &[ControllerUpdateRecord],
 ) -> Result<()> {
-    let svg = build_run_preview_svg(scenario, manifest, samples);
+    let svg = build_run_preview_svg(scenario, manifest, samples, controller_updates);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
@@ -70,6 +73,7 @@ pub struct PreviewSeries<'a> {
     pub scenario: &'a ScenarioSpec,
     pub manifest: &'a RunManifest,
     pub samples: &'a [SampleRecord],
+    pub controller_updates: Option<&'a [ControllerUpdateRecord]>,
 }
 
 pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
@@ -152,11 +156,13 @@ fn build_run_preview_svg(
     scenario: &ScenarioSpec,
     manifest: &RunManifest,
     samples: &[SampleRecord],
+    controller_updates: &[ControllerUpdateRecord],
 ) -> String {
     build_preview_svg(&[PreviewSeries {
         scenario,
         manifest,
         samples,
+        controller_updates: Some(controller_updates),
     }])
 }
 
@@ -220,16 +226,20 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
                 Vec::new()
             } else {
                 pad.map(|(target_x_m, target_y_m, _)| {
-                    idealized_reference_curve(
-                        series.scenario.initial_state.position_m.x,
-                        series.scenario.initial_state.position_m.y,
-                        normalize_center_x + target_x_m,
-                        target_y_m,
-                        series.scenario.world.gravity_mps2,
-                    )
-                    .into_iter()
-                    .map(|(x, y)| (transform_x(x, flip_sign), y))
-                    .collect::<Vec<_>>()
+                    let target_x_world = normalize_center_x + target_x_m;
+                    transfer_preview_reference_curve(series, target_x_world, target_y_m)
+                        .unwrap_or_else(|| {
+                            idealized_reference_curve(
+                                series.scenario.initial_state.position_m.x,
+                                series.scenario.initial_state.position_m.y,
+                                target_x_world,
+                                target_y_m,
+                                series.scenario.world.gravity_mps2,
+                            )
+                        })
+                        .into_iter()
+                        .map(|(x, y)| (transform_x(x, flip_sign), y))
+                        .collect::<Vec<_>>()
                 })
                 .unwrap_or_default()
             };
@@ -434,6 +444,62 @@ fn preview_seed_color(index: usize, total: usize) -> String {
 
 fn preview_flip_sign(initial_dx: f64) -> f64 {
     if initial_dx > 0.0 { -1.0 } else { 1.0 }
+}
+
+fn transfer_preview_reference_curve(
+    series: &PreviewSeries<'_>,
+    target_x: f64,
+    target_y: f64,
+) -> Option<Vec<(f64, f64)>> {
+    series.scenario.mission.transfer_route.as_ref()?;
+    let controller_updates = series.controller_updates?;
+    let first_boost = controller_updates.iter().find(|update| {
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
+    })?;
+    let start_sample = series
+        .samples
+        .iter()
+        .find(|sample| sample.physics_step >= first_boost.physics_step)
+        .or_else(|| series.samples.first())?;
+    let start_x = start_sample.observation.position_m.x;
+    let start_y = start_sample.observation.position_m.y;
+    let dx = target_x - start_x;
+    let dy = target_y - start_y;
+    if !dx.is_finite() || !dy.is_finite() || dx.abs() <= 1e-6 {
+        return None;
+    }
+    let apex_over_target = transfer_shape_apex_target_over_target_m(dx.abs(), dy);
+    let point_count = 48_usize;
+    let mut points = Vec::with_capacity(point_count);
+    for index in 0..point_count {
+        let s = index as f64 / (point_count - 1) as f64;
+        let x = start_x + (dx * s);
+        let baseline = start_y + (dy * s);
+        let y = baseline + (4.0 * apex_over_target * s * (1.0 - s));
+        points.push((x, y));
+    }
+    if let Some(last) = points.last_mut() {
+        *last = (target_x, target_y);
+    }
+    Some(points)
+}
+
+fn transfer_shape_apex_target_over_target_m(dx_abs_m: f64, dy_m: f64) -> f64 {
+    const APEX_HEIGHT_PER_DX: f64 = 0.18;
+    const APEX_HEIGHT_PER_UPHILL_DY: f64 = 0.15;
+    const APEX_HEIGHT_MIN_M: f64 = 30.0;
+    const APEX_HEIGHT_MAX_M: f64 = 240.0;
+
+    (APEX_HEIGHT_PER_DX * dx_abs_m).clamp(APEX_HEIGHT_MIN_M, APEX_HEIGHT_MAX_M)
+        + (dy_m * APEX_HEIGHT_PER_UPHILL_DY).max(0.0)
+        + (-dy_m).max(0.0)
+}
+
+fn telemetry_text<'a>(metrics: &'a BTreeMap<String, TelemetryValue>, key: &str) -> Option<&'a str> {
+    match metrics.get(key)? {
+        TelemetryValue::Text(value) => Some(value),
+        _ => None,
+    }
 }
 
 fn ballistic_end_time(start_y: f64, target_y: f64, vy_mps: f64, gravity_mps2: f64) -> Option<f64> {

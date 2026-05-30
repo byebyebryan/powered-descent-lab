@@ -172,6 +172,7 @@ fn render_report(args: ReportArgs) -> Result<()> {
         &bundle.scenario,
         &bundle.manifest,
         &bundle.samples,
+        &bundle.controller_updates,
     )?;
     if output
         .file_name()
@@ -304,6 +305,7 @@ fn write_artifact_bundle(
             scenario,
             &artifacts.manifest,
             &artifacts.samples,
+            controller_updates,
         )?;
         if let Some(report_site_output) = default_report_site_output_for_bundle(path) {
             write_run_report(

@@ -626,9 +626,16 @@ struct TransferBoostQuality {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct TransferBoostAnchor {
+    route_dx_m: f64,
+    route_dy_m: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
 struct TransferDiagnostics {
     route_dx_m: f64,
     route_dy_m: f64,
+    anchor: Option<TransferBoostAnchor>,
     projection: TransferBallisticProjection,
     boost_quality: TransferBoostQuality,
 }
@@ -638,6 +645,7 @@ pub struct TransferPdgController {
     config: TransferPdgControllerConfig,
     terminal: TerminalPdgController,
     phase: TransferPhase,
+    boost_anchor: Option<TransferBoostAnchor>,
     last_phase: Option<String>,
 }
 
@@ -654,6 +662,7 @@ impl TransferPdgController {
             config,
             terminal,
             phase: TransferPhase::Takeoff,
+            boost_anchor: None,
             last_phase: None,
         }
     }
@@ -661,6 +670,10 @@ impl TransferPdgController {
     fn transfer_diagnostics(&self, observation: &Observation) -> TransferDiagnostics {
         let route_dx_m = observation.target_dx_m;
         let route_dy_m = -observation.height_above_target_m;
+        let quality_anchor = self.boost_anchor.unwrap_or(TransferBoostAnchor {
+            route_dx_m,
+            route_dy_m,
+        });
         let projection = transfer_ballistic_projection(
             route_dx_m,
             route_dy_m,
@@ -668,11 +681,16 @@ impl TransferPdgController {
             observation.velocity_mps.y,
             observation.gravity_mps2,
         );
-        let boost_quality = self.transfer_boost_quality(route_dx_m, route_dy_m, projection);
+        let boost_quality = self.transfer_boost_quality(
+            quality_anchor.route_dx_m,
+            quality_anchor.route_dy_m,
+            projection,
+        );
 
         TransferDiagnostics {
             route_dx_m,
             route_dy_m,
+            anchor: self.boost_anchor,
             projection,
             boost_quality,
         }
@@ -724,6 +742,20 @@ impl TransferPdgController {
             .metric(metric::TRANSFER_ROUTE_DX_M, diagnostics.route_dx_m)
             .metric(metric::TRANSFER_ROUTE_DY_M, diagnostics.route_dy_m)
             .metric(
+                metric::TRANSFER_SHAPE_ANCHOR_DX_M,
+                diagnostics
+                    .anchor
+                    .map(|anchor| anchor.route_dx_m)
+                    .unwrap_or(diagnostics.route_dx_m),
+            )
+            .metric(
+                metric::TRANSFER_SHAPE_ANCHOR_DY_M,
+                diagnostics
+                    .anchor
+                    .map(|anchor| anchor.route_dy_m)
+                    .unwrap_or(diagnostics.route_dy_m),
+            )
+            .metric(
                 metric::TRANSFER_TARGET_Y_SOLUTION,
                 diagnostics.projection.has_target_y_solution,
             )
@@ -772,6 +804,24 @@ impl TransferPdgController {
         frame.metrics.insert(
             metric::TRANSFER_ROUTE_DY_M.to_owned(),
             TelemetryValue::from(diagnostics.route_dy_m),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_SHAPE_ANCHOR_DX_M.to_owned(),
+            TelemetryValue::from(
+                diagnostics
+                    .anchor
+                    .map(|anchor| anchor.route_dx_m)
+                    .unwrap_or(diagnostics.route_dx_m),
+            ),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_SHAPE_ANCHOR_DY_M.to_owned(),
+            TelemetryValue::from(
+                diagnostics
+                    .anchor
+                    .map(|anchor| anchor.route_dy_m)
+                    .unwrap_or(diagnostics.route_dy_m),
+            ),
         );
         frame.metrics.insert(
             metric::TRANSFER_TARGET_Y_SOLUTION.to_owned(),
@@ -1038,8 +1088,15 @@ impl Controller for TransferPdgController {
     }
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
+        let preliminary_diagnostics = self.transfer_diagnostics(observation);
+        let phase = self.choose_phase(ctx, observation, preliminary_diagnostics);
+        if phase == TransferPhase::Boost && self.boost_anchor.is_none() {
+            self.boost_anchor = Some(TransferBoostAnchor {
+                route_dx_m: observation.target_dx_m,
+                route_dy_m: -observation.height_above_target_m,
+            });
+        }
         let diagnostics = self.transfer_diagnostics(observation);
-        let phase = self.choose_phase(ctx, observation, diagnostics);
         self.phase = phase;
         match phase {
             TransferPhase::Takeoff => self.frame_for_open_loop_phase(
@@ -1190,6 +1247,26 @@ mod tests {
         assert_eq!(
             controller.boost_attitude_rad(&observation, diagnostics),
             controller.config.uphill_boost_tilt_rad
+        );
+    }
+
+    #[test]
+    fn transfer_boost_quality_uses_frozen_shape_anchor() {
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 800.0,
+            route_dy_m: 300.0,
+        });
+        let observation = transfer_observation(100.0, 50.0, Vec2::new(10.0, 20.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert_eq!(
+            diagnostics.boost_quality.apex_target_over_target_m,
+            controller.boost_apex_target_over_target_m(800.0, 300.0)
+        );
+        assert_ne!(
+            diagnostics.boost_quality.apex_target_over_target_m,
+            controller.boost_apex_target_over_target_m(100.0, -50.0)
         );
     }
 

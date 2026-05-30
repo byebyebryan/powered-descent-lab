@@ -43,6 +43,8 @@ pub mod metric {
     pub const TRANSFER_PHASE: &str = "transfer.phase";
     pub const TRANSFER_ROUTE_DX_M: &str = "transfer.route_dx_m";
     pub const TRANSFER_ROUTE_DY_M: &str = "transfer.route_dy_m";
+    pub const TRANSFER_SHAPE_ANCHOR_DX_M: &str = "transfer.shape_anchor_dx_m";
+    pub const TRANSFER_SHAPE_ANCHOR_DY_M: &str = "transfer.shape_anchor_dy_m";
     pub const TRANSFER_TARGET_Y_SOLUTION: &str = "transfer.target_y_solution";
     pub const TRANSFER_PROJECTED_TIME_S: &str = "transfer.projected_time_s";
     pub const TRANSFER_PROJECTED_DX_M: &str = "transfer.projected_dx_m";

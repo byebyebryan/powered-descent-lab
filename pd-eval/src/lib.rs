@@ -25,7 +25,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 17;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 18;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -121,6 +121,16 @@ pub struct BatchRunReviewMetrics {
     #[serde(default)]
     pub reference_gap_max_m: Option<f64>,
     #[serde(default)]
+    pub transfer_shape_curve_rmse_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_shape_apex_error_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_shape_projected_dx_abs_mean_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_shape_projected_dx_abs_max_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_shape_shortfall_ratio: Option<f64>,
+    #[serde(default)]
     pub transfer_terminal_handoff_time_s: Option<f64>,
     #[serde(default)]
     pub transfer_terminal_handoff_dx_m: Option<f64>,
@@ -141,7 +151,19 @@ pub struct BatchRunReviewMetrics {
     #[serde(default)]
     pub transfer_boost_cutoff_time_s: Option<f64>,
     #[serde(default)]
+    pub transfer_boost_cutoff_projected_dx_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_cutoff_impact_angle_deg: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_cutoff_apex_over_target_m: Option<f64>,
+    #[serde(default)]
     pub transfer_boost_cutoff_quality: Option<String>,
+    #[serde(default)]
+    pub transfer_boost_burn_duration_s: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_burn_fuel_used_kg: Option<f64>,
+    #[serde(default)]
+    pub transfer_boost_burn_avg_throttle: Option<f64>,
     #[serde(default)]
     pub transfer_terminal_gate_mode: Option<String>,
     #[serde(default)]
@@ -473,6 +495,14 @@ pub struct BatchGroupSummary {
     pub low_altitude_unsafe_recovery_s: Option<BatchMetricSummary>,
     #[serde(default)]
     pub reference_gap_mean_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_shape_curve_rmse_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_shape_apex_error_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_shape_projected_dx_abs_mean_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_shape_shortfall_ratio: Option<BatchMetricSummary>,
     pub mission_outcomes: BTreeMap<String, usize>,
     pub end_reasons: BTreeMap<String, usize>,
     pub sample_run_ids: Vec<String>,
@@ -4385,6 +4415,10 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
     let mut success_low_altitude_dwell_s = Vec::new();
     let mut success_low_altitude_unsafe_recovery_s = Vec::new();
     let mut success_reference_gap_mean_m = Vec::new();
+    let mut success_transfer_shape_curve_rmse_m = Vec::new();
+    let mut success_transfer_shape_apex_error_m = Vec::new();
+    let mut success_transfer_shape_projected_dx_abs_mean_m = Vec::new();
+    let mut success_transfer_shape_shortfall_ratio = Vec::new();
     let mut success_sim_time_s = Vec::new();
     let mut success_pointers = Vec::new();
     let mut failure_pointers = Vec::new();
@@ -4417,6 +4451,18 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             }
             if let Some(value) = record.review.reference_gap_mean_m {
                 success_reference_gap_mean_m.push(value);
+            }
+            if let Some(value) = record.review.transfer_shape_curve_rmse_m {
+                success_transfer_shape_curve_rmse_m.push(value);
+            }
+            if let Some(value) = record.review.transfer_shape_apex_error_m {
+                success_transfer_shape_apex_error_m.push(value);
+            }
+            if let Some(value) = record.review.transfer_shape_projected_dx_abs_mean_m {
+                success_transfer_shape_projected_dx_abs_mean_m.push(value);
+            }
+            if let Some(value) = record.review.transfer_shape_shortfall_ratio {
+                success_transfer_shape_shortfall_ratio.push(value);
             }
             success_pointers.push(pointer);
         }
@@ -4453,6 +4499,12 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         low_altitude_dwell_s: metric_summary(&success_low_altitude_dwell_s),
         low_altitude_unsafe_recovery_s: metric_summary(&success_low_altitude_unsafe_recovery_s),
         reference_gap_mean_m: metric_summary(&success_reference_gap_mean_m),
+        transfer_shape_curve_rmse_m: metric_summary(&success_transfer_shape_curve_rmse_m),
+        transfer_shape_apex_error_m: metric_summary(&success_transfer_shape_apex_error_m),
+        transfer_shape_projected_dx_abs_mean_m: metric_summary(
+            &success_transfer_shape_projected_dx_abs_mean_m,
+        ),
+        transfer_shape_shortfall_ratio: metric_summary(&success_transfer_shape_shortfall_ratio),
         mission_outcomes,
         end_reasons,
         sample_run_ids,
@@ -4531,7 +4583,9 @@ fn derive_run_review_metrics(
                 )
             })
             .unwrap_or((None, None));
-    let transfer = transfer_review_metrics(&artifacts.controller_updates);
+    let transfer = transfer_review_metrics(&artifacts.controller_updates, &run.samples);
+    let transfer_shape =
+        transfer_shape_metrics(scenario, &run.samples, &artifacts.controller_updates);
 
     BatchRunReviewMetrics {
         fuel_used_pct_of_max,
@@ -4540,6 +4594,13 @@ fn derive_run_review_metrics(
         low_altitude_unsafe_recovery_s,
         reference_gap_mean_m,
         reference_gap_max_m,
+        transfer_shape_curve_rmse_m: transfer_shape.map(|metrics| metrics.curve_rmse_m),
+        transfer_shape_apex_error_m: transfer_shape.map(|metrics| metrics.apex_error_m),
+        transfer_shape_projected_dx_abs_mean_m: transfer_shape
+            .and_then(|metrics| metrics.projected_dx_abs_mean_m),
+        transfer_shape_projected_dx_abs_max_m: transfer_shape
+            .and_then(|metrics| metrics.projected_dx_abs_max_m),
+        transfer_shape_shortfall_ratio: transfer_shape.and_then(|metrics| metrics.shortfall_ratio),
         transfer_terminal_handoff_time_s: transfer.terminal_handoff_time_s,
         transfer_terminal_handoff_dx_m: transfer.terminal_handoff_dx_m,
         transfer_terminal_handoff_height_m: transfer.terminal_handoff_height_m,
@@ -4550,7 +4611,13 @@ fn derive_run_review_metrics(
         transfer_boost_apex_over_target_m: transfer.boost_apex_over_target_m,
         transfer_boost_quality: transfer.boost_quality,
         transfer_boost_cutoff_time_s: transfer.boost_cutoff_time_s,
+        transfer_boost_cutoff_projected_dx_m: transfer.boost_cutoff_projected_dx_m,
+        transfer_boost_cutoff_impact_angle_deg: transfer.boost_cutoff_impact_angle_deg,
+        transfer_boost_cutoff_apex_over_target_m: transfer.boost_cutoff_apex_over_target_m,
         transfer_boost_cutoff_quality: transfer.boost_cutoff_quality,
+        transfer_boost_burn_duration_s: transfer.boost_burn_duration_s,
+        transfer_boost_burn_fuel_used_kg: transfer.boost_burn_fuel_used_kg,
+        transfer_boost_burn_avg_throttle: transfer.boost_burn_avg_throttle,
         transfer_terminal_gate_mode: transfer.terminal_gate_mode,
         transfer_terminal_gate_latest_safe_margin_s: transfer.terminal_gate_latest_safe_margin_s,
         transfer_terminal_gate_required_accel_ratio: transfer.terminal_gate_required_accel_ratio,
@@ -4569,7 +4636,13 @@ struct TransferReviewMetrics {
     boost_apex_over_target_m: Option<f64>,
     boost_quality: Option<String>,
     boost_cutoff_time_s: Option<f64>,
+    boost_cutoff_projected_dx_m: Option<f64>,
+    boost_cutoff_impact_angle_deg: Option<f64>,
+    boost_cutoff_apex_over_target_m: Option<f64>,
     boost_cutoff_quality: Option<String>,
+    boost_burn_duration_s: Option<f64>,
+    boost_burn_fuel_used_kg: Option<f64>,
+    boost_burn_avg_throttle: Option<f64>,
     terminal_gate_mode: Option<String>,
     terminal_gate_latest_safe_margin_s: Option<f64>,
     terminal_gate_required_accel_ratio: Option<f64>,
@@ -4577,6 +4650,7 @@ struct TransferReviewMetrics {
 
 fn transfer_review_metrics(
     controller_updates: &[pd_control::ControllerUpdateRecord],
+    samples: &[SampleRecord],
 ) -> TransferReviewMetrics {
     let final_phase = controller_updates
         .iter()
@@ -4586,7 +4660,7 @@ fn transfer_review_metrics(
     let Some(handoff) = controller_updates.iter().find(|update| {
         telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("terminal")
     }) else {
-        let mut metrics = transfer_review_metrics_without_handoff(controller_updates);
+        let mut metrics = transfer_review_metrics_without_handoff(controller_updates, samples);
         metrics.final_phase = final_phase;
         return metrics;
     };
@@ -4600,7 +4674,7 @@ fn transfer_review_metrics(
                 metric::TANGENTIAL_SPEED_MPS,
             ))
             .map(|(vertical, tangential)| vertical.hypot(tangential));
-    let mut metrics = transfer_review_metrics_without_handoff(controller_updates);
+    let mut metrics = transfer_review_metrics_without_handoff(controller_updates, samples);
     metrics.terminal_handoff_time_s = Some(handoff.sim_time_s);
     metrics.terminal_handoff_dx_m = terminal_handoff_dx_m;
     metrics.terminal_handoff_height_m = terminal_handoff_height_m;
@@ -4611,9 +4685,11 @@ fn transfer_review_metrics(
 
 fn transfer_review_metrics_without_handoff(
     controller_updates: &[pd_control::ControllerUpdateRecord],
+    samples: &[SampleRecord],
 ) -> TransferReviewMetrics {
     let last_boost_update = controller_updates.iter().rev().find(|update| {
-        telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY).is_some()
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
+            && telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY).is_some()
     });
     let (boost_projected_dx_m, boost_impact_angle_deg, boost_apex_over_target_m, boost_quality) =
         last_boost_update
@@ -4629,15 +4705,26 @@ fn transfer_review_metrics_without_handoff(
             })
             .unwrap_or((None, None, None, None));
     let boost_cutoff = transfer_boost_cutoff_update(controller_updates);
-    let (boost_cutoff_time_s, boost_cutoff_quality) = boost_cutoff
+    let (
+        boost_cutoff_time_s,
+        boost_cutoff_projected_dx_m,
+        boost_cutoff_impact_angle_deg,
+        boost_cutoff_apex_over_target_m,
+        boost_cutoff_quality,
+    ) = boost_cutoff
         .map(|update| {
             (
                 Some(update.sim_time_s),
+                telemetry_float(&update.frame.metrics, metric::TRANSFER_PROJECTED_DX_M),
+                telemetry_float(&update.frame.metrics, metric::TRANSFER_IMPACT_ANGLE_DEG)
+                    .filter(|value| *value >= 0.0),
+                telemetry_float(&update.frame.metrics, metric::TRANSFER_APEX_OVER_TARGET_M),
                 telemetry_text(&update.frame.metrics, metric::TRANSFER_BOOST_QUALITY)
                     .map(ToOwned::to_owned),
             )
         })
-        .unwrap_or((None, None));
+        .unwrap_or((None, None, None, None, None));
+    let boost_burn = transfer_boost_burn_metrics(controller_updates, samples, boost_cutoff);
     let terminal_gate_update = controller_updates.iter().rev().find(|update| {
         telemetry_text(&update.frame.metrics, metric::TRANSFER_TERMINAL_GATE_MODE).is_some()
     });
@@ -4668,7 +4755,13 @@ fn transfer_review_metrics_without_handoff(
         boost_apex_over_target_m,
         boost_quality,
         boost_cutoff_time_s,
+        boost_cutoff_projected_dx_m,
+        boost_cutoff_impact_angle_deg,
+        boost_cutoff_apex_over_target_m,
         boost_cutoff_quality,
+        boost_burn_duration_s: boost_burn.and_then(|metrics| metrics.duration_s),
+        boost_burn_fuel_used_kg: boost_burn.and_then(|metrics| metrics.fuel_used_kg),
+        boost_burn_avg_throttle: boost_burn.and_then(|metrics| metrics.avg_throttle),
         terminal_gate_mode,
         terminal_gate_latest_safe_margin_s,
         terminal_gate_required_accel_ratio,
@@ -4690,6 +4783,112 @@ fn transfer_boost_cutoff_update(
     None
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TransferBoostBurnMetrics {
+    duration_s: Option<f64>,
+    fuel_used_kg: Option<f64>,
+    avg_throttle: Option<f64>,
+}
+
+fn transfer_boost_burn_metrics(
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+    samples: &[SampleRecord],
+    boost_cutoff: Option<&pd_control::ControllerUpdateRecord>,
+) -> Option<TransferBoostBurnMetrics> {
+    let first_boost = controller_updates.iter().find(|update| {
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
+    })?;
+    let cutoff = boost_cutoff
+        .or_else(|| {
+            controller_updates.iter().rev().find(|update| {
+                telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
+            })
+        })
+        .unwrap_or(first_boost);
+    let duration_s = (cutoff.sim_time_s - first_boost.sim_time_s)
+        .is_finite()
+        .then_some((cutoff.sim_time_s - first_boost.sim_time_s).max(0.0));
+    let fuel_used_kg = sample_at_or_after_step(samples, first_boost.physics_step)
+        .zip(sample_at_or_after_step(samples, cutoff.physics_step))
+        .map(|(start, end)| start.observation.fuel_kg - end.observation.fuel_kg)
+        .filter(|value| value.is_finite())
+        .map(|value| value.max(0.0));
+    let avg_throttle = transfer_boost_avg_throttle(controller_updates, first_boost, cutoff);
+
+    Some(TransferBoostBurnMetrics {
+        duration_s,
+        fuel_used_kg,
+        avg_throttle,
+    })
+}
+
+fn transfer_boost_avg_throttle(
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+    first_boost: &pd_control::ControllerUpdateRecord,
+    cutoff: &pd_control::ControllerUpdateRecord,
+) -> Option<f64> {
+    let boost_updates = controller_updates
+        .iter()
+        .enumerate()
+        .filter(|(_, update)| {
+            update.physics_step >= first_boost.physics_step
+                && update.physics_step <= cutoff.physics_step
+                && telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
+        })
+        .collect::<Vec<_>>();
+    if boost_updates.is_empty() {
+        return None;
+    }
+
+    let mut weighted_sum = 0.0;
+    let mut total_dt = 0.0;
+    for (update_index, update) in boost_updates {
+        let next_time_s = controller_updates
+            .get(update_index + 1)
+            .map(|next| next.sim_time_s)
+            .unwrap_or(cutoff.sim_time_s)
+            .min(cutoff.sim_time_s);
+        let dt = (next_time_s - update.sim_time_s).max(0.0);
+        if dt > 0.0 {
+            weighted_sum += update.frame.command.throttle_frac * dt;
+            total_dt += dt;
+        }
+    }
+    if total_dt > 1e-9 {
+        Some(weighted_sum / total_dt)
+    } else {
+        Some(
+            controller_updates
+                .iter()
+                .filter(|update| {
+                    update.physics_step >= first_boost.physics_step
+                        && update.physics_step <= cutoff.physics_step
+                        && telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE)
+                            == Some("boost")
+                })
+                .map(|update| update.frame.command.throttle_frac)
+                .sum::<f64>()
+                / controller_updates
+                    .iter()
+                    .filter(|update| {
+                        update.physics_step >= first_boost.physics_step
+                            && update.physics_step <= cutoff.physics_step
+                            && telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE)
+                                == Some("boost")
+                    })
+                    .count()
+                    .max(1) as f64,
+        )
+    }
+}
+
+fn sample_at_or_after_step(samples: &[SampleRecord], physics_step: u64) -> Option<&SampleRecord> {
+    samples
+        .iter()
+        .find(|sample| sample.physics_step >= physics_step)
+        .or_else(|| samples.last())
+}
+
 fn telemetry_text<'a>(metrics: &'a BTreeMap<String, TelemetryValue>, key: &str) -> Option<&'a str> {
     match metrics.get(key)? {
         TelemetryValue::Text(value) => Some(value),
@@ -4703,6 +4902,174 @@ fn telemetry_float(metrics: &BTreeMap<String, TelemetryValue>, key: &str) -> Opt
         TelemetryValue::Integer(value) => Some(*value as f64),
         _ => None,
     }
+}
+
+fn telemetry_bool(metrics: &BTreeMap<String, TelemetryValue>, key: &str) -> Option<bool> {
+    match metrics.get(key)? {
+        TelemetryValue::Bool(value) => Some(*value),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TransferShapeMetrics {
+    curve_rmse_m: f64,
+    apex_error_m: f64,
+    projected_dx_abs_mean_m: Option<f64>,
+    projected_dx_abs_max_m: Option<f64>,
+    shortfall_ratio: Option<f64>,
+}
+
+fn transfer_shape_metrics(
+    scenario: &ScenarioSpec,
+    samples: &[SampleRecord],
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+) -> Option<TransferShapeMetrics> {
+    scenario.mission.transfer_route.as_ref()?;
+    let target_pad = scenario
+        .world
+        .landing_pads
+        .iter()
+        .find(|pad| pad.id == scenario.mission.goal.target_pad_id())?;
+    let first_boost = controller_updates.iter().find(|update| {
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
+    })?;
+    let start_sample = sample_at_or_after_step(samples, first_boost.physics_step)?;
+    let terminal_step = controller_updates
+        .iter()
+        .find(|update| {
+            update.physics_step >= first_boost.physics_step
+                && telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("terminal")
+        })
+        .map(|update| update.physics_step)
+        .unwrap_or_else(|| {
+            samples
+                .last()
+                .map(|sample| sample.physics_step)
+                .unwrap_or(first_boost.physics_step)
+        });
+    let window_samples = samples
+        .iter()
+        .filter(|sample| {
+            sample.physics_step >= start_sample.physics_step && sample.physics_step <= terminal_step
+        })
+        .collect::<Vec<_>>();
+    if window_samples.len() < 2 {
+        return None;
+    }
+
+    let start_x = start_sample.observation.position_m.x;
+    let start_y = start_sample.observation.position_m.y;
+    let target_x = target_pad.center_x_m;
+    let target_y = target_pad.surface_y_m;
+    let dx_anchor_m = target_x - start_x;
+    let dy_anchor_m = target_y - start_y;
+    if !dx_anchor_m.is_finite() || !dy_anchor_m.is_finite() {
+        return None;
+    }
+    let apex_target_over_target_m =
+        transfer_shape_apex_target_over_target_m(dx_anchor_m.abs(), dy_anchor_m);
+
+    let mut curve_sq_err_sum = 0.0;
+    let mut curve_count = 0_usize;
+    let mut apex_actual_over_target_m = 0.0_f64;
+    for sample in &window_samples {
+        let x = sample.observation.position_m.x;
+        let y = sample.observation.position_m.y;
+        if !x.is_finite() || !y.is_finite() {
+            continue;
+        }
+        let y_ref = transfer_shape_reference_y_at_x(
+            x,
+            start_x,
+            start_y,
+            target_x,
+            target_y,
+            apex_target_over_target_m,
+        );
+        let y_err = y - y_ref;
+        curve_sq_err_sum += y_err * y_err;
+        curve_count += 1;
+        apex_actual_over_target_m = apex_actual_over_target_m.max((y - target_y).max(0.0));
+    }
+    if curve_count == 0 {
+        return None;
+    }
+
+    let mut projected_abs_sum = 0.0;
+    let mut projected_abs_max = 0.0_f64;
+    let mut projected_count = 0_usize;
+    let mut shortfall_count = 0_usize;
+    let mut shortfall_sample_count = 0_usize;
+    for update in controller_updates {
+        if update.physics_step < start_sample.physics_step || update.physics_step >= terminal_step {
+            continue;
+        }
+        if telemetry_bool(&update.frame.metrics, metric::TRANSFER_TARGET_Y_SOLUTION) == Some(false)
+        {
+            continue;
+        }
+        let Some(projected_dx_m) =
+            telemetry_float(&update.frame.metrics, metric::TRANSFER_PROJECTED_DX_M)
+        else {
+            continue;
+        };
+        if !projected_dx_m.is_finite() {
+            continue;
+        }
+        let projected_abs = projected_dx_m.abs();
+        projected_abs_sum += projected_abs;
+        projected_abs_max = projected_abs_max.max(projected_abs);
+        projected_count += 1;
+
+        if let Some(route_dx_m) =
+            telemetry_float(&update.frame.metrics, metric::TRANSFER_ROUTE_DX_M)
+            && route_dx_m.abs() > 1e-3
+        {
+            shortfall_sample_count += 1;
+            if projected_dx_m * route_dx_m.signum() > 0.0 {
+                shortfall_count += 1;
+            }
+        }
+    }
+
+    Some(TransferShapeMetrics {
+        curve_rmse_m: (curve_sq_err_sum / curve_count as f64).sqrt(),
+        apex_error_m: (apex_actual_over_target_m - apex_target_over_target_m).abs(),
+        projected_dx_abs_mean_m: (projected_count > 0)
+            .then_some(projected_abs_sum / projected_count as f64),
+        projected_dx_abs_max_m: (projected_count > 0).then_some(projected_abs_max),
+        shortfall_ratio: (shortfall_sample_count > 0)
+            .then_some(shortfall_count as f64 / shortfall_sample_count as f64),
+    })
+}
+
+fn transfer_shape_reference_y_at_x(
+    x: f64,
+    start_x: f64,
+    start_y: f64,
+    target_x: f64,
+    target_y: f64,
+    apex_target_over_target_m: f64,
+) -> f64 {
+    let dx = target_x - start_x;
+    if dx.abs() <= 1e-6 {
+        return start_y.max(target_y);
+    }
+    let s = ((x - start_x) / dx).clamp(0.0, 1.0);
+    let baseline = start_y + ((target_y - start_y) * s);
+    baseline + (4.0 * apex_target_over_target_m * s * (1.0 - s))
+}
+
+fn transfer_shape_apex_target_over_target_m(dx_abs_m: f64, dy_m: f64) -> f64 {
+    const APEX_HEIGHT_PER_DX: f64 = 0.18;
+    const APEX_HEIGHT_PER_UPHILL_DY: f64 = 0.15;
+    const APEX_HEIGHT_MIN_M: f64 = 30.0;
+    const APEX_HEIGHT_MAX_M: f64 = 240.0;
+
+    (APEX_HEIGHT_PER_DX * dx_abs_m).clamp(APEX_HEIGHT_MIN_M, APEX_HEIGHT_MAX_M)
+        + (dy_m * APEX_HEIGHT_PER_UPHILL_DY).max(0.0)
+        + (-dy_m).max(0.0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -5170,6 +5537,7 @@ fn write_artifact_bundle(
         scenario,
         &artifacts.run.manifest,
         &artifacts.run.samples,
+        &artifacts.controller_updates,
     )?;
     Ok(())
 }
@@ -6645,6 +7013,160 @@ mod tests {
         assert_eq!(run.scenario.initial_state.velocity_mps, Vec2::new(0.0, 0.0));
     }
 
+    fn transfer_sample(
+        physics_step: u64,
+        sim_time_s: f64,
+        position_m: Vec2,
+        velocity_mps: Vec2,
+        fuel_kg: f64,
+    ) -> SampleRecord {
+        SampleRecord {
+            sim_time_s,
+            physics_step,
+            observation: pd_core::Observation {
+                sim_time_s,
+                physics_step,
+                position_m,
+                velocity_mps,
+                attitude_rad: 0.0,
+                angular_rate_radps: 0.0,
+                mass_kg: 900.0 + fuel_kg,
+                fuel_kg,
+                gravity_mps2: 9.8,
+                target_dx_m: -position_m.x,
+                height_above_target_m: position_m.y,
+                target_surface_y_m: 0.0,
+                target_pad_half_width_m: 18.0,
+                touchdown_clearance_m: position_m.y,
+                min_hull_clearance_m: position_m.y,
+            },
+            held_command: pd_core::Command::idle(),
+        }
+    }
+
+    fn transfer_update(
+        physics_step: u64,
+        sim_time_s: f64,
+        transfer_phase: &str,
+        route_dx_m: f64,
+        projected_dx_m: f64,
+        throttle_frac: f64,
+    ) -> pd_control::ControllerUpdateRecord {
+        pd_control::ControllerUpdateRecord {
+            sim_time_s,
+            physics_step,
+            controller_update_index: physics_step,
+            compute_time_us: None,
+            frame: pd_control::ControllerFrame {
+                command: pd_core::Command {
+                    throttle_frac,
+                    target_attitude_rad: 0.0,
+                },
+                status: transfer_phase.to_owned(),
+                phase: Some(transfer_phase.to_owned()),
+                metrics: BTreeMap::from([
+                    (
+                        metric::TRANSFER_PHASE.to_owned(),
+                        TelemetryValue::from(transfer_phase),
+                    ),
+                    (
+                        metric::TRANSFER_ROUTE_DX_M.to_owned(),
+                        TelemetryValue::from(route_dx_m),
+                    ),
+                    (
+                        metric::TRANSFER_TARGET_Y_SOLUTION.to_owned(),
+                        TelemetryValue::from(true),
+                    ),
+                    (
+                        metric::TRANSFER_PROJECTED_DX_M.to_owned(),
+                        TelemetryValue::from(projected_dx_m),
+                    ),
+                ]),
+                markers: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn transfer_shape_metrics_use_boost_window_reference() {
+        let mut scenario = easy_landing_scenario();
+        scenario.world.landing_pads.push(LandingPadSpec {
+            id: "source".to_owned(),
+            center_x_m: -200.0,
+            surface_y_m: 50.0,
+            width_m: 36.0,
+        });
+        scenario.mission.transfer_route = Some(TransferRouteSpec {
+            source_pad_id: "source".to_owned(),
+            target_pad_id: "pad_a".to_owned(),
+            route_angle_deg: 0.0,
+            route_radius_m: 200.0,
+        });
+        let samples = vec![
+            transfer_sample(
+                0,
+                0.0,
+                Vec2::new(-200.0, 50.0),
+                Vec2::new(40.0, 20.0),
+                100.0,
+            ),
+            transfer_sample(
+                60,
+                0.5,
+                Vec2::new(-100.0, 90.0),
+                Vec2::new(40.0, -5.0),
+                96.0,
+            ),
+            transfer_sample(120, 1.0, Vec2::new(0.0, 0.0), Vec2::new(0.0, -10.0), 94.0),
+        ];
+        let updates = vec![
+            transfer_update(0, 0.0, "boost", 200.0, 80.0, 1.0),
+            transfer_update(60, 0.5, "boost", 100.0, 20.0, 0.8),
+            transfer_update(120, 1.0, "terminal", 0.0, 0.0, 0.0),
+        ];
+
+        let metrics = transfer_shape_metrics(&scenario, &samples, &updates)
+            .expect("transfer shape metrics should be available");
+
+        assert!((metrics.curve_rmse_m - 12.124_355_65).abs() < 1e-6);
+        assert!((metrics.apex_error_m - 4.0).abs() < 1e-9);
+        assert_eq!(metrics.projected_dx_abs_mean_m, Some(50.0));
+        assert_eq!(metrics.projected_dx_abs_max_m, Some(80.0));
+        assert_eq!(metrics.shortfall_ratio, Some(1.0));
+    }
+
+    #[test]
+    fn transfer_burn_metrics_use_last_boost_when_no_cutoff_exists() {
+        let samples = vec![
+            transfer_sample(
+                0,
+                0.0,
+                Vec2::new(-200.0, 50.0),
+                Vec2::new(40.0, 20.0),
+                100.0,
+            ),
+            transfer_sample(
+                60,
+                0.5,
+                Vec2::new(-100.0, 90.0),
+                Vec2::new(40.0, -5.0),
+                96.0,
+            ),
+        ];
+        let updates = vec![
+            transfer_update(0, 0.0, "boost", 200.0, 80.0, 1.0),
+            transfer_update(60, 0.5, "boost", 100.0, 20.0, 0.5),
+        ];
+
+        let metrics = transfer_review_metrics(&updates, &samples);
+
+        assert_eq!(metrics.final_phase.as_deref(), Some("boost"));
+        assert_eq!(metrics.boost_cutoff_time_s, None);
+        assert_eq!(metrics.boost_burn_duration_s, Some(0.5));
+        assert_eq!(metrics.boost_burn_fuel_used_kg, Some(4.0));
+        assert_eq!(metrics.boost_burn_avg_throttle, Some(1.0));
+    }
+
     #[test]
     fn transfer_review_metrics_capture_terminal_handoff() {
         let updates = vec![
@@ -6715,7 +7237,7 @@ mod tests {
             },
         ];
 
-        let metrics = transfer_review_metrics(&updates);
+        let metrics = transfer_review_metrics(&updates, &[]);
 
         assert_eq!(metrics.final_phase.as_deref(), Some("terminal"));
         assert_eq!(metrics.terminal_handoff_time_s, Some(3.5));

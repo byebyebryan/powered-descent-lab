@@ -134,9 +134,19 @@ changing controller behavior:
 - `transfer_terminal_handoff_dx_m`
 - `transfer_terminal_handoff_height_m`
 - `transfer_terminal_handoff_speed_mps`
+- `transfer_shape_curve_rmse_m`
+- `transfer_shape_apex_error_m`
+- `transfer_shape_projected_dx_abs_mean_m`
+- `transfer_shape_projected_dx_abs_max_m`
+- `transfer_shape_shortfall_ratio`
+- `transfer_boost_burn_duration_s`
+- `transfer_boost_burn_fuel_used_kg`
+- `transfer_boost_burn_avg_throttle`
 
 These appear in `summary.json` per-run review records and in seed-row details
-for transfer batch reports.
+for transfer batch reports. The shape fields are Pylander-inspired diagnostics:
+they freeze the first boost-window route to the target, compare the actual path
+against a parabolic reference, and keep final touchdown as the scored goal.
 
 The current staged controller uses the transfer diagnostics directly:
 
@@ -146,6 +156,9 @@ The current staged controller uses the transfer diagnostics directly:
   clearance so source-slope climbs stay more vertical
 - when the target-y crossing is reachable but the projected `dx` misses, boost
   steers by projected miss direction rather than current `dx` alone
+- boost-quality and apex-target calculations use the first boost-window route
+  anchor so the intended shape does not shrink as the vehicle approaches the
+  target
 - coast pre-aligns upright retrograde without commanding max tilt during
   ascent
 
@@ -186,8 +199,10 @@ Latest transfer tuning checkpoint:
 - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations
 - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
   invalidations
-- `43.08s` mean sim time and `61.35s` max sim time for the 99-run
-  route-angle pack
+- latest shape-instrumentation rerun kept those same outcomes:
+  - `transfer_bot_lab_suite`: `45 / 45`, `47.34s` mean sim time, `61.35s` max
+  - `transfer_route_angle_suite`: `90 / 99`, `43.08s` mean sim time, `61.35s`
+    max
 - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
 - only `r+80` remains failed across all payload tiers; this behaves more like
   near-cliff launch/waypoint debt than terminal handoff debt

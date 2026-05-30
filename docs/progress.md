@@ -2,6 +2,32 @@
 
 ## 2026-05-30
 
+### Transfer shape instrumentation checkpoint
+
+- Added Pylander-inspired transfer shape diagnostics:
+  - shape-window curve RMSE against a parabolic boost-window reference
+  - apex error
+  - projected `dx` abs mean/max
+  - projected shortfall ratio
+  - boost burn duration, fuel used, and average throttle
+- Single-run transfer previews now draw the boost-window reference curve when
+  controller telemetry is available; dense lane previews stay actual-trajectory
+  focused.
+- The transfer controller now freezes the first boost-window route anchor for
+  boost-quality and apex-target calculations, avoiding a shrinking intended
+  shape as the vehicle approaches the target.
+- Regenerated transfer packs locally with `8` workers:
+  - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations,
+    `47.34s` mean sim time, `61.35s` max sim time
+  - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
+    invalidations, `43.08s` mean sim time, `61.35s` max sim time
+- Current transfer read remains unchanged:
+  - all route-angle cells from `r-80` through `r+60` solve across `empty`,
+    `half`, and `full`
+  - only `r+80` remains failed across payload tiers
+  - the new diagnostics make the remaining "landed but ugly" transfer shape
+    visible without changing the scored goal
+
 ### Transfer boost/handoff tuning checkpoint
 
 - Added ballistic transfer diagnostics and surfaced boost/handoff fields in
