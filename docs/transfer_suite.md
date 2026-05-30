@@ -142,6 +142,11 @@ changing controller behavior:
 - `transfer_boost_burn_duration_s`
 - `transfer_boost_burn_fuel_used_kg`
 - `transfer_boost_burn_avg_throttle`
+- `transfer_terminal_gate_mode`
+- `transfer_terminal_gate_latest_safe_margin_s`
+- `transfer_terminal_gate_required_accel_ratio`
+- `transfer_corridor_mode`
+- `transfer_corridor_min_margin_m`
 
 These appear in `summary.json` per-run review records and in seed-row details
 for transfer batch reports. The shape fields are Pylander-inspired diagnostics:
@@ -159,8 +164,16 @@ The current staged controller uses the transfer diagnostics directly:
 - boost-quality and apex-target calculations use the first boost-window route
   anchor so the intended shape does not shrink as the vehicle approaches the
   target
+- terminal handoff is gated by the terminal controller's read-only
+  recoverability estimate rather than just route distance/height
+- uphill boost samples a local source-to-target terrain corridor and caps tilt
+  near vertical until the craft has clearance over the immediate ramp
 - coast pre-aligns upright retrograde without commanding max tilt during
   ascent
+
+The corridor guard is still route-local, not broad terrain avoidance. It is
+intended to protect near-source uphill climbs from terrain collision without
+turning transfer guidance into a full route planner.
 
 ## Current Checkpoint
 
@@ -194,18 +207,20 @@ Handoff read:
 
 Latest transfer tuning checkpoint:
 
-- generated locally after the ballistic boost-quality and uphill handoff pass
-  with `8` workers
+- generated locally after the recoverability-gated terminal handoff and local
+  uphill corridor pass with `8` workers
 - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations
 - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
   invalidations
-- latest shape-instrumentation rerun kept those same outcomes:
-  - `transfer_bot_lab_suite`: `45 / 45`, `47.34s` mean sim time, `61.35s` max
-  - `transfer_route_angle_suite`: `90 / 99`, `43.08s` mean sim time, `61.35s`
+- latest gate/corridor rerun kept those same outcomes:
+  - `transfer_bot_lab_suite`: `45 / 45`, `45.21s` mean sim time, `62.77s` max
+  - `transfer_route_angle_suite`: `90 / 99`, `42.20s` mean sim time, `62.77s`
     max
 - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
-- only `r+80` remains failed across all payload tiers; this behaves more like
-  near-cliff launch/waypoint debt than terminal handoff debt
+- only `r+80` remains failed across all payload tiers; those runs remain in
+  boost with `transfer_terminal_gate_mode = pending` and
+  `transfer_corridor_mode = active`, so this behaves more like near-cliff
+  launch/corridor debt than terminal handoff debt
 
 ## Deferred Work
 

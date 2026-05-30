@@ -155,6 +155,27 @@ impl GuidanceMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum TransferGateReadinessMode {
+    Pending,
+    NominalReady,
+    LatestSafe,
+}
+
+impl TransferGateReadinessMode {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::NominalReady => "nominal_ready",
+            Self::LatestSafe => "latest_safe",
+        }
+    }
+
+    pub(crate) fn is_ready(self) -> bool {
+        matches!(self, Self::NominalReady | Self::LatestSafe)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct BallisticProjection {
     projected_dx_m: f64,
     time_to_cross_s: f64,
@@ -195,6 +216,29 @@ struct TerminalCommandState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TransferGateReadiness {
+    pub(crate) mode: TransferGateReadinessMode,
+    pub(crate) ready_ticks: u32,
+    pub(crate) burn_time_s: f64,
+    pub(crate) latest_safe_margin_s: f64,
+    pub(crate) required_accel_ratio: f64,
+    pub(crate) terrain_min_clearance_m: f64,
+    pub(crate) terrain_clearance_safe: bool,
+}
+
+impl TransferGateReadiness {
+    pub(crate) fn is_ready(self) -> bool {
+        self.mode.is_ready()
+    }
+
+    pub(crate) fn forced_pending(mut self) -> Self {
+        self.mode = TransferGateReadinessMode::Pending;
+        self.ready_ticks = 0;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct SettledDescentCommand {
     command: Command,
     target_down_speed_mps: f64,
@@ -223,6 +267,94 @@ impl TerminalPdgController {
             last_mode: None,
             nominal_ready_ticks: 0,
             touchdown_idle_cut_active: false,
+        }
+    }
+
+    pub(crate) fn evaluate_transfer_gate(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        lateral_dx_m: f64,
+        current_ready_ticks: u32,
+    ) -> TransferGateReadiness {
+        let view = ControllerView::new(ctx, observation);
+        let dx_m = view.target_dx_m();
+        let height_above_target_m = view.height_above_target_m().max(0.0);
+        let touchdown_clearance_m = view.touchdown_clearance_m();
+        let dy_m = -height_above_target_m;
+        let vx_mps = view.observation.velocity_mps.x;
+        let vy_up_mps = view.observation.velocity_mps.y;
+        let max_thrust_accel_mps2 =
+            view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(1.0);
+        let nominal_thrust_accel_mps2 =
+            max_thrust_accel_mps2 * self.config.terminal_gate_nominal_ratio;
+        let gravity_mps2 = view.observation.gravity_mps2;
+        let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
+            - view.ctx.vehicle.geometry.touchdown_half_span_m)
+            .max(0.0);
+
+        let latest_safe = self.latest_safe_candidate(
+            &view,
+            dx_m,
+            dy_m,
+            touchdown_clearance_m,
+            lateral_dx_m,
+            vx_mps,
+            vy_up_mps,
+            max_thrust_accel_mps2,
+            gravity_mps2,
+            view.observation.target_pad_half_width_m,
+            touchdown_center_limit_m,
+        );
+        let nominal = self.best_nominal_candidate(
+            &view,
+            dx_m,
+            dy_m,
+            touchdown_clearance_m,
+            lateral_dx_m,
+            vx_mps,
+            vy_up_mps,
+            max_thrust_accel_mps2,
+            nominal_thrust_accel_mps2,
+            gravity_mps2,
+            view.observation.target_pad_half_width_m,
+            touchdown_center_limit_m,
+        );
+
+        let nominal_ready_ticks = if nominal.ready {
+            current_ready_ticks.saturating_add(1)
+        } else {
+            0
+        };
+        let (mode, ready_ticks, selected) = if latest_safe.latest_safe_margin_s <= 0.0 {
+            (
+                TransferGateReadinessMode::LatestSafe,
+                0,
+                latest_safe.best_candidate,
+            )
+        } else if nominal.ready && nominal_ready_ticks >= self.config.terminal_gate_hysteresis_ticks
+        {
+            (
+                TransferGateReadinessMode::NominalReady,
+                nominal_ready_ticks,
+                nominal.best_candidate,
+            )
+        } else {
+            (
+                TransferGateReadinessMode::Pending,
+                nominal_ready_ticks,
+                nominal.best_candidate,
+            )
+        };
+
+        TransferGateReadiness {
+            mode,
+            ready_ticks,
+            burn_time_s: selected.burn_time_s,
+            latest_safe_margin_s: latest_safe.latest_safe_margin_s,
+            required_accel_ratio: selected.required_accel_ratio,
+            terrain_min_clearance_m: selected.terrain_min_clearance_m,
+            terrain_clearance_safe: selected.terrain_clearance_safe,
         }
     }
 

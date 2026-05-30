@@ -4243,6 +4243,11 @@ fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String 
     if let Some(latest_safe_margin_s) = review.transfer_terminal_gate_latest_safe_margin_s {
         parts.push(format!("margin {latest_safe_margin_s:.1}s"));
     }
+    if let Some(corridor_margin_m) = review.transfer_corridor_min_margin_m
+        && (review.transfer_corridor_mode.as_deref() == Some("active") || corridor_margin_m < 0.0)
+    {
+        parts.push(format!("corridor {corridor_margin_m:.0}m"));
+    }
     if let Some(dx_m) = review.transfer_terminal_handoff_dx_m {
         parts.push(format!("dx {dx_m:.0}m"));
     }

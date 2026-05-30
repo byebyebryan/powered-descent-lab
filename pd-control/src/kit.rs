@@ -58,6 +58,8 @@ pub mod metric {
         "transfer.terminal_gate_latest_safe_margin_s";
     pub const TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO: &str =
         "transfer.terminal_gate_required_accel_ratio";
+    pub const TRANSFER_CORRIDOR_MODE: &str = "transfer.corridor_mode";
+    pub const TRANSFER_CORRIDOR_MARGIN_M: &str = "transfer.corridor_margin_m";
 }
 
 pub mod marker {

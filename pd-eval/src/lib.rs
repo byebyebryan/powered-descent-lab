@@ -25,7 +25,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 18;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 19;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -170,6 +170,10 @@ pub struct BatchRunReviewMetrics {
     pub transfer_terminal_gate_latest_safe_margin_s: Option<f64>,
     #[serde(default)]
     pub transfer_terminal_gate_required_accel_ratio: Option<f64>,
+    #[serde(default)]
+    pub transfer_corridor_mode: Option<String>,
+    #[serde(default)]
+    pub transfer_corridor_min_margin_m: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -4621,6 +4625,8 @@ fn derive_run_review_metrics(
         transfer_terminal_gate_mode: transfer.terminal_gate_mode,
         transfer_terminal_gate_latest_safe_margin_s: transfer.terminal_gate_latest_safe_margin_s,
         transfer_terminal_gate_required_accel_ratio: transfer.terminal_gate_required_accel_ratio,
+        transfer_corridor_mode: transfer.corridor_mode,
+        transfer_corridor_min_margin_m: transfer.corridor_min_margin_m,
     }
 }
 
@@ -4646,6 +4652,8 @@ struct TransferReviewMetrics {
     terminal_gate_mode: Option<String>,
     terminal_gate_latest_safe_margin_s: Option<f64>,
     terminal_gate_required_accel_ratio: Option<f64>,
+    corridor_mode: Option<String>,
+    corridor_min_margin_m: Option<f64>,
 }
 
 fn transfer_review_metrics(
@@ -4748,6 +4756,30 @@ fn transfer_review_metrics_without_handoff(
             )
         })
         .unwrap_or((None, None, None));
+    let corridor_min_margin_m = controller_updates
+        .iter()
+        .filter(|update| {
+            telemetry_text(&update.frame.metrics, metric::TRANSFER_CORRIDOR_MODE)
+                .is_some_and(|mode| mode != "inactive")
+        })
+        .filter_map(|update| {
+            telemetry_float(&update.frame.metrics, metric::TRANSFER_CORRIDOR_MARGIN_M)
+        })
+        .filter(|margin_m| margin_m.is_finite())
+        .reduce(f64::min);
+    let last_corridor_mode = controller_updates
+        .iter()
+        .rev()
+        .filter_map(|update| telemetry_text(&update.frame.metrics, metric::TRANSFER_CORRIDOR_MODE))
+        .find(|mode| *mode != "inactive")
+        .map(ToOwned::to_owned);
+    let corridor_mode = if controller_updates.iter().any(|update| {
+        telemetry_text(&update.frame.metrics, metric::TRANSFER_CORRIDOR_MODE) == Some("active")
+    }) {
+        Some("active".to_owned())
+    } else {
+        last_corridor_mode
+    };
 
     TransferReviewMetrics {
         boost_projected_dx_m,
@@ -4765,6 +4797,8 @@ fn transfer_review_metrics_without_handoff(
         terminal_gate_mode,
         terminal_gate_latest_safe_margin_s,
         terminal_gate_required_accel_ratio,
+        corridor_mode,
+        corridor_min_margin_m,
         ..TransferReviewMetrics::default()
     }
 }
@@ -7165,6 +7199,35 @@ mod tests {
         assert_eq!(metrics.boost_burn_duration_s, Some(0.5));
         assert_eq!(metrics.boost_burn_fuel_used_kg, Some(4.0));
         assert_eq!(metrics.boost_burn_avg_throttle, Some(1.0));
+    }
+
+    #[test]
+    fn transfer_review_metrics_capture_active_corridor_margin() {
+        let mut updates = vec![
+            transfer_update(0, 0.0, "boost", 200.0, 80.0, 1.0),
+            transfer_update(60, 0.5, "boost", 100.0, 20.0, 1.0),
+        ];
+        updates[0].frame.metrics.insert(
+            metric::TRANSFER_CORRIDOR_MODE.to_owned(),
+            TelemetryValue::from("inactive"),
+        );
+        updates[0].frame.metrics.insert(
+            metric::TRANSFER_CORRIDOR_MARGIN_M.to_owned(),
+            TelemetryValue::from(1.0e9),
+        );
+        updates[1].frame.metrics.insert(
+            metric::TRANSFER_CORRIDOR_MODE.to_owned(),
+            TelemetryValue::from("active"),
+        );
+        updates[1].frame.metrics.insert(
+            metric::TRANSFER_CORRIDOR_MARGIN_M.to_owned(),
+            TelemetryValue::from(-32.0),
+        );
+
+        let metrics = transfer_review_metrics(&updates, &[]);
+
+        assert_eq!(metrics.corridor_mode.as_deref(), Some("active"));
+        assert_eq!(metrics.corridor_min_margin_m, Some(-32.0));
     }
 
     #[test]

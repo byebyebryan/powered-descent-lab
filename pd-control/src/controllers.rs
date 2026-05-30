@@ -1,5 +1,7 @@
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
-use crate::terminal_pdg::{TerminalPdgController, TerminalPdgControllerConfig};
+use crate::terminal_pdg::{
+    TerminalPdgController, TerminalPdgControllerConfig, TransferGateReadiness,
+};
 use crate::{Controller, ControllerFrame, TelemetryValue};
 use pd_core::{Command, Observation, RunContext};
 use serde::{Deserialize, Serialize};
@@ -9,6 +11,12 @@ const TRANSFER_UPHILL_STEEP_TILT_SCALE: f64 = 0.25;
 const TRANSFER_UPHILL_STEEP_TILT_MIN_RAD: f64 = 0.0;
 const TRANSFER_UPHILL_LOW_CLEARANCE_M: f64 = 240.0;
 const TRANSFER_UPHILL_CLEARANCE_BLEND_FLOOR_M: f64 = 20.0;
+const TRANSFER_UPHILL_CORRIDOR_CLEARANCE_MARGIN_M: f64 = 35.0;
+const TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD: f64 = 0.12;
+const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_FRAC: f64 = 0.35;
+const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MIN_M: f64 = 35.0;
+const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MAX_M: f64 = 160.0;
+const TRANSFER_CORRIDOR_SAMPLE_COUNT: usize = 24;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -640,12 +648,32 @@ struct TransferDiagnostics {
     boost_quality: TransferBoostQuality,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TransferCorridorState {
+    mode: &'static str,
+    active: bool,
+    margin_m: f64,
+}
+
+impl TransferCorridorState {
+    fn inactive() -> Self {
+        Self {
+            mode: "inactive",
+            active: false,
+            margin_m: 1.0e9,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TransferPdgController {
     config: TransferPdgControllerConfig,
     terminal: TerminalPdgController,
     phase: TransferPhase,
     boost_anchor: Option<TransferBoostAnchor>,
+    transfer_gate_ready_ticks: u32,
+    last_transfer_gate: Option<TransferGateReadiness>,
+    last_corridor: TransferCorridorState,
     last_phase: Option<String>,
 }
 
@@ -663,6 +691,9 @@ impl TransferPdgController {
             terminal,
             phase: TransferPhase::Takeoff,
             boost_anchor: None,
+            transfer_gate_ready_ticks: 0,
+            last_transfer_gate: None,
+            last_corridor: TransferCorridorState::inactive(),
             last_phase: None,
         }
     }
@@ -737,6 +768,8 @@ impl TransferPdgController {
         &self,
         builder: ControllerFrameBuilder,
         diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
+        corridor: TransferCorridorState,
     ) -> ControllerFrameBuilder {
         builder
             .metric(metric::TRANSFER_ROUTE_DX_M, diagnostics.route_dx_m)
@@ -790,12 +823,25 @@ impl TransferPdgController {
                 metric::TRANSFER_BOOST_QUALITY_PASS,
                 diagnostics.boost_quality.passed,
             )
+            .metric(metric::TRANSFER_TERMINAL_GATE_MODE, gate.mode.label())
+            .metric(
+                metric::TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S,
+                gate.latest_safe_margin_s,
+            )
+            .metric(
+                metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO,
+                gate.required_accel_ratio,
+            )
+            .metric(metric::TRANSFER_CORRIDOR_MODE, corridor.mode)
+            .metric(metric::TRANSFER_CORRIDOR_MARGIN_M, corridor.margin_m)
     }
 
     fn insert_transfer_metrics(
         &self,
         frame: &mut ControllerFrame,
         diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
+        corridor: TransferCorridorState,
     ) {
         frame.metrics.insert(
             metric::TRANSFER_ROUTE_DX_M.to_owned(),
@@ -860,6 +906,99 @@ impl TransferPdgController {
             metric::TRANSFER_BOOST_QUALITY_PASS.to_owned(),
             TelemetryValue::from(diagnostics.boost_quality.passed),
         );
+        frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_MODE.to_owned(),
+            TelemetryValue::from(gate.mode.label()),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S.to_owned(),
+            TelemetryValue::from(gate.latest_safe_margin_s),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO.to_owned(),
+            TelemetryValue::from(gate.required_accel_ratio),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_CORRIDOR_MODE.to_owned(),
+            TelemetryValue::from(corridor.mode),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_CORRIDOR_MARGIN_M.to_owned(),
+            TelemetryValue::from(corridor.margin_m),
+        );
+    }
+
+    fn transfer_gate_readiness(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> TransferGateReadiness {
+        let lateral_dx_m = diagnostics
+            .projection
+            .projected_dx_m
+            .filter(|_| diagnostics.projection.has_target_y_solution)
+            .unwrap_or(diagnostics.route_dx_m);
+        let gate = self.terminal.evaluate_transfer_gate(
+            ctx,
+            observation,
+            lateral_dx_m,
+            self.transfer_gate_ready_ticks,
+        );
+
+        if !diagnostics.projection.has_target_y_solution || observation.height_above_target_m <= 0.0
+        {
+            gate.forced_pending()
+        } else {
+            gate
+        }
+    }
+
+    fn transfer_corridor_state(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> TransferCorridorState {
+        if diagnostics.route_dy_m < self.config.uphill_boost_dy_min_m {
+            return TransferCorridorState::inactive();
+        }
+
+        let route_dx_m = diagnostics.route_dx_m;
+        if route_dx_m.abs() <= f64::EPSILON {
+            return TransferCorridorState::inactive();
+        }
+
+        let x0_m = observation.position_m.x;
+        let lookahead_m = (route_dx_m.abs() * TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_FRAC)
+            .clamp(
+                TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MIN_M,
+                TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MAX_M,
+            )
+            .min(route_dx_m.abs());
+        let x1_m = x0_m + (route_dx_m.signum() * lookahead_m);
+        let max_terrain_y_m = (0..=TRANSFER_CORRIDOR_SAMPLE_COUNT)
+            .map(|sample_index| sample_index as f64 / TRANSFER_CORRIDOR_SAMPLE_COUNT as f64)
+            .map(|t| x0_m + ((x1_m - x0_m) * t))
+            .map(|x_m| ctx.world.terrain.sample_height(x_m))
+            .fold(f64::NEG_INFINITY, f64::max);
+        let required_y_m = max_terrain_y_m
+            + ctx.vehicle.geometry.touchdown_base_offset_m
+            + TRANSFER_UPHILL_CORRIDOR_CLEARANCE_MARGIN_M;
+        let margin_m = observation.position_m.y - required_y_m;
+        if margin_m < 0.0 {
+            TransferCorridorState {
+                mode: "active",
+                active: true,
+                margin_m,
+            }
+        } else {
+            TransferCorridorState {
+                mode: "clear",
+                active: false,
+                margin_m,
+            }
+        }
     }
 
     fn choose_phase(
@@ -867,6 +1006,8 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
+        corridor: TransferCorridorState,
     ) -> TransferPhase {
         let Some(route) = ctx.mission.transfer_route.as_ref() else {
             return TransferPhase::Terminal;
@@ -889,20 +1030,37 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         }
 
+        if corridor.active {
+            return TransferPhase::Boost;
+        }
+
         let needs_transfer_burn = observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
             || diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m;
+        if !needs_transfer_burn {
+            return TransferPhase::Terminal;
+        }
+
         if self.phase != TransferPhase::Coast
             && needs_transfer_burn
-            && self.boost_should_continue(observation, diagnostics)
+            && (self.boost_should_continue(observation, diagnostics)
+                || self.transfer_recovery_boost_should_continue(observation, diagnostics))
         {
             return TransferPhase::Boost;
         }
 
-        if self.should_coast(observation, diagnostics) {
+        if gate.is_ready() {
+            return TransferPhase::Terminal;
+        }
+
+        if diagnostics.boost_quality.passed && self.should_coast(observation, diagnostics) {
             return TransferPhase::Coast;
         }
 
-        TransferPhase::Terminal
+        if needs_transfer_burn && self.phase != TransferPhase::Coast {
+            return TransferPhase::Boost;
+        }
+
+        TransferPhase::Coast
     }
 
     fn boost_should_continue(
@@ -918,6 +1076,16 @@ impl TransferPdgController {
         }
 
         true
+    }
+
+    fn transfer_recovery_boost_should_continue(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> bool {
+        diagnostics.route_dy_m >= self.config.uphill_boost_dy_min_m
+            && !diagnostics.projection.has_target_y_solution
+            && observation.height_above_target_m <= 0.0
     }
 
     fn should_coast(&self, observation: &Observation, diagnostics: TransferDiagnostics) -> bool {
@@ -941,6 +1109,7 @@ impl TransferPdgController {
         &self,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
     ) -> f64 {
         let direction = self.boost_lateral_direction(observation, diagnostics);
         if direction == 0.0 {
@@ -957,6 +1126,10 @@ impl TransferPdgController {
         } else {
             self.config.boost_tilt_rad
         };
+        if corridor.active {
+            return direction * tilt_rad.min(TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
+        }
+
         direction * tilt_rad
     }
 
@@ -1013,6 +1186,8 @@ impl TransferPdgController {
         command: Command,
         status: &'static str,
         diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
+        corridor: TransferCorridorState,
     ) -> ControllerFrame {
         let view = ControllerView::new(ctx, observation);
         let phase = phase_name.as_str().to_owned();
@@ -1023,7 +1198,9 @@ impl TransferPdgController {
             .phase_transition_marker(self.last_phase.as_deref(), &phase, &view)
             .metric(metric::GUIDANCE_ACTIVE, true)
             .metric(metric::TRANSFER_PHASE, phase.as_str());
-        let frame = self.transfer_metrics_builder(builder, diagnostics).build();
+        let frame = self
+            .transfer_metrics_builder(builder, diagnostics, gate, corridor)
+            .build();
         self.last_phase = Some(phase);
         frame
     }
@@ -1083,13 +1260,23 @@ impl Controller for TransferPdgController {
 
     fn reset(&mut self, ctx: &RunContext) {
         self.phase = TransferPhase::Takeoff;
+        self.boost_anchor = None;
+        self.transfer_gate_ready_ticks = 0;
+        self.last_transfer_gate = None;
+        self.last_corridor = TransferCorridorState::inactive();
         self.last_phase = None;
         self.terminal.reset(ctx);
     }
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
         let preliminary_diagnostics = self.transfer_diagnostics(observation);
-        let phase = self.choose_phase(ctx, observation, preliminary_diagnostics);
+        let gate = self.transfer_gate_readiness(ctx, observation, preliminary_diagnostics);
+        let corridor = self.transfer_corridor_state(ctx, observation, preliminary_diagnostics);
+        self.transfer_gate_ready_ticks = gate.ready_ticks;
+        self.last_transfer_gate = Some(gate);
+        self.last_corridor = corridor;
+
+        let phase = self.choose_phase(ctx, observation, preliminary_diagnostics, gate, corridor);
         if phase == TransferPhase::Boost && self.boost_anchor.is_none() {
             self.boost_anchor = Some(TransferBoostAnchor {
                 route_dx_m: observation.target_dx_m,
@@ -1109,6 +1296,8 @@ impl Controller for TransferPdgController {
                 },
                 "lifting off from source pad",
                 diagnostics,
+                gate,
+                corridor,
             ),
             TransferPhase::Boost => self.frame_for_open_loop_phase(
                 ctx,
@@ -1116,10 +1305,16 @@ impl Controller for TransferPdgController {
                 phase,
                 Command {
                     throttle_frac: 1.0,
-                    target_attitude_rad: self.boost_attitude_rad(observation, diagnostics),
+                    target_attitude_rad: self.boost_attitude_rad(
+                        observation,
+                        diagnostics,
+                        corridor,
+                    ),
                 },
                 "boosting toward terminal gate",
                 diagnostics,
+                gate,
+                corridor,
             ),
             TransferPhase::Coast => self.frame_for_open_loop_phase(
                 ctx,
@@ -1131,10 +1326,12 @@ impl Controller for TransferPdgController {
                 },
                 "coasting before terminal handoff",
                 diagnostics,
+                gate,
+                corridor,
             ),
             TransferPhase::Terminal => {
                 let mut frame = self.terminal.update(ctx, observation);
-                self.insert_transfer_metrics(&mut frame, diagnostics);
+                self.insert_transfer_metrics(&mut frame, diagnostics, gate, corridor);
                 frame.metrics.insert(
                     metric::TRANSFER_PHASE.to_owned(),
                     TelemetryValue::from("terminal"),
@@ -1150,7 +1347,13 @@ impl Controller for TransferPdgController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pd_core::Vec2;
+    use crate::terminal_pdg::TransferGateReadinessMode;
+    use pd_core::{
+        EvaluationGoal, LandingPadSpec, MissionSpec, RunContext, ScenarioSpec, SimConfig,
+        TerrainDefinition, TransferRouteSpec, Vec2, VehicleGeometry, VehicleInitialState,
+        VehicleSpec, WorldSpec,
+    };
+    use std::collections::BTreeMap;
 
     fn transfer_observation(
         target_dx_m: f64,
@@ -1175,6 +1378,85 @@ mod tests {
             touchdown_clearance_m: height_above_target_m.abs() + 100.0,
             min_hull_clearance_m: height_above_target_m.abs() + 100.0,
         }
+    }
+
+    fn uphill_transfer_context() -> RunContext {
+        let scenario = ScenarioSpec {
+            id: "uphill_transfer".to_owned(),
+            name: "Uphill transfer".to_owned(),
+            description: "uphill transfer controller unit fixture".to_owned(),
+            seed: 1,
+            tags: vec!["test".to_owned()],
+            metadata: BTreeMap::new(),
+            sim: SimConfig {
+                physics_hz: 120,
+                controller_hz: 60,
+                max_time_s: 90.0,
+                sample_hz: Some(10),
+            },
+            world: WorldSpec {
+                gravity_mps2: 9.81,
+                terrain: TerrainDefinition::Heightfield {
+                    points_m: vec![
+                        Vec2::new(-180.0, -780.0),
+                        Vec2::new(-140.0, -780.0),
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(180.0, 0.0),
+                    ],
+                },
+                landing_pads: vec![
+                    LandingPadSpec {
+                        id: "source".to_owned(),
+                        center_x_m: -140.0,
+                        surface_y_m: -780.0,
+                        width_m: 36.0,
+                    },
+                    LandingPadSpec {
+                        id: "target".to_owned(),
+                        center_x_m: 0.0,
+                        surface_y_m: 0.0,
+                        width_m: 36.0,
+                    },
+                ],
+            },
+            vehicle: VehicleSpec {
+                geometry: VehicleGeometry {
+                    hull_width_m: 4.0,
+                    hull_height_m: 6.0,
+                    touchdown_half_span_m: 2.0,
+                    touchdown_base_offset_m: 3.2,
+                },
+                dry_mass_kg: 700.0,
+                initial_fuel_kg: 240.0,
+                max_fuel_kg: 240.0,
+                max_thrust_n: 16_000.0,
+                max_fuel_burn_kgps: 11.0,
+                min_throttle_frac: 0.0,
+                max_rotation_rate_radps: 1.2,
+                safe_touchdown_normal_speed_mps: 3.0,
+                safe_touchdown_tangential_speed_mps: 2.0,
+                safe_touchdown_attitude_error_rad: 0.15,
+                safe_touchdown_angular_rate_radps: 0.35,
+            },
+            initial_state: VehicleInitialState {
+                position_m: Vec2::new(-140.0, -780.0),
+                velocity_mps: Vec2::new(0.0, 0.0),
+                attitude_rad: 0.0,
+                angular_rate_radps: 0.0,
+            },
+            mission: MissionSpec {
+                transfer_route: Some(TransferRouteSpec {
+                    source_pad_id: "source".to_owned(),
+                    target_pad_id: "target".to_owned(),
+                    route_angle_deg: 80.0,
+                    route_radius_m: 800.0,
+                }),
+                goal: EvaluationGoal::LandingOnPad {
+                    target_pad_id: "target".to_owned(),
+                },
+            },
+        };
+        RunContext::from_scenario(&scenario).unwrap()
     }
 
     #[test]
@@ -1245,7 +1527,11 @@ mod tests {
                     < diagnostics.boost_quality.apex_target_over_target_m
         );
         assert_eq!(
-            controller.boost_attitude_rad(&observation, diagnostics),
+            controller.boost_attitude_rad(
+                &observation,
+                diagnostics,
+                TransferCorridorState::inactive()
+            ),
             controller.config.uphill_boost_tilt_rad
         );
     }
@@ -1277,7 +1563,11 @@ mod tests {
         observation.touchdown_clearance_m = 35.0;
         let diagnostics = controller.transfer_diagnostics(&observation);
 
-        let attitude_rad = controller.boost_attitude_rad(&observation, diagnostics);
+        let attitude_rad = controller.boost_attitude_rad(
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+        );
 
         assert!(attitude_rad > 0.0);
         assert!(attitude_rad < controller.config.uphill_boost_tilt_rad);
@@ -1290,7 +1580,13 @@ mod tests {
         let diagnostics = controller.transfer_diagnostics(&observation);
 
         assert!(diagnostics.projection.projected_dx_m.unwrap() < 0.0);
-        assert!(controller.boost_attitude_rad(&observation, diagnostics) < 0.0);
+        assert!(
+            controller.boost_attitude_rad(
+                &observation,
+                diagnostics,
+                TransferCorridorState::inactive()
+            ) < 0.0
+        );
     }
 
     #[test]
@@ -1313,5 +1609,99 @@ mod tests {
 
         assert!(attitude_rad < 0.0);
         assert!(attitude_rad.abs() < 0.8);
+    }
+
+    #[test]
+    fn transfer_reset_clears_boost_anchor_and_gate_state() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 140.0,
+            route_dy_m: 780.0,
+        });
+        controller.transfer_gate_ready_ticks = 3;
+        controller.last_transfer_gate = Some(TransferGateReadiness {
+            mode: TransferGateReadinessMode::NominalReady,
+            ready_ticks: 3,
+            burn_time_s: 5.0,
+            latest_safe_margin_s: 2.0,
+            required_accel_ratio: 0.4,
+            terrain_min_clearance_m: 20.0,
+            terrain_clearance_safe: true,
+        });
+        controller.last_corridor = TransferCorridorState {
+            mode: "active",
+            active: true,
+            margin_m: -10.0,
+        };
+
+        controller.reset(&ctx);
+
+        assert!(controller.boost_anchor.is_none());
+        assert_eq!(controller.transfer_gate_ready_ticks, 0);
+        assert_eq!(controller.last_transfer_gate, None);
+        assert_eq!(controller.last_corridor, TransferCorridorState::inactive());
+    }
+
+    #[test]
+    fn transfer_gate_forces_pending_without_target_y_solution() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(140.0, -780.0, Vec2::new(10.0, 15.0), 6.0);
+        observation.position_m = Vec2::new(-140.0, -780.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let gate = controller.transfer_gate_readiness(&ctx, &observation, diagnostics);
+
+        assert!(!diagnostics.projection.has_target_y_solution);
+        assert_eq!(gate.mode, TransferGateReadinessMode::Pending);
+        assert_eq!(gate.ready_ticks, 0);
+    }
+
+    #[test]
+    fn transfer_uphill_corridor_caps_boost_tilt() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(140.0, -780.0, Vec2::new(10.0, 15.0), 6.0);
+        observation.position_m = Vec2::new(-140.0, -780.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        let attitude_rad = controller.boost_attitude_rad(&observation, diagnostics, corridor);
+
+        assert!(corridor.active);
+        assert!(corridor.margin_m < 0.0);
+        assert!(attitude_rad.abs() <= TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
+        assert!(attitude_rad.abs() < controller.config.uphill_boost_tilt_rad);
+    }
+
+    #[test]
+    fn transfer_uphill_corridor_releases_after_local_clearance() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(140.0, -450.0, Vec2::new(10.0, 15.0), 6.0);
+        observation.position_m = Vec2::new(-140.0, -450.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        assert_eq!(corridor.mode, "clear");
+        assert!(!corridor.active);
+        assert!(corridor.margin_m > 0.0);
+    }
+
+    #[test]
+    fn transfer_short_downhill_route_stays_terminal_owned() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(140.0, 320.0, Vec2::new(0.0, -4.0), 6.0);
+        observation.position_m = Vec2::new(-140.0, 320.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let gate = controller.transfer_gate_readiness(&ctx, &observation, diagnostics);
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        let phase = controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
+
+        assert_eq!(phase, TransferPhase::Terminal);
     }
 }
