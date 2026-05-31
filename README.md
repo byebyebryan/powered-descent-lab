@@ -341,9 +341,13 @@ enough for real controller iteration. The evaluator can now:
   scoring
 - evaluate a default thresholded regression policy over compare runs, scoped to
   the preferred current controller lane when both reports contain one
-- record transfer handoff diagnostics in per-run review metrics:
-  `transfer_final_phase`, terminal handoff time, handoff `dx`, handoff height,
-  and handoff speed
+- record transfer handoff diagnostics in per-run review metrics, including
+  terminal entry kind, handoff gate, handoff height/speed, handoff projected
+  `dx`, handoff angle, boost-cutoff quality/projected `dx`, and
+  Pylander-inspired shape metrics
+- render transfer-specific `Transfer Handoff Triage` and `Transfer Shape
+  Triage` sections ahead of the Review Tree so transfer tuning starts from
+  handoff/gate/cutoff quality before visual shape
 
 Current checkpoint on the maintained Earth payload tiers:
 
@@ -407,6 +411,8 @@ Transfer route-angle checkpoint:
   - the only remaining route-shape failures are `r+80` across payload tiers;
     treat that as near-cliff launch/waypoint debt rather than terminal
     guidance debt
+  - report triage now keeps that frontier visible while surfacing
+    landed-but-ugly handoff and cutoff cells for the next controller pass
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`

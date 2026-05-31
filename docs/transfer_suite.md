@@ -130,10 +130,28 @@ Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:
 
 - `transfer_final_phase`
+- `transfer_terminal_entry_kind`
 - `transfer_terminal_handoff_time_s`
 - `transfer_terminal_handoff_dx_m`
 - `transfer_terminal_handoff_height_m`
 - `transfer_terminal_handoff_speed_mps`
+- `transfer_terminal_handoff_gate_mode`
+- `transfer_terminal_handoff_projected_dx_m`
+- `transfer_terminal_handoff_impact_angle_deg`
+- `transfer_terminal_handoff_boost_quality`
+- `transfer_terminal_handoff_latest_safe_margin_s`
+- `transfer_terminal_handoff_required_accel_ratio`
+- `transfer_boost_projected_dx_m`
+- `transfer_boost_impact_angle_deg`
+- `transfer_boost_apex_over_target_m`
+- `transfer_boost_quality`
+- `transfer_boost_settled_quality`
+- `transfer_boost_settled_projected_dx_m`
+- `transfer_boost_cutoff_time_s`
+- `transfer_boost_cutoff_projected_dx_m`
+- `transfer_boost_cutoff_impact_angle_deg`
+- `transfer_boost_cutoff_apex_over_target_m`
+- `transfer_boost_cutoff_quality`
 - `transfer_shape_curve_rmse_m`
 - `transfer_shape_apex_error_m`
 - `transfer_shape_projected_dx_abs_mean_m`
@@ -152,6 +170,17 @@ These appear in `summary.json` per-run review records and in seed-row details
 for transfer batch reports. The shape fields are Pylander-inspired diagnostics:
 they freeze the first boost-window route to the target, compare the actual path
 against a parabolic reference, and keep final touchdown as the scored goal.
+
+Batch reports now render two transfer-specific triage sections before the
+Review Tree:
+
+- `Transfer Handoff Triage` is the primary controller-tuning view. It groups
+  current-lane runs by condition, route, radius, and vehicle, then sorts by
+  failed/frontier status, low handoff height, high handoff speed, wide handoff
+  projected `dx`, and wide boost-cutoff projected `dx`.
+- `Transfer Shape Triage` remains a visual-shape diagnostic sorted by worst
+  successful shape RMSE. It should explain "landed but ugly" transfer paths,
+  not replace the handoff gate/cutoff read.
 
 The current staged controller uses the transfer diagnostics directly:
 
@@ -212,10 +241,12 @@ Latest transfer tuning checkpoint:
 - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations
 - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
   invalidations
-- latest gate/corridor rerun kept those same outcomes:
-  - `transfer_bot_lab_suite`: `45 / 45`, `45.21s` mean sim time, `62.77s` max
-  - `transfer_route_angle_suite`: `90 / 99`, `42.20s` mean sim time, `62.77s`
-    max
+- latest schema-23 handoff diagnostics report the same outcomes:
+  - `transfer_bot_lab_suite`: all `45` runs enter through handoff with
+    `latest_safe` gates
+  - `transfer_route_angle_suite`: `84` handoff entries, `9` direct entries,
+    and `6` records without terminal-entry diagnostics; the only failures are
+    still the `r+80` frontier cells
 - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
 - only `r+80` remains failed across all payload tiers. At the nominal `800m`
   radius it is a near-vertical route: about `139m` horizontal for `788m` of

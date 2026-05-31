@@ -273,6 +273,9 @@ Status:
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run
+- batch reports now put `Transfer Handoff Triage` ahead of shape triage so
+  controller tuning starts from entry kind, handoff gate, height/speed,
+  projected `dx`, cutoff quality, and worst seed before visual-shape RMSE
 - current route-angle checkpoint after the first boost/handoff tuning pass:
   - `90 / 99` successes
   - `9` crashes

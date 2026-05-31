@@ -221,6 +221,7 @@ fn render_batch_report(
     }}
     .header-context h2,
     .header-overview h2,
+    .transfer-handoff-section h2,
     .transfer-shape-section h2,
     .review-tree-section h2 {{
       margin: 0;
@@ -822,17 +823,33 @@ fn render_batch_report(
     .review-tree-root.compare-hidden .compare-toggle-target {{
       display: none;
     }}
+    .transfer-handoff-section,
     .transfer-shape-section {{
       margin-bottom: 16px;
+    }}
+    .transfer-handoff-table {{
+      min-width: 1320px;
     }}
     .transfer-shape-table {{
       min-width: 1160px;
     }}
+    .transfer-handoff-table tbody td,
     .transfer-shape-table tbody td {{
       vertical-align: top;
     }}
+    .transfer-handoff-table .overview-main,
     .transfer-shape-table .overview-main {{
       white-space: nowrap;
+    }}
+    .triage-risk .overview-main,
+    .triage-risk {{
+      color: var(--bad);
+      font-weight: 700;
+    }}
+    .triage-warn .overview-main,
+    .triage-warn {{
+      color: var(--warn);
+      font-weight: 700;
     }}
     .review-tree-section {{
       border-top: 1px solid rgba(215,205,189,0.88);
@@ -898,6 +915,8 @@ fn render_batch_report(
     {context_html}
 
     {overview_html}
+
+    {transfer_handoff_triage_html}
 
     {transfer_shape_triage_html}
 
@@ -1125,6 +1144,11 @@ fn render_batch_report(
             baseline.map(|(_, report)| report),
             comparison,
             render_view_controls(has_compare_view).as_str(),
+        ),
+        transfer_handoff_triage_html = render_transfer_handoff_triage_section(
+            candidate,
+            &output_dir,
+            &candidate_record_links,
         ),
         transfer_shape_triage_html = render_transfer_shape_triage_section(
             candidate,
@@ -2423,6 +2447,547 @@ struct TransferShapeCellSummary<'a> {
     worst_record: Option<&'a crate::BatchRunRecord>,
 }
 
+struct TransferHandoffCellSummary<'a> {
+    key: TransferShapeCellKey,
+    total_runs: usize,
+    scored_runs: usize,
+    success_runs: usize,
+    frontier_runs: usize,
+    failed_scored_runs: usize,
+    terminal_entry_kind: Option<String>,
+    handoff_gate_mode: Option<String>,
+    handoff_height_m: Option<crate::BatchMetricSummary>,
+    handoff_speed_mps: Option<crate::BatchMetricSummary>,
+    handoff_projected_dx_abs_m: Option<crate::BatchMetricSummary>,
+    handoff_impact_angle_deg: Option<crate::BatchMetricSummary>,
+    cutoff_quality: Option<String>,
+    cutoff_projected_dx_abs_m: Option<crate::BatchMetricSummary>,
+    cutoff_impact_angle_deg: Option<crate::BatchMetricSummary>,
+    shape_rmse_m: Option<crate::BatchMetricSummary>,
+    worst_record: Option<&'a crate::BatchRunRecord>,
+}
+
+fn render_transfer_handoff_triage_section(
+    candidate: &BatchReport,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let candidate_records = preferred_current_lane_focus(candidate)
+        .map(|focus| focus.records)
+        .unwrap_or_else(|| candidate.records.iter().collect::<Vec<_>>());
+    if !candidate_records
+        .iter()
+        .any(|record| transfer_shape_record_has_transfer(record))
+    {
+        return String::new();
+    }
+
+    let mut rows = transfer_handoff_cell_summaries(candidate_records.as_slice());
+    rows.sort_by(compare_transfer_handoff_cells);
+
+    if rows.is_empty() {
+        return r#"<section class="transfer-handoff-section">
+  <div class="section-head">
+    <h2>Transfer Handoff Triage</h2>
+  </div>
+  <p class="muted">No current-lane transfer handoff diagnostics were available.</p>
+</section>"#
+            .to_owned();
+    }
+
+    let row_html = rows
+        .iter()
+        .map(|summary| {
+            render_transfer_handoff_triage_row(summary, output_dir, candidate_record_map)
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        r#"<section class="transfer-handoff-section">
+  <div class="section-head">
+    <h2>Transfer Handoff Triage</h2>
+    <div class="section-note">Current-lane transfer cells, sorted by failed/frontier status and handoff risk before visual shape.</div>
+  </div>
+  <div class="table-wrap">
+    <table class="transfer-handoff-table">
+      <thead>
+        <tr>
+          <th>Route</th>
+          <th>Vehicle</th>
+          <th>Success</th>
+          <th>Entry / Gate</th>
+          <th>Handoff Height</th>
+          <th>Handoff Speed</th>
+          <th>Handoff pdx</th>
+          <th>Handoff Angle</th>
+          <th>Cutoff</th>
+          <th>Cutoff pdx</th>
+          <th>Shape RMSE</th>
+          <th>Worst Seed</th>
+        </tr>
+      </thead>
+      <tbody>{row_html}</tbody>
+    </table>
+  </div>
+</section>"#
+    )
+}
+
+fn render_transfer_handoff_triage_row(
+    summary: &TransferHandoffCellSummary<'_>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let cell_id = transfer_shape_cell_id(&summary.key);
+    let route_html = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
+        escape_html(&summary.key.route_angle),
+        escape_html(&summary.key.condition_set),
+        escape_html(&summary.key.radius_tier),
+    );
+    let vehicle_html = format!(
+        r#"<code>{}</code>"#,
+        escape_html(&summary.key.vehicle_variant)
+    );
+    let success_html = render_transfer_handoff_success_cell(summary);
+    let entry_gate_html = render_transfer_handoff_entry_gate(summary);
+    let height_html = render_transfer_handoff_metric_cell(
+        summary.handoff_height_m.as_ref(),
+        MetricDisplayKind::Meters,
+        handoff_height_class(summary.handoff_height_m.as_ref()),
+    );
+    let speed_html = render_transfer_handoff_metric_cell(
+        summary.handoff_speed_mps.as_ref(),
+        MetricDisplayKind::Speed,
+        handoff_speed_class(summary.handoff_speed_mps.as_ref()),
+    );
+    let handoff_dx_html = render_transfer_handoff_metric_cell(
+        summary.handoff_projected_dx_abs_m.as_ref(),
+        MetricDisplayKind::Meters,
+        projected_dx_class(summary.handoff_projected_dx_abs_m.as_ref()),
+    );
+    let handoff_angle_html = render_transfer_handoff_metric_cell(
+        summary.handoff_impact_angle_deg.as_ref(),
+        MetricDisplayKind::Degrees,
+        impact_angle_class(summary.handoff_impact_angle_deg.as_ref()),
+    );
+    let cutoff_html = render_transfer_handoff_cutoff(summary);
+    let cutoff_dx_html = render_transfer_handoff_metric_cell(
+        summary.cutoff_projected_dx_abs_m.as_ref(),
+        MetricDisplayKind::Meters,
+        projected_dx_class(summary.cutoff_projected_dx_abs_m.as_ref()),
+    );
+    let shape_html = render_transfer_handoff_metric_cell(
+        summary.shape_rmse_m.as_ref(),
+        MetricDisplayKind::Meters,
+        None,
+    );
+    let worst_seed_html =
+        render_transfer_handoff_worst_seed(summary, output_dir, candidate_record_map);
+
+    format!(
+        r#"<tr data-transfer-handoff-cell="{cell_id}">
+  <td>{route}</td>
+  <td>{vehicle}</td>
+  <td>{success}</td>
+  <td>{entry_gate}</td>
+  <td>{height}</td>
+  <td>{speed}</td>
+  <td>{handoff_dx}</td>
+  <td>{handoff_angle}</td>
+  <td>{cutoff}</td>
+  <td>{cutoff_dx}</td>
+  <td>{shape}</td>
+  <td>{worst_seed}</td>
+</tr>"#,
+        cell_id = escape_html(&cell_id),
+        route = route_html,
+        vehicle = vehicle_html,
+        success = success_html,
+        entry_gate = entry_gate_html,
+        height = height_html,
+        speed = speed_html,
+        handoff_dx = handoff_dx_html,
+        handoff_angle = handoff_angle_html,
+        cutoff = cutoff_html,
+        cutoff_dx = cutoff_dx_html,
+        shape = shape_html,
+        worst_seed = worst_seed_html,
+    )
+}
+
+fn transfer_handoff_cell_summaries<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> Vec<TransferHandoffCellSummary<'a>> {
+    let mut grouped = BTreeMap::<TransferShapeCellKey, Vec<&'a crate::BatchRunRecord>>::new();
+    for &record in records {
+        let Some(key) = transfer_shape_cell_key(record) else {
+            continue;
+        };
+        grouped.entry(key).or_default().push(record);
+    }
+    grouped
+        .into_iter()
+        .map(|(key, records)| summarize_transfer_handoff_cell(key, records.as_slice()))
+        .collect()
+}
+
+fn summarize_transfer_handoff_cell<'a>(
+    key: TransferShapeCellKey,
+    records: &[&'a crate::BatchRunRecord],
+) -> TransferHandoffCellSummary<'a> {
+    let success_runs = records
+        .iter()
+        .filter(|record| transfer_shape_record_success(record))
+        .count();
+    let scored_runs = records
+        .iter()
+        .filter(|record| record.analytic.is_scored())
+        .count();
+    let frontier_runs = records
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.analytic.class,
+                crate::BatchRunAnalyticClass::Frontier
+            )
+        })
+        .count();
+    let failed_scored_runs = records
+        .iter()
+        .filter(|record| record.analytic.is_scored() && !transfer_shape_record_success(record))
+        .count();
+    let worst_record = records.iter().copied().max_by(|lhs, rhs| {
+        transfer_handoff_record_score(lhs)
+            .partial_cmp(&transfer_handoff_record_score(rhs))
+            .unwrap_or(Ordering::Equal)
+    });
+
+    TransferHandoffCellSummary {
+        key,
+        total_runs: records.len(),
+        scored_runs,
+        success_runs,
+        frontier_runs,
+        failed_scored_runs,
+        terminal_entry_kind: dominant_transfer_shape_mode(records, |review| {
+            review.transfer_terminal_entry_kind.as_deref()
+        }),
+        handoff_gate_mode: dominant_transfer_shape_mode(records, |review| {
+            review.transfer_terminal_handoff_gate_mode.as_deref()
+        }),
+        handoff_height_m: transfer_shape_metric_summary(records, |review| {
+            review.transfer_terminal_handoff_height_m
+        }),
+        handoff_speed_mps: transfer_shape_metric_summary(records, |review| {
+            review.transfer_terminal_handoff_speed_mps
+        }),
+        handoff_projected_dx_abs_m: transfer_shape_metric_summary(records, |review| {
+            review
+                .transfer_terminal_handoff_projected_dx_m
+                .map(f64::abs)
+        }),
+        handoff_impact_angle_deg: transfer_shape_metric_summary(records, |review| {
+            review.transfer_terminal_handoff_impact_angle_deg
+        }),
+        cutoff_quality: dominant_transfer_shape_mode(records, |review| {
+            review.transfer_boost_cutoff_quality.as_deref()
+        }),
+        cutoff_projected_dx_abs_m: transfer_shape_metric_summary(records, |review| {
+            review.transfer_boost_cutoff_projected_dx_m.map(f64::abs)
+        }),
+        cutoff_impact_angle_deg: transfer_shape_metric_summary(records, |review| {
+            review.transfer_boost_cutoff_impact_angle_deg
+        }),
+        shape_rmse_m: transfer_shape_metric_summary(records, |review| {
+            review.transfer_shape_curve_rmse_m
+        }),
+        worst_record,
+    }
+}
+
+fn compare_transfer_handoff_cells(
+    lhs: &TransferHandoffCellSummary<'_>,
+    rhs: &TransferHandoffCellSummary<'_>,
+) -> Ordering {
+    transfer_handoff_problem_rank(lhs)
+        .cmp(&transfer_handoff_problem_rank(rhs))
+        .then_with(|| {
+            compare_f64_asc(
+                metric_mean_or(lhs.handoff_height_m.as_ref(), f64::INFINITY),
+                metric_mean_or(rhs.handoff_height_m.as_ref(), f64::INFINITY),
+            )
+        })
+        .then_with(|| {
+            compare_f64_desc(
+                metric_mean_or(lhs.handoff_speed_mps.as_ref(), 0.0),
+                metric_mean_or(rhs.handoff_speed_mps.as_ref(), 0.0),
+            )
+        })
+        .then_with(|| {
+            compare_f64_desc(
+                metric_mean_or(lhs.handoff_projected_dx_abs_m.as_ref(), 0.0),
+                metric_mean_or(rhs.handoff_projected_dx_abs_m.as_ref(), 0.0),
+            )
+        })
+        .then_with(|| {
+            compare_f64_desc(
+                metric_mean_or(lhs.cutoff_projected_dx_abs_m.as_ref(), 0.0),
+                metric_mean_or(rhs.cutoff_projected_dx_abs_m.as_ref(), 0.0),
+            )
+        })
+        .then_with(|| {
+            selector_sort_rank(&lhs.key.condition_set)
+                .cmp(&selector_sort_rank(&rhs.key.condition_set))
+        })
+        .then_with(|| {
+            selector_sort_rank(&lhs.key.route_angle).cmp(&selector_sort_rank(&rhs.key.route_angle))
+        })
+        .then_with(|| {
+            selector_sort_rank(&lhs.key.radius_tier).cmp(&selector_sort_rank(&rhs.key.radius_tier))
+        })
+        .then_with(|| {
+            selector_sort_rank(&lhs.key.vehicle_variant)
+                .cmp(&selector_sort_rank(&rhs.key.vehicle_variant))
+        })
+        .then_with(|| lhs.key.cmp(&rhs.key))
+}
+
+fn transfer_handoff_problem_rank(summary: &TransferHandoffCellSummary<'_>) -> usize {
+    if summary.failed_scored_runs > 0 || summary.frontier_runs > 0 {
+        0
+    } else {
+        1
+    }
+}
+
+fn compare_f64_asc(lhs: f64, rhs: f64) -> Ordering {
+    lhs.partial_cmp(&rhs).unwrap_or(Ordering::Equal)
+}
+
+fn compare_f64_desc(lhs: f64, rhs: f64) -> Ordering {
+    rhs.partial_cmp(&lhs).unwrap_or(Ordering::Equal)
+}
+
+fn metric_mean_or(summary: Option<&crate::BatchMetricSummary>, fallback: f64) -> f64 {
+    summary.map(|summary| summary.mean).unwrap_or(fallback)
+}
+
+fn transfer_handoff_record_score(record: &crate::BatchRunRecord) -> f64 {
+    let review = &record.review;
+    let mut score = 0.0;
+    if record.analytic.is_scored() && !transfer_shape_record_success(record) {
+        score += 10_000.0;
+    }
+    if matches!(
+        record.analytic.class,
+        crate::BatchRunAnalyticClass::Frontier
+    ) {
+        score += 2_000.0;
+    }
+    if let Some(quality) = review.transfer_boost_cutoff_quality.as_deref()
+        && quality != "pass"
+    {
+        score += 900.0;
+    }
+    if let Some(height_m) = review.transfer_terminal_handoff_height_m {
+        score += (80.0 - height_m).max(0.0) * 10.0;
+    }
+    if let Some(speed_mps) = review.transfer_terminal_handoff_speed_mps {
+        score += (speed_mps - 35.0).max(0.0) * 12.0;
+    }
+    if let Some(projected_dx_m) = review.transfer_terminal_handoff_projected_dx_m {
+        score += projected_dx_m.abs();
+    }
+    if let Some(cutoff_projected_dx_m) = review.transfer_boost_cutoff_projected_dx_m {
+        score += cutoff_projected_dx_m.abs() * 0.5;
+    }
+    if let Some(impact_angle_deg) = review.transfer_terminal_handoff_impact_angle_deg {
+        score += (55.0 - impact_angle_deg).max(0.0) * 8.0;
+    }
+    score
+}
+
+fn render_transfer_handoff_success_cell(summary: &TransferHandoffCellSummary<'_>) -> String {
+    let main = format!("{}/{}", summary.success_runs, summary.scored_runs);
+    let sub = if summary.scored_runs == 0 {
+        format!("{} total", summary.total_runs)
+    } else if summary.failed_scored_runs > 0 || summary.frontier_runs > 0 {
+        format!(
+            "{} fail · {} frontier",
+            summary.failed_scored_runs, summary.frontier_runs
+        )
+    } else {
+        format!(
+            "{:.1}% scored",
+            percentage(summary.success_runs, summary.scored_runs)
+        )
+    };
+    let class = if summary.failed_scored_runs > 0 {
+        "triage-risk"
+    } else if summary.frontier_runs > 0 {
+        "triage-warn"
+    } else {
+        ""
+    };
+    format!(
+        r#"<div class="overview-stack {class}"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&main),
+        escape_html(&sub),
+    )
+}
+
+fn render_transfer_handoff_entry_gate(summary: &TransferHandoffCellSummary<'_>) -> String {
+    let entry = summary.terminal_entry_kind.as_deref().unwrap_or("-");
+    let gate = summary.handoff_gate_mode.as_deref().unwrap_or("-");
+    let gate_label = if entry == "direct" {
+        "terminal gate"
+    } else {
+        "handoff gate"
+    };
+    let class = if entry != "direct" && gate == "pending" {
+        "triage-risk"
+    } else {
+        ""
+    };
+    format!(
+        r#"<div class="overview-stack {class}"><div class="overview-main">terminal {}</div><div class="overview-sub">{} {}</div></div>"#,
+        escape_html(entry),
+        escape_html(gate_label),
+        escape_html(gate),
+    )
+}
+
+fn render_transfer_handoff_metric_cell(
+    summary: Option<&crate::BatchMetricSummary>,
+    kind: MetricDisplayKind,
+    class: Option<&'static str>,
+) -> String {
+    let class = class.unwrap_or("");
+    format!(
+        r#"<div class="overview-stack {class}"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&format_metric_mean(summary, kind)),
+        escape_html(&format_metric_stddev(summary, kind)),
+    )
+}
+
+fn render_transfer_handoff_cutoff(summary: &TransferHandoffCellSummary<'_>) -> String {
+    let quality = summary.cutoff_quality.as_deref().unwrap_or("-");
+    let class = cutoff_quality_class(summary.cutoff_quality.as_deref()).unwrap_or("");
+    let angle = format_metric_mean(
+        summary.cutoff_impact_angle_deg.as_ref(),
+        MetricDisplayKind::Degrees,
+    );
+    format!(
+        r#"<div class="overview-stack {class}"><div class="overview-main">{}</div><div class="overview-sub">angle {}</div></div>"#,
+        escape_html(quality),
+        escape_html(&angle),
+    )
+}
+
+fn render_transfer_handoff_worst_seed(
+    summary: &TransferHandoffCellSummary<'_>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let Some(record) = summary.worst_record else {
+        return r#"<span class="muted">-</span>"#.to_owned();
+    };
+    let label = format!("seed {:04}", record.resolved.resolved_seed);
+    let note = transfer_handoff_worst_seed_note(record);
+    let Some(bundle_dir) = candidate_record_map
+        .get(&record.resolved.run_id)
+        .map(String::as_str)
+        .or(record.bundle_dir.as_deref())
+    else {
+        return format!(
+            r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
+            escape_html(&label),
+            escape_html(&note),
+        );
+    };
+    let bundle_dir = resolve_repo_relative(Path::new(bundle_dir));
+    let href = best_bundle_href(&bundle_dir, output_dir);
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main"><a href="{}">{}</a></div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&href),
+        escape_html(&label),
+        escape_html(&note),
+    )
+}
+
+fn transfer_handoff_worst_seed_note(record: &crate::BatchRunRecord) -> String {
+    if record.analytic.is_scored() && !transfer_shape_record_success(record) {
+        return match record.analytic.class {
+            crate::BatchRunAnalyticClass::Frontier => "frontier failure".to_owned(),
+            _ => "scored failure".to_owned(),
+        };
+    }
+    if let Some(height_m) = record.review.transfer_terminal_handoff_height_m {
+        return format!("height {height_m:.0}m");
+    }
+    if let Some(projected_dx_m) = record.review.transfer_terminal_handoff_projected_dx_m {
+        return format!("handoff pdx {:.0}m", projected_dx_m.abs());
+    }
+    if let Some(shape_rmse_m) = record.review.transfer_shape_curve_rmse_m {
+        return format!("shape {shape_rmse_m:.0}m");
+    }
+    "handoff diagnostics".to_owned()
+}
+
+fn handoff_height_class(summary: Option<&crate::BatchMetricSummary>) -> Option<&'static str> {
+    let mean = summary?.mean;
+    if mean < 25.0 {
+        Some("triage-risk")
+    } else if mean < 80.0 {
+        Some("triage-warn")
+    } else {
+        None
+    }
+}
+
+fn handoff_speed_class(summary: Option<&crate::BatchMetricSummary>) -> Option<&'static str> {
+    let mean = summary?.mean;
+    if mean > 50.0 {
+        Some("triage-risk")
+    } else if mean > 40.0 {
+        Some("triage-warn")
+    } else {
+        None
+    }
+}
+
+fn projected_dx_class(summary: Option<&crate::BatchMetricSummary>) -> Option<&'static str> {
+    let mean = summary?.mean;
+    if mean > 120.0 {
+        Some("triage-risk")
+    } else if mean > 60.0 {
+        Some("triage-warn")
+    } else {
+        None
+    }
+}
+
+fn impact_angle_class(summary: Option<&crate::BatchMetricSummary>) -> Option<&'static str> {
+    let mean = summary?.mean;
+    if mean < 40.0 {
+        Some("triage-risk")
+    } else if mean < 50.0 {
+        Some("triage-warn")
+    } else {
+        None
+    }
+}
+
+fn cutoff_quality_class(quality: Option<&str>) -> Option<&'static str> {
+    match quality {
+        Some("pass") => None,
+        Some(_) => Some("triage-risk"),
+        None => None,
+    }
+}
+
 fn render_transfer_shape_triage_section(
     candidate: &BatchReport,
     baseline: Option<&BatchReport>,
@@ -2472,7 +3037,7 @@ fn render_transfer_shape_triage_section(
   <div class="section-head">
     <h2>Transfer Shape Triage</h2>
   </div>
-  <p class="muted">No successful current-lane transfer runs with shape metrics were available; failure-only cells remain in the Review Tree.</p>
+  <p class="muted">No successful current-lane transfer runs with shape metrics were available; use Transfer Handoff Triage and the Review Tree for failure-only cells.</p>
 </section>"#
             .to_owned();
     }
@@ -2526,7 +3091,7 @@ fn render_transfer_shape_triage_section(
         r#"<section class="transfer-shape-section">
   <div class="section-head">
     <h2>Transfer Shape Triage</h2>
-    <div class="section-note">Current-lane transfer cells, sorted by worst successful shape RMSE.</div>
+    <div class="section-note">Visual-shape diagnostic sorted by worst successful RMSE. Use Transfer Handoff Triage first for controller tuning.</div>
   </div>
   <div class="table-wrap">
     <table class="transfer-shape-table">
@@ -5402,6 +5967,8 @@ enum MetricDisplayKind {
     Percent,
     Seconds,
     Meters,
+    Speed,
+    Degrees,
 }
 
 fn format_metric_value(summary: &crate::BatchMetricSummary, kind: MetricDisplayKind) -> String {
@@ -5409,6 +5976,8 @@ fn format_metric_value(summary: &crate::BatchMetricSummary, kind: MetricDisplayK
         MetricDisplayKind::Percent => format!("{:.1}%", summary.mean),
         MetricDisplayKind::Seconds => format!("{:.2}s", summary.mean),
         MetricDisplayKind::Meters => format!("{:.2}m", summary.mean),
+        MetricDisplayKind::Speed => format!("{:.2}m/s", summary.mean),
+        MetricDisplayKind::Degrees => format!("{:.1}deg", summary.mean),
     }
 }
 
@@ -5417,6 +5986,8 @@ fn format_metric_delta_value(delta: f64, kind: MetricDisplayKind) -> String {
         MetricDisplayKind::Percent => format!("{:+.1}%", delta),
         MetricDisplayKind::Seconds => format!("{:+.2}s", delta),
         MetricDisplayKind::Meters => format!("{:+.2}m", delta),
+        MetricDisplayKind::Speed => format!("{:+.2}m/s", delta),
+        MetricDisplayKind::Degrees => format!("{:+.1}deg", delta),
     }
 }
 
@@ -5427,6 +5998,23 @@ fn format_metric_mean(
     summary
         .map(|summary| format_metric_value(summary, kind))
         .unwrap_or_else(|| "-".to_owned())
+}
+
+fn format_metric_stddev(
+    summary: Option<&crate::BatchMetricSummary>,
+    kind: MetricDisplayKind,
+) -> String {
+    let Some(summary) = summary else {
+        return "std -".to_owned();
+    };
+    let stddev = summary.stddev.unwrap_or(0.0);
+    match kind {
+        MetricDisplayKind::Percent => format!("std {stddev:.1}%"),
+        MetricDisplayKind::Seconds => format!("std {stddev:.2}s"),
+        MetricDisplayKind::Meters => format!("std {stddev:.2}m"),
+        MetricDisplayKind::Speed => format!("std {stddev:.2}m/s"),
+        MetricDisplayKind::Degrees => format!("std {stddev:.1}deg"),
+    }
 }
 
 fn format_metric_summary(
@@ -5449,6 +6037,16 @@ fn format_metric_summary(
         ),
         MetricDisplayKind::Meters => format!(
             "{:.2} ± {:.2}m",
+            summary.mean,
+            summary.stddev.unwrap_or(0.0)
+        ),
+        MetricDisplayKind::Speed => format!(
+            "{:.2} ± {:.2}m/s",
+            summary.mean,
+            summary.stddev.unwrap_or(0.0)
+        ),
+        MetricDisplayKind::Degrees => format!(
+            "{:.1} ± {:.1}deg",
             summary.mean,
             summary.stddev.unwrap_or(0.0)
         ),
@@ -6998,9 +7596,16 @@ mod report_tests {
         record.review.transfer_shape_shortfall_ratio = Some(0.04);
         record.review.transfer_terminal_entry_kind = Some("handoff".to_owned());
         record.review.transfer_terminal_handoff_time_s = Some(12.0);
+        record.review.transfer_terminal_handoff_height_m = Some(120.0);
+        record.review.transfer_terminal_handoff_speed_mps = Some(24.0);
         record.review.transfer_terminal_handoff_gate_mode = Some("ready".to_owned());
+        record.review.transfer_terminal_handoff_projected_dx_m = Some(18.0);
+        record.review.transfer_terminal_handoff_impact_angle_deg = Some(58.0);
         record.review.transfer_final_phase = Some("terminal".to_owned());
         record.review.transfer_boost_quality = Some("balanced".to_owned());
+        record.review.transfer_boost_cutoff_quality = Some("pass".to_owned());
+        record.review.transfer_boost_cutoff_projected_dx_m = Some(12.0);
+        record.review.transfer_boost_cutoff_impact_angle_deg = Some(61.0);
         record.review.transfer_boost_burn_duration_s = Some(5.0);
         record.review.transfer_terminal_gate_mode = Some("ready".to_owned());
         record.review.transfer_corridor_mode = Some("inactive".to_owned());
@@ -7053,6 +7658,7 @@ mod report_tests {
         assert!(html.contains("not cached"));
         assert!(!html.contains("data-view-mode=\"compare\""));
         assert!(!html.contains("baseline controller lane <code>baseline</code>"));
+        assert!(!html.contains("<h2>Transfer Handoff Triage</h2>"));
         assert!(!html.contains("<h2>Transfer Shape Triage</h2>"));
         assert!(!html.contains(
             r#"selector-inline">lane</span> <span class="selector-code">baseline</span>"#
@@ -7253,12 +7859,104 @@ mod report_tests {
         );
 
         assert!(html.contains("<h2>Transfer Shape Triage</h2>"));
-        assert!(html.contains("Current-lane transfer cells"));
+        assert!(html.contains("Visual-shape diagnostic"));
         assert!(html.contains("Shape RMSE"));
         assert!(html.contains("Worst Seed"));
         assert!(html.contains(r#"data-transfer-shape-cell="clean|empty|r00|nominal""#));
         assert!(!html.contains("Δ Shape"));
         assert!(!html.contains("Δ Success"));
+    }
+
+    #[test]
+    fn transfer_handoff_triage_renders_quality_columns() {
+        let report =
+            synthetic_transfer_shape_report("transfer_handoff_unit", &[("r00", "empty", 24.0, 0)]);
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_handoff_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("<h2>Transfer Handoff Triage</h2>"));
+        assert!(html.contains("Entry / Gate"));
+        assert!(html.contains("Handoff Height"));
+        assert!(html.contains("Handoff Speed"));
+        assert!(html.contains("Handoff pdx"));
+        assert!(html.contains("Cutoff pdx"));
+        assert!(html.contains("Shape RMSE"));
+        assert!(html.contains(r#"data-transfer-handoff-cell="clean|empty|r00|nominal""#));
+        assert!(html.contains("terminal handoff"));
+        assert!(html.contains("handoff gate ready"));
+        assert!(html.contains("24.00m/s"));
+        assert!(html.contains("58.0deg"));
+    }
+
+    #[test]
+    fn transfer_handoff_triage_labels_direct_terminal_entries() {
+        let mut report = synthetic_transfer_shape_report(
+            "transfer_handoff_direct_unit",
+            &[("r-80", "empty", 8.0, 0)],
+        );
+        report.records[0].review.transfer_terminal_entry_kind = Some("direct".to_owned());
+        report.records[0].review.transfer_terminal_handoff_gate_mode =
+            Some("latest_safe".to_owned());
+        report.records[0].review.transfer_boost_cutoff_quality = None;
+        report.records[0]
+            .review
+            .transfer_boost_cutoff_projected_dx_m = None;
+        report.records[0]
+            .review
+            .transfer_boost_cutoff_impact_angle_deg = None;
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_handoff_direct_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("<h2>Transfer Handoff Triage</h2>"));
+        assert!(html.contains("terminal direct"));
+        assert!(html.contains("terminal gate latest_safe"));
+        assert!(html.contains(r#"data-transfer-handoff-cell="clean|empty|r-80|nominal""#));
+    }
+
+    #[test]
+    fn transfer_handoff_triage_sorts_risky_cells_before_clean_cells() {
+        let report = synthetic_transfer_shape_report(
+            "transfer_handoff_sort_unit",
+            &[("r00", "empty", 12.0, 0), ("r+45", "full", 88.0, 1)],
+        );
+        let mut records = report.records.clone();
+        records[0].review.transfer_terminal_handoff_height_m = Some(180.0);
+        records[0].review.transfer_terminal_handoff_speed_mps = Some(18.0);
+        records[0].review.transfer_terminal_handoff_projected_dx_m = Some(12.0);
+        records[0].review.transfer_boost_cutoff_projected_dx_m = Some(10.0);
+        records[1].review.transfer_terminal_handoff_height_m = Some(8.0);
+        records[1].review.transfer_terminal_handoff_speed_mps = Some(58.0);
+        records[1].review.transfer_terminal_handoff_projected_dx_m = Some(170.0);
+        records[1].review.transfer_terminal_handoff_impact_angle_deg = Some(34.0);
+        records[1].review.transfer_boost_cutoff_quality = Some("dx".to_owned());
+        records[1].review.transfer_boost_cutoff_projected_dx_m = Some(190.0);
+        let report = report_with_records(report, records);
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_handoff_sort_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        let risky_pos = html
+            .find(r#"data-transfer-handoff-cell="clean|full|r+45|nominal""#)
+            .expect("risky handoff cell should render");
+        let clean_pos = html
+            .find(r#"data-transfer-handoff-cell="clean|empty|r00|nominal""#)
+            .expect("clean handoff cell should render");
+        assert!(
+            risky_pos < clean_pos,
+            "handoff triage rows should sort risky cells before clean cells"
+        );
+        assert!(html.contains("triage-risk"));
     }
 
     #[test]

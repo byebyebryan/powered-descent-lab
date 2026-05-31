@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-05-31
+
+### Transfer handoff triage report checkpoint
+
+- Added a report-only `Transfer Handoff Triage` section before transfer shape
+  triage.
+- The section groups current-lane transfer runs by condition, vehicle, route,
+  and radius, then sorts cells by failed/frontier status, low handoff height,
+  high handoff speed, wide handoff projected `dx`, and wide boost-cutoff
+  projected `dx`.
+- The table exposes terminal entry kind, handoff gate, handoff height/speed,
+  handoff projected `dx`, handoff angle, boost-cutoff quality/projected `dx`,
+  shape RMSE, and the worst seed link without changing controller behavior or
+  batch schema.
+- `Transfer Shape Triage` remains available as a secondary visual-shape read,
+  but controller tuning should start from handoff/gate/cutoff diagnostics.
+- Current transfer interpretation is unchanged: `transfer_bot_lab_suite` is
+  solved, `transfer_route_angle_suite` is solved through `r+60`, and `r+80`
+  stays as the scored `near_vertical_transfer_route` frontier.
+
 ## 2026-05-30
 
 ### Transfer r+80 frontier policy checkpoint
