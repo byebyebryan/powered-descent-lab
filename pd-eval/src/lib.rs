@@ -25,7 +25,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 20;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 21;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -199,6 +199,7 @@ pub enum BatchRunAnalyticReason {
     VerticalStopHeight,
     CoupledStopAcceleration,
     LowThrustHighEnergy,
+    NearVerticalTransferRoute,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -3760,6 +3761,14 @@ fn execute_resolved_runs(
 }
 
 fn analytic_feasibility_for_run(resolved_run: &ResolvedBatchRun) -> BatchRunAnalyticFeasibility {
+    if near_vertical_transfer_route_frontier(resolved_run) {
+        return BatchRunAnalyticFeasibility {
+            class: BatchRunAnalyticClass::Frontier,
+            reason: Some(BatchRunAnalyticReason::NearVerticalTransferRoute),
+            ..Default::default()
+        };
+    }
+
     if !matches!(
         resolved_run.descriptor.source_kind,
         ResolvedRunSourceKind::TerminalMatrix
@@ -3851,6 +3860,23 @@ fn analytic_feasibility_for_run(resolved_run: &ResolvedBatchRun) -> BatchRunAnal
 }
 
 const AUTHORITY_FRONTIER_MARGIN_GRAVITY_RATIO: f64 = 0.45;
+const NEAR_VERTICAL_TRANSFER_ROUTE_MIN_DEG: f64 = 75.0;
+
+fn near_vertical_transfer_route_frontier(resolved_run: &ResolvedBatchRun) -> bool {
+    if !matches!(
+        resolved_run.descriptor.source_kind,
+        ResolvedRunSourceKind::TransferMatrix
+    ) {
+        return false;
+    }
+
+    resolved_run
+        .scenario
+        .mission
+        .transfer_route
+        .as_ref()
+        .is_some_and(|route| route.route_angle_deg >= NEAR_VERTICAL_TRANSFER_ROUTE_MIN_DEG)
+}
 
 fn low_thrust_high_energy_frontier(
     resolved_run: &ResolvedBatchRun,
@@ -7947,6 +7973,90 @@ mod tests {
                 + report.summary.failure_runs
                 + report.summary.invalidated_runs,
             report.summary.total_runs
+        );
+    }
+
+    #[test]
+    fn analytic_transfer_frontier_marks_only_near_vertical_uphill_routes() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "transfer_frontier_classification".to_owned(),
+            name: "Transfer frontier classification".to_owned(),
+            description: "transfer frontier classification".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![
+                ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                    id: "transfer_guidance_route_angles_empty".to_owned(),
+                    transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                    base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    lanes: vec![TransferMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "transfer_pdg".to_owned(),
+                        controller_config: None,
+                    }],
+                    seed_tier: TransferSeedTier::Smoke,
+                    vehicle_variant: "empty".to_owned(),
+                    expectation_tier: "reference".to_owned(),
+                    route_angles: vec!["r-80".to_owned(), "r+60".to_owned(), "r+80".to_owned()],
+                    adjustments: Vec::new(),
+                    tags: vec!["transfer".to_owned(), "analytic".to_owned()],
+                    metadata: BTreeMap::new(),
+                }),
+                ScenarioPackEntry::TerminalMatrix(TerminalMatrixEntry {
+                    id: "terminal_guidance_clean_empty".to_owned(),
+                    terminal_matrix: "half_arc_terminal_v1".to_owned(),
+                    base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                    lanes: vec![TerminalMatrixLaneSpec {
+                        id: "current".to_owned(),
+                        controller: "terminal_pdg".to_owned(),
+                        controller_config: None,
+                    }],
+                    seed_tier: TerminalSeedTier::Smoke,
+                    condition_set: "clean".to_owned(),
+                    vehicle_variant: "empty".to_owned(),
+                    expectation_tier: "reference".to_owned(),
+                    arc_points: vec!["a80".to_owned()],
+                    adjustments: Vec::new(),
+                    tags: vec!["terminal".to_owned(), "analytic".to_owned()],
+                    metadata: BTreeMap::new(),
+                }),
+            ],
+        };
+
+        let resolved = resolve_pack_runs(&pack, &base_dir).unwrap();
+        let analytic_for = |mission: &str, route_or_arc: &str| {
+            let run = resolved
+                .iter()
+                .find(|run| {
+                    run.descriptor.resolved_seed == 0
+                        && run.descriptor.selector.mission == mission
+                        && (run.descriptor.selector.route_angle == route_or_arc
+                            || run.descriptor.selector.arc_point == route_or_arc)
+                })
+                .expect("resolved run should exist");
+            analytic_feasibility_for_run(run)
+        };
+
+        let uphill_r80 = analytic_for("transfer_guidance", "r+80");
+        assert_eq!(uphill_r80.class, BatchRunAnalyticClass::Frontier);
+        assert_eq!(
+            uphill_r80.reason,
+            Some(BatchRunAnalyticReason::NearVerticalTransferRoute)
+        );
+        assert!(uphill_r80.is_scored());
+
+        assert_eq!(
+            analytic_for("transfer_guidance", "r+60").class,
+            BatchRunAnalyticClass::Scored
+        );
+        assert_eq!(
+            analytic_for("transfer_guidance", "r-80").class,
+            BatchRunAnalyticClass::Scored
+        );
+        assert_eq!(
+            analytic_for("terminal_guidance", "a80").reason,
+            None,
+            "terminal a80 should not inherit transfer-route frontier policy"
         );
     }
 

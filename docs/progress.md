@@ -2,6 +2,16 @@
 
 ## 2026-05-30
 
+### Transfer r+80 frontier policy checkpoint
+
+- Classified uphill `r+80` transfer routes as the scored
+  `near_vertical_transfer_route` frontier.
+- The route stays in `transfer_route_angle_suite`, and frontier runs remain
+  scored rather than invalidated so regressions stay visible.
+- This locks the current interpretation: `r+80` is near-cliff
+  waypoint/corridor debt above the staged transfer controller, not terminal
+  guidance debt.
+
 ### Transfer shape instrumentation checkpoint
 
 - Added Pylander-inspired transfer shape diagnostics:

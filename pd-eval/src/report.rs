@@ -5447,6 +5447,9 @@ fn analytic_reason_note(analytic: &crate::BatchRunAnalyticFeasibility) -> Option
         Some(crate::BatchRunAnalyticReason::LowThrustHighEnergy) => {
             Some("low-thrust high-energy frontier")
         }
+        Some(crate::BatchRunAnalyticReason::NearVerticalTransferRoute) => {
+            Some("near-vertical transfer-route frontier")
+        }
         None => None,
     }
 }
@@ -6787,11 +6790,11 @@ mod report_tests {
     };
 
     use crate::{
-        BatchReport, BatchRunRecord, ConcreteScenarioPackEntry, NumericPerturbationMode,
-        NumericPerturbationSpec, ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec,
-        SeedRangeSpec, TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier,
-        TransferMatrixEntry, TransferMatrixLaneSpec, TransferSeedTier, compare_batch_reports,
-        run_pack_with_workers,
+        BatchReport, BatchRunAnalyticClass, BatchRunAnalyticReason, BatchRunRecord,
+        ConcreteScenarioPackEntry, NumericPerturbationMode, NumericPerturbationSpec,
+        ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec, SeedRangeSpec,
+        TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier, TransferMatrixEntry,
+        TransferMatrixLaneSpec, TransferSeedTier, compare_batch_reports, run_pack_with_workers,
     };
 
     use super::{render_batch_report, sort_selector_keys, tree_group_id};
@@ -7364,6 +7367,36 @@ mod report_tests {
         ));
         assert!(!html.contains(
             "<span class=\"warn\">failed_crash · low-thrust high-energy frontier</span>"
+        ));
+    }
+
+    #[test]
+    fn transfer_report_surfaces_near_vertical_frontier_as_scored_annotation() {
+        let base_report = synthetic_transfer_shape_report(
+            "transfer_route_frontier_unit",
+            &[("r+80", "empty", 50.0, 0)],
+        );
+        let mut record = base_report.records[0].clone();
+        record.manifest.physical_outcome = pd_core::PhysicalOutcome::Crashed;
+        record.manifest.mission_outcome = pd_core::MissionOutcome::FailedCrash;
+        record.manifest.end_reason = pd_core::EndReason::Crash;
+        record.analytic.class = BatchRunAnalyticClass::Frontier;
+        record.analytic.reason = Some(BatchRunAnalyticReason::NearVerticalTransferRoute);
+        let report = report_with_records(base_report, vec![record]);
+
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_route_frontier_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("near-vertical transfer-route frontier"));
+        assert!(html.contains(
+            "<span class=\"outcome-bad\">failed_crash · near-vertical transfer-route frontier</span>"
+        ));
+        assert!(!html.contains(
+            "<span class=\"warn\">failed_crash · near-vertical transfer-route frontier</span>"
         ));
     }
 

@@ -217,10 +217,12 @@ Latest transfer tuning checkpoint:
   - `transfer_route_angle_suite`: `90 / 99`, `42.20s` mean sim time, `62.77s`
     max
 - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
-- only `r+80` remains failed across all payload tiers; those runs remain in
-  boost with `transfer_terminal_gate_mode = pending` and
-  `transfer_corridor_mode = active`, so this behaves more like near-cliff
-  launch/corridor debt than terminal handoff debt
+- only `r+80` remains failed across all payload tiers. At the nominal `800m`
+  radius it is a near-vertical route: about `139m` horizontal for `788m` of
+  climb.
+- `r+80` should stay in `transfer_route_angle_suite`, but it is classified as
+  the scored `near_vertical_transfer_route` frontier. It is waypoint/corridor
+  debt, not terminal guidance debt, and it must not be invalidated.
 
 ## Deferred Work
 
