@@ -2,6 +2,33 @@
 
 ## 2026-05-31
 
+### Transfer projected-overshoot and pre-target capture checkpoint
+
+- Tuned `transfer_pdg_v1` without route-label-specific branches:
+  - boost direction now switches from route-anchor direction to projected miss
+    direction once a target-y solution is reachable and outside the projected
+    `dx` band
+  - boost candidate scoring now centers projected `dx` symmetrically instead
+    of only penalizing route-direction shortfall
+  - uphill coast can hand off just before target-height crossing, but only
+    when the next crossing is imminent, the projected miss is centered, terrain
+    clearance is safe, and the latest-safe margin is already close
+- Regenerated transfer packs locally with `8` workers:
+  - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations,
+    `44.77s` mean sim time, `52.49s` max sim time
+  - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
+    invalidations, `43.01s` mean sim time, `63.38s` max sim time
+- The remaining scored failures are unchanged: all `9` are `r+80`
+  `near_vertical_transfer_route` frontier cases.
+- Representative handoff-shape movement:
+  - `full/r+30/seed0` projected handoff `dx` improved from about `-136m` to
+    `-110m`
+  - `full/r+45/seed0` projected handoff `dx` improved from about `-171m` to
+    `-86m`
+- Follow-up controller work should focus on reducing the remaining ugly
+  successful route shapes and the long `full/r+45` landing time, not on
+  reclassifying `r+80`.
+
 ### Transfer handoff triage report checkpoint
 
 - Added a report-only `Transfer Handoff Triage` section before transfer shape

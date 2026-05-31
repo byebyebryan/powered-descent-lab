@@ -199,6 +199,11 @@ The current staged controller uses the transfer diagnostics directly:
   near vertical until the craft has clearance over the immediate ramp
 - coast pre-aligns upright retrograde without commanding max tilt during
   ascent
+- once the target-y crossing is reachable, boost steering and candidate scoring
+  penalize both shortfall and overshoot around the projected landing `dx`
+- uphill coast may enter terminal control just before crossing target height,
+  but only when the crossing is imminent, the projected terminal miss is
+  centered, and the latest-safe gate is already close
 
 The corridor guard is still route-local, not broad terrain avoidance. It is
 intended to protect near-source uphill climbs from terrain collision without
@@ -236,17 +241,24 @@ Handoff read:
 
 Latest transfer tuning checkpoint:
 
-- generated locally after the recoverability-gated terminal handoff and local
-  uphill corridor pass with `8` workers
-- `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations
+- generated locally after the projected-overshoot boost steering and narrowed
+  pre-target terminal-capture pass with `8` workers
+- `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations, `44.77s`
+  mean sim time, `52.49s` max sim time
 - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
-  invalidations
+  invalidations, `43.01s` mean sim time, `63.38s` max sim time
 - latest schema-23 handoff diagnostics report the same outcomes:
-  - `transfer_bot_lab_suite`: all `45` runs enter through handoff with
-    `latest_safe` gates
-  - `transfer_route_angle_suite`: `84` handoff entries, `9` direct entries,
-    and `6` records without terminal-entry diagnostics; the only failures are
-    still the `r+80` frontier cells
+  - `transfer_bot_lab_suite`: all `45` runs enter through handoff; `42` use
+    `latest_safe` gates and `3` use the narrow pre-target `pending` gate
+  - `transfer_route_angle_suite`: `81` handoff entries, `9` direct entries,
+    and `9` records without terminal-entry diagnostics; the no-entry records
+    are the `r+80` frontier failures
+- the overshoot-aware boost pass reduced representative uphill handoff
+  projected misses without adding route-specific branches:
+  - `full/r+30/seed0`: projected handoff `dx` moved from about `-136m` to
+    `-110m`
+  - `full/r+45/seed0`: projected handoff `dx` moved from about `-171m` to
+    `-86m`
 - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
 - only `r+80` remains failed across all payload tiers. At the nominal `800m`
   radius it is a near-vertical route: about `139m` horizontal for `788m` of
