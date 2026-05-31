@@ -32,6 +32,8 @@ const TRANSFER_BOOST_SCORE_APEX_OVERSHOOT: f64 = 10.0;
 const TRANSFER_BOOST_SCORE_THROTTLE_EFFORT: f64 = 1.0;
 const TRANSFER_BOOST_SCORE_TILT_EFFORT: f64 = 0.4;
 const TRANSFER_GATE_DEFER_MAX_NEGATIVE_MARGIN_S: f64 = -0.75;
+const TRANSFER_PRE_TARGET_CAPTURE_MAX_LATEST_SAFE_MARGIN_S: f64 = 0.75;
+const TRANSFER_PRE_TARGET_CAPTURE_LOOKAHEAD_S: f64 = 1.5;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -1279,6 +1281,12 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         }
 
+        if self.phase == TransferPhase::Coast
+            && self.pre_target_terminal_capture_ready(observation, diagnostics, gate)
+        {
+            return TransferPhase::Terminal;
+        }
+
         if diagnostics.boost_quality.passed && self.should_coast(ctx, observation, diagnostics) {
             return TransferPhase::Coast;
         }
@@ -1290,6 +1298,59 @@ impl TransferPdgController {
         }
 
         TransferPhase::Coast
+    }
+
+    fn pre_target_terminal_capture_ready(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
+    ) -> bool {
+        if diagnostics.route_dy_m < self.config.uphill_boost_dy_min_m {
+            return false;
+        }
+        if !diagnostics.boost_quality.passed || !diagnostics.projection.has_target_y_solution {
+            return false;
+        }
+        if observation.height_above_target_m >= 0.0 || observation.velocity_mps.y <= 0.0 {
+            return false;
+        }
+        if observation.touchdown_clearance_m <= self.config.coast_min_altitude_m {
+            return false;
+        }
+        if !gate.terrain_clearance_safe {
+            return false;
+        }
+        if gate.latest_safe_margin_s > TRANSFER_PRE_TARGET_CAPTURE_MAX_LATEST_SAFE_MARGIN_S {
+            return false;
+        }
+
+        let Some(projected_dx_m) = diagnostics.projection.projected_dx_m else {
+            return false;
+        };
+        if projected_dx_m.abs() > self.boost_dx_limit_m(observation) {
+            return false;
+        }
+
+        self.next_target_y_crossing_time_s(observation)
+            .is_some_and(|time_s| time_s <= TRANSFER_PRE_TARGET_CAPTURE_LOOKAHEAD_S)
+    }
+
+    fn next_target_y_crossing_time_s(&self, observation: &Observation) -> Option<f64> {
+        let gravity_mps2 = observation.gravity_mps2.max(1.0e-6);
+        let discriminant = observation.velocity_mps.y * observation.velocity_mps.y
+            + (2.0 * gravity_mps2 * observation.height_above_target_m);
+        if discriminant < 0.0 {
+            return None;
+        }
+        let sqrt_discriminant = discriminant.sqrt();
+        [
+            (observation.velocity_mps.y - sqrt_discriminant) / gravity_mps2,
+            (observation.velocity_mps.y + sqrt_discriminant) / gravity_mps2,
+        ]
+        .into_iter()
+        .filter(|time_s| *time_s >= 0.0)
+        .min_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap())
     }
 
     fn boost_should_continue(
@@ -2581,6 +2642,62 @@ mod tests {
         let phase = controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
 
         assert_eq!(phase, TransferPhase::Terminal);
+    }
+
+    #[test]
+    fn transfer_coast_captures_terminal_before_uphill_target_crossing() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.phase = TransferPhase::Coast;
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 565.0,
+            route_dy_m: 560.0,
+        });
+        let observation = transfer_observation(294.0, -60.0, Vec2::new(37.4, 50.8), 14.5);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let gate = controller.transfer_gate_readiness(&ctx, &observation, diagnostics);
+
+        assert_eq!(gate.mode, TransferGateReadinessMode::Pending);
+        assert!(diagnostics.boost_quality.passed);
+        assert!(
+            controller
+                .next_target_y_crossing_time_s(&observation)
+                .unwrap()
+                <= TRANSFER_PRE_TARGET_CAPTURE_LOOKAHEAD_S
+        );
+        assert!(controller.pre_target_terminal_capture_ready(&observation, diagnostics, gate));
+
+        let phase = controller.choose_phase(
+            &ctx,
+            &observation,
+            diagnostics,
+            gate,
+            TransferCorridorState::inactive(),
+        );
+
+        assert_eq!(phase, TransferPhase::Terminal);
+    }
+
+    #[test]
+    fn transfer_coast_waits_when_uphill_target_crossing_is_not_imminent() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.phase = TransferPhase::Coast;
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 565.0,
+            route_dy_m: 560.0,
+        });
+        let observation = transfer_observation(410.0, -120.0, Vec2::new(37.4, 50.8), 13.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let gate = controller.transfer_gate_readiness(&ctx, &observation, diagnostics);
+
+        assert!(
+            controller
+                .next_target_y_crossing_time_s(&observation)
+                .unwrap()
+                > TRANSFER_PRE_TARGET_CAPTURE_LOOKAHEAD_S
+        );
+        assert!(!controller.pre_target_terminal_capture_ready(&observation, diagnostics, gate));
     }
 
     #[test]
