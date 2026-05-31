@@ -23,6 +23,7 @@ const TRANSFER_UPHILL_CORRIDOR_TILT_SLOPE_MIN: f64 = 1.25;
 const TRANSFER_CORRIDOR_SAMPLE_COUNT: usize = 24;
 const TRANSFER_BOOST_SCORE_NO_TARGET_Y: f64 = 10_000.0;
 const TRANSFER_BOOST_SCORE_PROJECTED_DX: f64 = 100.0;
+const TRANSFER_BOOST_SCORE_PROJECTED_DX_CENTERING: f64 = 45.0;
 const TRANSFER_BOOST_SCORE_SHORTFALL: f64 = 45.0;
 const TRANSFER_BOOST_SCORE_MIN_ANGLE: f64 = 60.0;
 const TRANSFER_BOOST_SCORE_TARGET_ANGLE: f64 = 20.0;
@@ -1388,6 +1389,13 @@ impl TransferPdgController {
         observation: &Observation,
         diagnostics: TransferDiagnostics,
     ) -> f64 {
+        if let Some(projected_dx_m) = diagnostics.projection.projected_dx_m
+            && diagnostics.projection.has_target_y_solution
+            && projected_dx_m.abs() > self.boost_dx_limit_m(observation)
+        {
+            return projected_dx_m.signum();
+        }
+
         if let Some(anchor) = diagnostics.anchor {
             let anchor_direction = anchor.route_dx_m.signum();
             if anchor_direction != 0.0 {
@@ -1400,6 +1408,27 @@ impl TransferPdgController {
             .projected_dx_m
             .filter(|projected_dx_m| projected_dx_m.abs() > observation.target_pad_half_width_m)
             .map_or_else(|| observation.target_dx_m.signum(), f64::signum)
+    }
+
+    fn boost_dx_limit_m(&self, observation: &Observation) -> f64 {
+        self.config
+            .boost_projected_dx_limit_m
+            .max(observation.target_pad_half_width_m)
+            .max(1.0)
+    }
+
+    fn boost_projected_overshoot(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+    ) -> bool {
+        let route_direction = diagnostics.route_dx_m.signum();
+        let Some(projected_dx_m) = diagnostics.projection.projected_dx_m else {
+            return false;
+        };
+        diagnostics.projection.has_target_y_solution
+            && route_direction != 0.0
+            && projected_dx_m * route_direction < -self.boost_dx_limit_m(observation)
     }
 
     fn uphill_clearance_limited_boost_tilt_rad(
@@ -1483,6 +1512,9 @@ impl TransferPdgController {
                 throttle.clamp(ctx.vehicle.min_throttle_frac, 1.0),
             );
         }
+        if self.boost_projected_overshoot(observation, diagnostics) {
+            self.push_unique_candidate(&mut throttle_candidates, 0.0);
+        }
 
         let mut best_command = Command {
             throttle_frac: eased_throttle,
@@ -1517,7 +1549,7 @@ impl TransferPdgController {
         &self,
         ctx: &RunContext,
         observation: &Observation,
-        diagnostics: TransferDiagnostics,
+        _diagnostics: TransferDiagnostics,
         corridor: TransferCorridorState,
         command: Command,
     ) -> TransferBoostCandidateScore {
@@ -1533,11 +1565,7 @@ impl TransferPdgController {
         let projection = predicted_diagnostics.projection;
         let quality = predicted_diagnostics.boost_quality;
         let mut score = 0.0;
-        let dx_limit_m = self
-            .config
-            .boost_projected_dx_limit_m
-            .max(observation.target_pad_half_width_m)
-            .max(1.0);
+        let dx_limit_m = self.boost_dx_limit_m(observation);
 
         let projected_dx_m = projection.projected_dx_m.unwrap_or(predicted.target_dx_m);
         if projection.has_target_y_solution {
@@ -1546,10 +1574,9 @@ impl TransferPdgController {
             score += TRANSFER_BOOST_SCORE_PROJECTED_DX
                 * projected_dx_excess_ratio
                 * projected_dx_excess_ratio;
-            if projected_dx_m * diagnostics.route_dx_m.signum() > 0.0 {
-                let shortfall_ratio = (projected_dx_m.abs() / dx_limit_m).min(8.0);
-                score += TRANSFER_BOOST_SCORE_SHORTFALL * shortfall_ratio * shortfall_ratio;
-            }
+            let centering_ratio = (projected_dx_m.abs() / dx_limit_m).min(8.0);
+            score +=
+                TRANSFER_BOOST_SCORE_PROJECTED_DX_CENTERING * centering_ratio * centering_ratio;
             if let Some(impact_angle_deg) = projection.impact_angle_deg {
                 let min_angle_gap = (self.config.boost_descent_angle_min_deg - impact_angle_deg)
                     .max(0.0)
@@ -2205,7 +2232,27 @@ mod tests {
     }
 
     #[test]
-    fn transfer_boost_keeps_anchor_direction_after_projected_overshoot() {
+    fn transfer_boost_keeps_anchor_direction_until_target_y_is_reachable() {
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 700.0,
+            route_dy_m: 400.0,
+        });
+        let observation = transfer_observation(500.0, -100.0, Vec2::new(15.0, 5.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert!(!diagnostics.projection.has_target_y_solution);
+        assert!(
+            controller.boost_attitude_rad(
+                &observation,
+                diagnostics,
+                TransferCorridorState::inactive()
+            ) > 0.0
+        );
+    }
+
+    #[test]
+    fn transfer_boost_corrects_projected_overshoot_after_target_y_is_reachable() {
         let mut controller = TransferPdgController::default();
         controller.boost_anchor = Some(TransferBoostAnchor {
             route_dx_m: 700.0,
@@ -2214,14 +2261,19 @@ mod tests {
         let observation = transfer_observation(100.0, -50.0, Vec2::new(50.0, 50.0), 6.0);
         let diagnostics = controller.transfer_diagnostics(&observation);
 
-        assert!(diagnostics.projection.projected_dx_m.unwrap() < 0.0);
+        assert!(diagnostics.projection.has_target_y_solution);
+        assert!(
+            diagnostics.projection.projected_dx_m.unwrap()
+                < -controller.boost_dx_limit_m(&observation)
+        );
         assert!(
             controller.boost_attitude_rad(
                 &observation,
                 diagnostics,
                 TransferCorridorState::inactive()
-            ) > 0.0
+            ) < 0.0
         );
+        assert!(controller.boost_projected_overshoot(&observation, diagnostics));
     }
 
     #[test]
