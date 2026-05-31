@@ -1257,14 +1257,17 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         }
 
-        let needs_transfer_burn = observation.target_dx_m.abs() > self.config.terminal_gate_dx_m
+        let route_needs_transfer_burn = observation.target_dx_m.abs()
+            > self.config.terminal_gate_dx_m
             || diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m;
-        if !needs_transfer_burn {
+        let transfer_burn_started = self.boost_anchor.is_some()
+            || matches!(self.phase, TransferPhase::Boost | TransferPhase::Coast);
+        if !route_needs_transfer_burn && !transfer_burn_started {
             return TransferPhase::Terminal;
         }
 
         if self.phase != TransferPhase::Coast
-            && needs_transfer_burn
+            && (route_needs_transfer_burn || transfer_burn_started)
             && (self.boost_should_continue(ctx, observation, diagnostics)
                 || self.transfer_recovery_boost_should_continue(observation, diagnostics))
         {
@@ -1279,7 +1282,9 @@ impl TransferPdgController {
             return TransferPhase::Coast;
         }
 
-        if needs_transfer_burn && self.phase != TransferPhase::Coast {
+        if (route_needs_transfer_burn || transfer_burn_started)
+            && self.phase != TransferPhase::Coast
+        {
             return TransferPhase::Boost;
         }
 
@@ -2524,5 +2529,38 @@ mod tests {
         let phase = controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
 
         assert_eq!(phase, TransferPhase::Terminal);
+    }
+
+    #[test]
+    fn transfer_started_route_waits_for_ready_gate_before_terminal() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.phase = TransferPhase::Boost;
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 700.0,
+            route_dy_m: 400.0,
+        });
+        let observation = transfer_observation(120.0, -20.0, Vec2::new(20.0, 5.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let gate = TransferGateReadiness {
+            mode: TransferGateReadinessMode::Pending,
+            ready_ticks: 0,
+            burn_time_s: 5.0,
+            latest_safe_margin_s: 2.0,
+            required_accel_ratio: 0.8,
+            terrain_min_clearance_m: 20.0,
+            terrain_clearance_safe: true,
+            deferred: false,
+        };
+
+        let phase = controller.choose_phase(
+            &ctx,
+            &observation,
+            diagnostics,
+            gate,
+            TransferCorridorState::inactive(),
+        );
+
+        assert_ne!(phase, TransferPhase::Terminal);
     }
 }

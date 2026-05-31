@@ -25,7 +25,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 21;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 23;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -131,6 +131,8 @@ pub struct BatchRunReviewMetrics {
     #[serde(default)]
     pub transfer_shape_shortfall_ratio: Option<f64>,
     #[serde(default)]
+    pub transfer_terminal_entry_kind: Option<String>,
+    #[serde(default)]
     pub transfer_terminal_handoff_time_s: Option<f64>,
     #[serde(default)]
     pub transfer_terminal_handoff_dx_m: Option<f64>,
@@ -138,6 +140,18 @@ pub struct BatchRunReviewMetrics {
     pub transfer_terminal_handoff_height_m: Option<f64>,
     #[serde(default)]
     pub transfer_terminal_handoff_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_gate_mode: Option<String>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_projected_dx_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_impact_angle_deg: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_boost_quality: Option<String>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_latest_safe_margin_s: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_handoff_required_accel_ratio: Option<f64>,
     #[serde(default)]
     pub transfer_final_phase: Option<String>,
     #[serde(default)]
@@ -4639,10 +4653,19 @@ fn derive_run_review_metrics(
         transfer_shape_projected_dx_abs_max_m: transfer_shape
             .and_then(|metrics| metrics.projected_dx_abs_max_m),
         transfer_shape_shortfall_ratio: transfer_shape.and_then(|metrics| metrics.shortfall_ratio),
+        transfer_terminal_entry_kind: transfer.terminal_entry_kind,
         transfer_terminal_handoff_time_s: transfer.terminal_handoff_time_s,
         transfer_terminal_handoff_dx_m: transfer.terminal_handoff_dx_m,
         transfer_terminal_handoff_height_m: transfer.terminal_handoff_height_m,
         transfer_terminal_handoff_speed_mps: transfer.terminal_handoff_speed_mps,
+        transfer_terminal_handoff_gate_mode: transfer.terminal_handoff_gate_mode,
+        transfer_terminal_handoff_projected_dx_m: transfer.terminal_handoff_projected_dx_m,
+        transfer_terminal_handoff_impact_angle_deg: transfer.terminal_handoff_impact_angle_deg,
+        transfer_terminal_handoff_boost_quality: transfer.terminal_handoff_boost_quality,
+        transfer_terminal_handoff_latest_safe_margin_s: transfer
+            .terminal_handoff_latest_safe_margin_s,
+        transfer_terminal_handoff_required_accel_ratio: transfer
+            .terminal_handoff_required_accel_ratio,
         transfer_final_phase: transfer.final_phase,
         transfer_boost_projected_dx_m: transfer.boost_projected_dx_m,
         transfer_boost_impact_angle_deg: transfer.boost_impact_angle_deg,
@@ -4670,10 +4693,17 @@ fn derive_run_review_metrics(
 
 #[derive(Clone, Debug, Default)]
 struct TransferReviewMetrics {
+    terminal_entry_kind: Option<String>,
     terminal_handoff_time_s: Option<f64>,
     terminal_handoff_dx_m: Option<f64>,
     terminal_handoff_height_m: Option<f64>,
     terminal_handoff_speed_mps: Option<f64>,
+    terminal_handoff_gate_mode: Option<String>,
+    terminal_handoff_projected_dx_m: Option<f64>,
+    terminal_handoff_impact_angle_deg: Option<f64>,
+    terminal_handoff_boost_quality: Option<String>,
+    terminal_handoff_latest_safe_margin_s: Option<f64>,
+    terminal_handoff_required_accel_ratio: Option<f64>,
     final_phase: Option<String>,
     boost_projected_dx_m: Option<f64>,
     boost_impact_angle_deg: Option<f64>,
@@ -4707,12 +4737,24 @@ fn transfer_review_metrics(
         .rev()
         .find_map(|update| telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE))
         .map(ToOwned::to_owned);
-    let Some(handoff) = controller_updates.iter().find(|update| {
-        telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("terminal")
-    }) else {
+    let Some((handoff_index, handoff)) =
+        controller_updates.iter().enumerate().find(|(_, update)| {
+            telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("terminal")
+        })
+    else {
         let mut metrics = transfer_review_metrics_without_handoff(controller_updates, samples);
         metrics.final_phase = final_phase;
         return metrics;
+    };
+    let terminal_entry_kind = if controller_updates[..handoff_index].iter().any(|update| {
+        matches!(
+            telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE),
+            Some("boost" | "coast")
+        )
+    }) {
+        "handoff"
+    } else {
+        "direct"
     };
     let terminal_handoff_dx_m = telemetry_float(&handoff.frame.metrics, metric::TARGET_DX_M);
     let terminal_handoff_height_m =
@@ -4724,11 +4766,37 @@ fn transfer_review_metrics(
                 metric::TANGENTIAL_SPEED_MPS,
             ))
             .map(|(vertical, tangential)| vertical.hypot(tangential));
+    let terminal_handoff_gate_mode =
+        telemetry_text(&handoff.frame.metrics, metric::TRANSFER_TERMINAL_GATE_MODE)
+            .map(ToOwned::to_owned);
+    let terminal_handoff_projected_dx_m =
+        telemetry_float(&handoff.frame.metrics, metric::TRANSFER_PROJECTED_DX_M);
+    let terminal_handoff_impact_angle_deg =
+        telemetry_float(&handoff.frame.metrics, metric::TRANSFER_IMPACT_ANGLE_DEG)
+            .filter(|value| *value >= 0.0);
+    let terminal_handoff_boost_quality =
+        telemetry_text(&handoff.frame.metrics, metric::TRANSFER_BOOST_QUALITY)
+            .map(ToOwned::to_owned);
+    let terminal_handoff_latest_safe_margin_s = telemetry_float(
+        &handoff.frame.metrics,
+        metric::TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S,
+    );
+    let terminal_handoff_required_accel_ratio = telemetry_float(
+        &handoff.frame.metrics,
+        metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO,
+    );
     let mut metrics = transfer_review_metrics_without_handoff(controller_updates, samples);
+    metrics.terminal_entry_kind = Some(terminal_entry_kind.to_owned());
     metrics.terminal_handoff_time_s = Some(handoff.sim_time_s);
     metrics.terminal_handoff_dx_m = terminal_handoff_dx_m;
     metrics.terminal_handoff_height_m = terminal_handoff_height_m;
     metrics.terminal_handoff_speed_mps = terminal_handoff_speed_mps;
+    metrics.terminal_handoff_gate_mode = terminal_handoff_gate_mode;
+    metrics.terminal_handoff_projected_dx_m = terminal_handoff_projected_dx_m;
+    metrics.terminal_handoff_impact_angle_deg = terminal_handoff_impact_angle_deg;
+    metrics.terminal_handoff_boost_quality = terminal_handoff_boost_quality;
+    metrics.terminal_handoff_latest_safe_margin_s = terminal_handoff_latest_safe_margin_s;
+    metrics.terminal_handoff_required_accel_ratio = terminal_handoff_required_accel_ratio;
     metrics.final_phase = final_phase;
     metrics
 }
@@ -7338,6 +7406,23 @@ mod tests {
     }
 
     #[test]
+    fn transfer_review_metrics_marks_direct_terminal_entry() {
+        let mut updates = vec![transfer_update(60, 0.5, "terminal", 120.0, 20.0, 0.0)];
+        updates[0].frame.metrics.insert(
+            metric::TRANSFER_TERMINAL_GATE_MODE.to_owned(),
+            TelemetryValue::from("pending"),
+        );
+
+        let metrics = transfer_review_metrics(&updates, &[]);
+
+        assert_eq!(metrics.terminal_entry_kind.as_deref(), Some("direct"));
+        assert_eq!(
+            metrics.terminal_handoff_gate_mode.as_deref(),
+            Some("pending")
+        );
+    }
+
+    #[test]
     fn transfer_review_metrics_capture_terminal_handoff() {
         let updates = vec![
             pd_control::ControllerUpdateRecord {
@@ -7401,6 +7486,30 @@ mod tests {
                             metric::TANGENTIAL_SPEED_MPS.to_owned(),
                             TelemetryValue::from(5.0),
                         ),
+                        (
+                            metric::TRANSFER_TERMINAL_GATE_MODE.to_owned(),
+                            TelemetryValue::from("pending"),
+                        ),
+                        (
+                            metric::TRANSFER_PROJECTED_DX_M.to_owned(),
+                            TelemetryValue::from(-18.0),
+                        ),
+                        (
+                            metric::TRANSFER_IMPACT_ANGLE_DEG.to_owned(),
+                            TelemetryValue::from(47.0),
+                        ),
+                        (
+                            metric::TRANSFER_BOOST_QUALITY.to_owned(),
+                            TelemetryValue::from("angle"),
+                        ),
+                        (
+                            metric::TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S.to_owned(),
+                            TelemetryValue::from(1.25),
+                        ),
+                        (
+                            metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO.to_owned(),
+                            TelemetryValue::from(0.83),
+                        ),
                     ]),
                     markers: Vec::new(),
                 },
@@ -7410,10 +7519,23 @@ mod tests {
         let metrics = transfer_review_metrics(&updates, &[]);
 
         assert_eq!(metrics.final_phase.as_deref(), Some("terminal"));
+        assert_eq!(metrics.terminal_entry_kind.as_deref(), Some("handoff"));
         assert_eq!(metrics.terminal_handoff_time_s, Some(3.5));
         assert_eq!(metrics.terminal_handoff_dx_m, Some(120.0));
         assert_eq!(metrics.terminal_handoff_height_m, Some(80.0));
         assert_eq!(metrics.terminal_handoff_speed_mps, Some(13.0));
+        assert_eq!(
+            metrics.terminal_handoff_gate_mode.as_deref(),
+            Some("pending")
+        );
+        assert_eq!(metrics.terminal_handoff_projected_dx_m, Some(-18.0));
+        assert_eq!(metrics.terminal_handoff_impact_angle_deg, Some(47.0));
+        assert_eq!(
+            metrics.terminal_handoff_boost_quality.as_deref(),
+            Some("angle")
+        );
+        assert_eq!(metrics.terminal_handoff_latest_safe_margin_s, Some(1.25));
+        assert_eq!(metrics.terminal_handoff_required_accel_ratio, Some(0.83));
         assert_eq!(metrics.boost_projected_dx_m, Some(42.0));
         assert_eq!(metrics.boost_impact_angle_deg, Some(61.0));
         assert_eq!(metrics.boost_apex_over_target_m, Some(120.0));

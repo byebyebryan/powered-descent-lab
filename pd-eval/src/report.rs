@@ -2414,6 +2414,7 @@ struct TransferShapeCellSummary<'a> {
     shortfall_pct: Option<crate::BatchMetricSummary>,
     projected_dx_abs_max_m: Option<crate::BatchMetricSummary>,
     handoff_time_s: Option<crate::BatchMetricSummary>,
+    handoff_gate_mode: Option<String>,
     boost_burn_duration_s: Option<crate::BatchMetricSummary>,
     boost_quality: Option<String>,
     gate_mode: Option<String>,
@@ -2587,10 +2588,7 @@ fn render_transfer_shape_triage_row(
         summary.projected_dx_abs_max_m.as_ref(),
         MetricDisplayKind::Meters,
     ));
-    let handoff_html = escape_html(&format_metric_mean(
-        summary.handoff_time_s.as_ref(),
-        MetricDisplayKind::Seconds,
-    ));
+    let handoff_html = render_transfer_shape_handoff(summary);
     let boost_burn_html = escape_html(&format_metric_mean(
         summary.boost_burn_duration_s.as_ref(),
         MetricDisplayKind::Seconds,
@@ -2695,6 +2693,9 @@ fn summarize_transfer_shape_cell<'a>(
         ),
         handoff_time_s: transfer_shape_metric_summary(success_records.as_slice(), |review| {
             review.transfer_terminal_handoff_time_s
+        }),
+        handoff_gate_mode: dominant_transfer_shape_mode(success_records.as_slice(), |review| {
+            review.transfer_terminal_handoff_gate_mode.as_deref()
         }),
         boost_burn_duration_s: transfer_shape_metric_summary(
             success_records.as_slice(),
@@ -2820,14 +2821,26 @@ fn render_transfer_shape_success_cell(summary: &TransferShapeCellSummary<'_>) ->
     )
 }
 
+fn render_transfer_shape_handoff(summary: &TransferShapeCellSummary<'_>) -> String {
+    let time = format_metric_mean(summary.handoff_time_s.as_ref(), MetricDisplayKind::Seconds);
+    let gate = summary.handoff_gate_mode.as_deref().unwrap_or("-");
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">gate {}</div></div>"#,
+        escape_html(&time),
+        escape_html(gate),
+    )
+}
+
 fn render_transfer_shape_modes(summary: &TransferShapeCellSummary<'_>) -> String {
     let boost = summary.boost_quality.as_deref().unwrap_or("-");
-    let gate = summary.gate_mode.as_deref().unwrap_or("-");
+    let handoff_gate = summary.handoff_gate_mode.as_deref().unwrap_or("-");
+    let final_gate = summary.gate_mode.as_deref().unwrap_or("-");
     let corridor = summary.corridor_mode.as_deref().unwrap_or("-");
     format!(
-        r#"<div class="overview-stack"><div class="overview-main">boost {}</div><div class="overview-sub">gate {} · corridor {}</div></div>"#,
+        r#"<div class="overview-stack"><div class="overview-main">boost {}</div><div class="overview-sub">handoff gate {} · final gate {} · corridor {}</div></div>"#,
         escape_html(boost),
-        escape_html(gate),
+        escape_html(handoff_gate),
+        escape_html(final_gate),
         escape_html(corridor),
     )
 }
@@ -4738,8 +4751,38 @@ fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String 
         return String::new();
     };
     let mut parts = vec![format!("transfer {final_phase}")];
+    let terminal_entry_label = match review.transfer_terminal_entry_kind.as_deref() {
+        Some("direct") => "terminal entry",
+        _ => "handoff",
+    };
+    let direct_terminal_entry = review.transfer_terminal_entry_kind.as_deref() == Some("direct");
     if let Some(time_s) = review.transfer_terminal_handoff_time_s {
-        parts.push(format!("handoff {time_s:.1}s"));
+        parts.push(format!("{terminal_entry_label} {time_s:.1}s"));
+    }
+    if let Some(gate_mode) = review.transfer_terminal_handoff_gate_mode.as_deref() {
+        parts.push(format!("{terminal_entry_label} gate {gate_mode}"));
+    }
+    if let Some(quality) = review.transfer_terminal_handoff_boost_quality.as_deref()
+        && Some(quality) != review.transfer_boost_quality.as_deref()
+        && !direct_terminal_entry
+    {
+        parts.push(format!("{terminal_entry_label} boost {quality}"));
+    }
+    if let Some(projected_dx_m) = review.transfer_terminal_handoff_projected_dx_m {
+        parts.push(format!("{terminal_entry_label} pdx {projected_dx_m:.0}m"));
+    }
+    if let Some(impact_angle_deg) = review.transfer_terminal_handoff_impact_angle_deg {
+        parts.push(format!(
+            "{terminal_entry_label} angle {impact_angle_deg:.0}deg"
+        ));
+    }
+    if let Some(required_accel_ratio) = review.transfer_terminal_handoff_required_accel_ratio
+        && review.transfer_terminal_handoff_gate_mode.as_deref() == Some("pending")
+        && !direct_terminal_entry
+    {
+        parts.push(format!(
+            "{terminal_entry_label} accel {required_accel_ratio:.2}x"
+        ));
     }
     if let Some(quality) = review.transfer_boost_quality.as_deref() {
         parts.push(format!("boost {quality}"));
@@ -6953,7 +6996,9 @@ mod report_tests {
         record.review.transfer_shape_apex_error_m = Some(shape_rmse_m * 0.25);
         record.review.transfer_shape_projected_dx_abs_max_m = Some(shape_rmse_m * 1.5);
         record.review.transfer_shape_shortfall_ratio = Some(0.04);
+        record.review.transfer_terminal_entry_kind = Some("handoff".to_owned());
         record.review.transfer_terminal_handoff_time_s = Some(12.0);
+        record.review.transfer_terminal_handoff_gate_mode = Some("ready".to_owned());
         record.review.transfer_final_phase = Some("terminal".to_owned());
         record.review.transfer_boost_quality = Some("balanced".to_owned());
         record.review.transfer_boost_burn_duration_s = Some(5.0);
