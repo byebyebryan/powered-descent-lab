@@ -398,6 +398,8 @@ pub struct TransferMatrixEntry {
     #[serde(default)]
     pub route_angles: Vec<String>,
     #[serde(default)]
+    pub radius_tiers: Vec<String>,
+    #[serde(default)]
     pub adjustments: Vec<NumericAdjustmentSpec>,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -1816,6 +1818,34 @@ fn validate_transfer_matrix_entry(entry: &TransferMatrixEntry) -> Result<()> {
             );
         }
     }
+    let mut seen_radius_tiers = BTreeSet::new();
+    for radius_tier in &entry.radius_tiers {
+        if radius_tier.trim().is_empty() {
+            bail!(
+                "transfer matrix entry '{}' has an empty radius_tier selector",
+                entry.id
+            );
+        }
+        if !seen_radius_tiers.insert(radius_tier.clone()) {
+            bail!(
+                "transfer matrix entry '{}' has duplicate radius_tier selector '{}'",
+                entry.id,
+                radius_tier
+            );
+        }
+        if !route_spec
+            .radius_tiers
+            .iter()
+            .any(|candidate| candidate.id == radius_tier)
+        {
+            bail!(
+                "transfer matrix entry '{}' radius_tier selector '{}' is not supported by matrix '{}'",
+                entry.id,
+                radius_tier,
+                entry.transfer_matrix
+            );
+        }
+    }
     let mut seen_adjustment_ids = BTreeSet::new();
     for adjustment in &entry.adjustments {
         validate_numeric_adjustment(
@@ -2030,10 +2060,16 @@ struct TransferRouteAngleSpec {
 struct TransferRouteFamilySpec {
     route_family: &'static str,
     gravity_mps2: f64,
-    radius_nominal_m: f64,
-    radius_tier: &'static str,
+    default_radius_tier: &'static str,
+    radius_tiers: &'static [TransferRadiusTierSpec],
     route_angles: &'static [TransferRouteAngleSpec],
     smoke_route_angles: &'static [&'static str],
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TransferRadiusTierSpec {
+    id: &'static str,
+    radius_m: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2319,11 +2355,26 @@ const SIGNED_ROUTE_ARC_TRANSFER_V1_ROUTE_ANGLES: [TransferRouteAngleSpec; 11] = 
 const SIGNED_ROUTE_ARC_TRANSFER_V1_SMOKE_ROUTE_ANGLES: [&str; 5] =
     ["r-60", "r-30", "r00", "r+30", "r+60"];
 
+const SIGNED_ROUTE_ARC_TRANSFER_V1_RADIUS_TIERS: [TransferRadiusTierSpec; 3] = [
+    TransferRadiusTierSpec {
+        id: "short",
+        radius_m: 400.0,
+    },
+    TransferRadiusTierSpec {
+        id: "nominal",
+        radius_m: 800.0,
+    },
+    TransferRadiusTierSpec {
+        id: "long",
+        radius_m: 1200.0,
+    },
+];
+
 const SIGNED_ROUTE_ARC_TRANSFER_V1_SPEC: TransferRouteFamilySpec = TransferRouteFamilySpec {
     route_family: "signed_route_arc_transfer_v1",
     gravity_mps2: 9.81,
-    radius_nominal_m: 800.0,
-    radius_tier: "nominal",
+    default_radius_tier: "nominal",
+    radius_tiers: &SIGNED_ROUTE_ARC_TRANSFER_V1_RADIUS_TIERS,
     route_angles: &SIGNED_ROUTE_ARC_TRANSFER_V1_ROUTE_ANGLES,
     smoke_route_angles: &SIGNED_ROUTE_ARC_TRANSFER_V1_SMOKE_ROUTE_ANGLES,
 };
@@ -2357,6 +2408,7 @@ fn resolve_transfer_matrix_runs(
     let base_scenario = load_scenario(&base_path)?;
     let family_spec = transfer_route_family_spec(&entry.transfer_matrix)?;
     let route_angle_specs = selected_transfer_route_angle_specs(entry, family_spec)?;
+    let radius_tier_specs = selected_transfer_radius_tier_specs(entry, family_spec)?;
     let seed_specs = transfer_seed_specs(entry.seed_tier);
     let mut runs = Vec::new();
 
@@ -2367,42 +2419,46 @@ fn resolve_transfer_matrix_runs(
             lane.controller_config.as_deref(),
         )?;
         for route_angle in &route_angle_specs {
-            for seed_spec in seed_specs {
-                let run_id = resolved_transfer_matrix_run_id(
-                    &entry.id,
-                    route_angle.id,
-                    family_spec.radius_tier,
-                    seed_spec.index,
-                    &lane.id,
-                );
-                let (scenario, resolved_parameters, selector) = resolve_transfer_matrix_scenario(
-                    entry,
-                    &base_scenario,
-                    family_spec,
-                    route_angle,
-                    seed_spec,
-                    &lane.id,
-                    &run_id,
-                )?;
-                let descriptor = ResolvedRunDescriptor {
-                    run_id,
-                    entry_id: entry.id.clone(),
-                    source_kind: ResolvedRunSourceKind::TransferMatrix,
-                    scenario_source: entry.base_scenario.clone(),
-                    resolved_scenario_id: scenario.id.clone(),
-                    resolved_scenario_name: scenario.name.clone(),
-                    family_id: Some(entry.id.clone()),
-                    selector,
-                    lane_id: lane.id.clone(),
-                    resolved_seed: seed_spec.index,
-                    resolved_parameters,
-                    controller_id: controller_spec.id().to_owned(),
-                    controller_spec: controller_spec.clone(),
-                };
-                runs.push(ResolvedBatchRun {
-                    descriptor,
-                    scenario,
-                });
+            for radius_tier in &radius_tier_specs {
+                for seed_spec in seed_specs {
+                    let run_id = resolved_transfer_matrix_run_id(
+                        &entry.id,
+                        route_angle.id,
+                        radius_tier.id,
+                        seed_spec.index,
+                        &lane.id,
+                    );
+                    let (scenario, resolved_parameters, selector) =
+                        resolve_transfer_matrix_scenario(
+                            entry,
+                            &base_scenario,
+                            family_spec,
+                            route_angle,
+                            radius_tier,
+                            seed_spec,
+                            &lane.id,
+                            &run_id,
+                        )?;
+                    let descriptor = ResolvedRunDescriptor {
+                        run_id,
+                        entry_id: entry.id.clone(),
+                        source_kind: ResolvedRunSourceKind::TransferMatrix,
+                        scenario_source: entry.base_scenario.clone(),
+                        resolved_scenario_id: scenario.id.clone(),
+                        resolved_scenario_name: scenario.name.clone(),
+                        family_id: Some(entry.id.clone()),
+                        selector,
+                        lane_id: lane.id.clone(),
+                        resolved_seed: seed_spec.index,
+                        resolved_parameters,
+                        controller_id: controller_spec.id().to_owned(),
+                        controller_spec: controller_spec.clone(),
+                    };
+                    runs.push(ResolvedBatchRun {
+                        descriptor,
+                        scenario,
+                    });
+                }
             }
         }
     }
@@ -2437,6 +2493,42 @@ fn selected_transfer_route_angle_specs<'a>(
                     format!(
                         "transfer matrix entry '{}' route_angle selector '{}' is not supported by matrix '{}'",
                         entry.id, route_angle, entry.transfer_matrix
+                    )
+                })
+        })
+        .collect()
+}
+
+fn selected_transfer_radius_tier_specs<'a>(
+    entry: &TransferMatrixEntry,
+    family_spec: &'a TransferRouteFamilySpec,
+) -> Result<Vec<&'a TransferRadiusTierSpec>> {
+    if entry.radius_tiers.is_empty() {
+        return family_spec
+            .radius_tiers
+            .iter()
+            .find(|candidate| candidate.id == family_spec.default_radius_tier)
+            .map(|candidate| vec![candidate])
+            .with_context(|| {
+                format!(
+                    "transfer matrix '{}' default radius_tier '{}' is not supported",
+                    family_spec.route_family, family_spec.default_radius_tier
+                )
+            });
+    }
+
+    entry
+        .radius_tiers
+        .iter()
+        .map(|radius_tier| {
+            family_spec
+                .radius_tiers
+                .iter()
+                .find(|candidate| candidate.id == radius_tier)
+                .with_context(|| {
+                    format!(
+                        "transfer matrix entry '{}' radius_tier selector '{}' is not supported by matrix '{}'",
+                        entry.id, radius_tier, entry.transfer_matrix
                     )
                 })
         })
@@ -2479,6 +2571,7 @@ fn resolve_transfer_matrix_scenario(
     base_scenario: &ScenarioSpec,
     family_spec: &TransferRouteFamilySpec,
     route_angle: &TransferRouteAngleSpec,
+    radius_tier: &TransferRadiusTierSpec,
     seed_spec: &TransferSeedSpec,
     lane_id: &str,
     run_id: &str,
@@ -2486,21 +2579,23 @@ fn resolve_transfer_matrix_scenario(
     let mut scenario = base_scenario.clone();
     scenario.id = run_id.to_owned();
     scenario.name = format!(
-        "{} [{} {} {} seed {} {}]",
+        "{} [{} {} {} {} seed {} {}]",
         base_scenario.name,
         family_spec.route_family,
         entry.vehicle_variant,
         route_angle.id,
+        radius_tier.id,
         seed_spec.index,
         lane_id
     );
     scenario.description = format!(
-        "{} ({} {} {} {} seed {} lane {})",
+        "{} ({} {} {} {} {} seed {} lane {})",
         base_scenario.description,
         "transfer_matrix",
         family_spec.route_family,
         entry.vehicle_variant,
         route_angle.id,
+        radius_tier.id,
         seed_spec.index,
         lane_id
     );
@@ -2541,16 +2636,15 @@ fn resolve_transfer_matrix_scenario(
     scenario
         .metadata
         .insert("arc_point".to_owned(), route_angle.id.to_owned());
-    scenario.metadata.insert(
-        "velocity_band".to_owned(),
-        family_spec.radius_tier.to_owned(),
-    );
+    scenario
+        .metadata
+        .insert("velocity_band".to_owned(), radius_tier.id.to_owned());
     scenario
         .metadata
         .insert("route_angle".to_owned(), route_angle.id.to_owned());
     scenario
         .metadata
-        .insert("radius_tier".to_owned(), family_spec.radius_tier.to_owned());
+        .insert("radius_tier".to_owned(), radius_tier.id.to_owned());
     scenario
         .metadata
         .insert("lane_id".to_owned(), lane_id.to_owned());
@@ -2559,7 +2653,7 @@ fn resolve_transfer_matrix_scenario(
     let mut resolved_parameters = BTreeMap::new();
     resolved_parameters.insert("gravity_mps2".to_owned(), family_spec.gravity_mps2);
     resolved_parameters.insert("route_angle_deg".to_owned(), route_angle.angle_deg);
-    resolved_parameters.insert("route_radius_m".to_owned(), family_spec.radius_nominal_m);
+    resolved_parameters.insert("route_radius_m".to_owned(), radius_tier.radius_m);
 
     for adjustment in &entry.adjustments {
         apply_numeric_adjustment(&mut scenario, adjustment)?;
@@ -2571,7 +2665,7 @@ fn resolve_transfer_matrix_scenario(
     }
 
     let (source_pad, target_pad) =
-        configure_transfer_route_geometry(&mut scenario, family_spec, route_angle)?;
+        configure_transfer_route_geometry(&mut scenario, route_angle, radius_tier)?;
     resolved_parameters.insert("source_x_m".to_owned(), source_pad.center_x_m);
     resolved_parameters.insert("source_y_m".to_owned(), source_pad.surface_y_m);
     resolved_parameters.insert("target_x_m".to_owned(), target_pad.center_x_m);
@@ -2603,10 +2697,10 @@ fn resolve_transfer_matrix_scenario(
         condition_set: "clean".to_owned(),
         vehicle_variant: entry.vehicle_variant.clone(),
         arc_point: route_angle.id.to_owned(),
-        velocity_band: family_spec.radius_tier.to_owned(),
+        velocity_band: radius_tier.id.to_owned(),
         route_family: family_spec.route_family.to_owned(),
         route_angle: route_angle.id.to_owned(),
-        radius_tier: family_spec.radius_tier.to_owned(),
+        radius_tier: radius_tier.id.to_owned(),
         expectation_tier: Some(entry.expectation_tier.clone()),
     };
 
@@ -2615,8 +2709,8 @@ fn resolve_transfer_matrix_scenario(
 
 fn configure_transfer_route_geometry(
     scenario: &mut ScenarioSpec,
-    family_spec: &TransferRouteFamilySpec,
     route_angle: &TransferRouteAngleSpec,
+    radius_tier: &TransferRadiusTierSpec,
 ) -> Result<(LandingPadSpec, LandingPadSpec)> {
     let target_pad_id = scenario.mission.goal.target_pad_id().to_owned();
     let base_target_pad = scenario
@@ -2627,8 +2721,8 @@ fn configure_transfer_route_geometry(
             anyhow!("transfer matrix base scenario is missing target pad '{target_pad_id}'")
         })?;
     let route_angle_rad = route_angle.angle_deg.to_radians();
-    let dx_m = family_spec.radius_nominal_m * route_angle_rad.cos();
-    let dy_m = family_spec.radius_nominal_m * route_angle_rad.sin();
+    let dx_m = radius_tier.radius_m * route_angle_rad.cos();
+    let dy_m = radius_tier.radius_m * route_angle_rad.sin();
     let target_pad = LandingPadSpec {
         id: target_pad_id,
         center_x_m: 0.0,
@@ -2658,7 +2752,7 @@ fn configure_transfer_route_geometry(
         source_pad_id: source_pad.id.clone(),
         target_pad_id: target_pad.id.clone(),
         route_angle_deg: route_angle.angle_deg,
-        route_radius_m: family_spec.radius_nominal_m,
+        route_radius_m: radius_tier.radius_m,
     });
 
     scenario
@@ -2673,7 +2767,7 @@ fn configure_transfer_route_geometry(
     );
     scenario.metadata.insert(
         "resolved.route_radius_m".to_owned(),
-        format!("{:.6}", family_spec.radius_nominal_m),
+        format!("{:.6}", radius_tier.radius_m),
     );
 
     Ok((source_pad, target_pad))
@@ -7137,6 +7231,7 @@ mod tests {
                 vehicle_variant: "nominal".to_owned(),
                 expectation_tier: "core".to_owned(),
                 route_angles: Vec::new(),
+                radius_tiers: Vec::new(),
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "smoke".to_owned()],
                 metadata: BTreeMap::new(),
@@ -7191,6 +7286,73 @@ mod tests {
         assert!((route.route_radius_m - 800.0).abs() < 1e-9);
         assert!((route.route_angle_deg - 60.0).abs() < 1e-9);
         assert_eq!(run.scenario.initial_state.velocity_mps, Vec2::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn transfer_matrix_entry_expands_selected_radius_tiers() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_radius_tiers".to_owned(),
+            name: "Transfer matrix radius tiers".to_owned(),
+            description: "transfer matrix radius tiers".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_clean_nominal".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                route_angles: vec!["r00".to_owned()],
+                radius_tiers: vec!["short".to_owned(), "long".to_owned()],
+                adjustments: Vec::new(),
+                tags: vec!["transfer".to_owned(), "radius".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+
+        assert_eq!(resolved_runs.len(), 2 * 3);
+        let short = resolved_runs
+            .iter()
+            .find(|run| {
+                run.descriptor.selector.radius_tier == "short" && run.descriptor.resolved_seed == 0
+            })
+            .expect("short transfer run should be present");
+        let long = resolved_runs
+            .iter()
+            .find(|run| {
+                run.descriptor.selector.radius_tier == "long" && run.descriptor.resolved_seed == 2
+            })
+            .expect("long transfer run should be present");
+
+        let short_route = short.scenario.mission.transfer_route.as_ref().unwrap();
+        let long_route = long.scenario.mission.transfer_route.as_ref().unwrap();
+        assert_eq!(short.descriptor.selector.velocity_band, "short");
+        assert_eq!(long.descriptor.selector.velocity_band, "long");
+        assert!(
+            short
+                .descriptor
+                .run_id
+                .contains("_r00_short_seed_00_current")
+        );
+        assert!(long.descriptor.run_id.contains("_r00_long_seed_02_current"));
+        assert!((short_route.route_radius_m - 400.0).abs() < 1e-9);
+        assert!((long_route.route_radius_m - 1200.0).abs() < 1e-9);
+        assert_eq!(
+            short.descriptor.resolved_parameters.get("route_radius_m"),
+            Some(&400.0)
+        );
+        assert_eq!(
+            long.descriptor.resolved_parameters.get("route_radius_m"),
+            Some(&1200.0)
+        );
     }
 
     fn transfer_sample(
@@ -7564,6 +7726,7 @@ mod tests {
                 vehicle_variant: "nominal".to_owned(),
                 expectation_tier: "core".to_owned(),
                 route_angles: vec!["r00".to_owned(), "r00".to_owned()],
+                radius_tiers: Vec::new(),
                 adjustments: Vec::new(),
                 tags: Vec::new(),
                 metadata: BTreeMap::new(),
@@ -7573,6 +7736,70 @@ mod tests {
         let message = validate_pack(&pack).unwrap_err().to_string();
 
         assert!(message.contains("duplicate route_angle selector"));
+    }
+
+    #[test]
+    fn transfer_matrix_entry_rejects_duplicate_radius_tier_selectors() {
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_duplicate_radii".to_owned(),
+            name: "Transfer matrix duplicate radii".to_owned(),
+            description: "transfer matrix duplicate radii".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_selected_radii".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                route_angles: Vec::new(),
+                radius_tiers: vec!["short".to_owned(), "short".to_owned()],
+                adjustments: Vec::new(),
+                tags: Vec::new(),
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let message = validate_pack(&pack).unwrap_err().to_string();
+
+        assert!(message.contains("duplicate radius_tier selector"));
+    }
+
+    #[test]
+    fn transfer_matrix_entry_rejects_unknown_radius_tier_selector() {
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_unknown_radius".to_owned(),
+            name: "Transfer matrix unknown radius".to_owned(),
+            description: "transfer matrix unknown radius".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_unknown_radius".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                route_angles: Vec::new(),
+                radius_tiers: vec!["extreme".to_owned()],
+                adjustments: Vec::new(),
+                tags: Vec::new(),
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let message = validate_pack(&pack).unwrap_err().to_string();
+
+        assert!(message.contains("radius_tier selector 'extreme' is not supported"));
     }
 
     #[test]
@@ -8120,6 +8347,7 @@ mod tests {
                     vehicle_variant: "empty".to_owned(),
                     expectation_tier: "reference".to_owned(),
                     route_angles: vec!["r-80".to_owned(), "r+60".to_owned(), "r+80".to_owned()],
+                    radius_tiers: Vec::new(),
                     adjustments: Vec::new(),
                     tags: vec!["transfer".to_owned(), "analytic".to_owned()],
                     metadata: BTreeMap::new(),

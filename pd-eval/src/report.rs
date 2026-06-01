@@ -5527,7 +5527,9 @@ fn selector_sort_rank(key: &str) -> u8 {
         "empty" => 10,
         "half" => 11,
         "full" => 12,
-        "nominal" => 10,
+        "short" => 8,
+        "nominal" => 9,
+        "long" => 10,
         "low_margin" => 11,
         "low_fuel" => 12,
         "heavy_cargo" => 13,
@@ -7823,6 +7825,7 @@ mod report_tests {
                 vehicle_variant: "nominal".to_owned(),
                 expectation_tier: "core".to_owned(),
                 route_angles: vec!["r00".to_owned()],
+                radius_tiers: Vec::new(),
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "bot_lab".to_owned()],
                 metadata: BTreeMap::new(),
@@ -8158,6 +8161,26 @@ mod report_tests {
                 "low".to_owned(),
                 "mid".to_owned(),
                 "high".to_owned(),
+                "unspecified".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn selector_keys_use_semantic_radius_tier_order() {
+        let mut keys = vec![
+            "long".to_owned(),
+            "nominal".to_owned(),
+            "short".to_owned(),
+            "unspecified".to_owned(),
+        ];
+        sort_selector_keys(&mut keys);
+        assert_eq!(
+            keys,
+            vec![
+                "short".to_owned(),
+                "nominal".to_owned(),
+                "long".to_owned(),
                 "unspecified".to_owned(),
             ]
         );
