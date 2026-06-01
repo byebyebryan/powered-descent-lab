@@ -83,6 +83,10 @@ fn default_transfer_boost_settle_lookahead_s() -> f64 {
     0.35
 }
 
+fn default_transfer_boost_pathwise_scoring_enabled() -> bool {
+    false
+}
+
 fn default_transfer_gate_defer_lookahead_s() -> f64 {
     2.0
 }
@@ -219,6 +223,8 @@ pub struct TransferPdgControllerConfig {
     pub boost_candidate_step_s: f64,
     #[serde(default = "default_transfer_boost_settle_lookahead_s")]
     pub boost_settle_lookahead_s: f64,
+    #[serde(default = "default_transfer_boost_pathwise_scoring_enabled")]
+    pub boost_pathwise_scoring_enabled: bool,
     #[serde(default = "default_transfer_gate_defer_lookahead_s")]
     pub transfer_gate_defer_lookahead_s: f64,
     #[serde(default = "default_transfer_gate_defer_step_s")]
@@ -253,6 +259,7 @@ impl Default for TransferPdgControllerConfig {
             boost_candidate_horizon_s: default_transfer_boost_candidate_horizon_s(),
             boost_candidate_step_s: default_transfer_boost_candidate_step_s(),
             boost_settle_lookahead_s: default_transfer_boost_settle_lookahead_s(),
+            boost_pathwise_scoring_enabled: default_transfer_boost_pathwise_scoring_enabled(),
             transfer_gate_defer_lookahead_s: default_transfer_gate_defer_lookahead_s(),
             transfer_gate_defer_step_s: default_transfer_gate_defer_step_s(),
             transfer_gate_defer_min_ratio_improvement:
@@ -294,6 +301,9 @@ impl ControllerSpec {
             Self::BaselineV1 { .. } => "baseline_v1",
             Self::StagedDescentV1 { .. } => "staged_descent_v1",
             Self::TerminalPdgV1 { .. } => "terminal_pdg_v1",
+            Self::TransferPdgV1 { config } if config.boost_pathwise_scoring_enabled => {
+                "transfer_pdg_pathwise_v1"
+            }
             Self::TransferPdgV1 { .. } => "transfer_pdg_v1",
         }
     }
@@ -328,6 +338,11 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
         "transfer_pdg" | "transfer_pdg_v1" | "xpdg" => Some(ControllerSpec::TransferPdgV1 {
             config: TransferPdgControllerConfig::default(),
         }),
+        "transfer_pdg_pathwise" | "transfer_pdg_pathwise_v1" | "xpdg_pathwise" => {
+            let mut config = TransferPdgControllerConfig::default();
+            config.boost_pathwise_scoring_enabled = true;
+            Some(ControllerSpec::TransferPdgV1 { config })
+        }
         "terminal_pdg_no_terrain" | "tpdg_no_terrain" => {
             let mut config = TerminalPdgControllerConfig::default();
             config.terrain_clearance_enabled = false;
@@ -856,6 +871,14 @@ impl TransferPdgController {
             + (-route_dy_m).max(0.0)
     }
 
+    fn boost_scoring_mode(&self) -> &'static str {
+        if self.config.boost_pathwise_scoring_enabled {
+            "pathwise_geometry"
+        } else {
+            "legacy_endpoint"
+        }
+    }
+
     fn transfer_metrics_builder(
         &self,
         builder: ControllerFrameBuilder,
@@ -915,6 +938,10 @@ impl TransferPdgController {
             .metric(
                 metric::TRANSFER_BOOST_QUALITY_PASS,
                 diagnostics.boost_quality.passed,
+            )
+            .metric(
+                metric::TRANSFER_BOOST_SCORING_MODE,
+                self.boost_scoring_mode(),
             )
             .metric(metric::TRANSFER_TERMINAL_GATE_MODE, gate.mode.label())
             .metric(
@@ -1020,6 +1047,10 @@ impl TransferPdgController {
         frame.metrics.insert(
             metric::TRANSFER_BOOST_QUALITY_PASS.to_owned(),
             TelemetryValue::from(diagnostics.boost_quality.passed),
+        );
+        frame.metrics.insert(
+            metric::TRANSFER_BOOST_SCORING_MODE.to_owned(),
+            TelemetryValue::from(self.boost_scoring_mode()),
         );
         frame.metrics.insert(
             metric::TRANSFER_TERMINAL_GATE_MODE.to_owned(),
@@ -1610,7 +1641,21 @@ impl TransferPdgController {
         &self,
         ctx: &RunContext,
         observation: &Observation,
-        _diagnostics: TransferDiagnostics,
+        diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+        command: Command,
+    ) -> TransferBoostCandidateScore {
+        if self.config.boost_pathwise_scoring_enabled {
+            self.score_boost_candidate_pathwise(ctx, observation, diagnostics, corridor, command)
+        } else {
+            self.score_boost_candidate_endpoint(ctx, observation, corridor, command)
+        }
+    }
+
+    fn score_boost_candidate_endpoint(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
         corridor: TransferCorridorState,
         command: Command,
     ) -> TransferBoostCandidateScore {
@@ -1625,8 +1670,54 @@ impl TransferPdgController {
         let predicted_diagnostics = self.transfer_diagnostics(&predicted);
         let projection = predicted_diagnostics.projection;
         let quality = predicted_diagnostics.boost_quality;
+        let score = self.score_boost_candidate_endpoint_terms(
+            ctx,
+            observation,
+            &predicted,
+            predicted_diagnostics,
+            corridor,
+            command,
+        );
+
+        TransferBoostCandidateScore {
+            score,
+            projection,
+            quality,
+        }
+    }
+
+    fn score_boost_candidate_endpoint_terms(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        predicted: &Observation,
+        predicted_diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+        command: Command,
+    ) -> f64 {
+        let mut score = self.score_boost_candidate_geometry(
+            observation,
+            predicted,
+            predicted_diagnostics,
+            self.boost_dx_limit_m(observation),
+        );
+
+        score +=
+            self.score_boost_candidate_corridor(ctx, predicted, predicted_diagnostics, corridor);
+        score += self.score_boost_candidate_effort(command);
+        score
+    }
+
+    fn score_boost_candidate_geometry(
+        &self,
+        observation: &Observation,
+        predicted: &Observation,
+        predicted_diagnostics: TransferDiagnostics,
+        dx_limit_m: f64,
+    ) -> f64 {
+        let projection = predicted_diagnostics.projection;
+        let quality = predicted_diagnostics.boost_quality;
         let mut score = 0.0;
-        let dx_limit_m = self.boost_dx_limit_m(observation);
 
         let projected_dx_m = projection.projected_dx_m.unwrap_or(predicted.target_dx_m);
         if projection.has_target_y_solution {
@@ -1672,9 +1763,20 @@ impl TransferPdgController {
             score += TRANSFER_BOOST_SCORE_APEX_OVERSHOOT * apex_error_ratio * apex_error_ratio;
         }
 
+        score
+    }
+
+    fn score_boost_candidate_corridor(
+        &self,
+        ctx: &RunContext,
+        predicted: &Observation,
+        predicted_diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+    ) -> f64 {
+        let mut score = 0.0;
         if corridor.active {
             let predicted_corridor =
-                self.transfer_corridor_state(ctx, &predicted, predicted_diagnostics);
+                self.transfer_corridor_state(ctx, predicted, predicted_diagnostics);
             if predicted_corridor.margin_m < 0.0 {
                 let corridor_error_ratio = (-predicted_corridor.margin_m / 100.0).min(8.0);
                 score += 80.0 * corridor_error_ratio * corridor_error_ratio;
@@ -1683,7 +1785,11 @@ impl TransferPdgController {
                 score += 250.0;
             }
         }
+        score
+    }
 
+    fn score_boost_candidate_effort(&self, command: Command) -> f64 {
+        let mut score = 0.0;
         score += TRANSFER_BOOST_SCORE_THROTTLE_EFFORT
             * command.throttle_frac.clamp(0.0, 1.0)
             * command.throttle_frac.clamp(0.0, 1.0);
@@ -1695,12 +1801,110 @@ impl TransferPdgController {
                 .max(1.0e-6))
         .min(4.0);
         score += TRANSFER_BOOST_SCORE_TILT_EFFORT * tilt_ratio * tilt_ratio;
+        score
+    }
+
+    fn score_boost_candidate_pathwise(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+        command: Command,
+    ) -> TransferBoostCandidateScore {
+        let samples = self.simulate_transfer_command_samples(
+            ctx,
+            observation,
+            command,
+            self.config.boost_candidate_horizon_s,
+            self.config.boost_candidate_step_s,
+        );
+        let final_state = samples
+            .last()
+            .copied()
+            .unwrap_or_else(|| self.initial_transfer_sim_state(observation));
+        let predicted = self.observation_from_sim_state(ctx, observation, final_state);
+        let predicted_diagnostics = self.transfer_diagnostics(&predicted);
+        let projection = predicted_diagnostics.projection;
+        let quality = predicted_diagnostics.boost_quality;
+        let dx_limit_m = self.boost_dx_limit_m(observation);
+
+        let mut path_score = 0.0;
+        let mut weight_sum = 0.0;
+        for (index, state) in samples.iter().enumerate() {
+            let sample_observation = self.observation_from_sim_state(ctx, observation, *state);
+            let sample_diagnostics = self.transfer_diagnostics(&sample_observation);
+            let weight = (index + 1) as f64;
+            path_score += weight
+                * (self.score_boost_candidate_geometry(
+                    observation,
+                    &sample_observation,
+                    sample_diagnostics,
+                    dx_limit_m,
+                ) + self.score_boost_candidate_corridor(
+                    ctx,
+                    &sample_observation,
+                    sample_diagnostics,
+                    corridor,
+                ) + self.score_boost_no_away_penalty(
+                    &sample_observation,
+                    sample_diagnostics,
+                    command,
+                    dx_limit_m,
+                ));
+            weight_sum += weight;
+        }
+        if weight_sum > 0.0 {
+            path_score /= weight_sum;
+        }
+
+        let endpoint_score = self.score_boost_candidate_endpoint_terms(
+            ctx,
+            observation,
+            &predicted,
+            predicted_diagnostics,
+            corridor,
+            command,
+        );
+        let score = endpoint_score
+            + (0.25 * path_score)
+            + self.score_boost_no_away_penalty(observation, diagnostics, command, dx_limit_m);
 
         TransferBoostCandidateScore {
             score,
             projection,
             quality,
         }
+    }
+
+    fn score_boost_no_away_penalty(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        command: Command,
+        dx_limit_m: f64,
+    ) -> f64 {
+        let target_dx_m = observation.target_dx_m;
+        if target_dx_m.abs() <= dx_limit_m || command.throttle_frac <= 0.0 {
+            return 0.0;
+        }
+
+        let target_sign = target_dx_m.signum();
+        let thrust_lateral_sign = command.target_attitude_rad.sin().signum();
+        if thrust_lateral_sign == 0.0 || thrust_lateral_sign * target_sign >= 0.0 {
+            return 0.0;
+        }
+
+        let projected_overshoot = diagnostics
+            .projection
+            .projected_dx_m
+            .is_some_and(|projected_dx_m| projected_dx_m * target_sign < -dx_limit_m);
+        if projected_overshoot {
+            return 0.0;
+        }
+
+        let away_ratio = (target_dx_m.abs() / dx_limit_m).min(8.0);
+        60.0 * away_ratio * away_ratio * command.throttle_frac.clamp(0.0, 1.0)
     }
 
     fn boost_settled_quality(
@@ -1795,13 +1999,22 @@ impl TransferPdgController {
         duration_s: f64,
         step_s: f64,
     ) -> TransferSimState {
-        let mut state = TransferSimState {
-            position_m: observation.position_m,
-            velocity_mps: observation.velocity_mps,
-            attitude_rad: observation.attitude_rad,
-            fuel_kg: observation.fuel_kg.max(0.0),
-            dry_mass_kg: (observation.mass_kg - observation.fuel_kg.max(0.0)).max(0.0),
-        };
+        self.simulate_transfer_command_samples(ctx, observation, command, duration_s, step_s)
+            .last()
+            .copied()
+            .unwrap_or_else(|| self.initial_transfer_sim_state(observation))
+    }
+
+    fn simulate_transfer_command_samples(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        command: Command,
+        duration_s: f64,
+        step_s: f64,
+    ) -> Vec<TransferSimState> {
+        let mut state = self.initial_transfer_sim_state(observation);
+        let mut samples = Vec::new();
         let duration_s = duration_s.max(0.0);
         let step_s = step_s.clamp(1.0e-3, duration_s.max(1.0e-3));
         let mut elapsed_s = 0.0;
@@ -1829,8 +2042,19 @@ impl TransferPdgController {
             state.velocity_mps += total_accel_mps2 * dt_s;
             state.position_m += state.velocity_mps * dt_s;
             elapsed_s += dt_s;
+            samples.push(state);
         }
-        state
+        samples
+    }
+
+    fn initial_transfer_sim_state(&self, observation: &Observation) -> TransferSimState {
+        TransferSimState {
+            position_m: observation.position_m,
+            velocity_mps: observation.velocity_mps,
+            attitude_rad: observation.attitude_rad,
+            fuel_kg: observation.fuel_kg.max(0.0),
+            dry_mass_kg: (observation.mass_kg - observation.fuel_kg.max(0.0)).max(0.0),
+        }
     }
 
     fn observation_from_sim_state(
@@ -1958,7 +2182,11 @@ fn shortest_angle_delta(from_rad: f64, to_rad: f64) -> f64 {
 
 impl Controller for TransferPdgController {
     fn id(&self) -> &str {
-        "transfer_pdg_v1"
+        if self.config.boost_pathwise_scoring_enabled {
+            "transfer_pdg_pathwise_v1"
+        } else {
+            "transfer_pdg_v1"
+        }
     }
 
     fn reset(&mut self, ctx: &RunContext) {
@@ -2513,6 +2741,110 @@ mod tests {
         assert!(selection.selected_score.is_finite());
         assert!(selection.command.throttle_frac < 1.0);
         assert!(selection.command.throttle_frac >= ctx.vehicle.min_throttle_frac);
+    }
+
+    #[test]
+    fn transfer_pathwise_alias_enables_pathwise_boost_scoring() {
+        let spec = built_in_controller_spec("transfer_pdg_pathwise")
+            .expect("pathwise transfer controller alias should exist");
+
+        match spec {
+            ControllerSpec::TransferPdgV1 { config } => {
+                assert!(config.boost_pathwise_scoring_enabled);
+                assert_eq!(
+                    ControllerSpec::TransferPdgV1 { config }.id(),
+                    "transfer_pdg_pathwise_v1"
+                );
+            }
+            _ => panic!("pathwise alias should resolve to transfer controller"),
+        }
+    }
+
+    #[test]
+    fn transfer_pathwise_scorer_keeps_targetward_tilt_for_shortfall() {
+        let ctx = uphill_transfer_context();
+        let mut config = TransferPdgControllerConfig::default();
+        config.boost_pathwise_scoring_enabled = true;
+        let mut controller = TransferPdgController::new(config);
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 500.0,
+            route_dy_m: 120.0,
+        });
+        let observation = transfer_observation(500.0, -120.0, Vec2::new(5.0, 30.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        let selection = controller.select_boost_command(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+        );
+
+        assert_eq!(controller.boost_scoring_mode(), "pathwise_geometry");
+        assert!(selection.selected_score.is_finite());
+        assert!(selection.command.target_attitude_rad > 0.0);
+        assert!(selection.command.throttle_frac >= 0.7);
+    }
+
+    #[test]
+    fn transfer_pathwise_scorer_penalizes_away_thrust_outside_corridor() {
+        let mut config = TransferPdgControllerConfig::default();
+        config.boost_pathwise_scoring_enabled = true;
+        let mut controller = TransferPdgController::new(config);
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 500.0,
+            route_dy_m: 120.0,
+        });
+        let observation = transfer_observation(500.0, -120.0, Vec2::new(5.0, 20.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let dx_limit_m = controller.boost_dx_limit_m(&observation);
+
+        let away = controller.score_boost_no_away_penalty(
+            &observation,
+            diagnostics,
+            Command {
+                throttle_frac: 1.0,
+                target_attitude_rad: -0.3,
+            },
+            dx_limit_m,
+        );
+        let targetward = controller.score_boost_no_away_penalty(
+            &observation,
+            diagnostics,
+            Command {
+                throttle_frac: 1.0,
+                target_attitude_rad: 0.3,
+            },
+            dx_limit_m,
+        );
+
+        assert!(away > 0.0);
+        assert_eq!(targetward, 0.0);
+    }
+
+    #[test]
+    fn transfer_pathwise_scorer_is_finite_without_target_y_solution() {
+        let ctx = uphill_transfer_context();
+        let mut config = TransferPdgControllerConfig::default();
+        config.boost_pathwise_scoring_enabled = true;
+        let controller = TransferPdgController::new(config);
+        let observation = transfer_observation(500.0, -220.0, Vec2::new(5.0, 5.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert!(!diagnostics.projection.has_target_y_solution);
+        let score = controller.score_boost_candidate(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+            Command {
+                throttle_frac: 1.0,
+                target_attitude_rad: 0.3,
+            },
+        );
+
+        assert!(score.score.is_finite());
+        assert!(!score.quality.passed);
     }
 
     #[test]

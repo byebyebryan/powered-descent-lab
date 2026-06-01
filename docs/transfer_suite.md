@@ -267,6 +267,25 @@ Latest transfer tuning checkpoint:
   the scored `near_vertical_transfer_route` frontier. It is waypoint/corridor
   debt, not terminal guidance debt, and it must not be invalidated.
 
+Pathwise boost-scoring experiment:
+
+- added gated `transfer_pdg_pathwise` as a Pylander-lite candidate scorer that
+  keeps the current Rust candidate grid but scores simulated boost samples
+  across the candidate horizon
+- the first compare packs intentionally keep legacy endpoint scoring as
+  `baseline` and pathwise scoring as `current`:
+  - `transfer_bot_lab_pathwise_compare`
+  - `transfer_route_angle_pathwise_compare`
+- the first broad check is not promotable:
+  - bot-lab compare: both lanes landed `45 / 45`, but pathwise worsened mean
+    shape RMSE and full-payload touchdown offset
+  - route-angle compare: both lanes landed `90 / 99`, with only the existing
+    `r+80` frontier crashes, but pathwise worsened aggregate shape for `empty`
+    and `half` and only helped scattered full-payload downhill cells
+- keep `transfer_pdg` on legacy endpoint scoring by default; use the pathwise
+  alias only for follow-up experiments until the pathwise objective can improve
+  shape without degrading solved cells
+
 ## Deferred Work
 
 - route radius tiers

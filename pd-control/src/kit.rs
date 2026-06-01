@@ -53,6 +53,7 @@ pub mod metric {
     pub const TRANSFER_BOOST_APEX_TARGET_M: &str = "transfer.boost_apex_target_m";
     pub const TRANSFER_BOOST_QUALITY: &str = "transfer.boost_quality";
     pub const TRANSFER_BOOST_QUALITY_PASS: &str = "transfer.boost_quality_pass";
+    pub const TRANSFER_BOOST_SCORING_MODE: &str = "transfer.boost_scoring_mode";
     pub const TRANSFER_BOOST_SELECTED_SCORE: &str = "transfer.boost_selected_score";
     pub const TRANSFER_BOOST_SETTLED_QUALITY: &str = "transfer.boost_settled_quality";
     pub const TRANSFER_BOOST_SETTLED_PROJECTED_DX_M: &str = "transfer.boost_settled_projected_dx_m";
