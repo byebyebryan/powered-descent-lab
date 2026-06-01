@@ -827,6 +827,28 @@ fn render_batch_report(
     .transfer-shape-section {{
       margin-bottom: 16px;
     }}
+    .transfer-handoff-section,
+    .transfer-shape-section {{
+      border-bottom: 1px solid rgba(215,205,189,0.88);
+      padding-bottom: 12px;
+    }}
+    .transfer-triage-summary {{
+      cursor: pointer;
+      list-style: none;
+    }}
+    .transfer-triage-summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .transfer-triage-summary h2::before {{
+      content: "[+]";
+      display: inline-block;
+      margin-right: 8px;
+      color: var(--muted);
+    }}
+    .transfer-handoff-section[open] .transfer-triage-summary h2::before,
+    .transfer-shape-section[open] .transfer-triage-summary h2::before {{
+      content: "[-]";
+    }}
     .transfer-handoff-table {{
       min-width: 1320px;
     }}
@@ -2486,12 +2508,12 @@ fn render_transfer_handoff_triage_section(
     rows.sort_by(compare_transfer_handoff_cells);
 
     if rows.is_empty() {
-        return r#"<section class="transfer-handoff-section">
-  <div class="section-head">
+        return r#"<details class="transfer-handoff-section">
+  <summary class="section-head transfer-triage-summary">
     <h2>Transfer Handoff Triage</h2>
-  </div>
+  </summary>
   <p class="muted">No current-lane transfer handoff diagnostics were available.</p>
-</section>"#
+</details>"#
             .to_owned();
     }
 
@@ -2504,11 +2526,11 @@ fn render_transfer_handoff_triage_section(
         .join("");
 
     format!(
-        r#"<section class="transfer-handoff-section">
-  <div class="section-head">
+        r#"<details class="transfer-handoff-section">
+  <summary class="section-head transfer-triage-summary">
     <h2>Transfer Handoff Triage</h2>
     <div class="section-note">Current-lane transfer cells, sorted by failed/frontier status and handoff risk before visual shape.</div>
-  </div>
+  </summary>
   <div class="table-wrap">
     <table class="transfer-handoff-table">
       <thead>
@@ -2530,7 +2552,7 @@ fn render_transfer_handoff_triage_section(
       <tbody>{row_html}</tbody>
     </table>
   </div>
-</section>"#
+</details>"#
     )
 }
 
@@ -3033,12 +3055,12 @@ fn render_transfer_shape_triage_section(
     });
 
     if rows.is_empty() {
-        return r#"<section class="transfer-shape-section">
-  <div class="section-head">
+        return r#"<details class="transfer-shape-section">
+  <summary class="section-head transfer-triage-summary">
     <h2>Transfer Shape Triage</h2>
-  </div>
+  </summary>
   <p class="muted">No successful current-lane transfer runs with shape metrics were available; use Transfer Handoff Triage and the Review Tree for failure-only cells.</p>
-</section>"#
+</details>"#
             .to_owned();
     }
 
@@ -3088,11 +3110,11 @@ fn render_transfer_shape_triage_section(
         .join("");
 
     format!(
-        r#"<section class="transfer-shape-section">
-  <div class="section-head">
+        r#"<details class="transfer-shape-section">
+  <summary class="section-head transfer-triage-summary">
     <h2>Transfer Shape Triage</h2>
     <div class="section-note">Visual-shape diagnostic sorted by worst successful RMSE. Use Transfer Handoff Triage first for controller tuning.</div>
-  </div>
+  </summary>
   <div class="table-wrap">
     <table class="transfer-shape-table">
       <thead>
@@ -3114,7 +3136,7 @@ fn render_transfer_shape_triage_section(
       <tbody>{row_html}</tbody>
     </table>
   </div>
-</section>"#
+</details>"#
     )
 }
 
@@ -7862,6 +7884,8 @@ mod report_tests {
         );
 
         assert!(html.contains("<h2>Transfer Shape Triage</h2>"));
+        assert!(html.contains(r#"<details class="transfer-shape-section">"#));
+        assert!(!html.contains(r#"<details class="transfer-shape-section" open"#));
         assert!(html.contains("Visual-shape diagnostic"));
         assert!(html.contains("Shape RMSE"));
         assert!(html.contains("Worst Seed"));
@@ -7882,6 +7906,8 @@ mod report_tests {
         );
 
         assert!(html.contains("<h2>Transfer Handoff Triage</h2>"));
+        assert!(html.contains(r#"<details class="transfer-handoff-section">"#));
+        assert!(!html.contains(r#"<details class="transfer-handoff-section" open"#));
         assert!(html.contains("Entry / Gate"));
         assert!(html.contains("Handoff Height"));
         assert!(html.contains("Handoff Speed"));
