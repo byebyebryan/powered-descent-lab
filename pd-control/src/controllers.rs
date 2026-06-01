@@ -31,6 +31,12 @@ const TRANSFER_BOOST_SCORE_APEX_UNDERSHOOT: f64 = 18.0;
 const TRANSFER_BOOST_SCORE_APEX_OVERSHOOT: f64 = 10.0;
 const TRANSFER_BOOST_SCORE_THROTTLE_EFFORT: f64 = 1.0;
 const TRANSFER_BOOST_SCORE_TILT_EFFORT: f64 = 0.4;
+const TRANSFER_BOOST_RECOVERY_SCORE_ENDPOINT_WEIGHT: f64 = 0.05;
+const TRANSFER_BOOST_RECOVERY_SCORE_SETTLED_WEIGHT: f64 = 0.02;
+const TRANSFER_BOOST_RECOVERY_SCORE_LATEST_SAFE_MARGIN: f64 = 14.0;
+const TRANSFER_BOOST_RECOVERY_SCORE_ACCEL_RATIO: f64 = 1.2;
+const TRANSFER_BOOST_RECOVERY_SCORE_PASS_NOT_READY: f64 = 45.0;
+const TRANSFER_BOOST_RECOVERY_SCORE_TERRAIN_UNSAFE: f64 = 1_200.0;
 const TRANSFER_GATE_DEFER_MAX_NEGATIVE_MARGIN_S: f64 = -0.75;
 const TRANSFER_PRE_TARGET_CAPTURE_MAX_LATEST_SAFE_MARGIN_S: f64 = 0.75;
 const TRANSFER_PRE_TARGET_CAPTURE_LOOKAHEAD_S: f64 = 1.5;
@@ -84,6 +90,10 @@ fn default_transfer_boost_settle_lookahead_s() -> f64 {
 }
 
 fn default_transfer_boost_pathwise_scoring_enabled() -> bool {
+    false
+}
+
+fn default_transfer_boost_recoverability_scoring_enabled() -> bool {
     false
 }
 
@@ -225,6 +235,8 @@ pub struct TransferPdgControllerConfig {
     pub boost_settle_lookahead_s: f64,
     #[serde(default = "default_transfer_boost_pathwise_scoring_enabled")]
     pub boost_pathwise_scoring_enabled: bool,
+    #[serde(default = "default_transfer_boost_recoverability_scoring_enabled")]
+    pub boost_recoverability_scoring_enabled: bool,
     #[serde(default = "default_transfer_gate_defer_lookahead_s")]
     pub transfer_gate_defer_lookahead_s: f64,
     #[serde(default = "default_transfer_gate_defer_step_s")]
@@ -260,6 +272,8 @@ impl Default for TransferPdgControllerConfig {
             boost_candidate_step_s: default_transfer_boost_candidate_step_s(),
             boost_settle_lookahead_s: default_transfer_boost_settle_lookahead_s(),
             boost_pathwise_scoring_enabled: default_transfer_boost_pathwise_scoring_enabled(),
+            boost_recoverability_scoring_enabled:
+                default_transfer_boost_recoverability_scoring_enabled(),
             transfer_gate_defer_lookahead_s: default_transfer_gate_defer_lookahead_s(),
             transfer_gate_defer_step_s: default_transfer_gate_defer_step_s(),
             transfer_gate_defer_min_ratio_improvement:
@@ -301,6 +315,9 @@ impl ControllerSpec {
             Self::BaselineV1 { .. } => "baseline_v1",
             Self::StagedDescentV1 { .. } => "staged_descent_v1",
             Self::TerminalPdgV1 { .. } => "terminal_pdg_v1",
+            Self::TransferPdgV1 { config } if config.boost_recoverability_scoring_enabled => {
+                "transfer_pdg_recoverability_v1"
+            }
             Self::TransferPdgV1 { config } if config.boost_pathwise_scoring_enabled => {
                 "transfer_pdg_pathwise_v1"
             }
@@ -341,6 +358,13 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
         "transfer_pdg_pathwise" | "transfer_pdg_pathwise_v1" | "xpdg_pathwise" => {
             let mut config = TransferPdgControllerConfig::default();
             config.boost_pathwise_scoring_enabled = true;
+            Some(ControllerSpec::TransferPdgV1 { config })
+        }
+        "transfer_pdg_recoverability"
+        | "transfer_pdg_recoverability_v1"
+        | "xpdg_recoverability" => {
+            let mut config = TransferPdgControllerConfig::default();
+            config.boost_recoverability_scoring_enabled = true;
             Some(ControllerSpec::TransferPdgV1 { config })
         }
         "terminal_pdg_no_terrain" | "tpdg_no_terrain" => {
@@ -872,7 +896,9 @@ impl TransferPdgController {
     }
 
     fn boost_scoring_mode(&self) -> &'static str {
-        if self.config.boost_pathwise_scoring_enabled {
+        if self.config.boost_recoverability_scoring_enabled {
+            "recoverability"
+        } else if self.config.boost_pathwise_scoring_enabled {
             "pathwise_geometry"
         } else {
             "legacy_endpoint"
@@ -1645,7 +1671,15 @@ impl TransferPdgController {
         corridor: TransferCorridorState,
         command: Command,
     ) -> TransferBoostCandidateScore {
-        if self.config.boost_pathwise_scoring_enabled {
+        if self.config.boost_recoverability_scoring_enabled {
+            self.score_boost_candidate_recoverability(
+                ctx,
+                observation,
+                diagnostics,
+                corridor,
+                command,
+            )
+        } else if self.config.boost_pathwise_scoring_enabled {
             self.score_boost_candidate_pathwise(ctx, observation, diagnostics, corridor, command)
         } else {
             self.score_boost_candidate_endpoint(ctx, observation, corridor, command)
@@ -1905,6 +1939,123 @@ impl TransferPdgController {
 
         let away_ratio = (target_dx_m.abs() / dx_limit_m).min(8.0);
         60.0 * away_ratio * away_ratio * command.throttle_frac.clamp(0.0, 1.0)
+    }
+
+    fn score_boost_candidate_recoverability(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        _diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+        command: Command,
+    ) -> TransferBoostCandidateScore {
+        let simulated = self.simulate_transfer_command(
+            ctx,
+            observation,
+            command,
+            self.config.boost_candidate_horizon_s,
+            self.config.boost_candidate_step_s,
+        );
+        let predicted = self.observation_from_sim_state(ctx, observation, simulated);
+        let predicted_diagnostics = self.transfer_diagnostics(&predicted);
+        let projection = predicted_diagnostics.projection;
+        let quality = predicted_diagnostics.boost_quality;
+        let predicted_gate = self.transfer_gate_readiness_without_deferral(
+            ctx,
+            &predicted,
+            predicted_diagnostics,
+            self.transfer_gate_ready_ticks,
+        );
+
+        let settled_simulated = self.simulate_transfer_command(
+            ctx,
+            &predicted,
+            Command {
+                throttle_frac: 0.0,
+                target_attitude_rad: self.coast_attitude_rad(&predicted),
+            },
+            self.config.boost_settle_lookahead_s,
+            self.config.boost_candidate_step_s,
+        );
+        let settled = self.observation_from_sim_state(ctx, &predicted, settled_simulated);
+        let settled_diagnostics = self.transfer_diagnostics(&settled);
+        let settled_gate = self.transfer_gate_readiness_without_deferral(
+            ctx,
+            &settled,
+            settled_diagnostics,
+            predicted_gate.ready_ticks,
+        );
+
+        let endpoint_score = self.score_boost_candidate_endpoint_terms(
+            ctx,
+            observation,
+            &predicted,
+            predicted_diagnostics,
+            corridor,
+            command,
+        );
+        let recovery_score = self.score_boost_candidate_recoverability_terms(
+            &predicted,
+            predicted_diagnostics,
+            predicted_gate,
+            self.boost_dx_limit_m(observation),
+        );
+        let settled_recovery_score = self.score_boost_candidate_recoverability_terms(
+            &settled,
+            settled_diagnostics,
+            settled_gate,
+            self.boost_dx_limit_m(observation),
+        );
+        let score = endpoint_score
+            + (TRANSFER_BOOST_RECOVERY_SCORE_ENDPOINT_WEIGHT * recovery_score)
+            + (TRANSFER_BOOST_RECOVERY_SCORE_SETTLED_WEIGHT * settled_recovery_score);
+
+        TransferBoostCandidateScore {
+            score,
+            projection,
+            quality,
+        }
+    }
+
+    fn score_boost_candidate_recoverability_terms(
+        &self,
+        predicted: &Observation,
+        predicted_diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
+        dx_limit_m: f64,
+    ) -> f64 {
+        let mut score = 0.0;
+        if !gate.terrain_clearance_safe {
+            score += TRANSFER_BOOST_RECOVERY_SCORE_TERRAIN_UNSAFE;
+            score += (-gate.terrain_min_clearance_m).max(0.0).min(200.0);
+        }
+
+        if predicted.height_above_target_m <= 0.0 {
+            score += 600.0 + (-predicted.height_above_target_m).min(200.0);
+        }
+
+        let negative_margin_s = (-gate.latest_safe_margin_s).max(0.0).min(12.0);
+        score += TRANSFER_BOOST_RECOVERY_SCORE_LATEST_SAFE_MARGIN
+            * negative_margin_s
+            * negative_margin_s;
+
+        let accel_excess_ratio = (gate.required_accel_ratio - 1.0).max(0.0).min(12.0);
+        score +=
+            TRANSFER_BOOST_RECOVERY_SCORE_ACCEL_RATIO * accel_excess_ratio * accel_excess_ratio;
+
+        if predicted_diagnostics.boost_quality.passed
+            && gate.mode != TransferGateReadinessMode::NominalReady
+        {
+            let projected_dx_ratio = predicted_diagnostics
+                .projection
+                .projected_dx_m
+                .map(|projected_dx_m| projected_dx_m.abs() / dx_limit_m.max(1.0))
+                .unwrap_or(2.0)
+                .min(8.0);
+            score += TRANSFER_BOOST_RECOVERY_SCORE_PASS_NOT_READY * projected_dx_ratio;
+        }
+
+        score
     }
 
     fn boost_settled_quality(
@@ -2182,7 +2333,9 @@ fn shortest_angle_delta(from_rad: f64, to_rad: f64) -> f64 {
 
 impl Controller for TransferPdgController {
     fn id(&self) -> &str {
-        if self.config.boost_pathwise_scoring_enabled {
+        if self.config.boost_recoverability_scoring_enabled {
+            "transfer_pdg_recoverability_v1"
+        } else if self.config.boost_pathwise_scoring_enabled {
             "transfer_pdg_pathwise_v1"
         } else {
             "transfer_pdg_v1"
@@ -2761,6 +2914,24 @@ mod tests {
     }
 
     #[test]
+    fn transfer_recoverability_alias_enables_recoverability_boost_scoring() {
+        let spec = built_in_controller_spec("transfer_pdg_recoverability")
+            .expect("recoverability transfer controller alias should exist");
+
+        match spec {
+            ControllerSpec::TransferPdgV1 { config } => {
+                assert!(config.boost_recoverability_scoring_enabled);
+                assert!(!config.boost_pathwise_scoring_enabled);
+                assert_eq!(
+                    ControllerSpec::TransferPdgV1 { config }.id(),
+                    "transfer_pdg_recoverability_v1"
+                );
+            }
+            _ => panic!("recoverability alias should resolve to transfer controller"),
+        }
+    }
+
+    #[test]
     fn transfer_pathwise_scorer_keeps_targetward_tilt_for_shortfall() {
         let ctx = uphill_transfer_context();
         let mut config = TransferPdgControllerConfig::default();
@@ -2831,6 +3002,116 @@ mod tests {
         let observation = transfer_observation(500.0, -220.0, Vec2::new(5.0, 5.0), 6.0);
         let diagnostics = controller.transfer_diagnostics(&observation);
 
+        assert!(!diagnostics.projection.has_target_y_solution);
+        let score = controller.score_boost_candidate(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+            Command {
+                throttle_frac: 1.0,
+                target_attitude_rad: 0.3,
+            },
+        );
+
+        assert!(score.score.is_finite());
+        assert!(!score.quality.passed);
+    }
+
+    #[test]
+    fn transfer_recoverability_scorer_penalizes_overdue_terminal_gate() {
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(220.0, 80.0, Vec2::new(35.0, -18.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let ready = TransferGateReadiness {
+            mode: TransferGateReadinessMode::NominalReady,
+            ready_ticks: 2,
+            burn_time_s: 2.0,
+            latest_safe_margin_s: 0.5,
+            required_accel_ratio: 0.8,
+            terrain_min_clearance_m: 80.0,
+            terrain_clearance_safe: true,
+            deferred: false,
+        };
+        let overdue = TransferGateReadiness {
+            mode: TransferGateReadinessMode::LatestSafe,
+            ready_ticks: 0,
+            burn_time_s: 2.0,
+            latest_safe_margin_s: -4.0,
+            required_accel_ratio: 0.8,
+            terrain_min_clearance_m: 80.0,
+            terrain_clearance_safe: true,
+            deferred: false,
+        };
+
+        let ready_score = controller.score_boost_candidate_recoverability_terms(
+            &observation,
+            diagnostics,
+            ready,
+            controller.boost_dx_limit_m(&observation),
+        );
+        let overdue_score = controller.score_boost_candidate_recoverability_terms(
+            &observation,
+            diagnostics,
+            overdue,
+            controller.boost_dx_limit_m(&observation),
+        );
+
+        assert!(overdue_score > ready_score + 100.0);
+    }
+
+    #[test]
+    fn transfer_recoverability_scorer_prefers_margin_over_lower_accel_ratio() {
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(220.0, 80.0, Vec2::new(35.0, -18.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let better_margin = TransferGateReadiness {
+            mode: TransferGateReadinessMode::LatestSafe,
+            ready_ticks: 0,
+            burn_time_s: 2.0,
+            latest_safe_margin_s: -2.0,
+            required_accel_ratio: 8.0,
+            terrain_min_clearance_m: 80.0,
+            terrain_clearance_safe: true,
+            deferred: false,
+        };
+        let lower_accel = TransferGateReadiness {
+            mode: TransferGateReadinessMode::LatestSafe,
+            ready_ticks: 0,
+            burn_time_s: 2.0,
+            latest_safe_margin_s: -4.0,
+            required_accel_ratio: 2.0,
+            terrain_min_clearance_m: 80.0,
+            terrain_clearance_safe: true,
+            deferred: false,
+        };
+
+        let better_margin_score = controller.score_boost_candidate_recoverability_terms(
+            &observation,
+            diagnostics,
+            better_margin,
+            controller.boost_dx_limit_m(&observation),
+        );
+        let lower_accel_score = controller.score_boost_candidate_recoverability_terms(
+            &observation,
+            diagnostics,
+            lower_accel,
+            controller.boost_dx_limit_m(&observation),
+        );
+
+        assert!(better_margin_score < lower_accel_score);
+    }
+
+    #[test]
+    fn transfer_recoverability_scorer_is_finite_without_target_y_solution() {
+        let ctx = uphill_transfer_context();
+        let mut config = TransferPdgControllerConfig::default();
+        config.boost_recoverability_scoring_enabled = true;
+        let controller = TransferPdgController::new(config);
+        let observation = transfer_observation(500.0, -220.0, Vec2::new(5.0, 5.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert_eq!(controller.boost_scoring_mode(), "recoverability");
         assert!(!diagnostics.projection.has_target_y_solution);
         let score = controller.score_boost_candidate(
             &ctx,
