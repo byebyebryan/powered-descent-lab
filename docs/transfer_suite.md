@@ -35,15 +35,11 @@ The matrix uses a one-sided signed route arc around the target:
 
 The initial family is `signed_route_arc_transfer_v1`:
 
-- `radius_nominal_m = 800`
+- radius tiers: `short = 400m`, `nominal = 800m`, `long = 1200m`
+- omitted `radius_tiers` selectors default to `nominal`
 - smoke route angles: `r-60`, `r-30`, `r00`, `r+30`, `r+60`
 - full route angles: `r-80`, `r-60`, `r-45`, `r-30`, `r-15`, `r00`, `r+15`,
   `r+30`, `r+45`, `r+60`, `r+80`
-- `radius_tier = nominal`
-
-Radius is intentionally recorded as a selector but not varied yet. Travel
-distance changes the transfer trajectory shape, so it should become a real axis
-after the one-radius route family is useful.
 
 ## Terrain
 
@@ -91,8 +87,20 @@ Current corpus tiers:
   - the same 3 payload tiers and smoke seeds
   - all 11 signed route angles from `r-80` through `r+80`
   - still fixed at `radius_tier = nominal`
-  - intended as the route-shape diagnostic pack before adding radius tiers or
-    full seeds
+  - intended as the nominal-radius route-shape diagnostic pack before full
+    seeds
+- `transfer_radius_tier_suite`
+  - 135 runs
+  - the same 3 payload tiers and smoke seeds
+  - smoke route angles only
+  - all 3 radius tiers: `short`, `nominal`, `long`
+  - intended as the fast distance-sensitivity gate
+- `transfer_route_angle_radius_suite`
+  - 297 runs
+  - the same 3 payload tiers and smoke seeds
+  - all 11 signed route angles and all 3 radius tiers
+  - intended as the wide distance/route-shape diagnostic before adding full
+    seeds
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -267,6 +275,25 @@ Latest transfer tuning checkpoint:
   the scored `near_vertical_transfer_route` frontier. It is waypoint/corridor
   debt, not terminal guidance debt, and it must not be invalidated.
 
+Radius-tier expansion checkpoint:
+
+- generated at commit `2133dcd` with `8` workers
+- `transfer_radius_tier_suite`: `135 / 135` successes, `0` invalidations,
+  `14.00s` wall clock, `44.64s` mean sim time, `68.82s` max sim time
+- `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
+  `0` invalidations, `27.76s` wall clock, `41.78s` mean sim time, `68.82s`
+  max sim time
+- `transfer_radius_tier_suite` keeps the smoke route set fully solved across
+  `short`, `nominal`, and `long`, so distance variation alone does not break
+  the currently gated transfer slice
+- `transfer_route_angle_radius_suite` preserves the known `r+80` frontier
+  pattern across all payload and radius tiers: `27` crashes, all annotated as
+  `near_vertical_transfer_route`
+- the only new non-frontier failures are `full/r-80` at `short` and `long`
+  radii, `3 / 3` seeds each. `full/r-80/nominal` still solves, which makes this
+  a distance-sensitive heavy-payload steep-descent issue rather than a broad
+  route-angle failure.
+
 Pathwise boost-scoring experiment:
 
 - added gated `transfer_pdg_pathwise` as a Pylander-lite candidate scorer that
@@ -309,8 +336,8 @@ Recoverability boost-scoring experiment:
 
 ## Deferred Work
 
-- route radius tiers
 - full-seed transfer packs
+- full-seed radius-tier transfer packs
 - terminal climbing-arrival suite extension
 - aggregate handoff quality thresholds in batch summaries
 - waypoint/corridor planning above terminal guidance
