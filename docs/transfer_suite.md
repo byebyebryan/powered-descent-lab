@@ -286,6 +286,27 @@ Pathwise boost-scoring experiment:
   alias only for follow-up experiments until the pathwise objective can improve
   shape without degrading solved cells
 
+Recoverability boost-scoring experiment:
+
+- added gated `transfer_pdg_recoverability` as a safer follow-up to pathwise
+  scoring. It preserves the legacy endpoint objective and only uses terminal
+  gate recoverability as a weak tie-breaker.
+- compare packs:
+  - `transfer_bot_lab_recoverability_compare`
+  - `transfer_route_angle_recoverability_compare`
+- broad check after reducing recoverability to a tie-breaker:
+  - bot-lab compare: both lanes landed `45 / 45`; successful-run mean shape
+    RMSE was effectively neutral at `93.42m` baseline vs `93.45m` current, and
+    mean touchdown offset improved slightly from `0.403m` to `0.400m`
+  - route-angle compare: both lanes landed `90 / 99`, with only the existing
+    `r+80` frontier crashes; successful-run mean shape RMSE stayed neutral at
+    `94.48m` baseline vs `94.60m` current, and mean touchdown offset improved
+    slightly from `0.486m` to `0.484m`
+- this is a useful diagnostic/tie-breaker experiment but not a default-promotion
+  candidate yet. The original strong recoverability weighting preserved
+  landings but badly distorted uphill shapes, which reinforces that recoverable
+  terminal handoff cannot replace the boost shape objective.
+
 ## Deferred Work
 
 - route radius tiers
