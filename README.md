@@ -200,10 +200,17 @@ Run the first transfer-guidance smoke matrix:
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_bot_lab_suite.json --workers 8
 ```
 
-Run the full route-angle diagnostic matrix at the same nominal radius:
+Run the nominal-radius route-angle diagnostic matrix:
 
 ```bash
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_suite.json --workers 8
+```
+
+Run the transfer radius-tier diagnostics:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_radius_tier_suite.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_radius_suite.json --workers 8
 ```
 
 Force a rerun and skip cache reuse if needed:
@@ -293,16 +300,25 @@ The terminal controller contract is narrower: given a reachable, terrain-valid
 approach corridor or target, land safely. Terrain condition metadata is for
 diagnostics and reports, not controller mode switches.
 
-`transfer_bot_lab_suite` is the first Phase 3 source-to-target matrix. It uses
-`transfer_matrix = signed_route_arc_transfer_v1`, a fixed `800m` route radius,
+`transfer_bot_lab_suite` is the first Phase 3 source-to-target matrix and the
+fast transfer smoke gate. It uses `transfer_matrix =
+signed_route_arc_transfer_v1`, the default nominal `800m` route radius,
 route-angle labels from `r-60` through `r+60` in smoke tier, and the staged
 `transfer_pdg_v1` controller. Transfer reports label the matrix axes as route
 and radius instead of terminal arc and velocity band.
 
 `transfer_route_angle_suite` runs the same controller, payload tiers, and fixed
-`800m` radius, but expands to all 11 signed route angles from `r-80` through
-`r+80` with smoke seeds. It is the route-shape diagnostic pack, not a full-seed
-or radius-tier expansion.
+nominal radius, but expands to all 11 signed route angles from `r-80` through
+`r+80` with smoke seeds. It is the nominal-radius route-shape diagnostic pack.
+
+`transfer_radius_tier_suite` keeps the smoke route-angle set and expands across
+`short = 400m`, `nominal = 800m`, and `long = 1200m` radius tiers. It is the
+fast distance-sensitivity gate.
+
+`transfer_route_angle_radius_suite` combines all 11 route angles with all three
+radius tiers for a 297-run wide diagnostic before adding full transfer seed
+coverage.
+
 
 That writes:
 
@@ -352,15 +368,15 @@ enough for real controller iteration. The evaluator can now:
 Current checkpoint on the maintained Earth payload tiers:
 
 - `terminal_bot_lab_suite`
-  - `current`: `168 / 180` scored successes, `12` scored failures,
+  - `current`: `171 / 180` scored successes, `9` scored failures,
     `9` impossible warnings, `12` frontier annotations
 - `terminal_bot_lab_full`
-  - `current`: `676 / 720` scored successes, `44` scored failures,
+  - `current`: `684 / 720` scored successes, `36` scored failures,
     `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `252 / 252`
     - `half`: `252 / 252`
-    - `full`: `172 / 216` scored, `44` fail, `36` impossible warnings,
+    - `full`: `180 / 216` scored, `36` fail, `36` impossible warnings,
       `48` frontier annotations
 
 Trajectory-error checkpoint:
@@ -413,6 +429,15 @@ Transfer route-angle checkpoint:
     guidance debt
   - report triage now keeps that frontier visible while surfacing
     landed-but-ugly handoff and cutoff cells for the next controller pass
+- `transfer_radius_tier_suite`
+  - `current`: `135 / 135` successes, `0` invalidations across smoke routes and
+    all three radius tiers
+- `transfer_route_angle_radius_suite`
+  - `current`: `264 / 297` successes, `33` crashes, `0` invalidations
+  - `27` crashes are the known `r+80` near-vertical frontier across payload and
+    radius tiers
+  - the only new non-frontier failures are `full/r-80` at `short` and `long`
+    radius, `3 / 3` seeds each
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
@@ -424,8 +449,9 @@ avoidance is no longer a terminal guidance blocker; it is parked until the lab
 has an approach-corridor or waypoint-planning layer. Detailed checkpoint history
 lives in `docs/progress.md` and `docs/terminal_suite.md`.
 
-The next useful slice is to make the first Phase 3 transfer workbench useful:
-keep `transfer_bot_lab_suite` runnable as the fast gate, use
-`transfer_route_angle_suite` for route-shape diagnosis, and tune only the staged
-transfer phases needed before terminal handoff. Broad terminal-controller tuning
-should stay optional and hypothesis-gated rather than the default path.
+The next useful Phase 3 slice is to keep the transfer workbench evidence fresh
+and decide whether the distance-sensitive `full/r-80` short/long failures are
+controller debt, corpus policy debt, or a sign that the next layer should be
+full-seed transfer coverage and waypoint-style route shaping. Broad
+terminal-controller tuning should stay optional and hypothesis-gated rather than
+the default path.

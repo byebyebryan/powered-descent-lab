@@ -1,5 +1,34 @@
 # Progress
 
+## 2026-07-05
+
+### Resume and transfer-radius alignment checkpoint
+
+- Resumed from commit `14ef55e` with the tracked workspace clean.
+- Local ignored report outputs currently point the latest eval/report symlinks at
+  `transfer_route_angle_radius_suite`, so the active Phase 3 evidence is the
+  route-angle/radius matrix rather than the older nominal-radius-only pack.
+- Current terminal clean artifacts use schema 21 and show:
+  - `terminal_bot_lab_suite`: `171 / 180` scored successes, `9` scored
+    failures, `9` impossible warnings, `12` frontier annotations
+  - `terminal_bot_lab_full`: `684 / 720` scored successes, `36` scored
+    failures, `36` impossible warnings, `48` frontier annotations
+  - clean `empty` and `half` remain solved; clean `full` is `180 / 216`
+    scored, with the remaining `36` scored failures plus `36` impossible
+    warnings and `48` frontier annotations
+- Current transfer radius-tier artifacts show:
+  - `transfer_radius_tier_suite`: `135 / 135` successes, `0` invalidations
+  - `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
+    `0` invalidations
+- The wide transfer failures split into:
+  - `27` known `r+80` `near_vertical_transfer_route` frontier crashes across
+    payload and radius tiers
+  - `6` non-frontier scored crashes: `full/r-80` at `short` and `long` radius,
+    all three smoke seeds for each tier
+- Immediate follow-up should refresh/promote the transfer packs from the clean
+  checkout, then triage whether `full/r-80` short/long is controller debt,
+  corpus policy debt, or a route-shaping/waypoint-layer signal.
+
 ## 2026-05-31
 
 ### Transfer projected-overshoot and pre-target capture checkpoint

@@ -685,19 +685,19 @@ Clean matrix report entrypoints:
 
 Latest recorded wall-clock signal with `8` workers:
 
-- `terminal_bot_lab_suite`: `7.13s`
-- `terminal_bot_lab_full`: `28.99s`
+- `terminal_bot_lab_suite`: `15.01s`
+- `terminal_bot_lab_full`: `55.47s`
 
 Current-lane clean results:
 
 - smoke tier:
-  - `168 / 180` scored successes
-  - `12` scored failures
+  - `171 / 180` scored successes
+  - `9` scored failures
   - `9` impossible warnings
   - `12` frontier annotations
 - full pack:
-  - `676 / 720` scored successes
-  - `44` scored failures
+  - `684 / 720` scored successes
+  - `36` scored failures
   - `36` impossible warnings
   - `48` frontier annotations
 
@@ -705,7 +705,7 @@ Current-lane clean results:
 
 - `empty`: `252 / 252`
 - `half`: `252 / 252`
-- `full`: `172 / 216` scored, `44` scored failures,
+- `full`: `180 / 216` scored, `36` scored failures,
   `36` impossible warnings, `48` frontier annotations
 
 Trajectory-error report entrypoints:
@@ -713,14 +713,14 @@ Trajectory-error report entrypoints:
 - `outputs/eval/terminal_traj_err_suite/summary.json`
 - `outputs/eval/terminal_traj_err_full/summary.json`
 
-The numeric checkpoint below is from fresh schema-14 local captures. Regenerate
+The numeric checkpoint below is from fresh schema-21 local captures. Regenerate
 the ignored `outputs/eval` entrypoints after schema/report changes before
 treating the files in this checkout as authoritative.
 
-Latest verified schema-14 wall-clock signal with `8` workers:
+Latest verified schema-21 wall-clock signal with `8` workers:
 
-- `terminal_traj_err_suite`: `12.71s`
-- `terminal_traj_err_full`: `52.03s`
+- `terminal_traj_err_suite`: `30.35s`
+- `terminal_traj_err_full`: `120.78s`
 
 Current-lane trajectory-error results:
 

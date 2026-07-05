@@ -192,10 +192,10 @@ Status:
     landing-time tuning without baking those diagnostics into controller logic
 - latest terminal checkpoint:
   - clean smoke current lane:
-    `168 / 180` scored successes, `12` scored failures,
+    `171 / 180` scored successes, `9` scored failures,
     `9` impossible warnings, `12` frontier annotations
   - clean full-pack current lane:
-    `676 / 720` scored successes, `44` scored failures,
+    `684 / 720` scored successes, `36` scored failures,
     `36` impossible warnings, `48` frontier annotations
   - clean full-pack `empty` and `half` tiers are solved on the maintained
     Earth corpus; clean full-payload issues are scored frontier failures plus
@@ -244,9 +244,8 @@ Planned scope:
 - a fixed target pad at `(0, 0)` with the source pad resolved from
   `source = (-radius * cos(route_angle), -radius * sin(route_angle))` after
   side normalization and route-angle label conversion
-- one nominal route radius for the first transfer matrix, with route radius
-  kept as a later axis because travel distance materially changes transfer
-  shape and difficulty
+- route radius as an explicit axis, because travel distance materially changes
+  transfer shape and difficulty
 - optional simple monotonic source-to-target slope terrain for physical
   miss/crash containment, not terrain-avoidance behavior
 - boost/coast/terminal mission definitions
@@ -267,9 +266,14 @@ Status:
 - `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
   handoff controller
 - `transfer_bot_lab_suite` is the smoke workbench for the initial route family
-- `transfer_route_angle_suite` is the current route-shape diagnostic workbench:
-  fixed nominal `800m` radius, smoke seeds, and all 11 signed route angles
+- `transfer_route_angle_suite` is the nominal-radius route-shape diagnostic
+  workbench: fixed `800m` radius, smoke seeds, and all 11 signed route angles
   across `empty`, `half`, and `full` payload tiers
+- `transfer_radius_tier_suite` is the fast distance-sensitivity gate over smoke
+  route angles and `short`, `nominal`, and `long` radius tiers
+- `transfer_route_angle_radius_suite` is the current wide route/radius
+  diagnostic: 297 smoke-seed runs over all 11 route angles and all 3 radius
+  tiers
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run
@@ -282,7 +286,15 @@ Status:
   - `0` invalidations
   - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
   - only `r+80` remains failed across payload tiers, and that should be treated
-    as near-cliff launch/waypoint debt before broadening radius or seed count
+    as near-cliff launch/waypoint debt
+- current route/radius checkpoint:
+  - `transfer_radius_tier_suite`: `135 / 135` successes and `0` invalidations
+  - `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
+    and `0` invalidations
+  - `27` crashes are the known `r+80` near-vertical frontier across payload and
+    radius tiers
+  - the only new non-frontier failures are `full/r-80` at `short` and `long`
+    radius tiers, which need focused triage before full-seed transfer expansion
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
