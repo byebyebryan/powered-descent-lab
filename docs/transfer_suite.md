@@ -277,11 +277,12 @@ Latest transfer tuning checkpoint:
 
 Radius-tier expansion checkpoint:
 
-- generated at commit `2133dcd` with `8` workers
+- latest clean-cache refresh was generated from commit `ed50359` with `8`
+  workers
 - `transfer_radius_tier_suite`: `135 / 135` successes, `0` invalidations,
-  `14.00s` wall clock, `44.64s` mean sim time, `68.82s` max sim time
+  `13.32s` wall clock, `44.64s` mean sim time, `68.82s` max sim time
 - `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
-  `0` invalidations, `27.76s` wall clock, `41.78s` mean sim time, `68.82s`
+  `0` invalidations, `27.25s` wall clock, `41.78s` mean sim time, `68.82s`
   max sim time
 - `transfer_radius_tier_suite` keeps the smoke route set fully solved across
   `short`, `nominal`, and `long`, so distance variation alone does not break
@@ -293,6 +294,24 @@ Radius-tier expansion checkpoint:
   radii, `3 / 3` seeds each. `full/r-80/nominal` still solves, which makes this
   a distance-sensitive heavy-payload steep-descent issue rather than a broad
   route-angle failure.
+
+Focused `full/r-80` radius triage:
+
+- the failures are deterministic across smoke seeds because these cases have no
+  seed perturbation after route resolution
+- all three radius tiers enter direct terminal capture from the source pad; there
+  is no boost/cutoff phase for these steep downhill routes
+- `short` fails while still near the elevated source pad: final position is about
+  `47.6m` from target, vertical speed is about `-6.9 m/s`, and hull clearance
+  first goes negative against the source-pad/plateau terrain
+- `nominal` succeeds with the same direct-terminal pattern and lands on target
+- `long` reaches the target laterally but impacts at about `-14.1 m/s`, so the
+  miss is terminal vertical-speed control after a very high direct descent, not
+  source-terrain clearance
+- the likely next controller slice is not route-label branching. It should either
+  add a small route-local source-clearance/launch phase before direct terminal
+  capture, or tighten terminal direct-entry braking for high-altitude,
+  full-payload downhill starts.
 
 Pathwise boost-scoring experiment:
 

@@ -25,9 +25,46 @@
     payload and radius tiers
   - `6` non-frontier scored crashes: `full/r-80` at `short` and `long` radius,
     all three smoke seeds for each tier
-- Immediate follow-up should refresh/promote the transfer packs from the clean
-  checkout, then triage whether `full/r-80` short/long is controller debt,
+- Planned follow-up for this slice was to refresh the transfer packs from the
+  clean checkout, then triage whether `full/r-80` short/long is controller debt,
   corpus policy debt, or a route-shaping/waypoint-layer signal.
+
+### Transfer clean-cache refresh and `full/r-80` triage
+
+- Refreshed the transfer packs locally from clean commit `ed50359` with `8`
+  workers:
+  - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations,
+    `4.76s` wall clock, `44.77s` mean sim time
+  - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
+    invalidations, `9.64s` wall clock, `43.01s` mean sim time
+  - `transfer_radius_tier_suite`: `135 / 135` successes, `0` invalidations,
+    `13.32s` wall clock, `44.64s` mean sim time
+  - `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
+    `0` invalidations, `27.25s` wall clock, `41.78s` mean sim time
+- Cache provenance for those refreshed reports is clean/fresh under workspace
+  key `ed503592f632`; explicit `promote-cache` was not needed because there was
+  no dirty cache to promote.
+- `r+80` remains the known near-vertical frontier:
+  - `27` crashes across `empty`, `half`, `full` and all radius tiers
+  - the failures generally occur before terminal handoff or without terminal
+    entry diagnostics, so this remains route/waypoint debt rather than terminal
+    touchdown debt
+- `full/r-80/short` is a source-clearance failure:
+  - direct terminal capture starts from the elevated source pad
+  - the craft crashes at about `10.43s`, still roughly `47.6m` from target
+  - vertical speed is only about `-6.9 m/s`, but hull clearance goes negative
+    against source-pad/plateau terrain
+- `full/r-80/long` is a terminal braking failure:
+  - direct terminal capture reaches the target laterally
+  - the craft crashes at about `33.37s`, roughly `0.24m` from target center
+  - vertical speed is about `-14.1 m/s`, so the miss is excessive touchdown
+    descent rate after a high direct descent
+- The next viable fix should stay generalized:
+  - add a route-local source-clearance/launch phase before direct terminal
+    capture when the source pad/terrain plateau is still a clearance risk
+  - tighten direct-terminal braking for high-altitude, full-payload downhill
+    starts
+  - avoid `r-80` or radius-specific branches
 
 ## 2026-05-31
 
