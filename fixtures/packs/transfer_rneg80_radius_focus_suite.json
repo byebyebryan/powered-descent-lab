@@ -1,0 +1,49 @@
+{
+  "id": "transfer_rneg80_radius_focus_suite",
+  "name": "Transfer r-80 radius focus suite",
+  "description": "Focused full-payload downhill transfer diagnostic for r-80 across short, nominal, and long route radii using smoke seeds.",
+  "entries": [
+    {
+      "id": "transfer_guidance_rneg80_radius_focus_full",
+      "transfer_matrix": "signed_route_arc_transfer_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "transfer_pdg"
+        }
+      ],
+      "seed_tier": "smoke",
+      "vehicle_variant": "full",
+      "expectation_tier": "stress",
+      "route_angles": [
+        "r-80"
+      ],
+      "radius_tiers": [
+        "short",
+        "nominal",
+        "long"
+      ],
+      "adjustments": [
+        {
+          "id": "payload_full_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 4500.0
+        }
+      ],
+      "tags": [
+        "transfer_guidance",
+        "clean",
+        "full",
+        "rneg80_focus",
+        "radius_tier_sweep",
+        "stress"
+      ],
+      "metadata": {
+        "difficulty": "full",
+        "focus": "r-80 radius"
+      }
+    }
+  ]
+}
