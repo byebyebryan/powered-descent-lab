@@ -289,12 +289,13 @@ Status:
     as near-cliff launch/waypoint debt
 - current route/radius checkpoint:
   - `transfer_radius_tier_suite`: `135 / 135` successes and `0` invalidations
-  - `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
+  - `transfer_route_angle_radius_suite`: `270 / 297` successes, `27` crashes,
     and `0` invalidations
-  - `27` crashes are the known `r+80` near-vertical frontier across payload and
-    radius tiers
-  - the only new non-frontier failures are `full/r-80` at `short` and `long`
-    radius tiers, which need focused triage before full-seed transfer expansion
+  - all remaining crashes are the known `r+80` near-vertical frontier across
+    payload and radius tiers
+  - the previous non-frontier `full/r-80` short/long radius failures were
+    resolved by a focused source-clearance hold and transfer-scoped terminal
+    gate horizon pass
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 

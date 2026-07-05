@@ -249,12 +249,12 @@ Handoff read:
 
 Latest transfer tuning checkpoint:
 
-- generated locally after the projected-overshoot boost steering and narrowed
-  pre-target terminal-capture pass with `8` workers
-- `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations, `44.77s`
-  mean sim time, `52.49s` max sim time
+- generated locally after the source-clearance hold and transfer-scoped terminal
+  gate horizon pass with `8` workers
+- `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations, `60.44s`
+  mean sim time, `76.60s` max sim time
 - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
-  invalidations, `43.01s` mean sim time, `63.38s` max sim time
+  invalidations, `56.24s` mean sim time, `76.60s` max sim time
 - latest schema-23 handoff diagnostics report the same outcomes:
   - `transfer_bot_lab_suite`: all `45` runs enter through handoff; `42` use
     `latest_safe` gates and `3` use the narrow pre-target `pending` gate
@@ -277,23 +277,21 @@ Latest transfer tuning checkpoint:
 
 Radius-tier expansion checkpoint:
 
-- latest clean-cache refresh was generated from commit `ed50359` with `8`
+- latest clean-cache refresh was generated from commit `673954f` with `8`
   workers
 - `transfer_radius_tier_suite`: `135 / 135` successes, `0` invalidations,
-  `13.32s` wall clock, `44.64s` mean sim time, `68.82s` max sim time
-- `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
-  `0` invalidations, `27.25s` wall clock, `41.78s` mean sim time, `68.82s`
-  max sim time
+  `59.58s` mean sim time, `79.35s` max sim time
+- `transfer_route_angle_radius_suite`: `270 / 297` successes, `27` crashes,
+  `0` invalidations, `55.39s` mean sim time, `83.24s` max sim time
 - `transfer_radius_tier_suite` keeps the smoke route set fully solved across
   `short`, `nominal`, and `long`, so distance variation alone does not break
   the currently gated transfer slice
 - `transfer_route_angle_radius_suite` preserves the known `r+80` frontier
   pattern across all payload and radius tiers: `27` crashes, all annotated as
   `near_vertical_transfer_route`
-- the only new non-frontier failures are `full/r-80` at `short` and `long`
-  radii, `3 / 3` seeds each. `full/r-80/nominal` still solves, which makes this
-  a distance-sensitive heavy-payload steep-descent issue rather than a broad
-  route-angle failure.
+- the previous non-frontier `full/r-80` short/long radius failures are resolved
+  by the focused handoff pass; the wide matrix now has no non-frontier transfer
+  failures
 
 Focused `full/r-80` radius triage:
 
@@ -308,10 +306,16 @@ Focused `full/r-80` radius triage:
 - `long` reaches the target laterally but impacts at about `-14.1 m/s`, so the
   miss is terminal vertical-speed control after a very high direct descent, not
   source-terrain clearance
-- the likely next controller slice is not route-label branching. It should either
-  add a small route-local source-clearance/launch phase before direct terminal
-  capture, or tighten terminal direct-entry braking for high-altitude,
-  full-payload downhill starts.
+- focused pack `transfer_rneg80_radius_focus_suite` was added to keep this
+  evidence cheap and explicit:
+  - baseline before the controller fix: `3 / 9` successes
+  - after source-clearance hold only: `6 / 9` successes; all `short` runs solved
+  - after the transfer-scoped terminal gate horizon tune: `9 / 9` successes
+- the implemented controller slice avoided route-label branching:
+  - short-radius source-pad crashes are covered by a route-local source
+    clearance hold before direct terminal capture
+  - long-radius high direct descents are covered by transfer-scoped terminal
+    gate horizon tuning, leaving standalone terminal defaults unchanged
 
 Pathwise boost-scoring experiment:
 

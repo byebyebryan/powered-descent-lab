@@ -421,7 +421,7 @@ Transfer route-angle checkpoint:
 - `transfer_route_angle_suite`
   - `current`: `90 / 99` successes, `9` crashes, `0` invalidations
   - latest local tuning run used `8` workers and completed the same 99-run pack
-    with `43.08s` mean sim time
+    with `56.24s` mean sim time
   - all downhill, flat, and moderate uphill routes from `r-80` through `r+60`
     are solved across `empty`, `half`, and `full`
   - the only remaining route-shape failures are `r+80` across payload tiers;
@@ -433,11 +433,12 @@ Transfer route-angle checkpoint:
   - `current`: `135 / 135` successes, `0` invalidations across smoke routes and
     all three radius tiers
 - `transfer_route_angle_radius_suite`
-  - `current`: `264 / 297` successes, `33` crashes, `0` invalidations
-  - `27` crashes are the known `r+80` near-vertical frontier across payload and
-    radius tiers
-  - the only new non-frontier failures are `full/r-80` at `short` and `long`
-    radius, `3 / 3` seeds each
+  - `current`: `270 / 297` successes, `27` crashes, `0` invalidations
+  - all remaining crashes are the known `r+80` near-vertical frontier across
+    payload and radius tiers
+  - the previous non-frontier `full/r-80` short/long radius failures are now
+    covered by source-clearance hold plus transfer-scoped terminal handoff
+    horizon tuning
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
@@ -449,9 +450,8 @@ avoidance is no longer a terminal guidance blocker; it is parked until the lab
 has an approach-corridor or waypoint-planning layer. Detailed checkpoint history
 lives in `docs/progress.md` and `docs/terminal_suite.md`.
 
-The next useful Phase 3 slice is to keep the transfer workbench evidence fresh
-and decide whether the distance-sensitive `full/r-80` short/long failures are
-controller debt, corpus policy debt, or a sign that the next layer should be
-full-seed transfer coverage and waypoint-style route shaping. Broad
-terminal-controller tuning should stay optional and hypothesis-gated rather than
-the default path.
+The next useful Phase 3 slice is to either expand transfer evidence with
+full-seed coverage or start waypoint-style route shaping. Broad transfer
+controller tuning should stay optional and hypothesis-gated rather than the
+default path; the current broad matrix only leaves the `r+80` near-vertical
+frontier unresolved.

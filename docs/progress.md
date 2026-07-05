@@ -16,7 +16,7 @@
   - clean `empty` and `half` remain solved; clean `full` is `180 / 216`
     scored, with the remaining `36` scored failures plus `36` impossible
     warnings and `48` frontier annotations
-- Current transfer radius-tier artifacts show:
+- At resume, transfer radius-tier artifacts showed:
   - `transfer_radius_tier_suite`: `135 / 135` successes, `0` invalidations
   - `transfer_route_angle_radius_suite`: `264 / 297` successes, `33` crashes,
     `0` invalidations
@@ -25,9 +25,9 @@
     payload and radius tiers
   - `6` non-frontier scored crashes: `full/r-80` at `short` and `long` radius,
     all three smoke seeds for each tier
-- Planned follow-up for this slice was to refresh the transfer packs from the
-  clean checkout, then triage whether `full/r-80` short/long is controller debt,
-  corpus policy debt, or a route-shaping/waypoint-layer signal.
+- This set up the follow-up for the slice: refresh the transfer packs from the
+  clean checkout, then triage whether `full/r-80` short/long was controller
+  debt, corpus policy debt, or a route-shaping/waypoint-layer signal.
 
 ### Transfer clean-cache refresh and `full/r-80` triage
 
@@ -65,6 +65,34 @@
   - tighten direct-terminal braking for high-altitude, full-payload downhill
     starts
   - avoid `r-80` or radius-specific branches
+
+### Transfer `full/r-80` handoff fix checkpoint
+
+- Added focused pack `transfer_rneg80_radius_focus_suite` to isolate the
+  heavy-payload `r-80` short/nominal/long radius tiers across smoke seeds.
+- Focused pack results:
+  - baseline before the controller fix: `3 / 9` successes
+  - after route-local source-clearance hold: `6 / 9` successes; all short-radius
+    source-pad/plateau crashes were resolved
+  - after transfer-scoped terminal gate horizon tuning: `9 / 9` successes
+- Controller changes stay generalized:
+  - direct-terminal transfer routes now hold takeoff while sampled source-side
+    terrain ahead still lacks configured hull clearance
+  - `transfer_pdg_v1` extends its embedded terminal gate burn horizon, but
+    standalone `terminal_pdg_v1` defaults are unchanged
+- Refreshed broad transfer packs from clean controller commit `673954f` with
+  `8` workers and `--no-reuse`:
+  - `transfer_bot_lab_suite`: `45 / 45` successes, `0` invalidations, `60.44s`
+    mean sim time, `76.60s` max sim time
+  - `transfer_route_angle_suite`: `90 / 99` successes, `9` crashes, `0`
+    invalidations, `56.24s` mean sim time, `76.60s` max sim time
+  - `transfer_radius_tier_suite`: `135 / 135` successes, `0` invalidations,
+    `59.58s` mean sim time, `79.35s` max sim time
+  - `transfer_route_angle_radius_suite`: `270 / 297` successes, `27` crashes,
+    `0` invalidations, `55.39s` mean sim time, `83.24s` max sim time
+- The wide matrix now has no non-frontier failures. All remaining transfer
+  crashes are the known `r+80` near-vertical route frontier across payload and
+  radius tiers.
 
 ## 2026-05-31
 
