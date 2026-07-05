@@ -40,6 +40,7 @@ const TRANSFER_BOOST_RECOVERY_SCORE_TERRAIN_UNSAFE: f64 = 1_200.0;
 const TRANSFER_GATE_DEFER_MAX_NEGATIVE_MARGIN_S: f64 = -0.75;
 const TRANSFER_PRE_TARGET_CAPTURE_MAX_LATEST_SAFE_MARGIN_S: f64 = 0.75;
 const TRANSFER_PRE_TARGET_CAPTURE_LOOKAHEAD_S: f64 = 1.5;
+const TRANSFER_SOURCE_CLEARANCE_SAMPLE_COUNT: usize = 16;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -107,6 +108,14 @@ fn default_transfer_gate_defer_step_s() -> f64 {
 
 fn default_transfer_gate_defer_min_ratio_improvement() -> f64 {
     0.03
+}
+
+fn default_transfer_source_clearance_margin_m() -> f64 {
+    24.0
+}
+
+fn default_transfer_source_clearance_lookahead_m() -> f64 {
+    96.0
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -206,6 +215,10 @@ pub struct TransferPdgControllerConfig {
     pub takeoff_clearance_m: f64,
     pub takeoff_min_vertical_speed_mps: f64,
     pub max_takeoff_time_s: f64,
+    #[serde(default = "default_transfer_source_clearance_margin_m")]
+    pub source_clearance_margin_m: f64,
+    #[serde(default = "default_transfer_source_clearance_lookahead_m")]
+    pub source_clearance_lookahead_m: f64,
     pub boost_max_time_s: f64,
     pub boost_tilt_rad: f64,
     pub boost_speed_mps: f64,
@@ -252,10 +265,16 @@ pub struct TransferPdgControllerConfig {
 
 impl Default for TransferPdgControllerConfig {
     fn default() -> Self {
+        let mut terminal = TerminalPdgControllerConfig::default();
+        terminal.terminal_gate_burn_time_max_s = 22.0;
+        terminal.terminal_gate_burn_time_offset_long_s = 2.0;
+
         Self {
             takeoff_clearance_m: 45.0,
             takeoff_min_vertical_speed_mps: 8.0,
             max_takeoff_time_s: 5.0,
+            source_clearance_margin_m: default_transfer_source_clearance_margin_m(),
+            source_clearance_lookahead_m: default_transfer_source_clearance_lookahead_m(),
             boost_max_time_s: 18.0,
             boost_tilt_rad: 0.72,
             boost_speed_mps: 75.0,
@@ -281,7 +300,7 @@ impl Default for TransferPdgControllerConfig {
             coast_min_altitude_m: 80.0,
             terminal_gate_dx_m: 260.0,
             terminal_gate_altitude_m: 260.0,
-            terminal: TerminalPdgControllerConfig::default(),
+            terminal,
         }
     }
 }
@@ -1288,6 +1307,44 @@ impl TransferPdgController {
         }
     }
 
+    fn source_clearance_hold_needed(&self, ctx: &RunContext, observation: &Observation) -> bool {
+        if self.config.source_clearance_margin_m <= 0.0 {
+            return false;
+        }
+        if observation.target_dx_m.abs() <= observation.target_pad_half_width_m {
+            return false;
+        }
+
+        let direction = observation.target_dx_m.signum();
+        if direction == 0.0 {
+            return false;
+        }
+
+        let lookahead_m = self
+            .config
+            .source_clearance_lookahead_m
+            .max(0.0)
+            .min(observation.target_dx_m.abs());
+        if lookahead_m <= f64::EPSILON {
+            return false;
+        }
+
+        let x0_m = observation.position_m.x;
+        let x1_m = x0_m + (direction * lookahead_m);
+        let max_terrain_y_m = (0..=TRANSFER_SOURCE_CLEARANCE_SAMPLE_COUNT)
+            .map(|sample_index| {
+                let t = sample_index as f64 / TRANSFER_SOURCE_CLEARANCE_SAMPLE_COUNT as f64;
+                x0_m + ((x1_m - x0_m) * t)
+            })
+            .map(|x_m| ctx.world.terrain.sample_height(x_m))
+            .fold(f64::NEG_INFINITY, f64::max);
+        let required_y_m = max_terrain_y_m
+            + ctx.vehicle.geometry.touchdown_base_offset_m
+            + self.config.source_clearance_margin_m;
+
+        observation.position_m.y < required_y_m
+    }
+
     fn choose_phase(
         &self,
         ctx: &RunContext,
@@ -1313,15 +1370,23 @@ impl TransferPdgController {
             return TransferPhase::Takeoff;
         }
 
-        if self.phase == TransferPhase::Terminal {
-            return TransferPhase::Terminal;
-        }
-
         let route_needs_transfer_burn = observation.target_dx_m.abs()
             > self.config.terminal_gate_dx_m
             || diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m;
         let transfer_burn_started = self.boost_anchor.is_some()
             || matches!(self.phase, TransferPhase::Boost | TransferPhase::Coast);
+        if !route_needs_transfer_burn
+            && !transfer_burn_started
+            && source_clearance_m < self.config.takeoff_clearance_m
+            && self.source_clearance_hold_needed(ctx, observation)
+        {
+            return TransferPhase::Takeoff;
+        }
+
+        if self.phase == TransferPhase::Terminal {
+            return TransferPhase::Terminal;
+        }
+
         if !route_needs_transfer_burn && !transfer_burn_started {
             return TransferPhase::Terminal;
         }
@@ -2796,6 +2861,17 @@ mod tests {
     }
 
     #[test]
+    fn transfer_default_extends_terminal_gate_horizon_without_changing_terminal_default() {
+        let terminal = TerminalPdgControllerConfig::default();
+        let transfer = TransferPdgControllerConfig::default();
+
+        assert_eq!(terminal.terminal_gate_burn_time_max_s, 14.0);
+        assert_eq!(terminal.terminal_gate_burn_time_offset_long_s, 0.8);
+        assert_eq!(transfer.terminal.terminal_gate_burn_time_max_s, 22.0);
+        assert_eq!(transfer.terminal.terminal_gate_burn_time_offset_long_s, 2.0);
+    }
+
+    #[test]
     fn transfer_gate_forces_pending_without_target_y_solution() {
         let ctx = uphill_transfer_context();
         let controller = TransferPdgController::default();
@@ -3255,6 +3331,66 @@ mod tests {
         let phase = controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
 
         assert_eq!(phase, TransferPhase::Terminal);
+    }
+
+    #[test]
+    fn transfer_short_downhill_route_holds_takeoff_until_source_clearance_safe() {
+        let mut ctx = uphill_transfer_context();
+        ctx.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-120.0, 400.0),
+                Vec2::new(-70.0, 400.0),
+                Vec2::new(-51.0, 400.0),
+                Vec2::new(-18.0, 0.0),
+                Vec2::new(80.0, 0.0),
+            ],
+        };
+        ctx.world.landing_pads = vec![
+            LandingPadSpec {
+                id: "source".to_owned(),
+                center_x_m: -70.0,
+                surface_y_m: 400.0,
+                width_m: 36.0,
+            },
+            LandingPadSpec {
+                id: "target".to_owned(),
+                center_x_m: 0.0,
+                surface_y_m: 0.0,
+                width_m: 36.0,
+            },
+        ];
+        ctx.target_pad = ctx.world.landing_pad("target").unwrap().clone();
+        let route = ctx.mission.transfer_route.as_mut().unwrap();
+        route.route_angle_deg = -80.0;
+        route.route_radius_m = 400.0;
+
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(70.0, 405.0, Vec2::new(0.0, 8.2), 2.4);
+        observation.position_m = Vec2::new(-70.0, 405.0);
+        observation.touchdown_clearance_m = 5.0;
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let gate = controller.transfer_gate_readiness(&ctx, &observation, diagnostics);
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        let held_phase = controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
+
+        observation.position_m.y = 430.0;
+        observation.height_above_target_m = 430.0;
+        observation.touchdown_clearance_m = 30.0;
+        let safe_diagnostics = controller.transfer_diagnostics(&observation);
+        let safe_gate = controller.transfer_gate_readiness(&ctx, &observation, safe_diagnostics);
+        let safe_corridor =
+            controller.transfer_corridor_state(&ctx, &observation, safe_diagnostics);
+        let released_phase = controller.choose_phase(
+            &ctx,
+            &observation,
+            safe_diagnostics,
+            safe_gate,
+            safe_corridor,
+        );
+
+        assert_eq!(held_phase, TransferPhase::Takeoff);
+        assert_eq!(released_phase, TransferPhase::Terminal);
     }
 
     #[test]
