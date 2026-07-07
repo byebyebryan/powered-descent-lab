@@ -252,6 +252,8 @@ Planned scope:
 - early-stop evaluation checkpoints such as boost-cutoff trajectory validation
 - richer target geometry
 - controller telemetry for staged or unified guidance
+- waypoint guidance semantics before waypoint planning: preplanned active route
+  legs, pass-through waypoint envelopes, and next-leg viability diagnostics
 
 Exit criteria:
 
@@ -308,6 +310,15 @@ Status:
     crashes, and `0` invalidations
   - the full-seed solved-region gate is clean; the only remaining transfer
     matrix debt is the separately tracked `r+80` route/waypoint frontier
+- next transfer slice is waypoint guidance design and implementation, not
+  waypoint planning:
+  - assume waypoints are already planned
+  - follow active route legs and switch at waypoint envelopes instead of
+    stopping at waypoints
+  - keep terrain avoidance encoded in waypoint positions/envelopes, not in
+    terrain-reactive controller branches
+  - keep final landing as the primary scored goal while reporting waypoint
+    capture and next-leg viability diagnostics
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 

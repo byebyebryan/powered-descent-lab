@@ -171,6 +171,26 @@ angle means the target is uphill from the source. The matrix records
 transfer-specific report axes (`route_family`, `route_angle`, `radius_tier`) and
 uses terminal-compatible aliases only as report plumbing.
 
+Waypoint work should split planning from guidance.
+
+Waypoint planning is the upstream problem: choose terrain-valid waypoint
+positions and arrival envelopes that make each next leg feasible. It may use
+terrain, obstacle, and route-policy information later.
+
+Waypoint guidance is the controller problem for the next slice. It should assume
+the waypoint list is already planned, follow the currently active route leg,
+pass through the waypoint envelope at the end of that leg, then switch to the
+next leg or final landing target. A waypoint is not a stop-and-land objective or
+an isolated point target; it is a switching surface and handoff contract between
+route legs.
+
+The scored mission goal should remain final `landing_on_pad`. Waypoint arrival
+quality should first be telemetry and report diagnostics: closest approach,
+leg progress/crossing state, cross-track miss, outbound direction, speed,
+vertical rate, and whether the next leg remained feasible. This preserves the
+one-primary-goal scenario model while giving waypoint guidance enough structure
+to debug failures.
+
 ## 4. Terrain Direction
 
 The canonical terrain model should remain a 1D piecewise-linear heightfield in
@@ -214,6 +234,9 @@ Terrain responsibilities sit above that controller boundary:
   warnings before handoff to terminal guidance
 - pure non-human bots should eventually use waypoint or corridor planning so
   terrain clearance is handled before terminal landing begins
+- waypoint guidance should be terrain-blind in v1. Terrain avoidance should be
+  encoded indirectly by the planned waypoint positions and arrival envelopes,
+  not by controller branches that detect obstacle labels or special cases.
 - any reactive avoidance that remains inside terminal guidance should be small
   and local, such as holding descent or rejecting an unsafe candidate, not
   rerouting around arbitrary terrain

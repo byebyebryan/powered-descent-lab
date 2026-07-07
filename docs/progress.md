@@ -113,6 +113,28 @@
   - the next transfer slice should move to waypoint-style route shaping instead
     of more direct-transfer controller tuning
 
+### Waypoint guidance design checkpoint
+
+- Split waypoint work into two separate problems:
+  - waypoint setup/planning chooses terrain-valid waypoint positions and
+    arrival envelopes
+  - waypoint guidance follows the currently active leg, crosses the waypoint
+    envelope, then switches to the next leg or final landing target
+- Current priority is waypoint guidance. For the next implementation slice,
+  assume the waypoint list is already planned and do not solve terrain-aware
+  waypoint generation yet.
+- A waypoint is a pass-through handoff contract, not a full-stop terminal
+  objective. Arrival should require waypoint-plane progress, bounded
+  cross-track miss, and an outbound state that keeps the next leg feasible.
+- Waypoint guidance should stay terrain-blind in v1. Terrain avoidance belongs
+  in waypoint planning through the chosen waypoint positions and spatial/energy
+  envelopes; terrain crashes should diagnose bad plans, not trigger
+  scenario-specific controller modes.
+- Final `landing_on_pad` remains the primary scored goal. Waypoint capture
+  quality should start as report telemetry: active waypoint index, active leg
+  index, closest waypoint distance, cross-track miss, capture time, outbound
+  heading error, outbound speed, vertical rate, and final-leg handoff quality.
+
 ## 2026-05-31
 
 ### Transfer projected-overshoot and pre-target capture checkpoint

@@ -148,6 +148,45 @@ This keeps the terminal controller contract narrow: given a reachable,
 terrain-valid approach corridor, handle braking, lateral cleanup, descent rate,
 attitude, and touchdown.
 
+## Waypoint Guidance Direction
+
+Waypoint work should start with guidance semantics, not waypoint setup. For the
+first waypoint slice, assume a higher-level planner has already chosen the
+waypoint list and any terrain-valid spatial or energy envelopes.
+
+The waypoint controller's job is to follow the currently active leg and keep the
+vehicle in a useful state for the next leg. The controller should reason about
+the previous anchor, the waypoint that ends the active leg, and the next target
+that defines the outbound leg. A waypoint is a pass-through handoff surface, not
+a place to stop, hover, or land. Full stop at each waypoint would collapse
+waypoint guidance back into repeated transfer plus terminal landing, which is
+not the intended product behavior.
+
+Waypoint arrival should therefore be an envelope:
+
+- position: pass within a configured capture radius, crossing band, or maximum
+  cross-track miss at the waypoint plane
+- progress: only capture after crossing the waypoint plane along the active leg,
+  not by skimming the radius from the wrong side
+- outbound state: velocity should have positive progress along the next leg and
+  a bounded outbound heading error
+- energy: speed and vertical rate should stay within bounds supplied by the
+  route plan, so the next leg is not immediately impossible
+
+Terrain remains outside waypoint guidance for v1. The planner may place
+waypoints and envelopes so terrain clearance is valid, but the guidance
+controller should not query terrain to decide avoidance behavior or branch on
+terrain fixture labels. Terrain crashes and clearance margins can be reported as
+evidence that a waypoint plan is bad; they should not become hidden controller
+modes.
+
+The maintained score should remain final landing on the target pad. Waypoint
+arrival failures are guidance diagnostics that explain why final landing failed
+or why a route is unsafe. Useful first report fields are active waypoint index,
+active leg index, closest waypoint distance, cross-track miss at the waypoint
+plane, waypoint capture time, outbound heading error, outbound speed, vertical
+rate at capture, and final-leg handoff quality.
+
 Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:
 
