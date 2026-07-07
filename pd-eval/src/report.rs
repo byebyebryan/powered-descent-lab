@@ -938,6 +938,8 @@ fn render_batch_report(
 
     {overview_html}
 
+    {waypoint_triage_html}
+
     {transfer_handoff_triage_html}
 
     {transfer_shape_triage_html}
@@ -1172,6 +1174,8 @@ fn render_batch_report(
             &output_dir,
             &candidate_record_links,
         ),
+        waypoint_triage_html =
+            render_waypoint_triage_section(candidate, &output_dir, &candidate_record_links),
         transfer_shape_triage_html = render_transfer_shape_triage_section(
             candidate,
             baseline.map(|(_, report)| report),
@@ -2469,6 +2473,20 @@ struct TransferShapeCellSummary<'a> {
     worst_record: Option<&'a crate::BatchRunRecord>,
 }
 
+struct WaypointCellSummary<'a> {
+    key: TransferShapeCellKey,
+    total_runs: usize,
+    scored_runs: usize,
+    success_runs: usize,
+    captured_runs: usize,
+    missed_runs: usize,
+    tracking_runs: usize,
+    closest_distance_m: Option<crate::BatchMetricSummary>,
+    cross_track_m: Option<crate::BatchMetricSummary>,
+    outbound_progress_mps: Option<crate::BatchMetricSummary>,
+    worst_record: Option<&'a crate::BatchRunRecord>,
+}
+
 struct TransferHandoffCellSummary<'a> {
     key: TransferShapeCellKey,
     total_runs: usize,
@@ -2487,6 +2505,290 @@ struct TransferHandoffCellSummary<'a> {
     cutoff_impact_angle_deg: Option<crate::BatchMetricSummary>,
     shape_rmse_m: Option<crate::BatchMetricSummary>,
     worst_record: Option<&'a crate::BatchRunRecord>,
+}
+
+fn render_waypoint_triage_section(
+    candidate: &BatchReport,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let candidate_records = preferred_current_lane_focus(candidate)
+        .map(|focus| focus.records)
+        .unwrap_or_else(|| candidate.records.iter().collect::<Vec<_>>());
+    if !candidate_records
+        .iter()
+        .any(|record| record.review.waypoint_capture_status.is_some())
+    {
+        return String::new();
+    }
+
+    let mut rows = waypoint_cell_summaries(candidate_records.as_slice());
+    rows.sort_by(compare_waypoint_cells);
+    if rows.is_empty() {
+        return String::new();
+    }
+
+    let row_html = rows
+        .iter()
+        .map(|summary| render_waypoint_triage_row(summary, output_dir, candidate_record_map))
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        r#"<details class="transfer-handoff-section">
+  <summary class="section-head transfer-triage-summary">
+    <h2>Waypoint Handoff Triage</h2>
+    <div class="section-note">Current-lane waypoint cells, sorted by missed captures and final landing failures.</div>
+  </summary>
+  <div class="table-wrap">
+    <table class="transfer-handoff-table">
+      <thead>
+        <tr>
+          <th>Route</th>
+          <th>Vehicle</th>
+          <th>Success</th>
+          <th>Waypoint</th>
+          <th>Closest</th>
+          <th>Cross Track</th>
+          <th>Outbound Progress</th>
+          <th>Worst Seed</th>
+        </tr>
+      </thead>
+      <tbody>{row_html}</tbody>
+    </table>
+  </div>
+</details>"#
+    )
+}
+
+fn render_waypoint_triage_row(
+    summary: &WaypointCellSummary<'_>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let route_html = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
+        escape_html(&summary.key.route_angle),
+        escape_html(&summary.key.condition_set),
+        escape_html(&summary.key.radius_tier),
+    );
+    let vehicle_html = format!(
+        r#"<code>{}</code>"#,
+        escape_html(&summary.key.vehicle_variant)
+    );
+    let success_html = render_waypoint_success_cell(summary);
+    let waypoint_html = render_waypoint_capture_cell(summary);
+    let closest_html = render_transfer_handoff_metric_cell(
+        summary.closest_distance_m.as_ref(),
+        MetricDisplayKind::Meters,
+        None,
+    );
+    let cross_track_html = render_transfer_handoff_metric_cell(
+        summary.cross_track_m.as_ref(),
+        MetricDisplayKind::Meters,
+        None,
+    );
+    let outbound_progress_html = render_transfer_handoff_metric_cell(
+        summary.outbound_progress_mps.as_ref(),
+        MetricDisplayKind::Speed,
+        None,
+    );
+    let worst_seed_html = render_waypoint_worst_seed(summary, output_dir, candidate_record_map);
+    format!(
+        r#"<tr>
+  <td>{route}</td>
+  <td>{vehicle}</td>
+  <td>{success}</td>
+  <td>{waypoint}</td>
+  <td>{closest}</td>
+  <td>{cross_track}</td>
+  <td>{outbound_progress}</td>
+  <td>{worst_seed}</td>
+</tr>"#,
+        route = route_html,
+        vehicle = vehicle_html,
+        success = success_html,
+        waypoint = waypoint_html,
+        closest = closest_html,
+        cross_track = cross_track_html,
+        outbound_progress = outbound_progress_html,
+        worst_seed = worst_seed_html,
+    )
+}
+
+fn waypoint_cell_summaries<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> Vec<WaypointCellSummary<'a>> {
+    let mut grouped = BTreeMap::<TransferShapeCellKey, Vec<&'a crate::BatchRunRecord>>::new();
+    for &record in records {
+        if record.review.waypoint_capture_status.is_none() {
+            continue;
+        }
+        if let Some(key) = transfer_shape_cell_key(record) {
+            grouped.entry(key).or_default().push(record);
+        }
+    }
+    grouped
+        .into_iter()
+        .map(|(key, records)| waypoint_cell_summary(key, records.as_slice()))
+        .collect()
+}
+
+fn waypoint_cell_summary<'a>(
+    key: TransferShapeCellKey,
+    records: &[&'a crate::BatchRunRecord],
+) -> WaypointCellSummary<'a> {
+    let scored_runs = records
+        .iter()
+        .filter(|record| record.analytic.is_scored())
+        .count();
+    let success_runs = records
+        .iter()
+        .filter(|record| transfer_shape_record_success(record))
+        .count();
+    let captured_runs = records
+        .iter()
+        .filter(|record| record.review.waypoint_capture_status.as_deref() == Some("captured"))
+        .count();
+    let missed_runs = records
+        .iter()
+        .filter(|record| record.review.waypoint_capture_status.as_deref() == Some("missed"))
+        .count();
+    let tracking_runs = records
+        .iter()
+        .filter(|record| record.review.waypoint_capture_status.as_deref() == Some("tracking"))
+        .count();
+    let worst_record = records
+        .iter()
+        .copied()
+        .max_by(|lhs, rhs| compare_f64_asc(waypoint_record_score(lhs), waypoint_record_score(rhs)));
+    WaypointCellSummary {
+        key,
+        total_runs: records.len(),
+        scored_runs,
+        success_runs,
+        captured_runs,
+        missed_runs,
+        tracking_runs,
+        closest_distance_m: transfer_shape_metric_summary(records, |review| {
+            review.waypoint_closest_distance_m
+        }),
+        cross_track_m: transfer_shape_metric_summary(records, |review| {
+            review.waypoint_cross_track_m
+        }),
+        outbound_progress_mps: transfer_shape_metric_summary(records, |review| {
+            review.waypoint_outbound_progress_mps
+        }),
+        worst_record,
+    }
+}
+
+fn compare_waypoint_cells(
+    lhs: &WaypointCellSummary<'_>,
+    rhs: &WaypointCellSummary<'_>,
+) -> Ordering {
+    rhs.missed_runs
+        .cmp(&lhs.missed_runs)
+        .then_with(|| rhs.tracking_runs.cmp(&lhs.tracking_runs))
+        .then_with(|| {
+            (rhs.scored_runs - rhs.success_runs).cmp(&(lhs.scored_runs - lhs.success_runs))
+        })
+        .then_with(|| lhs.key.cmp(&rhs.key))
+}
+
+fn waypoint_record_score(record: &crate::BatchRunRecord) -> f64 {
+    let mut score = 0.0;
+    match record.review.waypoint_capture_status.as_deref() {
+        Some("missed") => score += 10_000.0,
+        Some("tracking") => score += 5_000.0,
+        Some("captured") => {}
+        _ => score += 1_000.0,
+    }
+    if record.analytic.is_scored() && !transfer_shape_record_success(record) {
+        score += 2_500.0;
+    }
+    score += record.review.waypoint_cross_track_m.unwrap_or(0.0);
+    score += record.review.waypoint_closest_distance_m.unwrap_or(0.0) * 0.2;
+    score
+}
+
+fn render_waypoint_success_cell(summary: &WaypointCellSummary<'_>) -> String {
+    let main = format!("{}/{}", summary.success_runs, summary.scored_runs);
+    let sub = if summary.scored_runs == 0 {
+        format!("{} total", summary.total_runs)
+    } else {
+        format!(
+            "{:.1}% scored",
+            percentage(summary.success_runs, summary.scored_runs)
+        )
+    };
+    let class = if summary.success_runs < summary.scored_runs {
+        "triage-risk"
+    } else {
+        ""
+    };
+    format!(
+        r#"<div class="overview-stack {class}"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&main),
+        escape_html(&sub),
+    )
+}
+
+fn render_waypoint_capture_cell(summary: &WaypointCellSummary<'_>) -> String {
+    let class = if summary.missed_runs > 0 || summary.tracking_runs > 0 {
+        "triage-risk"
+    } else {
+        ""
+    };
+    let sub = if summary.missed_runs > 0 || summary.tracking_runs > 0 {
+        format!(
+            "{} missed · {} tracking",
+            summary.missed_runs, summary.tracking_runs
+        )
+    } else {
+        "all captured".to_owned()
+    };
+    format!(
+        r#"<div class="overview-stack {class}"><div class="overview-main">{}/{}</div><div class="overview-sub">{}</div></div>"#,
+        summary.captured_runs,
+        summary.total_runs,
+        escape_html(&sub),
+    )
+}
+
+fn render_waypoint_worst_seed(
+    summary: &WaypointCellSummary<'_>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+) -> String {
+    let Some(record) = summary.worst_record else {
+        return r#"<span class="muted">-</span>"#.to_owned();
+    };
+    let label = format!("seed {:04}", record.resolved.resolved_seed);
+    let note = record
+        .review
+        .waypoint_capture_status
+        .as_deref()
+        .unwrap_or("waypoint");
+    let Some(bundle_dir) = candidate_record_map
+        .get(&record.resolved.run_id)
+        .map(String::as_str)
+        .or(record.bundle_dir.as_deref())
+    else {
+        return format!(
+            r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
+            escape_html(&label),
+            escape_html(note),
+        );
+    };
+    let bundle_dir = resolve_repo_relative(Path::new(bundle_dir));
+    let href = best_bundle_href(&bundle_dir, output_dir);
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main"><a href="{}">{}</a></div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&href),
+        escape_html(&label),
+        escape_html(note),
+    )
 }
 
 fn render_transfer_handoff_triage_section(
@@ -7635,6 +7937,33 @@ mod report_tests {
         record.review.transfer_corridor_mode = Some("inactive".to_owned());
         record.bundle_dir = None;
         record
+    }
+
+    #[test]
+    fn waypoint_triage_renders_for_waypoint_records() {
+        let mut report = synthetic_transfer_shape_report(
+            "waypoint_triage_unit",
+            &[("r+80", "empty", 40.0, 0), ("r+80", "empty", 35.0, 1)],
+        );
+        report.records[0].review.waypoint_capture_status = Some("captured".to_owned());
+        report.records[0].review.waypoint_closest_distance_m = Some(14.0);
+        report.records[0].review.waypoint_cross_track_m = Some(8.0);
+        report.records[0].review.waypoint_outbound_progress_mps = Some(22.0);
+        report.records[1].review.waypoint_capture_status = Some("missed".to_owned());
+        report.records[1].review.waypoint_closest_distance_m = Some(60.0);
+        report.records[1].review.waypoint_cross_track_m = Some(52.0);
+        report.records[1].review.waypoint_outbound_progress_mps = Some(3.0);
+
+        let html = render_batch_report(
+            Path::new("outputs/eval/waypoint_triage_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("<h2>Waypoint Handoff Triage</h2>"));
+        assert!(html.contains("1 missed · 0 tracking"));
+        assert!(html.contains("Outbound Progress"));
     }
 
     #[test]

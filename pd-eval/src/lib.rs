@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 23;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 24;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -197,6 +197,28 @@ pub struct BatchRunReviewMetrics {
     pub transfer_corridor_mode: Option<String>,
     #[serde(default)]
     pub transfer_corridor_min_margin_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_capture_status: Option<String>,
+    #[serde(default)]
+    pub waypoint_active_index: Option<i64>,
+    #[serde(default)]
+    pub waypoint_capture_time_s: Option<f64>,
+    #[serde(default)]
+    pub waypoint_closest_distance_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_distance_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_cross_track_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_plane_progress_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_outbound_heading_error_rad: Option<f64>,
+    #[serde(default)]
+    pub waypoint_outbound_progress_mps: Option<f64>,
+    #[serde(default)]
+    pub waypoint_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub waypoint_vertical_speed_mps: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -4843,6 +4865,7 @@ fn derive_run_review_metrics(
             })
             .unwrap_or((None, None));
     let transfer = transfer_review_metrics(&artifacts.controller_updates, &run.samples);
+    let waypoint = waypoint_review_metrics(&artifacts.controller_updates);
     let transfer_shape =
         transfer_shape_metrics(scenario, &run.samples, &artifacts.controller_updates);
 
@@ -4895,6 +4918,87 @@ fn derive_run_review_metrics(
         transfer_terminal_gate_deferred: transfer.terminal_gate_deferred,
         transfer_corridor_mode: transfer.corridor_mode,
         transfer_corridor_min_margin_m: transfer.corridor_min_margin_m,
+        waypoint_capture_status: waypoint.capture_status,
+        waypoint_active_index: waypoint.active_index,
+        waypoint_capture_time_s: waypoint.capture_time_s,
+        waypoint_closest_distance_m: waypoint.closest_distance_m,
+        waypoint_distance_m: waypoint.distance_m,
+        waypoint_cross_track_m: waypoint.cross_track_m,
+        waypoint_plane_progress_m: waypoint.plane_progress_m,
+        waypoint_outbound_heading_error_rad: waypoint.outbound_heading_error_rad,
+        waypoint_outbound_progress_mps: waypoint.outbound_progress_mps,
+        waypoint_speed_mps: waypoint.speed_mps,
+        waypoint_vertical_speed_mps: waypoint.vertical_speed_mps,
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct WaypointReviewMetrics {
+    capture_status: Option<String>,
+    active_index: Option<i64>,
+    capture_time_s: Option<f64>,
+    closest_distance_m: Option<f64>,
+    distance_m: Option<f64>,
+    cross_track_m: Option<f64>,
+    plane_progress_m: Option<f64>,
+    outbound_heading_error_rad: Option<f64>,
+    outbound_progress_mps: Option<f64>,
+    speed_mps: Option<f64>,
+    vertical_speed_mps: Option<f64>,
+}
+
+fn waypoint_review_metrics(
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+) -> WaypointReviewMetrics {
+    let update = controller_updates
+        .iter()
+        .find(|update| {
+            matches!(
+                telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS),
+                Some("captured" | "missed")
+            )
+        })
+        .or_else(|| {
+            controller_updates.iter().rev().find(|update| {
+                telemetry_bool(&update.frame.metrics, metric::WAYPOINT_GUIDANCE_ENABLED)
+                    == Some(true)
+            })
+        });
+    let Some(update) = update else {
+        return WaypointReviewMetrics::default();
+    };
+    let capture_time_s = telemetry_float(&update.frame.metrics, metric::WAYPOINT_CAPTURE_TIME_S)
+        .filter(|value| *value >= 0.0);
+    WaypointReviewMetrics {
+        capture_status: telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS)
+            .map(ToOwned::to_owned),
+        active_index: telemetry_integer(&update.frame.metrics, metric::WAYPOINT_ACTIVE_INDEX),
+        capture_time_s,
+        closest_distance_m: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_CLOSEST_DISTANCE_M,
+        )
+        .filter(|value| *value >= 0.0),
+        distance_m: telemetry_float(&update.frame.metrics, metric::WAYPOINT_DISTANCE_M)
+            .filter(|value| *value >= 0.0),
+        cross_track_m: telemetry_float(&update.frame.metrics, metric::WAYPOINT_CROSS_TRACK_M)
+            .filter(|value| *value >= 0.0),
+        plane_progress_m: telemetry_float(&update.frame.metrics, metric::WAYPOINT_PLANE_PROGRESS_M),
+        outbound_heading_error_rad: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_OUTBOUND_HEADING_ERROR_RAD,
+        )
+        .filter(|value| *value >= 0.0),
+        outbound_progress_mps: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_OUTBOUND_PROGRESS_MPS,
+        ),
+        speed_mps: telemetry_float(&update.frame.metrics, metric::WAYPOINT_SPEED_MPS)
+            .filter(|value| *value >= 0.0),
+        vertical_speed_mps: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_VERTICAL_SPEED_MPS,
+        ),
     }
 }
 
@@ -5287,6 +5391,13 @@ fn telemetry_float(metrics: &BTreeMap<String, TelemetryValue>, key: &str) -> Opt
     match metrics.get(key)? {
         TelemetryValue::Float(value) => Some(*value),
         TelemetryValue::Integer(value) => Some(*value as f64),
+        _ => None,
+    }
+}
+
+fn telemetry_integer(metrics: &BTreeMap<String, TelemetryValue>, key: &str) -> Option<i64> {
+    match metrics.get(key)? {
+        TelemetryValue::Integer(value) => Some(*value),
         _ => None,
     }
 }
@@ -7614,6 +7725,65 @@ mod tests {
                 markers: Vec::new(),
             },
         }
+    }
+
+    #[test]
+    fn waypoint_review_metrics_capture_first_waypoint_handoff() {
+        let mut tracking = transfer_update(0, 0.0, "boost", 200.0, 80.0, 1.0);
+        tracking.frame.metrics.extend(BTreeMap::from([
+            (
+                metric::WAYPOINT_GUIDANCE_ENABLED.to_owned(),
+                TelemetryValue::from(true),
+            ),
+            (
+                metric::WAYPOINT_ACTIVE_INDEX.to_owned(),
+                TelemetryValue::from(0_i64),
+            ),
+            (
+                metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+                TelemetryValue::from("tracking"),
+            ),
+        ]));
+        let mut captured = transfer_update(60, 0.5, "boost", 100.0, 20.0, 0.8);
+        captured.frame.metrics.extend(BTreeMap::from([
+            (
+                metric::WAYPOINT_GUIDANCE_ENABLED.to_owned(),
+                TelemetryValue::from(true),
+            ),
+            (
+                metric::WAYPOINT_ACTIVE_INDEX.to_owned(),
+                TelemetryValue::from(0_i64),
+            ),
+            (
+                metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+                TelemetryValue::from("captured"),
+            ),
+            (
+                metric::WAYPOINT_CAPTURE_TIME_S.to_owned(),
+                TelemetryValue::from(0.5),
+            ),
+            (
+                metric::WAYPOINT_CLOSEST_DISTANCE_M.to_owned(),
+                TelemetryValue::from(12.0),
+            ),
+            (
+                metric::WAYPOINT_CROSS_TRACK_M.to_owned(),
+                TelemetryValue::from(8.0),
+            ),
+            (
+                metric::WAYPOINT_OUTBOUND_PROGRESS_MPS.to_owned(),
+                TelemetryValue::from(24.0),
+            ),
+        ]));
+
+        let metrics = waypoint_review_metrics(&[tracking, captured]);
+
+        assert_eq!(metrics.capture_status.as_deref(), Some("captured"));
+        assert_eq!(metrics.active_index, Some(0));
+        assert_eq!(metrics.capture_time_s, Some(0.5));
+        assert_eq!(metrics.closest_distance_m, Some(12.0));
+        assert_eq!(metrics.cross_track_m, Some(8.0));
+        assert_eq!(metrics.outbound_progress_mps, Some(24.0));
     }
 
     #[test]
