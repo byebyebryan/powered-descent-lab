@@ -65,6 +65,19 @@ pub mod metric {
     pub const TRANSFER_TERMINAL_GATE_DEFERRED: &str = "transfer.terminal_gate_deferred";
     pub const TRANSFER_CORRIDOR_MODE: &str = "transfer.corridor_mode";
     pub const TRANSFER_CORRIDOR_MARGIN_M: &str = "transfer.corridor_margin_m";
+    pub const WAYPOINT_GUIDANCE_ENABLED: &str = "waypoint.guidance_enabled";
+    pub const WAYPOINT_ACTIVE_INDEX: &str = "waypoint.active_index";
+    pub const WAYPOINT_ACTIVE_LEG_INDEX: &str = "waypoint.active_leg_index";
+    pub const WAYPOINT_CAPTURE_STATUS: &str = "waypoint.capture_status";
+    pub const WAYPOINT_CAPTURE_TIME_S: &str = "waypoint.capture_time_s";
+    pub const WAYPOINT_CLOSEST_DISTANCE_M: &str = "waypoint.closest_distance_m";
+    pub const WAYPOINT_DISTANCE_M: &str = "waypoint.distance_m";
+    pub const WAYPOINT_CROSS_TRACK_M: &str = "waypoint.cross_track_m";
+    pub const WAYPOINT_PLANE_PROGRESS_M: &str = "waypoint.plane_progress_m";
+    pub const WAYPOINT_OUTBOUND_HEADING_ERROR_RAD: &str = "waypoint.outbound_heading_error_rad";
+    pub const WAYPOINT_OUTBOUND_PROGRESS_MPS: &str = "waypoint.outbound_progress_mps";
+    pub const WAYPOINT_SPEED_MPS: &str = "waypoint.speed_mps";
+    pub const WAYPOINT_VERTICAL_SPEED_MPS: &str = "waypoint.vertical_speed_mps";
 }
 
 pub mod marker {

@@ -4,7 +4,7 @@ use crate::terminal_pdg::{
     TransferGateReadinessMode,
 };
 use crate::{Controller, ControllerFrame, TelemetryValue};
-use pd_core::{Command, Observation, RunContext, Vec2};
+use pd_core::{Command, Observation, RunContext, TransferWaypointSpec, Vec2};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -95,6 +95,10 @@ fn default_transfer_boost_pathwise_scoring_enabled() -> bool {
 }
 
 fn default_transfer_boost_recoverability_scoring_enabled() -> bool {
+    false
+}
+
+fn default_transfer_waypoint_guidance_enabled() -> bool {
     false
 }
 
@@ -250,6 +254,8 @@ pub struct TransferPdgControllerConfig {
     pub boost_pathwise_scoring_enabled: bool,
     #[serde(default = "default_transfer_boost_recoverability_scoring_enabled")]
     pub boost_recoverability_scoring_enabled: bool,
+    #[serde(default = "default_transfer_waypoint_guidance_enabled")]
+    pub waypoint_guidance_enabled: bool,
     #[serde(default = "default_transfer_gate_defer_lookahead_s")]
     pub transfer_gate_defer_lookahead_s: f64,
     #[serde(default = "default_transfer_gate_defer_step_s")]
@@ -293,6 +299,7 @@ impl Default for TransferPdgControllerConfig {
             boost_pathwise_scoring_enabled: default_transfer_boost_pathwise_scoring_enabled(),
             boost_recoverability_scoring_enabled:
                 default_transfer_boost_recoverability_scoring_enabled(),
+            waypoint_guidance_enabled: default_transfer_waypoint_guidance_enabled(),
             transfer_gate_defer_lookahead_s: default_transfer_gate_defer_lookahead_s(),
             transfer_gate_defer_step_s: default_transfer_gate_defer_step_s(),
             transfer_gate_defer_min_ratio_improvement:
@@ -334,6 +341,9 @@ impl ControllerSpec {
             Self::BaselineV1 { .. } => "baseline_v1",
             Self::StagedDescentV1 { .. } => "staged_descent_v1",
             Self::TerminalPdgV1 { .. } => "terminal_pdg_v1",
+            Self::TransferPdgV1 { config } if config.waypoint_guidance_enabled => {
+                "transfer_waypoint_pdg_v1"
+            }
             Self::TransferPdgV1 { config } if config.boost_recoverability_scoring_enabled => {
                 "transfer_pdg_recoverability_v1"
             }
@@ -374,6 +384,11 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
         "transfer_pdg" | "transfer_pdg_v1" | "xpdg" => Some(ControllerSpec::TransferPdgV1 {
             config: TransferPdgControllerConfig::default(),
         }),
+        "transfer_waypoint_pdg" | "transfer_waypoint_pdg_v1" | "xpdg_waypoint" => {
+            let mut config = TransferPdgControllerConfig::default();
+            config.waypoint_guidance_enabled = true;
+            Some(ControllerSpec::TransferPdgV1 { config })
+        }
         "transfer_pdg_pathwise" | "transfer_pdg_pathwise_v1" | "xpdg_pathwise" => {
             let mut config = TransferPdgControllerConfig::default();
             config.boost_pathwise_scoring_enabled = true;
@@ -766,6 +781,64 @@ struct TransferDiagnostics {
     boost_quality: TransferBoostQuality,
 }
 
+#[derive(Clone, Debug)]
+struct WaypointUpdateContext {
+    observation: Observation,
+    allow_terminal: bool,
+    telemetry: WaypointTelemetry,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointTelemetry {
+    active_index: i64,
+    active_leg_index: i64,
+    capture_status: &'static str,
+    capture_time_s: Option<f64>,
+    closest_distance_m: f64,
+    distance_m: f64,
+    cross_track_m: f64,
+    plane_progress_m: f64,
+    outbound_heading_error_rad: f64,
+    outbound_progress_mps: f64,
+    speed_mps: f64,
+    vertical_speed_mps: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointCaptureSnapshot {
+    index: usize,
+    capture_time_s: f64,
+    status: &'static str,
+    closest_distance_m: f64,
+    distance_m: f64,
+    cross_track_m: f64,
+    plane_progress_m: f64,
+    outbound_heading_error_rad: f64,
+    outbound_progress_mps: f64,
+    speed_mps: f64,
+    vertical_speed_mps: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointLegGeometry<'a> {
+    active_index: usize,
+    waypoint: &'a TransferWaypointSpec,
+    target_m: Vec2,
+    leg_unit: Vec2,
+    next_leg_unit: Vec2,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointLegStats {
+    distance_m: f64,
+    cross_track_m: f64,
+    plane_progress_m: f64,
+    outbound_heading_error_rad: f64,
+    outbound_progress_mps: f64,
+    speed_mps: f64,
+    vertical_speed_mps: f64,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct TransferSimState {
     position_m: Vec2,
@@ -825,6 +898,9 @@ pub struct TransferPdgController {
     last_transfer_gate: Option<TransferGateReadiness>,
     last_corridor: TransferCorridorState,
     last_phase: Option<String>,
+    waypoint_active_index: usize,
+    waypoint_closest_distance_m: f64,
+    last_waypoint_capture: Option<WaypointCaptureSnapshot>,
 }
 
 impl Default for TransferPdgController {
@@ -845,6 +921,9 @@ impl TransferPdgController {
             last_transfer_gate: None,
             last_corridor: TransferCorridorState::inactive(),
             last_phase: None,
+            waypoint_active_index: 0,
+            waypoint_closest_distance_m: f64::INFINITY,
+            last_waypoint_capture: None,
         }
     }
 
@@ -875,6 +954,297 @@ impl TransferPdgController {
             projection,
             boost_quality,
         }
+    }
+
+    fn update_transfer_frame(
+        &mut self,
+        ctx: &RunContext,
+        observation: &Observation,
+        allow_terminal: bool,
+        waypoint_telemetry: Option<WaypointTelemetry>,
+    ) -> ControllerFrame {
+        let preliminary_diagnostics = self.transfer_diagnostics(observation);
+        let gate = self.transfer_gate_readiness(ctx, observation, preliminary_diagnostics);
+        let corridor = self.transfer_corridor_state(ctx, observation, preliminary_diagnostics);
+        self.transfer_gate_ready_ticks = gate.ready_ticks;
+        self.last_transfer_gate = Some(gate);
+        self.last_corridor = corridor;
+
+        let mut phase =
+            self.choose_phase(ctx, observation, preliminary_diagnostics, gate, corridor);
+        if phase == TransferPhase::Terminal && !allow_terminal {
+            phase = TransferPhase::Coast;
+        }
+        if phase == TransferPhase::Boost && self.boost_anchor.is_none() {
+            self.boost_anchor = Some(TransferBoostAnchor {
+                route_dx_m: observation.target_dx_m,
+                route_dy_m: -observation.height_above_target_m,
+            });
+        }
+        let diagnostics = self.transfer_diagnostics(observation);
+        self.phase = phase;
+        let mut frame = match phase {
+            TransferPhase::Takeoff => self.frame_for_open_loop_phase(
+                ctx,
+                observation,
+                phase,
+                Command {
+                    throttle_frac: 1.0,
+                    target_attitude_rad: 0.0,
+                },
+                "lifting off from source pad",
+                diagnostics,
+                gate,
+                corridor,
+                None,
+            ),
+            TransferPhase::Boost => {
+                let selection = self.select_boost_command(ctx, observation, diagnostics, corridor);
+                self.frame_for_open_loop_phase(
+                    ctx,
+                    observation,
+                    phase,
+                    selection.command,
+                    "boosting toward terminal gate",
+                    diagnostics,
+                    gate,
+                    corridor,
+                    Some(selection),
+                )
+            }
+            TransferPhase::Coast => self.frame_for_open_loop_phase(
+                ctx,
+                observation,
+                phase,
+                Command {
+                    throttle_frac: 0.0,
+                    target_attitude_rad: self.coast_attitude_rad(observation),
+                },
+                "coasting before terminal handoff",
+                diagnostics,
+                gate,
+                corridor,
+                None,
+            ),
+            TransferPhase::Terminal => {
+                let mut frame = self.terminal.update(ctx, observation);
+                self.insert_transfer_metrics(&mut frame, diagnostics, gate, corridor);
+                frame.metrics.insert(
+                    metric::TRANSFER_PHASE.to_owned(),
+                    TelemetryValue::from("terminal"),
+                );
+                frame.status = format!("transfer handoff: {}", frame.status);
+                self.last_phase = frame.phase.clone();
+                frame
+            }
+        };
+        self.insert_waypoint_metrics(&mut frame, waypoint_telemetry);
+        frame
+    }
+
+    fn waypoint_update_context(
+        &mut self,
+        ctx: &RunContext,
+        observation: &Observation,
+    ) -> Option<WaypointUpdateContext> {
+        if !self.config.waypoint_guidance_enabled {
+            return None;
+        }
+        let route = ctx.mission.transfer_route.as_ref()?;
+        if route.waypoints.is_empty() {
+            return None;
+        }
+        if self.waypoint_active_index >= route.waypoints.len() {
+            let telemetry = self.last_waypoint_capture.map_or_else(
+                || self.waypoint_complete_telemetry(route.waypoints.len()),
+                WaypointTelemetry::from_capture,
+            );
+            return Some(WaypointUpdateContext {
+                observation: observation.clone(),
+                allow_terminal: true,
+                telemetry,
+            });
+        }
+
+        let geometry = self.waypoint_leg_geometry(ctx)?;
+        let stats = waypoint_leg_stats(observation, &geometry);
+        self.waypoint_closest_distance_m = self.waypoint_closest_distance_m.min(stats.distance_m);
+        let should_switch =
+            stats.plane_progress_m >= 0.0 || stats.distance_m <= geometry.waypoint.capture_radius_m;
+        if should_switch {
+            let status = if waypoint_capture_passes(geometry.waypoint, stats) {
+                "captured"
+            } else {
+                "missed"
+            };
+            let capture = WaypointCaptureSnapshot {
+                index: geometry.active_index,
+                capture_time_s: observation.sim_time_s,
+                status,
+                closest_distance_m: self.waypoint_closest_distance_m,
+                distance_m: stats.distance_m,
+                cross_track_m: stats.cross_track_m,
+                plane_progress_m: stats.plane_progress_m,
+                outbound_heading_error_rad: stats.outbound_heading_error_rad,
+                outbound_progress_mps: stats.outbound_progress_mps,
+                speed_mps: stats.speed_mps,
+                vertical_speed_mps: stats.vertical_speed_mps,
+            };
+            self.last_waypoint_capture = Some(capture);
+            self.waypoint_active_index += 1;
+            self.waypoint_closest_distance_m = f64::INFINITY;
+            self.boost_anchor = None;
+            self.transfer_gate_ready_ticks = 0;
+            self.phase = TransferPhase::Boost;
+            self.terminal.reset(ctx);
+
+            if self.waypoint_active_index >= route.waypoints.len() {
+                return Some(WaypointUpdateContext {
+                    observation: observation.clone(),
+                    allow_terminal: true,
+                    telemetry: WaypointTelemetry::from_capture(capture),
+                });
+            }
+            let next_geometry = self.waypoint_leg_geometry(ctx)?;
+            return Some(WaypointUpdateContext {
+                observation: waypoint_adjusted_observation(
+                    observation,
+                    next_geometry.target_m,
+                    next_geometry.waypoint.capture_radius_m,
+                ),
+                allow_terminal: false,
+                telemetry: WaypointTelemetry::from_capture(capture),
+            });
+        }
+
+        Some(WaypointUpdateContext {
+            observation: waypoint_adjusted_observation(
+                observation,
+                geometry.target_m,
+                geometry.waypoint.capture_radius_m,
+            ),
+            allow_terminal: false,
+            telemetry: WaypointTelemetry {
+                active_index: geometry.active_index as i64,
+                active_leg_index: geometry.active_index as i64,
+                capture_status: "tracking",
+                capture_time_s: None,
+                closest_distance_m: self.waypoint_closest_distance_m,
+                distance_m: stats.distance_m,
+                cross_track_m: stats.cross_track_m,
+                plane_progress_m: stats.plane_progress_m,
+                outbound_heading_error_rad: stats.outbound_heading_error_rad,
+                outbound_progress_mps: stats.outbound_progress_mps,
+                speed_mps: stats.speed_mps,
+                vertical_speed_mps: stats.vertical_speed_mps,
+            },
+        })
+    }
+
+    fn waypoint_leg_geometry<'a>(&self, ctx: &'a RunContext) -> Option<WaypointLegGeometry<'a>> {
+        let route = ctx.mission.transfer_route.as_ref()?;
+        let waypoint = route.waypoints.get(self.waypoint_active_index)?;
+        let anchor_m = if self.waypoint_active_index == 0 {
+            ctx.world
+                .landing_pad(&route.source_pad_id)
+                .map(|pad| Vec2::new(pad.center_x_m, pad.surface_y_m))?
+        } else {
+            route.waypoints[self.waypoint_active_index - 1].position_m
+        };
+        let target_m = waypoint.position_m;
+        let next_target_m = route
+            .waypoints
+            .get(self.waypoint_active_index + 1)
+            .map(|next| next.position_m)
+            .unwrap_or_else(|| Vec2::new(ctx.target_pad.center_x_m, ctx.target_pad.surface_y_m));
+        let leg_unit = normalized_or_none(target_m - anchor_m)?;
+        let next_leg_unit = normalized_or_none(next_target_m - target_m)?;
+        Some(WaypointLegGeometry {
+            active_index: self.waypoint_active_index,
+            waypoint,
+            target_m,
+            leg_unit,
+            next_leg_unit,
+        })
+    }
+
+    fn waypoint_complete_telemetry(&self, waypoint_count: usize) -> WaypointTelemetry {
+        WaypointTelemetry {
+            active_index: waypoint_count as i64,
+            active_leg_index: waypoint_count as i64,
+            capture_status: "complete",
+            capture_time_s: None,
+            closest_distance_m: -1.0,
+            distance_m: -1.0,
+            cross_track_m: -1.0,
+            plane_progress_m: -1.0,
+            outbound_heading_error_rad: -1.0,
+            outbound_progress_mps: -1.0,
+            speed_mps: -1.0,
+            vertical_speed_mps: -1.0,
+        }
+    }
+
+    fn insert_waypoint_metrics(
+        &self,
+        frame: &mut ControllerFrame,
+        waypoint_telemetry: Option<WaypointTelemetry>,
+    ) {
+        let Some(telemetry) = waypoint_telemetry else {
+            return;
+        };
+        frame.metrics.insert(
+            metric::WAYPOINT_GUIDANCE_ENABLED.to_owned(),
+            TelemetryValue::from(true),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_ACTIVE_INDEX.to_owned(),
+            TelemetryValue::from(telemetry.active_index),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_ACTIVE_LEG_INDEX.to_owned(),
+            TelemetryValue::from(telemetry.active_leg_index),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+            TelemetryValue::from(telemetry.capture_status),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_CAPTURE_TIME_S.to_owned(),
+            TelemetryValue::from(telemetry.capture_time_s.unwrap_or(-1.0)),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_CLOSEST_DISTANCE_M.to_owned(),
+            TelemetryValue::from(telemetry.closest_distance_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_DISTANCE_M.to_owned(),
+            TelemetryValue::from(telemetry.distance_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_CROSS_TRACK_M.to_owned(),
+            TelemetryValue::from(telemetry.cross_track_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_PLANE_PROGRESS_M.to_owned(),
+            TelemetryValue::from(telemetry.plane_progress_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+            TelemetryValue::from(telemetry.outbound_heading_error_rad),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_OUTBOUND_PROGRESS_MPS.to_owned(),
+            TelemetryValue::from(telemetry.outbound_progress_mps),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_SPEED_MPS.to_owned(),
+            TelemetryValue::from(telemetry.speed_mps),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_VERTICAL_SPEED_MPS.to_owned(),
+            TelemetryValue::from(telemetry.vertical_speed_mps),
+        );
     }
 
     fn transfer_boost_quality(
@@ -2332,6 +2702,88 @@ impl TransferPdgController {
     }
 }
 
+impl WaypointTelemetry {
+    fn from_capture(capture: WaypointCaptureSnapshot) -> Self {
+        Self {
+            active_index: capture.index as i64,
+            active_leg_index: capture.index as i64,
+            capture_status: capture.status,
+            capture_time_s: Some(capture.capture_time_s),
+            closest_distance_m: capture.closest_distance_m,
+            distance_m: capture.distance_m,
+            cross_track_m: capture.cross_track_m,
+            plane_progress_m: capture.plane_progress_m,
+            outbound_heading_error_rad: capture.outbound_heading_error_rad,
+            outbound_progress_mps: capture.outbound_progress_mps,
+            speed_mps: capture.speed_mps,
+            vertical_speed_mps: capture.vertical_speed_mps,
+        }
+    }
+}
+
+fn waypoint_adjusted_observation(
+    observation: &Observation,
+    target_m: Vec2,
+    capture_radius_m: f64,
+) -> Observation {
+    let mut adjusted = observation.clone();
+    adjusted.target_dx_m = target_m.x - observation.position_m.x;
+    adjusted.height_above_target_m = observation.position_m.y - target_m.y;
+    adjusted.target_surface_y_m = target_m.y;
+    adjusted.target_pad_half_width_m = capture_radius_m.max(1.0);
+    adjusted
+}
+
+fn waypoint_leg_stats(
+    observation: &Observation,
+    geometry: &WaypointLegGeometry<'_>,
+) -> WaypointLegStats {
+    let to_waypoint_m = observation.position_m - geometry.target_m;
+    let speed_mps = observation.velocity_mps.length();
+    let velocity_unit = if speed_mps > 1.0e-9 {
+        observation.velocity_mps * (1.0 / speed_mps)
+    } else {
+        Vec2::new(0.0, 0.0)
+    };
+    let heading_cos = vec_dot(velocity_unit, geometry.next_leg_unit).clamp(-1.0, 1.0);
+    WaypointLegStats {
+        distance_m: to_waypoint_m.length(),
+        cross_track_m: vec_cross(to_waypoint_m, geometry.leg_unit).abs(),
+        plane_progress_m: vec_dot(to_waypoint_m, geometry.leg_unit),
+        outbound_heading_error_rad: if speed_mps > 1.0e-9 {
+            heading_cos.acos()
+        } else {
+            std::f64::consts::PI
+        },
+        outbound_progress_mps: vec_dot(observation.velocity_mps, geometry.next_leg_unit),
+        speed_mps,
+        vertical_speed_mps: observation.velocity_mps.y,
+    }
+}
+
+fn waypoint_capture_passes(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
+    stats.cross_track_m <= waypoint.max_cross_track_m
+        && stats.outbound_heading_error_rad <= waypoint.max_outbound_heading_error_rad
+        && stats.outbound_progress_mps >= waypoint.min_outbound_progress_mps
+        && stats.speed_mps >= waypoint.min_speed_mps
+        && stats.speed_mps <= waypoint.max_speed_mps
+        && stats.vertical_speed_mps >= waypoint.min_vertical_speed_mps
+        && stats.vertical_speed_mps <= waypoint.max_vertical_speed_mps
+}
+
+fn normalized_or_none(vector: Vec2) -> Option<Vec2> {
+    let length = vector.length();
+    (length > 1.0e-9).then(|| vector * (1.0 / length))
+}
+
+fn vec_dot(lhs: Vec2, rhs: Vec2) -> f64 {
+    (lhs.x * rhs.x) + (lhs.y * rhs.y)
+}
+
+fn vec_cross(lhs: Vec2, rhs: Vec2) -> f64 {
+    (lhs.x * rhs.y) - (lhs.y * rhs.x)
+}
+
 fn transfer_ballistic_projection(
     dx_m: f64,
     dy_m: f64,
@@ -2398,7 +2850,9 @@ fn shortest_angle_delta(from_rad: f64, to_rad: f64) -> f64 {
 
 impl Controller for TransferPdgController {
     fn id(&self) -> &str {
-        if self.config.boost_recoverability_scoring_enabled {
+        if self.config.waypoint_guidance_enabled {
+            "transfer_waypoint_pdg_v1"
+        } else if self.config.boost_recoverability_scoring_enabled {
             "transfer_pdg_recoverability_v1"
         } else if self.config.boost_pathwise_scoring_enabled {
             "transfer_pdg_pathwise_v1"
@@ -2414,80 +2868,22 @@ impl Controller for TransferPdgController {
         self.last_transfer_gate = None;
         self.last_corridor = TransferCorridorState::inactive();
         self.last_phase = None;
+        self.waypoint_active_index = 0;
+        self.waypoint_closest_distance_m = f64::INFINITY;
+        self.last_waypoint_capture = None;
         self.terminal.reset(ctx);
     }
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
-        let preliminary_diagnostics = self.transfer_diagnostics(observation);
-        let gate = self.transfer_gate_readiness(ctx, observation, preliminary_diagnostics);
-        let corridor = self.transfer_corridor_state(ctx, observation, preliminary_diagnostics);
-        self.transfer_gate_ready_ticks = gate.ready_ticks;
-        self.last_transfer_gate = Some(gate);
-        self.last_corridor = corridor;
-
-        let phase = self.choose_phase(ctx, observation, preliminary_diagnostics, gate, corridor);
-        if phase == TransferPhase::Boost && self.boost_anchor.is_none() {
-            self.boost_anchor = Some(TransferBoostAnchor {
-                route_dx_m: observation.target_dx_m,
-                route_dy_m: -observation.height_above_target_m,
-            });
-        }
-        let diagnostics = self.transfer_diagnostics(observation);
-        self.phase = phase;
-        match phase {
-            TransferPhase::Takeoff => self.frame_for_open_loop_phase(
+        if let Some(waypoint_context) = self.waypoint_update_context(ctx, observation) {
+            self.update_transfer_frame(
                 ctx,
-                observation,
-                phase,
-                Command {
-                    throttle_frac: 1.0,
-                    target_attitude_rad: 0.0,
-                },
-                "lifting off from source pad",
-                diagnostics,
-                gate,
-                corridor,
-                None,
-            ),
-            TransferPhase::Boost => {
-                let selection = self.select_boost_command(ctx, observation, diagnostics, corridor);
-                self.frame_for_open_loop_phase(
-                    ctx,
-                    observation,
-                    phase,
-                    selection.command,
-                    "boosting toward terminal gate",
-                    diagnostics,
-                    gate,
-                    corridor,
-                    Some(selection),
-                )
-            }
-            TransferPhase::Coast => self.frame_for_open_loop_phase(
-                ctx,
-                observation,
-                phase,
-                Command {
-                    throttle_frac: 0.0,
-                    target_attitude_rad: self.coast_attitude_rad(observation),
-                },
-                "coasting before terminal handoff",
-                diagnostics,
-                gate,
-                corridor,
-                None,
-            ),
-            TransferPhase::Terminal => {
-                let mut frame = self.terminal.update(ctx, observation);
-                self.insert_transfer_metrics(&mut frame, diagnostics, gate, corridor);
-                frame.metrics.insert(
-                    metric::TRANSFER_PHASE.to_owned(),
-                    TelemetryValue::from("terminal"),
-                );
-                frame.status = format!("transfer handoff: {}", frame.status);
-                self.last_phase = frame.phase.clone();
-                frame
-            }
+                &waypoint_context.observation,
+                waypoint_context.allow_terminal,
+                Some(waypoint_context.telemetry),
+            )
+        } else {
+            self.update_transfer_frame(ctx, observation, true, None)
         }
     }
 }
@@ -2498,8 +2894,8 @@ mod tests {
     use crate::terminal_pdg::TransferGateReadinessMode;
     use pd_core::{
         EvaluationGoal, LandingPadSpec, MissionSpec, RunContext, ScenarioSpec, SimConfig,
-        TerrainDefinition, TransferRouteSpec, Vec2, VehicleGeometry, VehicleInitialState,
-        VehicleSpec, WorldSpec,
+        TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleGeometry,
+        VehicleInitialState, VehicleSpec, WorldSpec,
     };
     use std::collections::BTreeMap;
 
@@ -2606,6 +3002,103 @@ mod tests {
             },
         };
         RunContext::from_scenario(&scenario).unwrap()
+    }
+
+    fn waypoint_fixture() -> TransferWaypointSpec {
+        TransferWaypointSpec {
+            id: "wp_0".to_owned(),
+            position_m: Vec2::new(-220.0, -300.0),
+            capture_radius_m: 35.0,
+            max_cross_track_m: 45.0,
+            max_outbound_heading_error_rad: 0.6,
+            min_outbound_progress_mps: 5.0,
+            min_speed_mps: 10.0,
+            max_speed_mps: 80.0,
+            min_vertical_speed_mps: -60.0,
+            max_vertical_speed_mps: 60.0,
+        }
+    }
+
+    fn context_with_waypoint() -> RunContext {
+        let mut ctx = uphill_transfer_context();
+        ctx.mission
+            .transfer_route
+            .as_mut()
+            .expect("transfer route")
+            .waypoints = vec![waypoint_fixture()];
+        ctx
+    }
+
+    #[test]
+    fn transfer_waypoint_alias_enables_waypoint_guidance() {
+        let spec = built_in_controller_spec("transfer_waypoint_pdg").unwrap();
+
+        assert_eq!(spec.id(), "transfer_waypoint_pdg_v1");
+        let ControllerSpec::TransferPdgV1 { config } = spec else {
+            panic!("waypoint alias should use transfer controller");
+        };
+        assert!(config.waypoint_guidance_enabled);
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_tracks_active_leg_without_terminal_handoff() {
+        let ctx = context_with_waypoint();
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        let mut controller = TransferPdgController::new(config);
+        let mut observation = transfer_observation(140.0, -700.0, Vec2::new(-5.0, 24.0), 4.0);
+        observation.position_m = Vec2::new(-145.0, -700.0);
+        observation.target_surface_y_m = 0.0;
+
+        let frame = controller.update(&ctx, &observation);
+
+        assert_ne!(
+            frame.metrics.get(metric::TRANSFER_PHASE),
+            Some(&TelemetryValue::from("terminal"))
+        );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_GUIDANCE_ENABLED),
+            Some(&TelemetryValue::from(true))
+        );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_ACTIVE_INDEX),
+            Some(&TelemetryValue::from(0_i64))
+        );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_CAPTURE_STATUS),
+            Some(&TelemetryValue::from("tracking"))
+        );
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_records_capture_and_advances_leg() {
+        let ctx = context_with_waypoint();
+        let waypoint = waypoint_fixture();
+        let source = Vec2::new(-140.0, -780.0);
+        let leg_unit = normalized_or_none(waypoint.position_m - source).unwrap();
+        let final_leg_unit = normalized_or_none(Vec2::new(0.0, 0.0) - waypoint.position_m).unwrap();
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        let mut controller = TransferPdgController::new(config);
+        let mut observation = transfer_observation(205.0, -295.0, final_leg_unit * 40.0, 12.5);
+        observation.position_m = waypoint.position_m + (leg_unit * 5.0);
+        observation.target_surface_y_m = 0.0;
+
+        let frame = controller.update(&ctx, &observation);
+
+        assert_eq!(controller.waypoint_active_index, 1);
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_CAPTURE_STATUS),
+            Some(&TelemetryValue::from("captured"))
+        );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_CAPTURE_TIME_S),
+            Some(&TelemetryValue::from(12.5))
+        );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_ACTIVE_INDEX),
+            Some(&TelemetryValue::from(0_i64))
+        );
     }
 
     #[test]
