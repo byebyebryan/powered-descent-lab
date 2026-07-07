@@ -41,6 +41,12 @@ const TRANSFER_GATE_DEFER_MAX_NEGATIVE_MARGIN_S: f64 = -0.75;
 const TRANSFER_PRE_TARGET_CAPTURE_MAX_LATEST_SAFE_MARGIN_S: f64 = 0.75;
 const TRANSFER_PRE_TARGET_CAPTURE_LOOKAHEAD_S: f64 = 1.5;
 const TRANSFER_SOURCE_CLEARANCE_SAMPLE_COUNT: usize = 16;
+const WAYPOINT_LEG_LOOKAHEAD_TIME_S: f64 = 5.0;
+const WAYPOINT_LEG_LOOKAHEAD_MIN_CAPTURE_RADII: f64 = 3.0;
+const WAYPOINT_LEG_LOOKAHEAD_MAX_CAPTURE_RADII: f64 = 12.0;
+const WAYPOINT_LEG_REMAINING_LOOKAHEAD_FRAC: f64 = 0.75;
+const WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII: f64 = 2.0;
+const WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII: f64 = 2.5;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -823,8 +829,11 @@ struct WaypointCaptureSnapshot {
 struct WaypointLegGeometry<'a> {
     active_index: usize,
     waypoint: &'a TransferWaypointSpec,
+    anchor_m: Vec2,
     target_m: Vec2,
+    next_target_m: Vec2,
     leg_unit: Vec2,
+    leg_length_m: f64,
     next_leg_unit: Vec2,
 }
 
@@ -1106,10 +1115,12 @@ impl TransferPdgController {
                 });
             }
             let next_geometry = self.waypoint_leg_geometry(ctx)?;
+            let next_stats = waypoint_leg_stats(observation, &next_geometry);
+            let next_target_m = waypoint_guidance_target_m(&next_geometry, next_stats);
             return Some(WaypointUpdateContext {
                 observation: waypoint_adjusted_observation(
                     observation,
-                    next_geometry.target_m,
+                    next_target_m,
                     next_geometry.waypoint.capture_radius_m,
                 ),
                 allow_terminal: false,
@@ -1117,10 +1128,11 @@ impl TransferPdgController {
             });
         }
 
+        let active_target_m = waypoint_guidance_target_m(&geometry, stats);
         Some(WaypointUpdateContext {
             observation: waypoint_adjusted_observation(
                 observation,
-                geometry.target_m,
+                active_target_m,
                 geometry.waypoint.capture_radius_m,
             ),
             allow_terminal: false,
@@ -1157,13 +1169,18 @@ impl TransferPdgController {
             .get(self.waypoint_active_index + 1)
             .map(|next| next.position_m)
             .unwrap_or_else(|| Vec2::new(ctx.target_pad.center_x_m, ctx.target_pad.surface_y_m));
-        let leg_unit = normalized_or_none(target_m - anchor_m)?;
+        let leg_vector = target_m - anchor_m;
+        let leg_length_m = leg_vector.length();
+        let leg_unit = normalized_or_none(leg_vector)?;
         let next_leg_unit = normalized_or_none(next_target_m - target_m)?;
         Some(WaypointLegGeometry {
             active_index: self.waypoint_active_index,
             waypoint,
+            anchor_m,
             target_m,
+            next_target_m,
             leg_unit,
+            leg_length_m,
             next_leg_unit,
         })
     }
@@ -2761,6 +2778,46 @@ fn waypoint_leg_stats(
     }
 }
 
+fn waypoint_guidance_target_m(geometry: &WaypointLegGeometry<'_>, stats: WaypointLegStats) -> Vec2 {
+    let capture_radius_m = geometry.waypoint.capture_radius_m.max(1.0);
+    let progress_m = (stats.plane_progress_m + geometry.leg_length_m)
+        .clamp(0.0, geometry.leg_length_m);
+    let lookahead_m = (stats.speed_mps * WAYPOINT_LEG_LOOKAHEAD_TIME_S)
+        .clamp(
+            capture_radius_m * WAYPOINT_LEG_LOOKAHEAD_MIN_CAPTURE_RADII,
+            capture_radius_m * WAYPOINT_LEG_LOOKAHEAD_MAX_CAPTURE_RADII,
+        )
+        .min(geometry.leg_length_m);
+    let remaining_m = (geometry.leg_length_m - progress_m).max(0.0);
+    let downrange_lookahead_m = remaining_m * WAYPOINT_LEG_REMAINING_LOOKAHEAD_FRAC;
+    let target_progress_m = (progress_m + lookahead_m.max(downrange_lookahead_m))
+        .min(geometry.leg_length_m);
+    let active_leg_target_m = geometry.anchor_m + (geometry.leg_unit * target_progress_m);
+
+    let distance_to_waypoint_plane_m = remaining_m;
+    let distance_blend = 1.0
+        - (distance_to_waypoint_plane_m
+            / (capture_radius_m * WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII).max(1.0))
+            .clamp(0.0, 1.0);
+    let cross_track_blend = 1.0
+        - (stats.cross_track_m
+            / (geometry.waypoint.max_cross_track_m + capture_radius_m).max(1.0))
+            .clamp(0.0, 1.0);
+    let blend = (distance_blend * cross_track_blend).clamp(0.0, 1.0);
+    if blend <= 1.0e-6 {
+        return active_leg_target_m;
+    }
+
+    let outbound_lookahead_m =
+        (capture_radius_m * WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII).min(
+            (geometry.next_target_m - geometry.target_m)
+                .length()
+                .max(capture_radius_m),
+        );
+    let outbound_target_m = geometry.target_m + (geometry.next_leg_unit * outbound_lookahead_m);
+    active_leg_target_m + ((outbound_target_m - active_leg_target_m) * blend)
+}
+
 fn waypoint_capture_passes(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
     stats.distance_m <= waypoint.capture_radius_m
         || (stats.cross_track_m <= waypoint.max_cross_track_m
@@ -3064,6 +3121,46 @@ mod tests {
             frame.metrics.get(metric::WAYPOINT_CAPTURE_STATUS),
             Some(&TelemetryValue::from("tracking"))
         );
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_target_tracks_active_leg_lookahead() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let current_progress_m = geometry.waypoint.capture_radius_m;
+        let mut observation = transfer_observation(0.0, 0.0, geometry.leg_unit * 25.0, 4.0);
+        observation.position_m = geometry.anchor_m
+            + (geometry.leg_unit * current_progress_m)
+            + (Vec2::new(-geometry.leg_unit.y, geometry.leg_unit.x)
+                * geometry.waypoint.max_cross_track_m
+                * 0.8);
+
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let target_m = waypoint_guidance_target_m(&geometry, stats);
+        let target_from_anchor = target_m - geometry.anchor_m;
+        let target_cross_track_m = vec_cross(target_from_anchor, geometry.leg_unit).abs();
+        let target_progress_m = vec_dot(target_from_anchor, geometry.leg_unit);
+
+        assert!(target_cross_track_m < 1.0e-6);
+        assert!(target_progress_m > current_progress_m);
+        assert!(target_progress_m < geometry.leg_length_m);
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_target_blends_outbound_near_capture() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let mut observation = transfer_observation(0.0, 0.0, geometry.leg_unit * 35.0, 4.0);
+        observation.position_m =
+            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 0.5);
+
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let target_m = waypoint_guidance_target_m(&geometry, stats);
+        let target_from_waypoint = target_m - geometry.target_m;
+
+        assert!(vec_dot(target_from_waypoint, geometry.next_leg_unit) > 0.0);
     }
 
     #[test]
