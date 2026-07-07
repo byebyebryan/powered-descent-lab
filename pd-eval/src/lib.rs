@@ -13,7 +13,8 @@ use pd_control::{
 };
 use pd_core::{
     EvaluationGoal, LandingPadSpec, MissionOutcome, RunContext, RunManifest, RunSummary,
-    SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec, Vec2, VehicleSpec,
+    SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2,
+    VehicleSpec,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -399,6 +400,8 @@ pub struct TransferMatrixEntry {
     pub route_angles: Vec<String>,
     #[serde(default)]
     pub radius_tiers: Vec<String>,
+    #[serde(default)]
+    pub waypoint_profile: Option<String>,
     #[serde(default)]
     pub adjustments: Vec<NumericAdjustmentSpec>,
     #[serde(default)]
@@ -1753,6 +1756,9 @@ fn validate_transfer_matrix_entry(entry: &TransferMatrixEntry) -> Result<()> {
             entry.id
         );
     }
+    if let Some(profile) = &entry.waypoint_profile {
+        validate_transfer_waypoint_profile(&entry.id, profile)?;
+    }
     if entry.lanes.is_empty() {
         bail!(
             "transfer matrix entry '{}' must define at least one lane",
@@ -1854,6 +1860,20 @@ fn validate_transfer_matrix_entry(entry: &TransferMatrixEntry) -> Result<()> {
             adjustment,
             &mut seen_adjustment_ids,
         )?;
+    }
+    Ok(())
+}
+
+fn validate_transfer_waypoint_profile(entry_id: &str, profile: &str) -> Result<()> {
+    if profile.trim().is_empty() {
+        bail!("transfer matrix entry '{entry_id}' waypoint_profile must not be empty");
+    }
+    if profile != TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1 {
+        bail!(
+            "transfer matrix entry '{}' waypoint_profile '{}' is not supported",
+            entry_id,
+            profile
+        );
     }
     Ok(())
 }
@@ -2379,6 +2399,8 @@ const SIGNED_ROUTE_ARC_TRANSFER_V1_SPEC: TransferRouteFamilySpec = TransferRoute
     smoke_route_angles: &SIGNED_ROUTE_ARC_TRANSFER_V1_SMOKE_ROUTE_ANGLES,
 };
 
+const TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1: &str = "single_dogleg_v1";
+
 const TRANSFER_SMOKE_SEEDS: [TransferSeedSpec; 3] = [
     TransferSeedSpec { index: 0 },
     TransferSeedSpec { index: 1 },
@@ -2664,8 +2686,12 @@ fn resolve_transfer_matrix_scenario(
         );
     }
 
-    let (source_pad, target_pad) =
-        configure_transfer_route_geometry(&mut scenario, route_angle, radius_tier)?;
+    let (source_pad, target_pad) = configure_transfer_route_geometry(
+        &mut scenario,
+        route_angle,
+        radius_tier,
+        entry.waypoint_profile.as_deref(),
+    )?;
     resolved_parameters.insert("source_x_m".to_owned(), source_pad.center_x_m);
     resolved_parameters.insert("source_y_m".to_owned(), source_pad.surface_y_m);
     resolved_parameters.insert("target_x_m".to_owned(), target_pad.center_x_m);
@@ -2680,6 +2706,21 @@ fn resolve_transfer_matrix_scenario(
     );
     resolved_parameters.insert("start_x_m".to_owned(), scenario.initial_state.position_m.x);
     resolved_parameters.insert("start_y_m".to_owned(), scenario.initial_state.position_m.y);
+    if let Some(route) = scenario.mission.transfer_route.as_ref() {
+        for (index, waypoint) in route.waypoints.iter().enumerate() {
+            let prefix = format!("waypoint_{index}");
+            resolved_parameters.insert(format!("{prefix}_x_m"), waypoint.position_m.x);
+            resolved_parameters.insert(format!("{prefix}_y_m"), waypoint.position_m.y);
+            resolved_parameters.insert(
+                format!("{prefix}_capture_radius_m"),
+                waypoint.capture_radius_m,
+            );
+            resolved_parameters.insert(
+                format!("{prefix}_max_cross_track_m"),
+                waypoint.max_cross_track_m,
+            );
+        }
+    }
 
     scenario
         .validate()
@@ -2711,6 +2752,7 @@ fn configure_transfer_route_geometry(
     scenario: &mut ScenarioSpec,
     route_angle: &TransferRouteAngleSpec,
     radius_tier: &TransferRadiusTierSpec,
+    waypoint_profile: Option<&str>,
 ) -> Result<(LandingPadSpec, LandingPadSpec)> {
     let target_pad_id = scenario.mission.goal.target_pad_id().to_owned();
     let base_target_pad = scenario
@@ -2748,12 +2790,19 @@ fn configure_transfer_route_geometry(
     scenario.initial_state.velocity_mps = Vec2::new(0.0, 0.0);
     scenario.initial_state.attitude_rad = 0.0;
     scenario.initial_state.angular_rate_radps = 0.0;
+    let waypoints = transfer_route_waypoints_for_profile(
+        waypoint_profile,
+        &source_pad,
+        &target_pad,
+        route_angle,
+        radius_tier,
+    )?;
     scenario.mission.transfer_route = Some(TransferRouteSpec {
         source_pad_id: source_pad.id.clone(),
         target_pad_id: target_pad.id.clone(),
         route_angle_deg: route_angle.angle_deg,
         route_radius_m: radius_tier.radius_m,
-        waypoints: Vec::new(),
+        waypoints,
     });
 
     scenario
@@ -2770,8 +2819,71 @@ fn configure_transfer_route_geometry(
         "resolved.route_radius_m".to_owned(),
         format!("{:.6}", radius_tier.radius_m),
     );
+    scenario.metadata.insert(
+        "route_mode".to_owned(),
+        waypoint_profile.unwrap_or("direct").to_owned(),
+    );
+    if let Some(route) = scenario.mission.transfer_route.as_ref() {
+        for (index, waypoint) in route.waypoints.iter().enumerate() {
+            scenario
+                .metadata
+                .insert(format!("resolved.waypoint_{index}.id"), waypoint.id.clone());
+            scenario.metadata.insert(
+                format!("resolved.waypoint_{index}.x_m"),
+                format!("{:.6}", waypoint.position_m.x),
+            );
+            scenario.metadata.insert(
+                format!("resolved.waypoint_{index}.y_m"),
+                format!("{:.6}", waypoint.position_m.y),
+            );
+        }
+    }
 
     Ok((source_pad, target_pad))
+}
+
+fn transfer_route_waypoints_for_profile(
+    waypoint_profile: Option<&str>,
+    source_pad: &LandingPadSpec,
+    target_pad: &LandingPadSpec,
+    route_angle: &TransferRouteAngleSpec,
+    radius_tier: &TransferRadiusTierSpec,
+) -> Result<Vec<TransferWaypointSpec>> {
+    let Some(profile) = waypoint_profile else {
+        return Ok(Vec::new());
+    };
+    validate_transfer_waypoint_profile("resolved transfer matrix", profile)?;
+    match profile {
+        TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1 => {
+            if route_angle.angle_deg < 70.0 {
+                bail!(
+                    "waypoint profile '{}' requires a steep uphill route angle, got '{}'",
+                    profile,
+                    route_angle.id
+                );
+            }
+            let route_dx_m = target_pad.center_x_m - source_pad.center_x_m;
+            let direction = if route_dx_m >= 0.0 { 1.0 } else { -1.0 };
+            let radius_m = radius_tier.radius_m;
+            let capture_radius_m = (radius_m * 0.08).clamp(35.0, 95.0);
+            Ok(vec![TransferWaypointSpec {
+                id: "wp_dogleg_01".to_owned(),
+                position_m: Vec2::new(
+                    source_pad.center_x_m - (direction * radius_m * 0.70),
+                    target_pad.surface_y_m + (radius_m * 0.45),
+                ),
+                capture_radius_m,
+                max_cross_track_m: capture_radius_m * 1.25,
+                max_outbound_heading_error_rad: 0.85,
+                min_outbound_progress_mps: 8.0,
+                min_speed_mps: 10.0,
+                max_speed_mps: 130.0,
+                min_vertical_speed_mps: -80.0,
+                max_vertical_speed_mps: 65.0,
+            }])
+        }
+        _ => unreachable!("validated transfer waypoint profile should be supported"),
+    }
 }
 
 fn transfer_route_terrain_points(
@@ -7233,6 +7345,7 @@ mod tests {
                 expectation_tier: "core".to_owned(),
                 route_angles: Vec::new(),
                 radius_tiers: Vec::new(),
+                waypoint_profile: None,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "smoke".to_owned()],
                 metadata: BTreeMap::new(),
@@ -7311,6 +7424,7 @@ mod tests {
                 expectation_tier: "core".to_owned(),
                 route_angles: vec!["r00".to_owned()],
                 radius_tiers: vec!["short".to_owned(), "long".to_owned()],
+                waypoint_profile: None,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "radius".to_owned()],
                 metadata: BTreeMap::new(),
@@ -7353,6 +7467,78 @@ mod tests {
         assert_eq!(
             long.descriptor.resolved_parameters.get("route_radius_m"),
             Some(&1200.0)
+        );
+    }
+
+    #[test]
+    fn transfer_matrix_waypoint_profile_injects_dogleg_waypoint() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_waypoint_profile".to_owned(),
+            name: "Transfer matrix waypoint profile".to_owned(),
+            description: "transfer matrix waypoint profile".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_waypoint_nominal".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "frontier_probe".to_owned(),
+                route_angles: vec!["r+80".to_owned()],
+                radius_tiers: vec!["nominal".to_owned()],
+                waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1.to_owned()),
+                adjustments: Vec::new(),
+                tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+
+        assert_eq!(resolved_runs.len(), 3);
+        let run = resolved_runs
+            .iter()
+            .find(|run| run.descriptor.resolved_seed == 0)
+            .expect("seed 0 waypoint transfer run should be present");
+        let route = run
+            .scenario
+            .mission
+            .transfer_route
+            .as_ref()
+            .expect("transfer route should be present");
+        let waypoint = route
+            .waypoints
+            .first()
+            .expect("dogleg waypoint should be present");
+        let source_pad = run
+            .scenario
+            .world
+            .landing_pad(&route.source_pad_id)
+            .unwrap();
+
+        assert_eq!(route.waypoints.len(), 1);
+        assert_eq!(waypoint.id, "wp_dogleg_01");
+        assert!(waypoint.position_m.x < source_pad.center_x_m);
+        assert!(waypoint.position_m.y > 0.0);
+        assert_eq!(
+            run.scenario.metadata.get("route_mode").map(String::as_str),
+            Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1)
+        );
+        assert_eq!(
+            run.descriptor.resolved_parameters.get("waypoint_0_x_m"),
+            Some(&waypoint.position_m.x)
+        );
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("waypoint_0_capture_radius_m"),
+            Some(&waypoint.capture_radius_m)
         );
     }
 
@@ -7729,6 +7915,7 @@ mod tests {
                 expectation_tier: "core".to_owned(),
                 route_angles: vec!["r00".to_owned(), "r00".to_owned()],
                 radius_tiers: Vec::new(),
+                waypoint_profile: None,
                 adjustments: Vec::new(),
                 tags: Vec::new(),
                 metadata: BTreeMap::new(),
@@ -7761,6 +7948,7 @@ mod tests {
                 expectation_tier: "core".to_owned(),
                 route_angles: Vec::new(),
                 radius_tiers: vec!["short".to_owned(), "short".to_owned()],
+                waypoint_profile: None,
                 adjustments: Vec::new(),
                 tags: Vec::new(),
                 metadata: BTreeMap::new(),
@@ -7793,6 +7981,7 @@ mod tests {
                 expectation_tier: "core".to_owned(),
                 route_angles: Vec::new(),
                 radius_tiers: vec!["extreme".to_owned()],
+                waypoint_profile: None,
                 adjustments: Vec::new(),
                 tags: Vec::new(),
                 metadata: BTreeMap::new(),
@@ -8350,6 +8539,7 @@ mod tests {
                     expectation_tier: "reference".to_owned(),
                     route_angles: vec!["r-80".to_owned(), "r+60".to_owned(), "r+80".to_owned()],
                     radius_tiers: Vec::new(),
+                    waypoint_profile: None,
                     adjustments: Vec::new(),
                     tags: vec!["transfer".to_owned(), "analytic".to_owned()],
                     metadata: BTreeMap::new(),

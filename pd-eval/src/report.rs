@@ -7848,6 +7848,7 @@ mod report_tests {
                 expectation_tier: "core".to_owned(),
                 route_angles: vec!["r00".to_owned()],
                 radius_tiers: Vec::new(),
+                waypoint_profile: None,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "bot_lab".to_owned()],
                 metadata: BTreeMap::new(),
