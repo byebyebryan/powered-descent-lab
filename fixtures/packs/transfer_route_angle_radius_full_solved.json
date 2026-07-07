@@ -1,0 +1,159 @@
+{
+  "id": "transfer_route_angle_radius_full_solved",
+  "name": "Transfer route-angle radius full-seed solved suite",
+  "description": "Full-seed signed route-angle transfer guidance matrix across short, nominal, and long route radii, excluding the known r+80 near-vertical frontier.",
+  "entries": [
+    {
+      "id": "transfer_guidance_route_angle_radii_full_seed_solved_empty",
+      "transfer_matrix": "signed_route_arc_transfer_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "transfer_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "vehicle_variant": "empty",
+      "expectation_tier": "reference",
+      "route_angles": [
+        "r-80",
+        "r-60",
+        "r-45",
+        "r-30",
+        "r-15",
+        "r00",
+        "r+15",
+        "r+30",
+        "r+45",
+        "r+60"
+      ],
+      "radius_tiers": [
+        "short",
+        "nominal",
+        "long"
+      ],
+      "adjustments": [],
+      "tags": [
+        "transfer_guidance",
+        "clean",
+        "empty",
+        "route_angle_sweep",
+        "radius_tier_sweep",
+        "full_seed",
+        "solved_region",
+        "reference"
+      ],
+      "metadata": {
+        "coverage": "solved_region",
+        "difficulty": "empty"
+      }
+    },
+    {
+      "id": "transfer_guidance_route_angle_radii_full_seed_solved_half",
+      "transfer_matrix": "signed_route_arc_transfer_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "transfer_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "vehicle_variant": "half",
+      "expectation_tier": "core",
+      "route_angles": [
+        "r-80",
+        "r-60",
+        "r-45",
+        "r-30",
+        "r-15",
+        "r00",
+        "r+15",
+        "r+30",
+        "r+45",
+        "r+60"
+      ],
+      "radius_tiers": [
+        "short",
+        "nominal",
+        "long"
+      ],
+      "adjustments": [
+        {
+          "id": "payload_half_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 2250.0
+        }
+      ],
+      "tags": [
+        "transfer_guidance",
+        "clean",
+        "half",
+        "route_angle_sweep",
+        "radius_tier_sweep",
+        "full_seed",
+        "solved_region",
+        "core"
+      ],
+      "metadata": {
+        "coverage": "solved_region",
+        "difficulty": "half"
+      }
+    },
+    {
+      "id": "transfer_guidance_route_angle_radii_full_seed_solved_full",
+      "transfer_matrix": "signed_route_arc_transfer_v1",
+      "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [
+        {
+          "id": "current",
+          "controller": "transfer_pdg"
+        }
+      ],
+      "seed_tier": "full",
+      "vehicle_variant": "full",
+      "expectation_tier": "stress",
+      "route_angles": [
+        "r-80",
+        "r-60",
+        "r-45",
+        "r-30",
+        "r-15",
+        "r00",
+        "r+15",
+        "r+30",
+        "r+45",
+        "r+60"
+      ],
+      "radius_tiers": [
+        "short",
+        "nominal",
+        "long"
+      ],
+      "adjustments": [
+        {
+          "id": "payload_full_mass_kg",
+          "path": "vehicle.dry_mass_kg",
+          "mode": "offset",
+          "value": 4500.0
+        }
+      ],
+      "tags": [
+        "transfer_guidance",
+        "clean",
+        "full",
+        "route_angle_sweep",
+        "radius_tier_sweep",
+        "full_seed",
+        "solved_region",
+        "stress"
+      ],
+      "metadata": {
+        "coverage": "solved_region",
+        "difficulty": "full"
+      }
+    }
+  ]
+}
