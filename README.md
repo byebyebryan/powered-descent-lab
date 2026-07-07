@@ -213,6 +213,13 @@ cargo run -p pd-eval -- run-pack fixtures/packs/transfer_radius_tier_suite.json 
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_radius_suite.json --workers 8
 ```
 
+Run the full-seed transfer reliability and frontier packs:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_radius_full_solved.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_radius_frontier_full.json --workers 8
+```
+
 Force a rerun and skip cache reuse if needed:
 
 ```bash
@@ -316,8 +323,16 @@ nominal radius, but expands to all 11 signed route angles from `r-80` through
 fast distance-sensitivity gate.
 
 `transfer_route_angle_radius_suite` combines all 11 route angles with all three
-radius tiers for a 297-run wide diagnostic before adding full transfer seed
-coverage.
+radius tiers for a 297-run wide smoke diagnostic.
+
+`transfer_route_angle_radius_full_solved` expands the solved direct-transfer
+region to full seeds: all route angles from `r-80` through `r+60`, all three
+radius tiers, and all three payload tiers. It intentionally excludes the known
+`r+80` frontier so the pack can answer whether the solved region is reliable.
+
+`transfer_route_angle_radius_frontier_full` keeps the excluded `r+80` route
+visible as a separate full-seed frontier watch across all radius and payload
+tiers. It is not a pass/fail gate for direct-transfer controller reliability.
 
 
 That writes:
@@ -439,6 +454,12 @@ Transfer route-angle checkpoint:
   - the previous non-frontier `full/r-80` short/long radius failures are now
     covered by source-clearance hold plus transfer-scoped terminal handoff
     horizon tuning
+- `transfer_route_angle_radius_full_solved`
+  - `current`: `1080 / 1080` successes, `0` invalidations across full seeds,
+    solved route angles, all radius tiers, and all payload tiers
+- `transfer_route_angle_radius_frontier_full`
+  - `current`: `0 / 108` successes, `108` crashes, `0` invalidations
+  - all runs are the intentionally separated `r+80` near-vertical frontier
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
@@ -450,8 +471,7 @@ avoidance is no longer a terminal guidance blocker; it is parked until the lab
 has an approach-corridor or waypoint-planning layer. Detailed checkpoint history
 lives in `docs/progress.md` and `docs/terminal_suite.md`.
 
-The next useful Phase 3 slice is to either expand transfer evidence with
-full-seed coverage or start waypoint-style route shaping. Broad transfer
+The next useful Phase 3 slice is waypoint-style route shaping. Broad transfer
 controller tuning should stay optional and hypothesis-gated rather than the
-default path; the current broad matrix only leaves the `r+80` near-vertical
-frontier unresolved.
+default path; the full-seed solved-region gate is clean, and the only unresolved
+transfer matrix remains the separately tracked `r+80` near-vertical frontier.

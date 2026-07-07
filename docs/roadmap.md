@@ -274,6 +274,11 @@ Status:
 - `transfer_route_angle_radius_suite` is the current wide route/radius
   diagnostic: 297 smoke-seed runs over all 11 route angles and all 3 radius
   tiers
+- `transfer_route_angle_radius_full_solved` is the full-seed reliability gate
+  for the solved direct-transfer region: all non-`r+80` route angles, all
+  radius tiers, all payload tiers, and all 12 transfer seeds
+- `transfer_route_angle_radius_frontier_full` is the explicit full-seed `r+80`
+  near-vertical frontier watch
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run
@@ -296,6 +301,13 @@ Status:
   - the previous non-frontier `full/r-80` short/long radius failures were
     resolved by a focused source-clearance hold and transfer-scoped terminal
     gate horizon pass
+- current full-seed transfer checkpoint:
+  - `transfer_route_angle_radius_full_solved`: `1080 / 1080` successes and `0`
+    invalidations
+  - `transfer_route_angle_radius_frontier_full`: `0 / 108` successes, `108`
+    crashes, and `0` invalidations
+  - the full-seed solved-region gate is clean; the only remaining transfer
+    matrix debt is the separately tracked `r+80` route/waypoint frontier
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 

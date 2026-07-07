@@ -94,6 +94,25 @@
   crashes are the known `r+80` near-vertical route frontier across payload and
   radius tiers.
 
+### Transfer full-seed coverage checkpoint
+
+- Added two transfer full-seed packs:
+  - `transfer_route_angle_radius_full_solved` covers all non-`r+80` route
+    angles, all radius tiers, all payload tiers, and all 12 transfer seeds
+  - `transfer_route_angle_radius_frontier_full` isolates `r+80` across all
+    radius tiers, all payload tiers, and all 12 transfer seeds
+- Verified locally with `8` workers and `--no-reuse`:
+  - `transfer_route_angle_radius_full_solved`: `1080 / 1080` successes, `0`
+    invalidations, `59.24s` mean sim time, `83.24s` max sim time
+  - `transfer_route_angle_radius_frontier_full`: `0 / 108` successes, `108`
+    crashes, `0` invalidations, `16.83s` mean sim time, `21.70s` max sim time
+- Interpretation:
+  - the solved direct-transfer region has no full-seed outliers
+  - the known `r+80` near-vertical route failure is still total and should stay
+    classified as route/waypoint debt rather than terminal guidance debt
+  - the next transfer slice should move to waypoint-style route shaping instead
+    of more direct-transfer controller tuning
+
 ## 2026-05-31
 
 ### Transfer projected-overshoot and pre-target capture checkpoint

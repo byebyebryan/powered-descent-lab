@@ -99,8 +99,22 @@ Current corpus tiers:
   - 297 runs
   - the same 3 payload tiers and smoke seeds
   - all 11 signed route angles and all 3 radius tiers
-  - intended as the wide distance/route-shape diagnostic before adding full
-    seeds
+  - intended as the wide smoke distance/route-shape diagnostic
+- `transfer_route_angle_radius_full_solved`
+  - 1080 runs
+  - the same 3 payload tiers and all 12 full seeds
+  - all 3 radius tiers
+  - route angles from `r-80` through `r+60`, excluding the known `r+80`
+    frontier
+  - intended as the full-seed reliability gate for the solved direct-transfer
+    region
+- `transfer_route_angle_radius_frontier_full`
+  - 108 runs
+  - the same 3 payload tiers and all 12 full seeds
+  - all 3 radius tiers
+  - `r+80` only
+  - intended as an explicit frontier watch, not as the direct-transfer
+    controller pass/fail gate
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -293,6 +307,18 @@ Radius-tier expansion checkpoint:
   by the focused handoff pass; the wide matrix now has no non-frontier transfer
   failures
 
+Full-seed transfer coverage checkpoint:
+
+- generated locally after the full-seed pack split with `8` workers
+- `transfer_route_angle_radius_full_solved`: `1080 / 1080` successes, `0`
+  invalidations, `59.24s` mean sim time, `83.24s` max sim time
+- `transfer_route_angle_radius_frontier_full`: `0 / 108` successes, `108`
+  crashes, `0` invalidations, `16.83s` mean sim time, `21.70s` max sim time
+- the solved-region full-seed pack covers every non-`r+80` route/radius/payload
+  cell and confirms that no smoke-only success is hiding a seed outlier
+- the frontier pack keeps the known `r+80` near-vertical route failure visible
+  without polluting the solved-region reliability gate
+
 Focused `full/r-80` radius triage:
 
 - the failures are deterministic across smoke seeds because these cases have no
@@ -359,8 +385,6 @@ Recoverability boost-scoring experiment:
 
 ## Deferred Work
 
-- full-seed transfer packs
-- full-seed radius-tier transfer packs
 - terminal climbing-arrival suite extension
 - aggregate handoff quality thresholds in batch summaries
 - waypoint/corridor planning above terminal guidance
