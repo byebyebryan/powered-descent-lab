@@ -2753,6 +2753,7 @@ fn configure_transfer_route_geometry(
         target_pad_id: target_pad.id.clone(),
         route_angle_deg: route_angle.angle_deg,
         route_radius_m: radius_tier.radius_m,
+        waypoints: Vec::new(),
     });
 
     scenario
@@ -7443,6 +7444,7 @@ mod tests {
             target_pad_id: "pad_a".to_owned(),
             route_angle_deg: 0.0,
             route_radius_m: 200.0,
+            waypoints: Vec::new(),
         });
         let samples = vec![
             transfer_sample(

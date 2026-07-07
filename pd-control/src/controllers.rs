@@ -2598,6 +2598,7 @@ mod tests {
                     target_pad_id: "target".to_owned(),
                     route_angle_deg: 80.0,
                     route_radius_m: 800.0,
+                    waypoints: Vec::new(),
                 }),
                 goal: EvaluationGoal::LandingOnPad {
                     target_pad_id: "target".to_owned(),

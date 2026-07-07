@@ -249,6 +249,8 @@ pub struct TransferRouteSpec {
     pub target_pad_id: String,
     pub route_angle_deg: f64,
     pub route_radius_m: f64,
+    #[serde(default)]
+    pub waypoints: Vec<TransferWaypointSpec>,
 }
 
 impl TransferRouteSpec {
@@ -267,6 +269,80 @@ impl TransferRouteSpec {
         }
         if !self.route_radius_m.is_finite() || self.route_radius_m <= 0.0 {
             return Err("transfer_route route_radius_m must be positive and finite".to_owned());
+        }
+        for waypoint in &self.waypoints {
+            waypoint.validate()?;
+        }
+        let mut waypoint_ids = std::collections::BTreeSet::new();
+        for waypoint in &self.waypoints {
+            if !waypoint_ids.insert(waypoint.id.as_str()) {
+                return Err(format!(
+                    "transfer_route waypoint id '{}' must be unique",
+                    waypoint.id
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TransferWaypointSpec {
+    pub id: String,
+    pub position_m: Vec2,
+    pub capture_radius_m: f64,
+    pub max_cross_track_m: f64,
+    pub max_outbound_heading_error_rad: f64,
+    pub min_outbound_progress_mps: f64,
+    pub min_speed_mps: f64,
+    pub max_speed_mps: f64,
+    pub min_vertical_speed_mps: f64,
+    pub max_vertical_speed_mps: f64,
+}
+
+impl TransferWaypointSpec {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("transfer_route waypoint id must not be empty".to_owned());
+        }
+        for (label, value) in [
+            ("position_m.x", self.position_m.x),
+            ("position_m.y", self.position_m.y),
+            ("capture_radius_m", self.capture_radius_m),
+            ("max_cross_track_m", self.max_cross_track_m),
+            (
+                "max_outbound_heading_error_rad",
+                self.max_outbound_heading_error_rad,
+            ),
+            ("min_outbound_progress_mps", self.min_outbound_progress_mps),
+            ("min_speed_mps", self.min_speed_mps),
+            ("max_speed_mps", self.max_speed_mps),
+            ("min_vertical_speed_mps", self.min_vertical_speed_mps),
+            ("max_vertical_speed_mps", self.max_vertical_speed_mps),
+        ] {
+            if !value.is_finite() {
+                return Err(format!("transfer_route waypoint {label} must be finite"));
+            }
+        }
+        if self.capture_radius_m <= 0.0 {
+            return Err("transfer_route waypoint capture_radius_m must be positive".to_owned());
+        }
+        if self.max_cross_track_m <= 0.0 {
+            return Err("transfer_route waypoint max_cross_track_m must be positive".to_owned());
+        }
+        if self.max_outbound_heading_error_rad <= 0.0 {
+            return Err(
+                "transfer_route waypoint max_outbound_heading_error_rad must be positive"
+                    .to_owned(),
+            );
+        }
+        if self.min_speed_mps < 0.0 || self.max_speed_mps < self.min_speed_mps {
+            return Err(
+                "transfer_route waypoint speed bounds must be non-negative and ordered".to_owned(),
+            );
+        }
+        if self.max_vertical_speed_mps < self.min_vertical_speed_mps {
+            return Err("transfer_route waypoint vertical speed bounds must be ordered".to_owned());
         }
         Ok(())
     }
@@ -731,6 +807,7 @@ mod tests {
                     target_pad_id: "target".to_owned(),
                     route_angle_deg: 0.0,
                     route_radius_m: 100.0,
+                    waypoints: Vec::new(),
                 }),
                 goal: EvaluationGoal::LandingOnPad {
                     target_pad_id: "target".to_owned(),
@@ -755,5 +832,43 @@ mod tests {
             .landing_pads
             .retain(|pad| pad.id != "source");
         assert!(missing_source.validate().is_err());
+    }
+
+    #[test]
+    fn transfer_route_validates_waypoint_contracts() {
+        let waypoint = TransferWaypointSpec {
+            id: "wp_1".to_owned(),
+            position_m: Vec2::new(-80.0, 140.0),
+            capture_radius_m: 50.0,
+            max_cross_track_m: 80.0,
+            max_outbound_heading_error_rad: 0.7,
+            min_outbound_progress_mps: 5.0,
+            min_speed_mps: 10.0,
+            max_speed_mps: 90.0,
+            min_vertical_speed_mps: -45.0,
+            max_vertical_speed_mps: 35.0,
+        };
+        let route = TransferRouteSpec {
+            source_pad_id: "source".to_owned(),
+            target_pad_id: "target".to_owned(),
+            route_angle_deg: 80.0,
+            route_radius_m: 800.0,
+            waypoints: vec![waypoint.clone()],
+        };
+        assert!(route.validate().is_ok());
+
+        let duplicate_waypoints = TransferRouteSpec {
+            waypoints: vec![waypoint.clone(), waypoint.clone()],
+            ..route.clone()
+        };
+        assert!(duplicate_waypoints.validate().is_err());
+
+        let mut invalid_bounds = waypoint;
+        invalid_bounds.max_speed_mps = invalid_bounds.min_speed_mps - 1.0;
+        let invalid_route = TransferRouteSpec {
+            waypoints: vec![invalid_bounds],
+            ..route
+        };
+        assert!(invalid_route.validate().is_err());
     }
 }
