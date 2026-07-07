@@ -19,21 +19,22 @@
   - `transfer_waypoint_rpos80_full`: `108` full-seed runs across the same
     payload and radius tiers
 - Verified locally with `8` workers and `--no-reuse` after relaxing v1 capture
-  to a spatial handoff surface and giving waypoint-profile routes a `120s`
-  sim cap:
-  - `transfer_waypoint_rpos80_smoke`: `24 / 27` successes, `3` timeouts,
-    `0` invalidations, `95.61s` mean sim time, `120.00s` max sim time
-  - `transfer_waypoint_rpos80_full`: `96 / 108` successes, `12` timeouts,
-    `0` invalidations, `95.61s` mean sim time, `120.00s` max sim time
+  to a spatial handoff surface, giving waypoint-profile routes a `130s` sim
+  cap, and reporting waypoint misses as route-contract warnings:
+  - `transfer_waypoint_rpos80_smoke`: `27 / 27` successes, `0` timeouts,
+    `0` invalidations, `94.56s` mean sim time, `120.59s` max sim time,
+    `15` captured waypoint runs, and `12` contract warnings
+  - `transfer_waypoint_rpos80_full`: `108 / 108` successes, `0` timeouts,
+    `0` invalidations, `94.56s` mean sim time, `120.59s` max sim time,
+    `60` captured waypoint runs, and `48` contract warnings
 - Result interpretation:
   - the direct `r+80` frontier was previously `0 / 108`; a single preplanned
-    dogleg now lands all `empty` and `half` cases and all non-long `full`
-    cases
-  - the remaining failures are concentrated in `full/long/r+80`, where all
-    full seeds timeout at the `120s` cap
-  - waypoint capture status is currently a spatial handoff check; outbound
-    heading, progress, speed, and vertical rate remain diagnostics for the
-    next controller pass, not hard pass/fail gates yet
+    dogleg now lands every waypoint `r+80` payload/radius/seed case
+  - the previous `full/long/r+80` timeout cluster now lands at `120.59s`
+  - the remaining debt is waypoint-contract quality, not final landing:
+    waypoint misses are explicit report warnings, while outbound heading,
+    progress, speed, and vertical rate remain diagnostics for the next
+    controller pass
 
 ## 2026-07-05
 

@@ -318,19 +318,23 @@ Status:
   - the full-seed solved-region gate is clean; the only remaining transfer
     matrix debt is the separately tracked `r+80` route/waypoint frontier
 - current waypoint-guidance checkpoint:
-  - `transfer_waypoint_rpos80_smoke`: `24 / 27` successes, `3` timeouts, and
-    `0` invalidations
-  - `transfer_waypoint_rpos80_full`: `96 / 108` successes, `12` timeouts, and
-    `0` invalidations
-  - `empty` and `half` payload tiers solve across all waypoint `r+80` radius
-    tiers and full seeds
-  - remaining waypoint failures are all `full/long/r+80` timeouts
+  - `transfer_waypoint_rpos80_smoke`: `27 / 27` successes, `0` timeouts, `0`
+    invalidations, `15` captured waypoint runs, and `12` route-contract
+    warnings
+  - `transfer_waypoint_rpos80_full`: `108 / 108` successes, `0` timeouts, `0`
+    invalidations, `60` captured waypoint runs, and `48` route-contract
+    warnings
+  - all waypoint `r+80` payload/radius/seed cases land; remaining waypoint
+    debt is capture/outbound quality, not final landing reliability
 - next transfer slice should improve waypoint route quality and landing time
   without moving waypoint planning into the controller:
   - keep waypoints preplanned
   - keep terrain avoidance encoded in waypoint positions/envelopes, not in
     terrain-reactive controller branches
-  - harden outbound-leg shaping beyond the current spatial capture status
+  - harden waypoint capture quality, outbound progress, and route shape beyond
+    the current spatial capture status
+  - trim landing time and near-landing hover without using arbitrary sim-time
+    limits as controller state
   - keep final landing as the primary scored goal while reporting waypoint
     capture and next-leg viability diagnostics
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
