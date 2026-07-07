@@ -115,6 +115,17 @@ Current corpus tiers:
   - `r+80` only
   - intended as an explicit frontier watch, not as the direct-transfer
     controller pass/fail gate
+- `transfer_waypoint_rpos80_smoke`
+  - 27 runs
+  - `r+80` only, all 3 payload tiers, all 3 radius tiers, smoke seeds
+  - injects the `single_dogleg_v1` waypoint profile
+  - intended as the fast waypoint-guidance probe for the known direct-transfer
+    frontier
+- `transfer_waypoint_rpos80_full`
+  - 108 runs
+  - `r+80` only, all 3 payload tiers, all 3 radius tiers, all 12 transfer seeds
+  - injects the `single_dogleg_v1` waypoint profile
+  - intended as the full-seed waypoint-guidance frontier probe
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -186,6 +197,24 @@ or why a route is unsafe. Useful first report fields are active waypoint index,
 active leg index, closest waypoint distance, cross-track miss at the waypoint
 plane, waypoint capture time, outbound heading error, outbound speed, vertical
 rate at capture, and final-leg handoff quality.
+
+Implementation checkpoint:
+
+- `TransferRouteSpec` now carries preplanned waypoints.
+- `single_dogleg_v1` is the first matrix waypoint profile. It is intentionally
+  narrow: the profile exists for the `r+80` frontier and inserts one dogleg
+  waypoint before final descent to the target.
+- `transfer_waypoint_pdg_v1` is the first terrain-blind waypoint controller
+  variant. It tracks the active leg, blocks terminal handoff until the waypoint
+  is captured, and then lets the existing terminal handoff logic solve the
+  final target leg.
+- V1 capture status is deliberately spatial: capture means reaching the
+  configured radius or crossing the waypoint plane inside the cross-track band.
+  Outbound heading, outbound progress, speed, and vertical rate are still
+  reported as next-leg viability diagnostics, not hard gates.
+- Waypoint-profile transfer runs use a `120s` sim cap. This keeps the first
+  pass focused on route feasibility while leaving landing-time tightening as
+  follow-up controller work.
 
 Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:
@@ -357,6 +386,20 @@ Full-seed transfer coverage checkpoint:
   cell and confirms that no smoke-only success is hiding a seed outlier
 - the frontier pack keeps the known `r+80` near-vertical route failure visible
   without polluting the solved-region reliability gate
+
+Waypoint `r+80` checkpoint:
+
+- generated locally after adding `single_dogleg_v1` and
+  `transfer_waypoint_pdg_v1` with `8` workers and `--no-reuse`
+- `transfer_waypoint_rpos80_smoke`: `24 / 27` successes, `3` timeouts, `0`
+  invalidations, `95.61s` mean sim time, `120.00s` max sim time
+- `transfer_waypoint_rpos80_full`: `96 / 108` successes, `12` timeouts, `0`
+  invalidations, `95.61s` mean sim time, `120.00s` max sim time
+- `empty` and `half` payloads solve across all waypoint `r+80` radius tiers
+  and all full seeds
+- remaining failures are all `full/long/r+80` timeouts, so the next controller
+  debt is landing-time and outbound-leg shaping for the heaviest, longest
+  waypoint route rather than basic waypoint route feasibility
 
 Focused `full/r-80` radius triage:
 

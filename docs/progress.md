@@ -1,5 +1,40 @@
 # Progress
 
+## 2026-07-07
+
+### Waypoint guidance implementation checkpoint
+
+- Added first-class transfer route waypoints to the mission contract and wired
+  `signed_route_arc_transfer_v1` matrix entries to accept a
+  `single_dogleg_v1` waypoint profile.
+- Added `transfer_waypoint_pdg_v1` as a waypoint-enabled variant of the staged
+  transfer controller. The controller tracks the active leg, prevents terminal
+  handoff before waypoint capture, and then resumes the final target leg.
+- Added waypoint capture telemetry and a collapsed `Waypoint Handoff Triage`
+  report section so route-level reports can show capture status, closest
+  distance, cross-track miss, outbound progress, and worst seeds.
+- Added focused `r+80` waypoint packs:
+  - `transfer_waypoint_rpos80_smoke`: `27` smoke-seed runs across
+    `empty | half | full` and `short | nominal | long`
+  - `transfer_waypoint_rpos80_full`: `108` full-seed runs across the same
+    payload and radius tiers
+- Verified locally with `8` workers and `--no-reuse` after relaxing v1 capture
+  to a spatial handoff surface and giving waypoint-profile routes a `120s`
+  sim cap:
+  - `transfer_waypoint_rpos80_smoke`: `24 / 27` successes, `3` timeouts,
+    `0` invalidations, `95.61s` mean sim time, `120.00s` max sim time
+  - `transfer_waypoint_rpos80_full`: `96 / 108` successes, `12` timeouts,
+    `0` invalidations, `95.61s` mean sim time, `120.00s` max sim time
+- Result interpretation:
+  - the direct `r+80` frontier was previously `0 / 108`; a single preplanned
+    dogleg now lands all `empty` and `half` cases and all non-long `full`
+    cases
+  - the remaining failures are concentrated in `full/long/r+80`, where all
+    full seeds timeout at the `120s` cap
+  - waypoint capture status is currently a spatial handoff check; outbound
+    heading, progress, speed, and vertical rate remain diagnostics for the
+    next controller pass, not hard pass/fail gates yet
+
 ## 2026-07-05
 
 ### Resume and transfer-radius alignment checkpoint

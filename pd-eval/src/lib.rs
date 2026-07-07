@@ -2644,7 +2644,14 @@ fn resolve_transfer_matrix_scenario(
         lane_id
     );
     scenario.seed = seed_spec.index;
-    scenario.sim.max_time_s = scenario.sim.max_time_s.max(90.0);
+    scenario.sim.max_time_s = scenario
+        .sim
+        .max_time_s
+        .max(if entry.waypoint_profile.is_some() {
+            120.0
+        } else {
+            90.0
+        });
     scenario.tags = merge_unique_tags(&base_scenario.tags, &entry.tags);
     scenario.metadata.extend(entry.metadata.clone());
     scenario

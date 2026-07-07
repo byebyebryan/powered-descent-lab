@@ -2762,13 +2762,9 @@ fn waypoint_leg_stats(
 }
 
 fn waypoint_capture_passes(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
-    stats.cross_track_m <= waypoint.max_cross_track_m
-        && stats.outbound_heading_error_rad <= waypoint.max_outbound_heading_error_rad
-        && stats.outbound_progress_mps >= waypoint.min_outbound_progress_mps
-        && stats.speed_mps >= waypoint.min_speed_mps
-        && stats.speed_mps <= waypoint.max_speed_mps
-        && stats.vertical_speed_mps >= waypoint.min_vertical_speed_mps
-        && stats.vertical_speed_mps <= waypoint.max_vertical_speed_mps
+    stats.distance_m <= waypoint.capture_radius_m
+        || (stats.cross_track_m <= waypoint.max_cross_track_m
+            && stats.plane_progress_m >= -waypoint.capture_radius_m)
 }
 
 fn normalized_or_none(vector: Vec2) -> Option<Vec2> {

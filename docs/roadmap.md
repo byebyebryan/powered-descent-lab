@@ -281,6 +281,13 @@ Status:
   radius tiers, all payload tiers, and all 12 transfer seeds
 - `transfer_route_angle_radius_frontier_full` is the explicit full-seed `r+80`
   near-vertical frontier watch
+- `transfer_waypoint_rpos80_smoke` and `transfer_waypoint_rpos80_full` are the
+  first waypoint-guidance probes for that `r+80` frontier, using a preplanned
+  `single_dogleg_v1` waypoint profile rather than terrain-aware waypoint
+  planning
+- `transfer_waypoint_pdg_v1` provides the first terrain-blind waypoint guidance
+  variant: track active leg, spatially capture the waypoint, then resume the
+  final target leg
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run
@@ -310,13 +317,20 @@ Status:
     crashes, and `0` invalidations
   - the full-seed solved-region gate is clean; the only remaining transfer
     matrix debt is the separately tracked `r+80` route/waypoint frontier
-- next transfer slice is waypoint guidance design and implementation, not
-  waypoint planning:
-  - assume waypoints are already planned
-  - follow active route legs and switch at waypoint envelopes instead of
-    stopping at waypoints
+- current waypoint-guidance checkpoint:
+  - `transfer_waypoint_rpos80_smoke`: `24 / 27` successes, `3` timeouts, and
+    `0` invalidations
+  - `transfer_waypoint_rpos80_full`: `96 / 108` successes, `12` timeouts, and
+    `0` invalidations
+  - `empty` and `half` payload tiers solve across all waypoint `r+80` radius
+    tiers and full seeds
+  - remaining waypoint failures are all `full/long/r+80` timeouts
+- next transfer slice should improve waypoint route quality and landing time
+  without moving waypoint planning into the controller:
+  - keep waypoints preplanned
   - keep terrain avoidance encoded in waypoint positions/envelopes, not in
     terrain-reactive controller branches
+  - harden outbound-leg shaping beyond the current spatial capture status
   - keep final landing as the primary scored goal while reporting waypoint
     capture and next-leg viability diagnostics
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
