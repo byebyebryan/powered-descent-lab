@@ -2538,7 +2538,7 @@ fn render_waypoint_triage_section(
         r#"<details class="transfer-handoff-section">
   <summary class="section-head transfer-triage-summary">
     <h2>Waypoint Handoff Triage</h2>
-    <div class="section-note">Current-lane waypoint cells, sorted by missed captures and final landing failures.</div>
+    <div class="section-note">Current-lane waypoint cells, sorted by route-contract warnings and final landing failures. Missed waypoint captures remain warnings even when final landing succeeds.</div>
   </summary>
   <div class="table-wrap">
     <table class="transfer-handoff-table">
@@ -2716,13 +2716,20 @@ fn render_waypoint_success_cell(summary: &WaypointCellSummary<'_>) -> String {
     let main = format!("{}/{}", summary.success_runs, summary.scored_runs);
     let sub = if summary.scored_runs == 0 {
         format!("{} total", summary.total_runs)
+    } else if summary.success_runs == summary.scored_runs
+        && (summary.missed_runs > 0 || summary.tracking_runs > 0)
+    {
+        "landed with waypoint warning".to_owned()
     } else {
         format!(
             "{:.1}% scored",
             percentage(summary.success_runs, summary.scored_runs)
         )
     };
-    let class = if summary.success_runs < summary.scored_runs {
+    let class = if summary.success_runs < summary.scored_runs
+        || summary.missed_runs > 0
+        || summary.tracking_runs > 0
+    {
         "triage-risk"
     } else {
         ""
@@ -2742,7 +2749,7 @@ fn render_waypoint_capture_cell(summary: &WaypointCellSummary<'_>) -> String {
     };
     let sub = if summary.missed_runs > 0 || summary.tracking_runs > 0 {
         format!(
-            "{} missed · {} tracking",
+            "{} contract warning · {} tracking",
             summary.missed_runs, summary.tracking_runs
         )
     } else {
@@ -7962,8 +7969,41 @@ mod report_tests {
         );
 
         assert!(html.contains("<h2>Waypoint Handoff Triage</h2>"));
-        assert!(html.contains("1 missed · 0 tracking"));
+        assert!(html.contains("1 contract warning · 0 tracking"));
+        assert!(html.contains("landed with waypoint warning"));
         assert!(html.contains("Outbound Progress"));
+    }
+
+    #[test]
+    fn waypoint_triage_sorts_landed_misses_before_clean_captures() {
+        let mut report = synthetic_transfer_shape_report(
+            "waypoint_triage_sort_unit",
+            &[("r+60", "empty", 35.0, 0), ("r+80", "empty", 40.0, 1)],
+        );
+        report.records[0].review.waypoint_capture_status = Some("captured".to_owned());
+        report.records[0].review.waypoint_closest_distance_m = Some(16.0);
+        report.records[0].review.waypoint_cross_track_m = Some(7.0);
+        report.records[0].review.waypoint_outbound_progress_mps = Some(24.0);
+        report.records[1].review.waypoint_capture_status = Some("missed".to_owned());
+        report.records[1].review.waypoint_closest_distance_m = Some(120.0);
+        report.records[1].review.waypoint_cross_track_m = Some(88.0);
+        report.records[1].review.waypoint_outbound_progress_mps = Some(-12.0);
+
+        let html = render_batch_report(
+            Path::new("outputs/eval/waypoint_triage_sort_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        let missed_index = html
+            .find("<code>r+80</code>")
+            .expect("missed waypoint route row should render");
+        let clean_index = html
+            .find("<code>r+60</code>")
+            .expect("captured waypoint route row should render");
+        assert!(missed_index < clean_index);
+        assert!(html.contains("landed with waypoint warning"));
     }
 
     #[test]

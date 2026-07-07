@@ -2648,7 +2648,7 @@ fn resolve_transfer_matrix_scenario(
         .sim
         .max_time_s
         .max(if entry.waypoint_profile.is_some() {
-            120.0
+            130.0
         } else {
             90.0
         });
