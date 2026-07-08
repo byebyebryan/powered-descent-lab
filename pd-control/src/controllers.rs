@@ -45,8 +45,10 @@ const WAYPOINT_LEG_LOOKAHEAD_TIME_S: f64 = 5.0;
 const WAYPOINT_LEG_LOOKAHEAD_MIN_CAPTURE_RADII: f64 = 3.0;
 const WAYPOINT_LEG_LOOKAHEAD_MAX_CAPTURE_RADII: f64 = 12.0;
 const WAYPOINT_LEG_REMAINING_LOOKAHEAD_FRAC: f64 = 0.75;
-const WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII: f64 = 2.0;
-const WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII: f64 = 2.5;
+const WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII: f64 = 8.0;
+const WAYPOINT_OUTBOUND_CROSS_TRACK_BLEND_CAPTURE_RADII: f64 = 4.0;
+const WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII: f64 = 7.0;
+const WAYPOINT_OUTBOUND_VELOCITY_BLEND_WEIGHT: f64 = 0.75;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -2780,8 +2782,8 @@ fn waypoint_leg_stats(
 
 fn waypoint_guidance_target_m(geometry: &WaypointLegGeometry<'_>, stats: WaypointLegStats) -> Vec2 {
     let capture_radius_m = geometry.waypoint.capture_radius_m.max(1.0);
-    let progress_m = (stats.plane_progress_m + geometry.leg_length_m)
-        .clamp(0.0, geometry.leg_length_m);
+    let progress_m =
+        (stats.plane_progress_m + geometry.leg_length_m).clamp(0.0, geometry.leg_length_m);
     let lookahead_m = (stats.speed_mps * WAYPOINT_LEG_LOOKAHEAD_TIME_S)
         .clamp(
             capture_radius_m * WAYPOINT_LEG_LOOKAHEAD_MIN_CAPTURE_RADII,
@@ -2790,32 +2792,53 @@ fn waypoint_guidance_target_m(geometry: &WaypointLegGeometry<'_>, stats: Waypoin
         .min(geometry.leg_length_m);
     let remaining_m = (geometry.leg_length_m - progress_m).max(0.0);
     let downrange_lookahead_m = remaining_m * WAYPOINT_LEG_REMAINING_LOOKAHEAD_FRAC;
-    let target_progress_m = (progress_m + lookahead_m.max(downrange_lookahead_m))
-        .min(geometry.leg_length_m);
+    let target_progress_m =
+        (progress_m + lookahead_m.max(downrange_lookahead_m)).min(geometry.leg_length_m);
     let active_leg_target_m = geometry.anchor_m + (geometry.leg_unit * target_progress_m);
 
-    let distance_to_waypoint_plane_m = remaining_m;
-    let distance_blend = 1.0
-        - (distance_to_waypoint_plane_m
-            / (capture_radius_m * WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII).max(1.0))
-            .clamp(0.0, 1.0);
-    let cross_track_blend = 1.0
-        - (stats.cross_track_m
-            / (geometry.waypoint.max_cross_track_m + capture_radius_m).max(1.0))
-            .clamp(0.0, 1.0);
-    let blend = (distance_blend * cross_track_blend).clamp(0.0, 1.0);
+    let blend = waypoint_outbound_blend(geometry, stats, remaining_m, capture_radius_m);
     if blend <= 1.0e-6 {
         return active_leg_target_m;
     }
 
-    let outbound_lookahead_m =
-        (capture_radius_m * WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII).min(
-            (geometry.next_target_m - geometry.target_m)
-                .length()
-                .max(capture_radius_m),
-        );
+    let outbound_lookahead_m = (capture_radius_m * WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII).min(
+        (geometry.next_target_m - geometry.target_m)
+            .length()
+            .max(capture_radius_m),
+    );
     let outbound_target_m = geometry.target_m + (geometry.next_leg_unit * outbound_lookahead_m);
     active_leg_target_m + ((outbound_target_m - active_leg_target_m) * blend)
+}
+
+fn waypoint_outbound_blend(
+    geometry: &WaypointLegGeometry<'_>,
+    stats: WaypointLegStats,
+    remaining_m: f64,
+    capture_radius_m: f64,
+) -> f64 {
+    let distance_blend = 1.0
+        - (remaining_m / (capture_radius_m * WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII).max(1.0))
+            .clamp(0.0, 1.0);
+    if distance_blend <= 0.0 {
+        return 0.0;
+    }
+
+    let cross_track_scale_m = (geometry.waypoint.max_cross_track_m
+        + (capture_radius_m * WAYPOINT_OUTBOUND_CROSS_TRACK_BLEND_CAPTURE_RADII))
+        .max(1.0);
+    let cross_track_blend = 1.0 - (stats.cross_track_m / cross_track_scale_m).clamp(0.0, 1.0);
+    let heading_blend = (stats.outbound_heading_error_rad
+        / geometry.waypoint.max_outbound_heading_error_rad.max(1.0e-6))
+    .clamp(0.0, 1.0);
+    let progress_blend = ((geometry.waypoint.min_outbound_progress_mps
+        - stats.outbound_progress_mps)
+        / geometry.waypoint.min_outbound_progress_mps.max(1.0))
+    .clamp(0.0, 1.0);
+    let velocity_blend = heading_blend.max(progress_blend);
+
+    (distance_blend
+        * cross_track_blend.max(velocity_blend * WAYPOINT_OUTBOUND_VELOCITY_BLEND_WEIGHT))
+    .clamp(0.0, 1.0)
 }
 
 fn waypoint_capture_passes(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
@@ -3161,6 +3184,37 @@ mod tests {
         let target_from_waypoint = target_m - geometry.target_m;
 
         assert!(vec_dot(target_from_waypoint, geometry.next_leg_unit) > 0.0);
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_target_blends_outbound_when_velocity_is_unviable() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -30.0, 4.0);
+        observation.position_m = geometry.target_m
+            - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 5.0)
+            + (Vec2::new(-geometry.leg_unit.y, geometry.leg_unit.x)
+                * geometry.waypoint.max_cross_track_m
+                * 1.5);
+
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let blend = waypoint_outbound_blend(
+            &geometry,
+            stats,
+            (geometry.leg_length_m
+                - vec_dot(
+                    observation.position_m - geometry.anchor_m,
+                    geometry.leg_unit,
+                ))
+            .max(0.0),
+            geometry.waypoint.capture_radius_m,
+        );
+        let target_m = waypoint_guidance_target_m(&geometry, stats);
+        let target_cross_track_m = vec_cross(target_m - geometry.anchor_m, geometry.leg_unit).abs();
+
+        assert!(blend > 0.2);
+        assert!(target_cross_track_m > 1.0);
     }
 
     #[test]
