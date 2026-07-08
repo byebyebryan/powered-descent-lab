@@ -1,5 +1,32 @@
 # Progress
 
+## 2026-07-08
+
+### Waypoint contract probe checkpoint
+
+- Added `evaluation_goal = waypoint_handoff` for transfer-matrix entries with
+  preplanned waypoints. The probe stops at the first selected waypoint handoff
+  and scores spatial capture plus outbound viability directly.
+- Added focused waypoint contract packs:
+  - `transfer_waypoint_contract_rpos80_smoke`: `27` smoke-seed runs across
+    `empty | half | full` and `short | nominal | long`
+  - `transfer_waypoint_contract_rpos80_full`: `108` full-seed runs across the
+    same payload and radius tiers
+- Verified locally with `8` workers and `--no-reuse`:
+  - `transfer_waypoint_contract_rpos80_smoke`: `0 / 27` contract successes,
+    `0` invalidations, `22.37s` mean sim time, `30.72s` max sim time,
+    `15` spatial misses, and `12` outbound-unviable captures
+  - `transfer_waypoint_contract_rpos80_full`: `0 / 108` contract successes,
+    `0` invalidations, `22.31s` mean sim time, `31.19s` max sim time,
+    `56` spatial misses, and `52` outbound-unviable captures
+- Result interpretation:
+  - the current waypoint controller can still recover and land after the dogleg
+    in the final-landing packs
+  - the waypoint contract probe confirms the route-quality problem directly:
+    no current handoff reaches the next-leg envelope yet
+  - next controller work should tune pass-through guidance against the contract
+    packs, using final-landing packs as regression gates
+
 ## 2026-07-07
 
 ### Waypoint guidance implementation checkpoint

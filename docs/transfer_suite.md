@@ -134,6 +134,15 @@ Current corpus tiers:
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, all 12 transfer seeds
   - injects the `single_dogleg_v1` waypoint profile
   - intended as the full-seed waypoint-guidance frontier probe
+- `transfer_waypoint_contract_rpos80_smoke`
+  - 27 runs
+  - same geometry as `transfer_waypoint_rpos80_smoke`
+  - uses `evaluation_goal = waypoint_handoff` to score the first waypoint
+    contract directly
+- `transfer_waypoint_contract_rpos80_full`
+  - 108 runs
+  - same geometry as `transfer_waypoint_rpos80_full`
+  - full-seed contract probe for waypoint controller tuning
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -200,12 +209,15 @@ terrain fixture labels. Terrain crashes and clearance margins can be reported as
 evidence that a waypoint plan is bad; they should not become hidden controller
 modes.
 
-The maintained score should remain final landing on the target pad. Waypoint
-arrival failures are guidance diagnostics that explain why final landing failed
-or why a route is unsafe. Useful first report fields are active waypoint index,
-active leg index, closest waypoint distance, cross-track miss at the waypoint
-plane, waypoint capture time, outbound heading error, outbound speed, vertical
-rate at capture, and final-leg handoff quality.
+The maintained score for transfer reliability remains final landing on the
+target pad. Waypoint arrival failures are guidance diagnostics that explain why
+final landing failed or why a route is unsafe. The separate waypoint handoff
+probe packs intentionally score only the selected waypoint contract so
+controller tuning can target pass-through quality before final-landing recovery
+hides the problem. Useful report fields are active waypoint index, active leg
+index, closest waypoint distance, cross-track miss at the waypoint plane,
+waypoint capture time, outbound heading error, outbound speed, vertical rate at
+capture, and final-leg handoff quality.
 
 Implementation checkpoint:
 
@@ -222,6 +234,9 @@ Implementation checkpoint:
   The stricter waypoint contract is reported separately: spatial misses are
   split from captures whose outbound heading, outbound progress, speed, or
   vertical rate would make the next leg unviable.
+- `evaluation_goal = waypoint_handoff` is the first waypoint contract probe. It
+  stops at capture-radius entry or waypoint-plane crossing and scores the
+  selected waypoint's spatial and outbound envelope directly.
 - Waypoint-profile transfer runs use a `130s` sim cap. This keeps the first
   pass focused on route feasibility while leaving landing-time tightening as
   follow-up controller work.
@@ -413,6 +428,12 @@ Waypoint `r+80` checkpoint:
   invalidations, `103.63s` mean sim time, `126.54s` max sim time, `56` spatial
   waypoint misses, `52` outbound-unviable captures, and `0` contract-passing
   handoffs
+- `transfer_waypoint_contract_rpos80_smoke`: `0 / 27` contract successes, `0`
+  invalidations, `22.37s` mean sim time, `30.72s` max sim time, `15` spatial
+  waypoint misses, and `12` outbound-unviable captures
+- `transfer_waypoint_contract_rpos80_full`: `0 / 108` contract successes, `0`
+  invalidations, `22.31s` mean sim time, `31.19s` max sim time, `56` spatial
+  waypoint misses, and `52` outbound-unviable captures
 - all waypoint `r+80` payload/radius/seed cases now land, including the
   previous `full/long/r+80` timeout cluster
 - remaining debt is pass-through route quality: the controller can still land

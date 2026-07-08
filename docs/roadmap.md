@@ -286,6 +286,9 @@ Status:
   first waypoint-guidance probes for that `r+80` frontier, using a preplanned
   `single_dogleg_v1` waypoint profile rather than terrain-aware waypoint
   planning
+- `transfer_waypoint_contract_rpos80_smoke` and
+  `transfer_waypoint_contract_rpos80_full` score the same dogleg route at the
+  first waypoint handoff instead of after final-landing recovery
 - `transfer_waypoint_pdg_v1` provides the first terrain-blind waypoint guidance
   variant: track active leg, spatially capture the waypoint, then resume the
   final target leg
@@ -325,6 +328,12 @@ Status:
   - `transfer_waypoint_rpos80_full`: `108 / 108` successes, `0` timeouts, `0`
     invalidations, `56` spatial waypoint misses, `52` outbound-unviable
     captures, and `0` contract-passing handoffs
+  - `transfer_waypoint_contract_rpos80_smoke`: `0 / 27` contract successes,
+    `0` invalidations, `15` spatial waypoint misses, and `12`
+    outbound-unviable captures
+  - `transfer_waypoint_contract_rpos80_full`: `0 / 108` contract successes,
+    `0` invalidations, `56` spatial waypoint misses, and `52`
+    outbound-unviable captures
   - all waypoint `r+80` payload/radius/seed cases land; remaining waypoint
     debt is pass-through route quality, not final landing reliability
 - next transfer slice should improve waypoint route quality and landing time
@@ -336,8 +345,8 @@ Status:
     the current spatial capture status
   - trim landing time and near-landing hover without using arbitrary sim-time
     limits as controller state
-  - keep final landing as the primary scored goal while reporting waypoint
-    capture and next-leg viability diagnostics
+  - use waypoint handoff probe packs as the primary tuning target, while final
+    landing packs remain the recovery/reliability regression gate
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
