@@ -320,13 +320,13 @@ Status:
     matrix debt is the separately tracked `r+80` route/waypoint frontier
 - current waypoint-guidance checkpoint:
   - `transfer_waypoint_rpos80_smoke`: `27 / 27` successes, `0` timeouts, `0`
-    invalidations, `15` captured waypoint runs, and `12` route-contract
-    warnings
+    invalidations, `15` spatial waypoint misses, `12` outbound-unviable
+    captures, and `0` contract-passing handoffs
   - `transfer_waypoint_rpos80_full`: `108 / 108` successes, `0` timeouts, `0`
-    invalidations, `60` captured waypoint runs, and `48` route-contract
-    warnings
+    invalidations, `56` spatial waypoint misses, `52` outbound-unviable
+    captures, and `0` contract-passing handoffs
   - all waypoint `r+80` payload/radius/seed cases land; remaining waypoint
-    debt is capture/outbound quality, not final landing reliability
+    debt is pass-through route quality, not final landing reliability
 - next transfer slice should improve waypoint route quality and landing time
   without moving waypoint planning into the controller:
   - keep waypoints preplanned

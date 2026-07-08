@@ -219,14 +219,15 @@ Implementation checkpoint:
   final target leg.
 - V1 capture status is deliberately spatial: capture means reaching the
   configured radius or crossing the waypoint plane inside the cross-track band.
-  Outbound heading, outbound progress, speed, and vertical rate are still
-  reported as next-leg viability diagnostics, not hard gates.
+  The stricter waypoint contract is reported separately: spatial misses are
+  split from captures whose outbound heading, outbound progress, speed, or
+  vertical rate would make the next leg unviable.
 - Waypoint-profile transfer runs use a `130s` sim cap. This keeps the first
   pass focused on route feasibility while leaving landing-time tightening as
   follow-up controller work.
-- Waypoint misses are route-contract warnings in reports, not mission failures
-  by themselves. The maintained score remains final landing, but capture
-  warnings keep route quality visible.
+- Waypoint misses and outbound-unviable captures are route-contract warnings in
+  reports, not mission failures by themselves. The maintained score remains
+  final landing, but capture/contract warnings keep route quality visible.
 
 Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:
@@ -401,18 +402,21 @@ Full-seed transfer coverage checkpoint:
 
 Waypoint `r+80` checkpoint:
 
-- generated locally after adding `single_dogleg_v1` and
-  `transfer_waypoint_pdg_v1` with `8` workers and `--no-reuse`
+- generated locally after adding `single_dogleg_v1`, `transfer_waypoint_pdg_v1`,
+  contract diagnostics, and the first outbound-velocity blend pass with `8`
+  workers and `--no-reuse`
 - `transfer_waypoint_rpos80_smoke`: `27 / 27` successes, `0` timeouts, `0`
-  invalidations, `94.56s` mean sim time, `120.59s` max sim time, `15`
-  captured waypoint runs, and `12` contract warnings
+  invalidations, `103.86s` mean sim time, `124.99s` max sim time, `15` spatial
+  waypoint misses, `12` outbound-unviable captures, and `0` contract-passing
+  handoffs
 - `transfer_waypoint_rpos80_full`: `108 / 108` successes, `0` timeouts, `0`
-  invalidations, `94.56s` mean sim time, `120.59s` max sim time, `60`
-  captured waypoint runs, and `48` contract warnings
+  invalidations, `103.63s` mean sim time, `126.54s` max sim time, `56` spatial
+  waypoint misses, `52` outbound-unviable captures, and `0` contract-passing
+  handoffs
 - all waypoint `r+80` payload/radius/seed cases now land, including the
   previous `full/long/r+80` timeout cluster
-- remaining debt is waypoint capture quality and outbound-leg shaping rather
-  than basic waypoint route feasibility or final landing reliability
+- remaining debt is pass-through route quality: the controller can still land
+  after the dogleg, but it does not yet produce viable waypoint handoffs
 
 Focused `full/r-80` radius triage:
 
