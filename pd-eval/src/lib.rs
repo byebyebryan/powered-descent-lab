@@ -200,6 +200,10 @@ pub struct BatchRunReviewMetrics {
     #[serde(default)]
     pub waypoint_capture_status: Option<String>,
     #[serde(default)]
+    pub waypoint_contract_status: Option<String>,
+    #[serde(default)]
+    pub waypoint_contract_reasons: Vec<String>,
+    #[serde(default)]
     pub waypoint_active_index: Option<i64>,
     #[serde(default)]
     pub waypoint_capture_time_s: Option<f64>,
@@ -2823,6 +2827,24 @@ fn resolve_transfer_matrix_scenario(
                 format!("{prefix}_max_cross_track_m"),
                 waypoint.max_cross_track_m,
             );
+            resolved_parameters.insert(
+                format!("{prefix}_max_outbound_heading_error_rad"),
+                waypoint.max_outbound_heading_error_rad,
+            );
+            resolved_parameters.insert(
+                format!("{prefix}_min_outbound_progress_mps"),
+                waypoint.min_outbound_progress_mps,
+            );
+            resolved_parameters.insert(format!("{prefix}_min_speed_mps"), waypoint.min_speed_mps);
+            resolved_parameters.insert(format!("{prefix}_max_speed_mps"), waypoint.max_speed_mps);
+            resolved_parameters.insert(
+                format!("{prefix}_min_vertical_speed_mps"),
+                waypoint.min_vertical_speed_mps,
+            );
+            resolved_parameters.insert(
+                format!("{prefix}_max_vertical_speed_mps"),
+                waypoint.max_vertical_speed_mps,
+            );
         }
     }
 
@@ -4948,6 +4970,7 @@ fn derive_run_review_metrics(
             .unwrap_or((None, None));
     let transfer = transfer_review_metrics(&artifacts.controller_updates, &run.samples);
     let waypoint = waypoint_review_metrics(&artifacts.controller_updates);
+    let waypoint_contract = waypoint_contract_review_metrics(scenario, &waypoint);
     let transfer_shape =
         transfer_shape_metrics(scenario, &run.samples, &artifacts.controller_updates);
 
@@ -5001,6 +5024,8 @@ fn derive_run_review_metrics(
         transfer_corridor_mode: transfer.corridor_mode,
         transfer_corridor_min_margin_m: transfer.corridor_min_margin_m,
         waypoint_capture_status: waypoint.capture_status,
+        waypoint_contract_status: waypoint_contract.status,
+        waypoint_contract_reasons: waypoint_contract.reasons,
         waypoint_active_index: waypoint.active_index,
         waypoint_capture_time_s: waypoint.capture_time_s,
         waypoint_closest_distance_m: waypoint.closest_distance_m,
@@ -5027,6 +5052,12 @@ struct WaypointReviewMetrics {
     outbound_progress_mps: Option<f64>,
     speed_mps: Option<f64>,
     vertical_speed_mps: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct WaypointContractReviewMetrics {
+    status: Option<String>,
+    reasons: Vec<String>,
 }
 
 fn waypoint_review_metrics(
@@ -5081,6 +5112,118 @@ fn waypoint_review_metrics(
             &update.frame.metrics,
             metric::WAYPOINT_VERTICAL_SPEED_MPS,
         ),
+    }
+}
+
+fn waypoint_contract_review_metrics(
+    scenario: &ScenarioSpec,
+    waypoint: &WaypointReviewMetrics,
+) -> WaypointContractReviewMetrics {
+    let Some(capture_status) = waypoint.capture_status.as_deref() else {
+        return WaypointContractReviewMetrics::default();
+    };
+    let Some(route) = scenario.mission.transfer_route.as_ref() else {
+        return WaypointContractReviewMetrics {
+            status: Some("unknown".to_owned()),
+            reasons: vec!["missing_route".to_owned()],
+        };
+    };
+    let Some(active_index) = waypoint
+        .active_index
+        .and_then(|index| usize::try_from(index).ok())
+    else {
+        return WaypointContractReviewMetrics {
+            status: Some("unknown".to_owned()),
+            reasons: vec!["missing_waypoint_index".to_owned()],
+        };
+    };
+    let Some(spec) = route.waypoints.get(active_index) else {
+        return WaypointContractReviewMetrics {
+            status: Some("unknown".to_owned()),
+            reasons: vec!["missing_waypoint_spec".to_owned()],
+        };
+    };
+
+    match capture_status {
+        "tracking" => WaypointContractReviewMetrics {
+            status: Some("incomplete".to_owned()),
+            reasons: vec!["tracking".to_owned()],
+        },
+        "missed" => WaypointContractReviewMetrics {
+            status: Some("spatial_miss".to_owned()),
+            reasons: waypoint_spatial_miss_reasons(spec, waypoint),
+        },
+        "captured" => waypoint_outbound_contract_review_metrics(spec, waypoint),
+        _ => WaypointContractReviewMetrics {
+            status: Some("unknown".to_owned()),
+            reasons: vec![format!("unknown_capture_status:{capture_status}")],
+        },
+    }
+}
+
+fn waypoint_spatial_miss_reasons(
+    spec: &TransferWaypointSpec,
+    waypoint: &WaypointReviewMetrics,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    match waypoint.distance_m {
+        Some(distance_m) if distance_m <= spec.capture_radius_m => {}
+        Some(_) => reasons.push("outside_capture_radius".to_owned()),
+        None => reasons.push("missing_distance".to_owned()),
+    }
+    match waypoint.cross_track_m {
+        Some(cross_track_m) if cross_track_m <= spec.max_cross_track_m => {}
+        Some(_) => reasons.push("cross_track".to_owned()),
+        None => reasons.push("missing_cross_track".to_owned()),
+    }
+    match waypoint.plane_progress_m {
+        Some(plane_progress_m) if plane_progress_m >= -spec.capture_radius_m => {}
+        Some(_) => reasons.push("before_waypoint_plane".to_owned()),
+        None => reasons.push("missing_plane_progress".to_owned()),
+    }
+    if reasons.is_empty() {
+        reasons.push("spatial_miss".to_owned());
+    }
+    reasons
+}
+
+fn waypoint_outbound_contract_review_metrics(
+    spec: &TransferWaypointSpec,
+    waypoint: &WaypointReviewMetrics,
+) -> WaypointContractReviewMetrics {
+    let mut reasons = Vec::new();
+    match waypoint.outbound_heading_error_rad {
+        Some(value) if value <= spec.max_outbound_heading_error_rad => {}
+        Some(_) => reasons.push("heading".to_owned()),
+        None => reasons.push("missing_heading".to_owned()),
+    }
+    match waypoint.outbound_progress_mps {
+        Some(value) if value >= spec.min_outbound_progress_mps => {}
+        Some(_) => reasons.push("outbound_progress".to_owned()),
+        None => reasons.push("missing_outbound_progress".to_owned()),
+    }
+    match waypoint.speed_mps {
+        Some(value) if value >= spec.min_speed_mps && value <= spec.max_speed_mps => {}
+        Some(_) => reasons.push("speed".to_owned()),
+        None => reasons.push("missing_speed".to_owned()),
+    }
+    match waypoint.vertical_speed_mps {
+        Some(value)
+            if value >= spec.min_vertical_speed_mps && value <= spec.max_vertical_speed_mps => {}
+        Some(_) => reasons.push("vertical_speed".to_owned()),
+        None => reasons.push("missing_vertical_speed".to_owned()),
+    }
+
+    if reasons.is_empty() {
+        WaypointContractReviewMetrics {
+            status: Some("pass".to_owned()),
+            reasons,
+        }
+    } else {
+        WaypointContractReviewMetrics {
+            status: Some("outbound_unviable".to_owned()),
+            reasons,
+        }
     }
 }
 
@@ -6886,6 +7029,29 @@ mod tests {
         }
     }
 
+    fn waypoint_contract_scenario() -> ScenarioSpec {
+        let mut scenario = easy_landing_scenario();
+        scenario.mission.transfer_route = Some(TransferRouteSpec {
+            source_pad_id: "source".to_owned(),
+            target_pad_id: "pad_a".to_owned(),
+            route_angle_deg: 80.0,
+            route_radius_m: 800.0,
+            waypoints: vec![TransferWaypointSpec {
+                id: "wp_0".to_owned(),
+                position_m: Vec2::new(-220.0, 180.0),
+                capture_radius_m: 40.0,
+                max_cross_track_m: 50.0,
+                max_outbound_heading_error_rad: 0.85,
+                min_outbound_progress_mps: 8.0,
+                min_speed_mps: 10.0,
+                max_speed_mps: 130.0,
+                min_vertical_speed_mps: -80.0,
+                max_vertical_speed_mps: 65.0,
+            }],
+        });
+        scenario
+    }
+
     fn easy_checkpoint_scenario() -> ScenarioSpec {
         ScenarioSpec {
             id: "unit_timed_checkpoint".to_owned(),
@@ -7796,6 +7962,98 @@ mod tests {
                 .resolved_parameters
                 .get("waypoint_0_capture_radius_m"),
             Some(&waypoint.capture_radius_m)
+        );
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("waypoint_0_max_outbound_heading_error_rad"),
+            Some(&waypoint.max_outbound_heading_error_rad)
+        );
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("waypoint_0_min_outbound_progress_mps"),
+            Some(&waypoint.min_outbound_progress_mps)
+        );
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("waypoint_0_max_vertical_speed_mps"),
+            Some(&waypoint.max_vertical_speed_mps)
+        );
+    }
+
+    #[test]
+    fn waypoint_contract_review_passes_when_capture_and_outbound_envelope_pass() {
+        let scenario = waypoint_contract_scenario();
+        let metrics = WaypointReviewMetrics {
+            capture_status: Some("captured".to_owned()),
+            active_index: Some(0),
+            outbound_heading_error_rad: Some(0.4),
+            outbound_progress_mps: Some(18.0),
+            speed_mps: Some(42.0),
+            vertical_speed_mps: Some(12.0),
+            ..WaypointReviewMetrics::default()
+        };
+
+        let contract = waypoint_contract_review_metrics(&scenario, &metrics);
+
+        assert_eq!(contract.status.as_deref(), Some("pass"));
+        assert!(contract.reasons.is_empty());
+    }
+
+    #[test]
+    fn waypoint_contract_review_flags_captured_bad_outbound_state() {
+        let scenario = waypoint_contract_scenario();
+        let metrics = WaypointReviewMetrics {
+            capture_status: Some("captured".to_owned()),
+            active_index: Some(0),
+            outbound_heading_error_rad: Some(2.4),
+            outbound_progress_mps: Some(-18.0),
+            speed_mps: Some(42.0),
+            vertical_speed_mps: Some(92.0),
+            ..WaypointReviewMetrics::default()
+        };
+
+        let contract = waypoint_contract_review_metrics(&scenario, &metrics);
+
+        assert_eq!(contract.status.as_deref(), Some("outbound_unviable"));
+        assert_eq!(
+            contract.reasons,
+            vec![
+                "heading".to_owned(),
+                "outbound_progress".to_owned(),
+                "vertical_speed".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn waypoint_contract_review_flags_spatial_miss_separately() {
+        let scenario = waypoint_contract_scenario();
+        let metrics = WaypointReviewMetrics {
+            capture_status: Some("missed".to_owned()),
+            active_index: Some(0),
+            distance_m: Some(90.0),
+            cross_track_m: Some(72.0),
+            plane_progress_m: Some(-65.0),
+            outbound_heading_error_rad: Some(0.4),
+            outbound_progress_mps: Some(18.0),
+            speed_mps: Some(42.0),
+            vertical_speed_mps: Some(12.0),
+            ..WaypointReviewMetrics::default()
+        };
+
+        let contract = waypoint_contract_review_metrics(&scenario, &metrics);
+
+        assert_eq!(contract.status.as_deref(), Some("spatial_miss"));
+        assert_eq!(
+            contract.reasons,
+            vec![
+                "outside_capture_radius".to_owned(),
+                "cross_track".to_owned(),
+                "before_waypoint_plane".to_owned()
+            ]
         );
     }
 

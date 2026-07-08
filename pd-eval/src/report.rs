@@ -2478,11 +2478,17 @@ struct WaypointCellSummary<'a> {
     total_runs: usize,
     scored_runs: usize,
     success_runs: usize,
+    contract_pass_runs: usize,
+    spatial_miss_runs: usize,
+    outbound_unviable_runs: usize,
+    incomplete_runs: usize,
+    unknown_contract_runs: usize,
     captured_runs: usize,
     missed_runs: usize,
     tracking_runs: usize,
     closest_distance_m: Option<crate::BatchMetricSummary>,
     cross_track_m: Option<crate::BatchMetricSummary>,
+    heading_error_deg: Option<crate::BatchMetricSummary>,
     outbound_progress_mps: Option<crate::BatchMetricSummary>,
     worst_record: Option<&'a crate::BatchRunRecord>,
 }
@@ -2538,7 +2544,7 @@ fn render_waypoint_triage_section(
         r#"<details class="transfer-handoff-section">
   <summary class="section-head transfer-triage-summary">
     <h2>Waypoint Handoff Triage</h2>
-    <div class="section-note">Current-lane waypoint cells, sorted by route-contract warnings and final landing failures. Missed waypoint captures remain warnings even when final landing succeeds.</div>
+    <div class="section-note">Current-lane waypoint cells, sorted by waypoint-contract warnings and final landing failures. Final landing remains the scored result; contract status explains pass-through quality.</div>
   </summary>
   <div class="table-wrap">
     <table class="transfer-handoff-table">
@@ -2547,9 +2553,11 @@ fn render_waypoint_triage_section(
           <th>Route</th>
           <th>Vehicle</th>
           <th>Success</th>
+          <th>Contract</th>
           <th>Waypoint</th>
           <th>Closest</th>
           <th>Cross Track</th>
+          <th>Heading Error</th>
           <th>Outbound Progress</th>
           <th>Worst Seed</th>
         </tr>
@@ -2577,6 +2585,7 @@ fn render_waypoint_triage_row(
         escape_html(&summary.key.vehicle_variant)
     );
     let success_html = render_waypoint_success_cell(summary);
+    let contract_html = render_waypoint_contract_cell(summary);
     let waypoint_html = render_waypoint_capture_cell(summary);
     let closest_html = render_transfer_handoff_metric_cell(
         summary.closest_distance_m.as_ref(),
@@ -2586,6 +2595,11 @@ fn render_waypoint_triage_row(
     let cross_track_html = render_transfer_handoff_metric_cell(
         summary.cross_track_m.as_ref(),
         MetricDisplayKind::Meters,
+        None,
+    );
+    let heading_error_html = render_transfer_handoff_metric_cell(
+        summary.heading_error_deg.as_ref(),
+        MetricDisplayKind::Degrees,
         None,
     );
     let outbound_progress_html = render_transfer_handoff_metric_cell(
@@ -2599,18 +2613,22 @@ fn render_waypoint_triage_row(
   <td>{route}</td>
   <td>{vehicle}</td>
   <td>{success}</td>
+  <td>{contract}</td>
   <td>{waypoint}</td>
   <td>{closest}</td>
   <td>{cross_track}</td>
+  <td>{heading_error}</td>
   <td>{outbound_progress}</td>
   <td>{worst_seed}</td>
 </tr>"#,
         route = route_html,
         vehicle = vehicle_html,
         success = success_html,
+        contract = contract_html,
         waypoint = waypoint_html,
         closest = closest_html,
         cross_track = cross_track_html,
+        heading_error = heading_error_html,
         outbound_progress = outbound_progress_html,
         worst_seed = worst_seed_html,
     )
@@ -2646,6 +2664,36 @@ fn waypoint_cell_summary<'a>(
         .iter()
         .filter(|record| transfer_shape_record_success(record))
         .count();
+    let contract_pass_runs = records
+        .iter()
+        .filter(|record| record.review.waypoint_contract_status.as_deref() == Some("pass"))
+        .count();
+    let spatial_miss_runs = records
+        .iter()
+        .filter(|record| {
+            record.review.waypoint_contract_status.as_deref() == Some("spatial_miss")
+                || (record.review.waypoint_contract_status.is_none()
+                    && record.review.waypoint_capture_status.as_deref() == Some("missed"))
+        })
+        .count();
+    let outbound_unviable_runs = records
+        .iter()
+        .filter(|record| {
+            record.review.waypoint_contract_status.as_deref() == Some("outbound_unviable")
+        })
+        .count();
+    let incomplete_runs = records
+        .iter()
+        .filter(|record| {
+            record.review.waypoint_contract_status.as_deref() == Some("incomplete")
+                || (record.review.waypoint_contract_status.is_none()
+                    && record.review.waypoint_capture_status.as_deref() == Some("tracking"))
+        })
+        .count();
+    let unknown_contract_runs = records
+        .iter()
+        .filter(|record| record.review.waypoint_contract_status.as_deref() == Some("unknown"))
+        .count();
     let captured_runs = records
         .iter()
         .filter(|record| record.review.waypoint_capture_status.as_deref() == Some("captured"))
@@ -2667,6 +2715,11 @@ fn waypoint_cell_summary<'a>(
         total_runs: records.len(),
         scored_runs,
         success_runs,
+        contract_pass_runs,
+        spatial_miss_runs,
+        outbound_unviable_runs,
+        incomplete_runs,
+        unknown_contract_runs,
         captured_runs,
         missed_runs,
         tracking_runs,
@@ -2675,6 +2728,11 @@ fn waypoint_cell_summary<'a>(
         }),
         cross_track_m: transfer_shape_metric_summary(records, |review| {
             review.waypoint_cross_track_m
+        }),
+        heading_error_deg: transfer_shape_metric_summary(records, |review| {
+            review
+                .waypoint_outbound_heading_error_rad
+                .map(f64::to_degrees)
         }),
         outbound_progress_mps: transfer_shape_metric_summary(records, |review| {
             review.waypoint_outbound_progress_mps
@@ -2689,7 +2747,9 @@ fn compare_waypoint_cells(
 ) -> Ordering {
     rhs.missed_runs
         .cmp(&lhs.missed_runs)
+        .then_with(|| rhs.outbound_unviable_runs.cmp(&lhs.outbound_unviable_runs))
         .then_with(|| rhs.tracking_runs.cmp(&lhs.tracking_runs))
+        .then_with(|| rhs.unknown_contract_runs.cmp(&lhs.unknown_contract_runs))
         .then_with(|| {
             (rhs.scored_runs - rhs.success_runs).cmp(&(lhs.scored_runs - lhs.success_runs))
         })
@@ -2698,15 +2758,32 @@ fn compare_waypoint_cells(
 
 fn waypoint_record_score(record: &crate::BatchRunRecord) -> f64 {
     let mut score = 0.0;
-    match record.review.waypoint_capture_status.as_deref() {
-        Some("missed") => score += 10_000.0,
-        Some("tracking") => score += 5_000.0,
-        Some("captured") => {}
-        _ => score += 1_000.0,
+    match record.review.waypoint_contract_status.as_deref() {
+        Some("spatial_miss") => score += 12_000.0,
+        Some("outbound_unviable") => score += 10_000.0,
+        Some("incomplete") => score += 8_000.0,
+        Some("unknown") => score += 6_000.0,
+        Some("pass") => {}
+        _ => match record.review.waypoint_capture_status.as_deref() {
+            Some("missed") => score += 12_000.0,
+            Some("tracking") => score += 8_000.0,
+            Some("captured") => {}
+            _ => score += 1_000.0,
+        },
     }
     if record.analytic.is_scored() && !transfer_shape_record_success(record) {
         score += 2_500.0;
     }
+    score += record
+        .review
+        .waypoint_outbound_heading_error_rad
+        .unwrap_or(0.0)
+        * 100.0;
+    score += record
+        .review
+        .waypoint_outbound_progress_mps
+        .map(|progress_mps| (-progress_mps).max(0.0) * 10.0)
+        .unwrap_or(0.0);
     score += record.review.waypoint_cross_track_m.unwrap_or(0.0);
     score += record.review.waypoint_closest_distance_m.unwrap_or(0.0) * 0.2;
     score
@@ -2716,9 +2793,7 @@ fn render_waypoint_success_cell(summary: &WaypointCellSummary<'_>) -> String {
     let main = format!("{}/{}", summary.success_runs, summary.scored_runs);
     let sub = if summary.scored_runs == 0 {
         format!("{} total", summary.total_runs)
-    } else if summary.success_runs == summary.scored_runs
-        && (summary.missed_runs > 0 || summary.tracking_runs > 0)
-    {
+    } else if summary.success_runs == summary.scored_runs && summary.contract_warning_runs() > 0 {
         "landed with waypoint warning".to_owned()
     } else {
         format!(
@@ -2726,9 +2801,7 @@ fn render_waypoint_success_cell(summary: &WaypointCellSummary<'_>) -> String {
             percentage(summary.success_runs, summary.scored_runs)
         )
     };
-    let class = if summary.success_runs < summary.scored_runs
-        || summary.missed_runs > 0
-        || summary.tracking_runs > 0
+    let class = if summary.success_runs < summary.scored_runs || summary.contract_warning_runs() > 0
     {
         "triage-risk"
     } else {
@@ -2737,6 +2810,25 @@ fn render_waypoint_success_cell(summary: &WaypointCellSummary<'_>) -> String {
     format!(
         r#"<div class="overview-stack {class}"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
         escape_html(&main),
+        escape_html(&sub),
+    )
+}
+
+fn render_waypoint_contract_cell(summary: &WaypointCellSummary<'_>) -> String {
+    let class = if summary.contract_warning_runs() > 0 {
+        "triage-risk"
+    } else {
+        ""
+    };
+    let sub = if summary.contract_warning_runs() == 0 {
+        "all viable".to_owned()
+    } else {
+        waypoint_contract_warning_summary(summary)
+    };
+    format!(
+        r#"<div class="overview-stack {class}"><div class="overview-main">{}/{}</div><div class="overview-sub">{}</div></div>"#,
+        summary.contract_pass_runs,
+        summary.total_runs,
         escape_html(&sub),
     )
 }
@@ -2763,6 +2855,32 @@ fn render_waypoint_capture_cell(summary: &WaypointCellSummary<'_>) -> String {
     )
 }
 
+impl<'a> WaypointCellSummary<'a> {
+    fn contract_warning_runs(&self) -> usize {
+        self.spatial_miss_runs
+            + self.outbound_unviable_runs
+            + self.incomplete_runs
+            + self.unknown_contract_runs
+    }
+}
+
+fn waypoint_contract_warning_summary(summary: &WaypointCellSummary<'_>) -> String {
+    let mut parts = Vec::new();
+    if summary.spatial_miss_runs > 0 {
+        parts.push(format!("{} spatial", summary.spatial_miss_runs));
+    }
+    if summary.outbound_unviable_runs > 0 {
+        parts.push(format!("{} outbound", summary.outbound_unviable_runs));
+    }
+    if summary.incomplete_runs > 0 {
+        parts.push(format!("{} incomplete", summary.incomplete_runs));
+    }
+    if summary.unknown_contract_runs > 0 {
+        parts.push(format!("{} unknown", summary.unknown_contract_runs));
+    }
+    parts.join(" · ")
+}
+
 fn render_waypoint_worst_seed(
     summary: &WaypointCellSummary<'_>,
     output_dir: &Path,
@@ -2774,8 +2892,9 @@ fn render_waypoint_worst_seed(
     let label = format!("seed {:04}", record.resolved.resolved_seed);
     let note = record
         .review
-        .waypoint_capture_status
+        .waypoint_contract_status
         .as_deref()
+        .or(record.review.waypoint_capture_status.as_deref())
         .unwrap_or("waypoint");
     let Some(bundle_dir) = candidate_record_map
         .get(&record.resolved.run_id)
@@ -7953,12 +8072,17 @@ mod report_tests {
             &[("r+80", "empty", 40.0, 0), ("r+80", "empty", 35.0, 1)],
         );
         report.records[0].review.waypoint_capture_status = Some("captured".to_owned());
+        report.records[0].review.waypoint_contract_status = Some("pass".to_owned());
         report.records[0].review.waypoint_closest_distance_m = Some(14.0);
         report.records[0].review.waypoint_cross_track_m = Some(8.0);
+        report.records[0].review.waypoint_outbound_heading_error_rad = Some(0.25);
         report.records[0].review.waypoint_outbound_progress_mps = Some(22.0);
         report.records[1].review.waypoint_capture_status = Some("missed".to_owned());
+        report.records[1].review.waypoint_contract_status = Some("spatial_miss".to_owned());
+        report.records[1].review.waypoint_contract_reasons = vec!["cross_track".to_owned()];
         report.records[1].review.waypoint_closest_distance_m = Some(60.0);
         report.records[1].review.waypoint_cross_track_m = Some(52.0);
+        report.records[1].review.waypoint_outbound_heading_error_rad = Some(1.4);
         report.records[1].review.waypoint_outbound_progress_mps = Some(3.0);
 
         let html = render_batch_report(
@@ -7969,8 +8093,9 @@ mod report_tests {
         );
 
         assert!(html.contains("<h2>Waypoint Handoff Triage</h2>"));
-        assert!(html.contains("1 contract warning · 0 tracking"));
+        assert!(html.contains("1 spatial"));
         assert!(html.contains("landed with waypoint warning"));
+        assert!(html.contains("Heading Error"));
         assert!(html.contains("Outbound Progress"));
     }
 
@@ -7981,12 +8106,17 @@ mod report_tests {
             &[("r+60", "empty", 35.0, 0), ("r+80", "empty", 40.0, 1)],
         );
         report.records[0].review.waypoint_capture_status = Some("captured".to_owned());
+        report.records[0].review.waypoint_contract_status = Some("pass".to_owned());
         report.records[0].review.waypoint_closest_distance_m = Some(16.0);
         report.records[0].review.waypoint_cross_track_m = Some(7.0);
+        report.records[0].review.waypoint_outbound_heading_error_rad = Some(0.2);
         report.records[0].review.waypoint_outbound_progress_mps = Some(24.0);
         report.records[1].review.waypoint_capture_status = Some("missed".to_owned());
+        report.records[1].review.waypoint_contract_status = Some("spatial_miss".to_owned());
+        report.records[1].review.waypoint_contract_reasons = vec!["cross_track".to_owned()];
         report.records[1].review.waypoint_closest_distance_m = Some(120.0);
         report.records[1].review.waypoint_cross_track_m = Some(88.0);
+        report.records[1].review.waypoint_outbound_heading_error_rad = Some(2.4);
         report.records[1].review.waypoint_outbound_progress_mps = Some(-12.0);
 
         let html = render_batch_report(
