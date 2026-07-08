@@ -354,6 +354,10 @@ pub enum EvaluationGoal {
     LandingOnPad {
         target_pad_id: String,
     },
+    WaypointHandoff {
+        target_pad_id: String,
+        waypoint_index: usize,
+    },
     TimedCheckpoint {
         target_pad_id: String,
         end_time_s: f64,
@@ -369,6 +373,13 @@ impl EvaluationGoal {
     pub fn validate(&self) -> Result<(), String> {
         match self {
             Self::LandingOnPad { target_pad_id } => {
+                if target_pad_id.trim().is_empty() {
+                    Err("target_pad_id must not be empty".to_owned())
+                } else {
+                    Ok(())
+                }
+            }
+            Self::WaypointHandoff { target_pad_id, .. } => {
                 if target_pad_id.trim().is_empty() {
                     Err("target_pad_id must not be empty".to_owned())
                 } else {
@@ -420,6 +431,7 @@ impl EvaluationGoal {
     pub fn target_pad_id(&self) -> &str {
         match self {
             Self::LandingOnPad { target_pad_id } => target_pad_id.as_str(),
+            Self::WaypointHandoff { target_pad_id, .. } => target_pad_id.as_str(),
             Self::TimedCheckpoint { target_pad_id, .. } => target_pad_id.as_str(),
         }
     }
@@ -491,6 +503,17 @@ impl ScenarioSpec {
                 return Err(format!(
                     "transfer_route target pad '{}' must match mission goal target pad '{target_pad_id}'",
                     route.target_pad_id
+                ));
+            }
+        }
+        if let EvaluationGoal::WaypointHandoff { waypoint_index, .. } = &self.mission.goal {
+            let Some(route) = &self.mission.transfer_route else {
+                return Err("waypoint_handoff goal requires mission.transfer_route".to_owned());
+            };
+            if route.waypoints.get(*waypoint_index).is_none() {
+                return Err(format!(
+                    "waypoint_handoff waypoint_index {} is not present in transfer_route.waypoints",
+                    waypoint_index
                 ));
             }
         }
@@ -870,5 +893,106 @@ mod tests {
             ..route
         };
         assert!(invalid_route.validate().is_err());
+    }
+
+    #[test]
+    fn waypoint_handoff_goal_requires_matching_route_waypoint() {
+        let waypoint = TransferWaypointSpec {
+            id: "wp_1".to_owned(),
+            position_m: Vec2::new(-50.0, 60.0),
+            capture_radius_m: 25.0,
+            max_cross_track_m: 30.0,
+            max_outbound_heading_error_rad: 0.8,
+            min_outbound_progress_mps: 5.0,
+            min_speed_mps: 8.0,
+            max_speed_mps: 90.0,
+            min_vertical_speed_mps: -50.0,
+            max_vertical_speed_mps: 40.0,
+        };
+        let mut scenario = ScenarioSpec {
+            id: "waypoint_handoff_validation".to_owned(),
+            name: "Waypoint handoff validation".to_owned(),
+            description: "validation fixture".to_owned(),
+            seed: 1,
+            tags: vec!["test".to_owned()],
+            metadata: BTreeMap::new(),
+            sim: SimConfig {
+                physics_hz: 120,
+                controller_hz: 60,
+                max_time_s: 90.0,
+                sample_hz: Some(10),
+            },
+            world: WorldSpec {
+                gravity_mps2: 9.81,
+                terrain: TerrainDefinition::Heightfield {
+                    points_m: vec![Vec2::new(-120.0, 0.0), Vec2::new(120.0, 0.0)],
+                },
+                landing_pads: vec![
+                    LandingPadSpec {
+                        id: "source".to_owned(),
+                        center_x_m: -100.0,
+                        surface_y_m: 0.0,
+                        width_m: 30.0,
+                    },
+                    LandingPadSpec {
+                        id: "target".to_owned(),
+                        center_x_m: 0.0,
+                        surface_y_m: 0.0,
+                        width_m: 30.0,
+                    },
+                ],
+            },
+            vehicle: VehicleSpec {
+                geometry: VehicleGeometry {
+                    hull_width_m: 4.0,
+                    hull_height_m: 6.0,
+                    touchdown_half_span_m: 2.0,
+                    touchdown_base_offset_m: 3.0,
+                },
+                dry_mass_kg: 700.0,
+                initial_fuel_kg: 240.0,
+                max_fuel_kg: 240.0,
+                max_thrust_n: 16_000.0,
+                max_fuel_burn_kgps: 11.0,
+                min_throttle_frac: 0.0,
+                max_rotation_rate_radps: 1.2,
+                safe_touchdown_normal_speed_mps: 3.0,
+                safe_touchdown_tangential_speed_mps: 2.0,
+                safe_touchdown_attitude_error_rad: 0.15,
+                safe_touchdown_angular_rate_radps: 0.35,
+            },
+            initial_state: VehicleInitialState {
+                position_m: Vec2::new(-100.0, 3.0),
+                velocity_mps: Vec2::new(0.0, 0.0),
+                attitude_rad: 0.0,
+                angular_rate_radps: 0.0,
+            },
+            mission: MissionSpec {
+                transfer_route: Some(TransferRouteSpec {
+                    source_pad_id: "source".to_owned(),
+                    target_pad_id: "target".to_owned(),
+                    route_angle_deg: 80.0,
+                    route_radius_m: 800.0,
+                    waypoints: vec![waypoint],
+                }),
+                goal: EvaluationGoal::WaypointHandoff {
+                    target_pad_id: "target".to_owned(),
+                    waypoint_index: 0,
+                },
+            },
+        };
+        assert!(scenario.validate().is_ok());
+
+        scenario
+            .mission
+            .transfer_route
+            .as_mut()
+            .expect("route present")
+            .waypoints
+            .clear();
+        assert!(scenario.validate().is_err());
+
+        scenario.mission.transfer_route = None;
+        assert!(scenario.validate().is_err());
     }
 }
