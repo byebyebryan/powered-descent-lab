@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, fmt::Write as _, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
+    fs,
+    path::Path,
+};
 
 use anyhow::{Context, Result};
 use pd_control::{
@@ -74,6 +79,19 @@ pub struct PreviewSeries<'a> {
     pub manifest: &'a RunManifest,
     pub samples: &'a [SampleRecord],
     pub controller_updates: Option<&'a [ControllerUpdateRecord]>,
+}
+
+struct PreviewWaypoint {
+    id: String,
+    x_m: f64,
+    y_m: f64,
+    capture_radius_m: f64,
+    max_cross_track_m: f64,
+    min_outbound_progress_mps: f64,
+    min_speed_mps: f64,
+    max_speed_mps: f64,
+    min_vertical_speed_mps: f64,
+    max_vertical_speed_mps: f64,
 }
 
 pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
@@ -206,6 +224,51 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
         .filter(|(x, y)| x.is_finite() && y.is_finite())
         .collect::<Vec<_>>();
     let pad = pad_world.map(|(_, surface_y_m, width_m)| (0.0, surface_y_m, width_m));
+    let mut waypoint_keys = BTreeSet::new();
+    let mut waypoints = Vec::new();
+    let mut route_guides = Vec::new();
+    for series in series {
+        let Some(route) = series.scenario.mission.transfer_route.as_ref() else {
+            continue;
+        };
+        if route.waypoints.is_empty() {
+            continue;
+        }
+        let flip_sign =
+            preview_flip_sign(series.scenario.initial_state.position_m.x - normalize_center_x);
+        let mut route_guide = Vec::with_capacity(route.waypoints.len() + 2);
+        route_guide.push((
+            transform_x(series.scenario.initial_state.position_m.x, flip_sign),
+            series.scenario.initial_state.position_m.y,
+        ));
+        for waypoint in &route.waypoints {
+            let x = transform_x(waypoint.position_m.x, flip_sign);
+            let y = waypoint.position_m.y;
+            let key = format!(
+                "{}:{x:.2}:{y:.2}:{:.2}:{:.2}",
+                waypoint.id, waypoint.capture_radius_m, waypoint.max_cross_track_m
+            );
+            if waypoint_keys.insert(key) {
+                waypoints.push(PreviewWaypoint {
+                    id: waypoint.id.clone(),
+                    x_m: x,
+                    y_m: y,
+                    capture_radius_m: waypoint.capture_radius_m,
+                    max_cross_track_m: waypoint.max_cross_track_m,
+                    min_outbound_progress_mps: waypoint.min_outbound_progress_mps,
+                    min_speed_mps: waypoint.min_speed_mps,
+                    max_speed_mps: waypoint.max_speed_mps,
+                    min_vertical_speed_mps: waypoint.min_vertical_speed_mps,
+                    max_vertical_speed_mps: waypoint.max_vertical_speed_mps,
+                });
+            }
+            route_guide.push((x, y));
+        }
+        if let Some((target_x_m, target_y_m, _)) = pad {
+            route_guide.push((target_x_m, target_y_m));
+        }
+        route_guides.push(route_guide);
+    }
     let trajectories = series
         .iter()
         .map(|series| {
@@ -268,6 +331,25 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
         for &(x, y) in trajectory.iter().chain(reference.iter()) {
             include_point(x, y);
         }
+    }
+    for route_guide in &route_guides {
+        for &(x, y) in route_guide {
+            include_point(x, y);
+        }
+    }
+    for waypoint in &waypoints {
+        let envelope_radius_m = waypoint
+            .capture_radius_m
+            .max(waypoint.max_cross_track_m)
+            .max(1.0);
+        include_point(
+            waypoint.x_m - envelope_radius_m,
+            waypoint.y_m - envelope_radius_m,
+        );
+        include_point(
+            waypoint.x_m + envelope_radius_m,
+            waypoint.y_m + envelope_radius_m,
+        );
     }
     if let Some((center_x_m, surface_y_m, width_m)) = pad {
         include_point(center_x_m - (0.5 * width_m), surface_y_m);
@@ -373,6 +455,72 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
             r##"<line x1="{x1:.2}" y1="{y1:.2}" x2="{x2:.2}" y2="{y2:.2}" stroke="#2f9e44" stroke-width="3.2" stroke-linecap="round"/>"##
         )
     });
+    let mut route_guide_keys = BTreeSet::new();
+    let route_guide_svg = route_guides
+        .iter()
+        .flat_map(|points| {
+            points
+                .windows(2)
+                .enumerate()
+                .filter_map(|(index, segment)| {
+                    let segment_points = polyline_points(segment);
+                    (!segment_points.is_empty()).then_some((index, segment_points))
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|(_, points)| route_guide_keys.insert(points.clone()))
+        .map(|(index, points)| {
+            let color = preview_route_leg_color(index);
+            let dasharray = preview_route_leg_dash(index);
+            let title = if index == 0 {
+                "waypoint active leg"
+            } else {
+                "waypoint outbound leg"
+            };
+            format!(
+                r##"<g><title>{title}</title><polyline points="{points}" fill="none" stroke="{color}" stroke-width="{width:.1}" stroke-opacity="0.76" stroke-dasharray="{dasharray}" stroke-linecap="round" stroke-linejoin="round"/></g>"##,
+                width = if multi_run { 0.95 } else { 1.15 },
+            )
+        })
+        .collect::<String>();
+    let waypoint_svg = waypoints
+        .iter()
+        .map(|waypoint| {
+            let (px, py) = project(waypoint.x_m, waypoint.y_m);
+            let capture_radius_px = (waypoint.capture_radius_m * scale).clamp(3.0, 18.0);
+            let cross_track_px = (waypoint.max_cross_track_m * scale)
+                .clamp(capture_radius_px + 1.0, 24.0);
+            let label = if multi_run {
+                String::new()
+            } else {
+                format!(
+                    r##"<text x="{label_x:.2}" y="{label_y:.2}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="6.2" font-weight="700" fill="#7a3d0f">WP</text>"##,
+                    label_x = px + capture_radius_px + 1.8,
+                    label_y = py - 1.8,
+                )
+            };
+            format!(
+                r##"<g>
+  <title>{title}</title>
+  <circle cx="{px:.2}" cy="{py:.2}" r="{cross_track_px:.2}" fill="none" stroke="#a25a18" stroke-width="0.85" stroke-opacity="0.36" stroke-dasharray="2 2"/>
+  <circle cx="{px:.2}" cy="{py:.2}" r="{capture_radius_px:.2}" fill="#f08c00" fill-opacity="0.16" stroke="#a25a18" stroke-width="1.1"/>
+  <circle cx="{px:.2}" cy="{py:.2}" r="1.8" fill="#7a3d0f" stroke="#fffaf2" stroke-width="0.75"/>
+  {label}
+</g>"##,
+                title = escape_html(&format!(
+                    "{}: capture radius {:.1} m, cross-track {:.1} m, outbound >= {:.1} m/s, speed {:.1}-{:.1} m/s, vertical {:.1}-{:.1} m/s",
+                    waypoint.id,
+                    waypoint.capture_radius_m,
+                    waypoint.max_cross_track_m,
+                    waypoint.min_outbound_progress_mps,
+                    waypoint.min_speed_mps,
+                    waypoint.max_speed_mps,
+                    waypoint.min_vertical_speed_mps,
+                    waypoint.max_vertical_speed_mps,
+                )),
+            )
+        })
+        .collect::<String>();
     let reference_svg = trajectories
         .iter()
         .map(|(_, reference, _)| polyline_points(reference))
@@ -413,11 +561,14 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
   {trajectory_svg}
   {terrain_svg}
   {pad_svg}
+  {route_guide_svg}
+  {waypoint_svg}
   {start_markers}
   {end_markers}
 </svg>"##,
         border_w = WIDTH_PX - 1.0,
         border_h = HEIGHT_PX - 1.0,
+        route_guide_svg = route_guide_svg,
         reference_svg = reference_svg,
         trajectory_svg = trajectory_svg,
         terrain_svg = if terrain_points.is_empty() {
@@ -428,6 +579,7 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
             )
         },
         pad_svg = pad_svg.unwrap_or_default(),
+        waypoint_svg = waypoint_svg,
         start_markers = start_markers,
         end_markers = end_markers,
     )
@@ -440,6 +592,14 @@ fn preview_seed_color(index: usize, total: usize) -> String {
     let t = index as f64 / (total.saturating_sub(1)) as f64;
     let hue = 210.0 - (165.0 * t);
     format!("hsl({hue:.0},74%,40%)")
+}
+
+fn preview_route_leg_color(index: usize) -> &'static str {
+    if index == 0 { "#b45309" } else { "#1d4ed8" }
+}
+
+fn preview_route_leg_dash(index: usize) -> &'static str {
+    if index == 0 { "6 3" } else { "7 3 2 3" }
 }
 
 fn preview_flip_sign(initial_dx: f64) -> f64 {
@@ -1010,6 +1170,33 @@ fn build_mission_details(scenario: &ScenarioSpec) -> ReportMissionDetails {
             width_m: target_pad.width_m,
         },
         mission: ReportMissionGoalDetails::from_goal(&scenario.mission.goal),
+        transfer_route: scenario.mission.transfer_route.as_ref().map(|route| {
+            ReportTransferRouteDetails {
+                source_pad_id: route.source_pad_id.clone(),
+                target_pad_id: route.target_pad_id.clone(),
+                route_angle_deg: route.route_angle_deg,
+                route_radius_m: route.route_radius_m,
+                waypoints: route
+                    .waypoints
+                    .iter()
+                    .map(|waypoint| ReportWaypointDetails {
+                        id: waypoint.id.clone(),
+                        x_m: waypoint.position_m.x,
+                        y_m: waypoint.position_m.y,
+                        capture_radius_m: waypoint.capture_radius_m,
+                        max_cross_track_m: waypoint.max_cross_track_m,
+                        max_outbound_heading_error_deg: waypoint
+                            .max_outbound_heading_error_rad
+                            .to_degrees(),
+                        min_outbound_progress_mps: waypoint.min_outbound_progress_mps,
+                        min_speed_mps: waypoint.min_speed_mps,
+                        max_speed_mps: waypoint.max_speed_mps,
+                        min_vertical_speed_mps: waypoint.min_vertical_speed_mps,
+                        max_vertical_speed_mps: waypoint.max_vertical_speed_mps,
+                    })
+                    .collect(),
+            }
+        }),
         terrain_point_count: scenario.world.terrain.points().len(),
         evaluation_basis: mission_evaluation_basis(&scenario.mission.goal),
     }
@@ -1292,6 +1479,7 @@ struct ReportMissionDetails {
     vehicle: ReportVehicleDetails,
     target_pad: ReportTargetPadDetails,
     mission: ReportMissionGoalDetails,
+    transfer_route: Option<ReportTransferRouteDetails>,
     terrain_point_count: usize,
     evaluation_basis: String,
 }
@@ -1352,6 +1540,32 @@ struct ReportMissionGoalDetails {
     goal_kind: String,
     target_pad_id: String,
     end_time_s: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportTransferRouteDetails {
+    source_pad_id: String,
+    target_pad_id: String,
+    route_angle_deg: f64,
+    route_radius_m: f64,
+    waypoints: Vec<ReportWaypointDetails>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportWaypointDetails {
+    id: String,
+    x_m: f64,
+    y_m: f64,
+    capture_radius_m: f64,
+    max_cross_track_m: f64,
+    max_outbound_heading_error_deg: f64,
+    min_outbound_progress_mps: f64,
+    min_speed_mps: f64,
+    max_speed_mps: f64,
+    min_vertical_speed_mps: f64,
+    max_vertical_speed_mps: f64,
 }
 
 impl ReportMissionGoalDetails {
@@ -2118,6 +2332,8 @@ fn report_template() -> &'static str {
     const keyEvents = Array.isArray(reportData.events) ? reportData.events : [];
     const markers = Array.isArray(reportData.markers) ? reportData.markers : [];
     const pad = reportData.pad || null;
+    const transferRoute = reportData.missionDetails?.transferRoute || null;
+    const waypoints = Array.isArray(transferRoute?.waypoints) ? transferRoute.waypoints : [];
 
     const xValues = samples.map((sample) => Number(sample.xM));
     const yValues = samples.map((sample) => Number(sample.yM));
@@ -2136,16 +2352,20 @@ fn report_template() -> &'static str {
     const throttleYValues = samples.map((sample) => Number(sample.throttleFrac) * Math.cos(Number(sample.attitudeRad || 0)));
 
     const speedColorScale = [
-      [0.0, "#fff3bf"],
-      [0.35, "#ffd166"],
-      [0.65, "#f77f00"],
+      [0.0, "#9a6b00"],
+      [0.35, "#d88718"],
+      [0.65, "#f76707"],
       [1.0, "#c1121f"],
     ];
     const throttleColorScale = [
-      [0.0, "#d9f0ff"],
-      [0.35, "#74c0fc"],
-      [0.7, "#2b8aeb"],
+      [0.0, "#4d8097"],
+      [0.35, "#228be6"],
+      [0.7, "#1c64d1"],
       [1.0, "#0b3d91"],
+    ];
+    const waypointLegStyles = [
+      { name: "waypoint active leg", color: "#b45309", dash: "dash" },
+      { name: "waypoint outbound leg", color: "#1d4ed8", dash: "dashdot" },
     ];
 
     const axisStyle = (extra = {}) => Object.assign({
@@ -2406,6 +2626,14 @@ fn report_template() -> &'static str {
         ["Target pad", mission.targetPad.id],
         ["Pad geometry", `${fmt(mission.targetPad.centerXM)} m center / ${fmt(mission.targetPad.widthM)} m width`],
         ["Pad surface", `${fmt(mission.targetPad.surfaceYM)} m`],
+        ["Transfer route", mission.transferRoute
+          ? `${fmt(mission.transferRoute.routeAngleDeg, 1)} deg / ${fmt(mission.transferRoute.routeRadiusM)} m · ${mission.transferRoute.sourcePadId} -> ${mission.transferRoute.targetPadId}`
+          : "n/a"],
+        ["Waypoints", Array.isArray(mission.transferRoute?.waypoints) && mission.transferRoute.waypoints.length
+          ? mission.transferRoute.waypoints.map((waypoint, index) =>
+              `${index + 1}. ${waypoint.id}: (${fmt(waypoint.xM)}, ${fmt(waypoint.yM)}) m · r ${fmt(waypoint.captureRadiusM)} m / xtrack ${fmt(waypoint.maxCrossTrackM)} m · speed ${fmt(waypoint.minSpeedMps)}-${fmt(waypoint.maxSpeedMps)} m/s · vy ${fmt(waypoint.minVerticalSpeedMps)}-${fmt(waypoint.maxVerticalSpeedMps)} m/s`
+            ).join("<br>")
+          : "none"],
         ["Checkpoint", mission.mission.endTimeS != null ? `${fmt(mission.mission.endTimeS, 2)} s` : "n/a"],
         ["Evaluation", mission.evaluationBasis],
       ]);
@@ -2490,6 +2718,18 @@ fn report_template() -> &'static str {
         xs.push(Number(pad.centerXM) + (Number(pad.widthM) / 2));
         ys.push(Number(pad.surfaceYM));
       }
+      waypoints.forEach((waypoint) => {
+        const x = Number(waypoint.xM);
+        const y = Number(waypoint.yM);
+        const radius = Math.max(
+          Number(waypoint.captureRadiusM),
+          Number(waypoint.maxCrossTrackM),
+          0
+        );
+        if (![x, y, radius].every((value) => Number.isFinite(value))) return;
+        xs.push(x - radius, x + radius);
+        ys.push(y - radius, y + radius);
+      });
       if (!xs.length || !ys.length) return { span: 1 };
       const minX = Math.min(...xs);
       const maxX = Math.max(...xs);
@@ -2516,7 +2756,7 @@ fn report_template() -> &'static str {
         mode: "lines",
         x: xValues,
         y: yValues,
-        line: { color: "#d6cdbd", width: 2 },
+        line: { color: "rgba(61,50,39,0.36)", width: 2.4 },
         hoverinfo: "skip",
         showlegend: false,
       }];
@@ -2790,6 +3030,131 @@ fn report_template() -> &'static str {
       return annotations;
     };
 
+    const circlePoints = ({ centerX, centerY, radius, points = 80 }) => {
+      const xs = [];
+      const ys = [];
+      for (let index = 0; index <= points; index += 1) {
+        const theta = (Math.PI * 2 * index) / points;
+        xs.push(Number(centerX) + (Math.cos(theta) * Number(radius)));
+        ys.push(Number(centerY) + (Math.sin(theta) * Number(radius)));
+      }
+      return { xs, ys };
+    };
+
+    const buildWaypointRouteTraces = () => {
+      if (!waypoints.length) return [];
+      const traces = [];
+      const initial = reportData.missionDetails.initialState || null;
+      if (initial && pad) {
+        const routePoints = [
+          { x: Number(initial.xM), y: Number(initial.yM) },
+          ...waypoints.map((waypoint) => ({ x: Number(waypoint.xM), y: Number(waypoint.yM) })),
+          { x: Number(pad.centerXM), y: Number(pad.surfaceYM) },
+        ].filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+        for (let index = 1; index < routePoints.length; index += 1) {
+          const previous = routePoints[index - 1];
+          const current = routePoints[index];
+          const legStyle = waypointLegStyles[Math.min(index - 1, waypointLegStyles.length - 1)];
+          traces.push({
+            type: "scatter",
+            mode: "lines",
+            name: legStyle.name,
+            x: [previous.x, current.x],
+            y: [previous.y, current.y],
+            line: { color: legStyle.color, width: 2.2, dash: legStyle.dash },
+            opacity: 0.74,
+            hoverinfo: "skip",
+            showlegend: true,
+          });
+        }
+      }
+      return traces;
+    };
+
+    const buildWaypointEnvelopeTraces = () => {
+      if (!waypoints.length) return [];
+      const traces = [];
+      waypoints.forEach((waypoint, index) => {
+        const x = Number(waypoint.xM);
+        const y = Number(waypoint.yM);
+        const captureRadius = Number(waypoint.captureRadiusM);
+        const crossTrack = Number(waypoint.maxCrossTrackM);
+        if (![x, y].every(Number.isFinite)) return;
+        if (Number.isFinite(crossTrack) && crossTrack > 0) {
+          const circle = circlePoints({ centerX: x, centerY: y, radius: crossTrack });
+          traces.push({
+            type: "scatter",
+            mode: "lines",
+            name: "waypoint cross-track",
+            x: circle.xs,
+            y: circle.ys,
+            line: { color: "rgba(162,90,24,0.48)", width: 1.8, dash: "dot" },
+            hoverinfo: "skip",
+            showlegend: index === 0,
+          });
+        }
+        if (Number.isFinite(captureRadius) && captureRadius > 0) {
+          const circle = circlePoints({ centerX: x, centerY: y, radius: captureRadius });
+          traces.push({
+            type: "scatter",
+            mode: "lines",
+            name: "waypoint capture radius",
+            x: circle.xs,
+            y: circle.ys,
+            line: { color: "#a25a18", width: 2.4 },
+            fill: "toself",
+            fillcolor: "rgba(240,140,0,0.13)",
+            hoverinfo: "skip",
+            showlegend: index === 0,
+          });
+        }
+      });
+      return traces;
+    };
+
+    const buildWaypointMarkerTraces = () => {
+      if (!waypoints.length) return [];
+      const traces = [];
+      waypoints.forEach((waypoint, index) => {
+        const x = Number(waypoint.xM);
+        const y = Number(waypoint.yM);
+        const captureRadius = Number(waypoint.captureRadiusM);
+        const crossTrack = Number(waypoint.maxCrossTrackM);
+        if (![x, y].every(Number.isFinite)) return;
+        traces.push({
+          type: "scatter",
+          mode: "markers+text",
+          name: "waypoint",
+          x: [x],
+          y: [y],
+          text: [`WP${index + 1}`],
+          textposition: "top right",
+          textfont: { color: "#7a3d0f", size: 11 },
+          customdata: [[
+            waypoint.id || `waypoint_${index + 1}`,
+            captureRadius,
+            crossTrack,
+            Number(waypoint.maxOutboundHeadingErrorDeg),
+            Number(waypoint.minOutboundProgressMps),
+            Number(waypoint.minSpeedMps),
+            Number(waypoint.maxSpeedMps),
+            Number(waypoint.minVerticalSpeedMps),
+            Number(waypoint.maxVerticalSpeedMps),
+          ]],
+          hovertemplate:
+            "%{customdata[0]}<br>x=%{x:.1f} m<br>y=%{y:.1f} m<br>capture=%{customdata[1]:.1f} m<br>xtrack=%{customdata[2]:.1f} m<br>heading err <= %{customdata[3]:.1f} deg<br>outbound >= %{customdata[4]:.1f} m/s<br>speed %{customdata[5]:.1f}-%{customdata[6]:.1f} m/s<br>vy %{customdata[7]:.1f}-%{customdata[8]:.1f} m/s<extra></extra>",
+          marker: {
+            size: 12,
+            color: "#7a3d0f",
+            symbol: "circle",
+            line: { width: 2, color: "#fffaf0" },
+          },
+          showlegend: index === 0,
+        });
+      });
+      return traces;
+    };
+
     const buildSpatialPlot = () => {
       const terrainTrace = {
         type: "scatter",
@@ -2848,10 +3213,11 @@ fn report_template() -> &'static str {
         customdata: markers.map((marker) => [marker.label, Number(marker.simTimeS), marker.phase || ""]),
         hovertemplate: "%{customdata[0]}<br>phase=%{customdata[2]}<br>t=%{customdata[1]:.2f}s<extra></extra>",
         marker: {
-          size: 10,
+          size: 5,
           color: "#4c6ef5",
           symbol: "diamond",
-          line: { width: 1.5, color: "#fffaf0" },
+          opacity: 0.42,
+          line: { width: 0 },
         },
       };
 
@@ -2905,29 +3271,50 @@ fn report_template() -> &'static str {
         colorscale: throttleColorScale,
         colorbarTitle: "throttle",
       });
+      const waypointRouteTraces = buildWaypointRouteTraces();
+      const waypointEnvelopeTraces = buildWaypointEnvelopeTraces();
+      const waypointMarkerTraces = buildWaypointMarkerTraces();
       const vectorAnnotations = buildVectorAnnotations();
       const spatialTraces = [
         terrainTrace,
         ...(padTrace ? [padTrace] : []),
+        ...waypointEnvelopeTraces,
+        markerTrace,
         plainTrace,
         ...speedTraces,
         ...throttleTraces,
         ...(ballisticTrace ? [ballisticTrace] : []),
         ...(referenceTrace ? [referenceTrace] : []),
-        markerTrace,
+        ...waypointRouteTraces,
+        ...waypointMarkerTraces,
         eventTrace,
         hoverTrace,
       ];
-      const plainIndex = padTrace ? 2 : 1;
+      const waypointEnvelopeStart = padTrace ? 2 : 1;
+      const waypointEnvelopeEnd = waypointEnvelopeStart + waypointEnvelopeTraces.length;
+      const markerIndex = waypointEnvelopeEnd;
+      const plainIndex = markerIndex + 1;
       const speedStart = plainIndex + 1;
       const speedEnd = speedStart + speedTraces.length;
       const throttleStart = speedEnd;
       const throttleEnd = throttleStart + throttleTraces.length;
-      const markerIndex = spatialTraces.length - 3;
+      const waypointRouteStart = throttleEnd + (ballisticTrace ? 1 : 0) + (referenceTrace ? 1 : 0);
+      const waypointRouteEnd = waypointRouteStart + waypointRouteTraces.length;
+      const waypointMarkerStart = waypointRouteEnd;
+      const waypointMarkerEnd = waypointMarkerStart + waypointMarkerTraces.length;
       const eventIndex = spatialTraces.length - 2;
       const hoverIndex = spatialTraces.length - 1;
       const alwaysVisible = new Set([0, eventIndex, hoverIndex]);
       if (padTrace) alwaysVisible.add(1);
+      for (let index = waypointEnvelopeStart; index < waypointEnvelopeEnd; index += 1) {
+        alwaysVisible.add(index);
+      }
+      for (let index = waypointRouteStart; index < waypointRouteEnd; index += 1) {
+        alwaysVisible.add(index);
+      }
+      for (let index = waypointMarkerStart; index < waypointMarkerEnd; index += 1) {
+        alwaysVisible.add(index);
+      }
       if (ballisticTrace) alwaysVisible.add(throttleEnd);
       if (referenceTrace) alwaysVisible.add(throttleEnd + (ballisticTrace ? 1 : 0));
 
