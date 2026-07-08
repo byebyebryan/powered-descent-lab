@@ -12,9 +12,9 @@ use pd_control::{
     run_controller_spec,
 };
 use pd_core::{
-    EvaluationGoal, LandingPadSpec, MissionOutcome, RunContext, RunManifest, RunSummary,
-    SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2,
-    VehicleSpec,
+    EndReason, EvaluationGoal, LandingPadSpec, MissionOutcome, Observation, RunContext,
+    RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec,
+    TransferWaypointSpec, Vec2, VehicleSpec,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -413,6 +413,23 @@ pub enum TerminalSeedTier {
     Full,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TransferMatrixEvaluationGoal {
+    #[default]
+    LandingOnPad,
+    WaypointHandoff,
+}
+
+impl TransferMatrixEvaluationGoal {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::LandingOnPad => "landing_on_pad",
+            Self::WaypointHandoff => "waypoint_handoff",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransferMatrixEntry {
     pub id: String,
@@ -428,6 +445,8 @@ pub struct TransferMatrixEntry {
     pub radius_tiers: Vec<String>,
     #[serde(default)]
     pub waypoint_profile: Option<String>,
+    #[serde(default)]
+    pub evaluation_goal: TransferMatrixEvaluationGoal,
     #[serde(default)]
     pub adjustments: Vec<NumericAdjustmentSpec>,
     #[serde(default)]
@@ -1785,6 +1804,14 @@ fn validate_transfer_matrix_entry(entry: &TransferMatrixEntry) -> Result<()> {
     if let Some(profile) = &entry.waypoint_profile {
         validate_transfer_waypoint_profile(&entry.id, profile)?;
     }
+    if entry.evaluation_goal == TransferMatrixEvaluationGoal::WaypointHandoff
+        && entry.waypoint_profile.is_none()
+    {
+        bail!(
+            "transfer matrix entry '{}' evaluation_goal 'waypoint_handoff' requires waypoint_profile",
+            entry.id
+        );
+    }
     if entry.lanes.is_empty() {
         bail!(
             "transfer matrix entry '{}' must define at least one lane",
@@ -2749,6 +2776,10 @@ fn resolve_transfer_matrix_scenario(
     scenario
         .metadata
         .insert("lane_id".to_owned(), lane_id.to_owned());
+    scenario.metadata.insert(
+        "evaluation_goal".to_owned(),
+        entry.evaluation_goal.as_str().to_owned(),
+    );
 
     scenario.world.gravity_mps2 = family_spec.gravity_mps2;
     let mut resolved_parameters = BTreeMap::new();
@@ -2814,6 +2845,13 @@ fn resolve_transfer_matrix_scenario(
     );
     resolved_parameters.insert("start_x_m".to_owned(), scenario.initial_state.position_m.x);
     resolved_parameters.insert("start_y_m".to_owned(), scenario.initial_state.position_m.y);
+    if entry.evaluation_goal == TransferMatrixEvaluationGoal::WaypointHandoff {
+        scenario.mission.goal = EvaluationGoal::WaypointHandoff {
+            target_pad_id: target_pad.id.clone(),
+            waypoint_index: 0,
+        };
+        resolved_parameters.insert("waypoint_handoff_index".to_owned(), 0.0);
+    }
     if let Some(route) = scenario.mission.transfer_route.as_ref() {
         for (index, waypoint) in route.waypoints.iter().enumerate() {
             let prefix = format!("waypoint_{index}");
@@ -4969,7 +5007,8 @@ fn derive_run_review_metrics(
             })
             .unwrap_or((None, None));
     let transfer = transfer_review_metrics(&artifacts.controller_updates, &run.samples);
-    let waypoint = waypoint_review_metrics(&artifacts.controller_updates);
+    let waypoint = waypoint_handoff_goal_review_metrics(scenario, &run.samples, &run.manifest)
+        .unwrap_or_else(|| waypoint_review_metrics(&artifacts.controller_updates));
     let waypoint_contract = waypoint_contract_review_metrics(scenario, &waypoint);
     let transfer_shape =
         transfer_shape_metrics(scenario, &run.samples, &artifacts.controller_updates);
@@ -5113,6 +5152,132 @@ fn waypoint_review_metrics(
             metric::WAYPOINT_VERTICAL_SPEED_MPS,
         ),
     }
+}
+
+fn waypoint_handoff_goal_review_metrics(
+    scenario: &ScenarioSpec,
+    samples: &[SampleRecord],
+    manifest: &RunManifest,
+) -> Option<WaypointReviewMetrics> {
+    let EvaluationGoal::WaypointHandoff { waypoint_index, .. } = &scenario.mission.goal else {
+        return None;
+    };
+    let route = scenario.mission.transfer_route.as_ref()?;
+    let waypoint = route.waypoints.get(*waypoint_index)?;
+    let last_sample = samples.last()?;
+    let stats = waypoint_sample_stats(scenario, &last_sample.observation, *waypoint_index)?;
+    let terminal_handoff = matches!(
+        manifest.end_reason,
+        EndReason::CheckpointSatisfied | EndReason::CheckpointFailed
+    );
+    let capture_status = if terminal_handoff {
+        if waypoint_capture_passes_review(waypoint, &stats) {
+            "captured"
+        } else {
+            "missed"
+        }
+    } else {
+        "tracking"
+    };
+    let closest_distance_m = samples
+        .iter()
+        .filter_map(|sample| waypoint_sample_stats(scenario, &sample.observation, *waypoint_index))
+        .map(|stats| stats.distance_m)
+        .min_by(|lhs, rhs| lhs.total_cmp(rhs));
+
+    Some(WaypointReviewMetrics {
+        capture_status: Some(capture_status.to_owned()),
+        active_index: i64::try_from(*waypoint_index).ok(),
+        capture_time_s: terminal_handoff.then_some(last_sample.sim_time_s),
+        closest_distance_m,
+        distance_m: Some(stats.distance_m),
+        cross_track_m: Some(stats.cross_track_m),
+        plane_progress_m: Some(stats.plane_progress_m),
+        outbound_heading_error_rad: Some(stats.outbound_heading_error_rad),
+        outbound_progress_mps: Some(stats.outbound_progress_mps),
+        speed_mps: Some(stats.speed_mps),
+        vertical_speed_mps: Some(stats.vertical_speed_mps),
+    })
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointSampleStats {
+    distance_m: f64,
+    cross_track_m: f64,
+    plane_progress_m: f64,
+    outbound_heading_error_rad: f64,
+    outbound_progress_mps: f64,
+    speed_mps: f64,
+    vertical_speed_mps: f64,
+}
+
+fn waypoint_sample_stats(
+    scenario: &ScenarioSpec,
+    observation: &Observation,
+    waypoint_index: usize,
+) -> Option<WaypointSampleStats> {
+    let route = scenario.mission.transfer_route.as_ref()?;
+    let waypoint = route.waypoints.get(waypoint_index)?;
+    let anchor_m = if waypoint_index == 0 {
+        let source_pad = scenario.world.landing_pad(&route.source_pad_id)?;
+        Vec2::new(source_pad.center_x_m, source_pad.surface_y_m)
+    } else {
+        route.waypoints.get(waypoint_index - 1)?.position_m
+    };
+    let next_target_m = route
+        .waypoints
+        .get(waypoint_index + 1)
+        .map(|next| next.position_m)
+        .or_else(|| {
+            scenario
+                .world
+                .landing_pad(&route.target_pad_id)
+                .map(|pad| Vec2::new(pad.center_x_m, pad.surface_y_m))
+        })?;
+    let target_m = waypoint.position_m;
+    let leg_unit = waypoint_normalized(target_m - anchor_m)?;
+    let next_leg_unit = waypoint_normalized(next_target_m - target_m)?;
+    let to_waypoint_m = observation.position_m - target_m;
+    let speed_mps = observation.velocity_mps.length();
+    let velocity_unit = if speed_mps > 1.0e-9 {
+        observation.velocity_mps * (1.0 / speed_mps)
+    } else {
+        Vec2::new(0.0, 0.0)
+    };
+    let outbound_heading_error_rad = waypoint_dot(velocity_unit, next_leg_unit)
+        .clamp(-1.0, 1.0)
+        .acos();
+    Some(WaypointSampleStats {
+        distance_m: to_waypoint_m.length(),
+        cross_track_m: waypoint_cross(to_waypoint_m, leg_unit).abs(),
+        plane_progress_m: waypoint_dot(to_waypoint_m, leg_unit),
+        outbound_heading_error_rad,
+        outbound_progress_mps: waypoint_dot(observation.velocity_mps, next_leg_unit),
+        speed_mps,
+        vertical_speed_mps: observation.velocity_mps.y,
+    })
+}
+
+fn waypoint_capture_passes_review(
+    waypoint: &TransferWaypointSpec,
+    stats: &WaypointSampleStats,
+) -> bool {
+    stats.distance_m <= waypoint.capture_radius_m
+        || (stats.cross_track_m <= waypoint.max_cross_track_m
+            && stats.plane_progress_m >= -waypoint.capture_radius_m)
+}
+
+fn waypoint_normalized(vector: Vec2) -> Option<Vec2> {
+    let length = vector.length();
+    (length > 1.0e-9).then(|| vector * (1.0 / length))
+}
+
+fn waypoint_dot(lhs: Vec2, rhs: Vec2) -> f64 {
+    (lhs.x * rhs.x) + (lhs.y * rhs.y)
+}
+
+fn waypoint_cross(lhs: Vec2, rhs: Vec2) -> f64 {
+    (lhs.x * rhs.y) - (lhs.y * rhs.x)
 }
 
 fn waypoint_contract_review_metrics(
@@ -7031,6 +7196,12 @@ mod tests {
 
     fn waypoint_contract_scenario() -> ScenarioSpec {
         let mut scenario = easy_landing_scenario();
+        scenario.world.landing_pads.push(LandingPadSpec {
+            id: "source".to_owned(),
+            center_x_m: -420.0,
+            surface_y_m: 120.0,
+            width_m: 36.0,
+        });
         scenario.mission.transfer_route = Some(TransferRouteSpec {
             source_pad_id: "source".to_owned(),
             target_pad_id: "pad_a".to_owned(),
@@ -7705,6 +7876,7 @@ mod tests {
                 route_angles: Vec::new(),
                 radius_tiers: Vec::new(),
                 waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "smoke".to_owned()],
                 metadata: BTreeMap::new(),
@@ -7794,6 +7966,7 @@ mod tests {
                 route_angles: vec!["r00".to_owned()],
                 radius_tiers: vec!["short".to_owned(), "long".to_owned()],
                 waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "radius".to_owned()],
                 metadata: BTreeMap::new(),
@@ -7872,6 +8045,7 @@ mod tests {
                 route_angles: vec!["r00".to_owned()],
                 radius_tiers: vec!["nominal".to_owned()],
                 waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "seed_variation".to_owned()],
                 metadata: BTreeMap::new(),
@@ -7916,6 +8090,7 @@ mod tests {
                 route_angles: vec!["r+80".to_owned()],
                 radius_tiers: vec!["nominal".to_owned()],
                 waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1.to_owned()),
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
                 metadata: BTreeMap::new(),
@@ -7981,6 +8156,99 @@ mod tests {
                 .get("waypoint_0_max_vertical_speed_mps"),
             Some(&waypoint.max_vertical_speed_mps)
         );
+    }
+
+    #[test]
+    fn transfer_matrix_waypoint_handoff_goal_resolves_probe_goal() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_waypoint_handoff_goal".to_owned(),
+            name: "Transfer matrix waypoint handoff goal".to_owned(),
+            description: "transfer matrix waypoint handoff goal".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_waypoint_contract".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "frontier_probe".to_owned(),
+                route_angles: vec!["r+80".to_owned()],
+                radius_tiers: vec!["nominal".to_owned()],
+                waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1.to_owned()),
+                evaluation_goal: TransferMatrixEvaluationGoal::WaypointHandoff,
+                adjustments: Vec::new(),
+                tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+
+        assert_eq!(resolved_runs.len(), 3);
+        let run = resolved_runs
+            .iter()
+            .find(|run| run.descriptor.resolved_seed == 0)
+            .expect("seed 0 waypoint handoff run should be present");
+        assert!(matches!(
+            run.scenario.mission.goal,
+            EvaluationGoal::WaypointHandoff {
+                waypoint_index: 0,
+                ..
+            }
+        ));
+        assert_eq!(
+            run.scenario
+                .metadata
+                .get("evaluation_goal")
+                .map(String::as_str),
+            Some("waypoint_handoff")
+        );
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("waypoint_handoff_index"),
+            Some(&0.0)
+        );
+    }
+
+    #[test]
+    fn transfer_matrix_waypoint_handoff_goal_requires_waypoint_profile() {
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_invalid_waypoint_goal".to_owned(),
+            name: "Transfer matrix invalid waypoint goal".to_owned(),
+            description: "transfer matrix invalid waypoint goal".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_waypoint_contract".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "frontier_probe".to_owned(),
+                route_angles: vec!["r+80".to_owned()],
+                radius_tiers: vec!["nominal".to_owned()],
+                waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::WaypointHandoff,
+                adjustments: Vec::new(),
+                tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let message = validate_pack(&pack).unwrap_err().to_string();
+
+        assert!(message.contains("requires waypoint_profile"));
     }
 
     #[test]
@@ -8188,6 +8456,53 @@ mod tests {
         assert_eq!(metrics.closest_distance_m, Some(12.0));
         assert_eq!(metrics.cross_track_m, Some(8.0));
         assert_eq!(metrics.outbound_progress_mps, Some(24.0));
+    }
+
+    #[test]
+    fn waypoint_handoff_goal_review_uses_terminal_sample_state() {
+        let mut scenario = waypoint_contract_scenario();
+        scenario.mission.goal = EvaluationGoal::WaypointHandoff {
+            target_pad_id: "pad_a".to_owned(),
+            waypoint_index: 0,
+        };
+        let samples = vec![
+            transfer_sample(0, 0.0, Vec2::new(-420.0, 120.0), Vec2::new(0.0, 0.0), 120.0),
+            transfer_sample(
+                60,
+                0.5,
+                Vec2::new(-220.0, 180.0),
+                Vec2::new(22.0, -18.0),
+                118.0,
+            ),
+        ];
+        let manifest = RunManifest {
+            schema_version: pd_core::model::RUN_SCHEMA_VERSION,
+            scenario_id: scenario.id.clone(),
+            scenario_name: scenario.name.clone(),
+            scenario_seed: scenario.seed,
+            scenario_tags: scenario.tags.clone(),
+            controller_id: "transfer_waypoint_pdg_v1".to_owned(),
+            physics_hz: scenario.sim.physics_hz,
+            controller_hz: scenario.sim.controller_hz,
+            sim_time_s: 0.5,
+            physics_steps: 60,
+            controller_updates: 2,
+            physical_outcome: pd_core::PhysicalOutcome::Flying,
+            mission_outcome: MissionOutcome::Success,
+            end_reason: EndReason::CheckpointSatisfied,
+            summary: RunSummary::default(),
+        };
+
+        let metrics = waypoint_handoff_goal_review_metrics(&scenario, &samples, &manifest)
+            .expect("waypoint handoff review should be available");
+        let contract = waypoint_contract_review_metrics(&scenario, &metrics);
+
+        assert_eq!(metrics.capture_status.as_deref(), Some("captured"));
+        assert_eq!(metrics.active_index, Some(0));
+        assert_eq!(metrics.capture_time_s, Some(0.5));
+        assert_eq!(metrics.closest_distance_m, Some(0.0));
+        assert_eq!(metrics.distance_m, Some(0.0));
+        assert_eq!(contract.status.as_deref(), Some("pass"));
     }
 
     #[test]
@@ -8490,6 +8805,7 @@ mod tests {
                 route_angles: vec!["r00".to_owned(), "r00".to_owned()],
                 radius_tiers: Vec::new(),
                 waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: Vec::new(),
                 metadata: BTreeMap::new(),
@@ -8523,6 +8839,7 @@ mod tests {
                 route_angles: Vec::new(),
                 radius_tiers: vec!["short".to_owned(), "short".to_owned()],
                 waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: Vec::new(),
                 metadata: BTreeMap::new(),
@@ -8556,6 +8873,7 @@ mod tests {
                 route_angles: Vec::new(),
                 radius_tiers: vec!["extreme".to_owned()],
                 waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: Vec::new(),
                 metadata: BTreeMap::new(),
@@ -9114,6 +9432,7 @@ mod tests {
                     route_angles: vec!["r-80".to_owned(), "r+60".to_owned(), "r+80".to_owned()],
                     radius_tiers: Vec::new(),
                     waypoint_profile: None,
+                    evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                     adjustments: Vec::new(),
                     tags: vec!["transfer".to_owned(), "analytic".to_owned()],
                     metadata: BTreeMap::new(),

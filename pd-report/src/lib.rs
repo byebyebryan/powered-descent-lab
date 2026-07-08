@@ -1252,6 +1252,7 @@ fn build_mission_details(scenario: &ScenarioSpec) -> ReportMissionDetails {
 fn mission_evaluation_basis(goal: &EvaluationGoal) -> String {
     match goal {
         EvaluationGoal::LandingOnPad { .. } => "Landing success currently uses stable contact plus pad overlap, normal/tangential touchdown speed, attitude error, and angular rate. No force or impulse check is used yet.".to_owned(),
+        EvaluationGoal::WaypointHandoff { .. } => "Waypoint handoff success currently uses the selected transfer waypoint's spatial capture and outbound viability envelope at capture-radius entry or waypoint-plane crossing.".to_owned(),
         EvaluationGoal::TimedCheckpoint { .. } => "Checkpoint success currently uses position, velocity, and attitude envelope checks at the configured end time.".to_owned(),
     }
 }
@@ -1620,6 +1621,11 @@ impl ReportMissionGoalDetails {
         match goal {
             EvaluationGoal::LandingOnPad { target_pad_id } => Self {
                 goal_kind: "landing_on_pad".to_owned(),
+                target_pad_id: target_pad_id.clone(),
+                end_time_s: None,
+            },
+            EvaluationGoal::WaypointHandoff { target_pad_id, .. } => Self {
+                goal_kind: "waypoint_handoff".to_owned(),
                 target_pad_id: target_pad_id.clone(),
                 end_time_s: None,
             },

@@ -2544,7 +2544,7 @@ fn render_waypoint_triage_section(
         r#"<details class="transfer-handoff-section">
   <summary class="section-head transfer-triage-summary">
     <h2>Waypoint Handoff Triage</h2>
-    <div class="section-note">Current-lane waypoint cells, sorted by waypoint-contract warnings and final landing failures. Final landing remains the scored result; contract status explains pass-through quality.</div>
+    <div class="section-note">Current-lane waypoint cells, sorted by waypoint-contract warnings and scored failures. Handoff probe packs score the waypoint contract directly; final-landing packs keep route quality as diagnostics.</div>
   </summary>
   <div class="table-wrap">
     <table class="transfer-handoff-table">
@@ -7887,7 +7887,8 @@ mod report_tests {
         ConcreteScenarioPackEntry, NumericPerturbationMode, NumericPerturbationSpec,
         ScenarioFamilyEntry, ScenarioPackEntry, ScenarioPackSpec, SeedRangeSpec,
         TerminalMatrixEntry, TerminalMatrixLaneSpec, TerminalSeedTier, TransferMatrixEntry,
-        TransferMatrixLaneSpec, TransferSeedTier, compare_batch_reports, run_pack_with_workers,
+        TransferMatrixEvaluationGoal, TransferMatrixLaneSpec, TransferSeedTier,
+        compare_batch_reports, run_pack_with_workers,
     };
 
     use super::{render_batch_report, sort_selector_keys, tree_group_id};
@@ -8348,6 +8349,7 @@ mod report_tests {
                 route_angles: vec!["r00".to_owned()],
                 radius_tiers: Vec::new(),
                 waypoint_profile: None,
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "bot_lab".to_owned()],
                 metadata: BTreeMap::new(),
