@@ -269,8 +269,9 @@ Status:
   handoff controller
 - `transfer_bot_lab_suite` is the smoke workbench for the initial route family
 - `transfer_route_angle_suite` is the nominal-radius route-shape diagnostic
-  workbench: fixed `800m` radius, smoke seeds, and all 11 signed route angles
-  across `empty`, `half`, and `full` payload tiers
+  workbench: nominal `800m` radius tier, deterministic smoke-seed radius
+  perturbations, and all 11 signed route angles across `empty`, `half`, and
+  `full` payload tiers
 - `transfer_radius_tier_suite` is the fast distance-sensitivity gate over smoke
   route angles and `short`, `nominal`, and `long` radius tiers
 - `transfer_route_angle_radius_suite` is the current wide route/radius

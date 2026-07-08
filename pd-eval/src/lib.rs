@@ -2117,6 +2117,7 @@ struct TransferRadiusTierSpec {
 #[derive(Clone, Copy, Debug)]
 struct TransferSeedSpec {
     index: u64,
+    radius_pct: f64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2424,24 +2425,69 @@ const SIGNED_ROUTE_ARC_TRANSFER_V1_SPEC: TransferRouteFamilySpec = TransferRoute
 const TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1: &str = "single_dogleg_v1";
 
 const TRANSFER_SMOKE_SEEDS: [TransferSeedSpec; 3] = [
-    TransferSeedSpec { index: 0 },
-    TransferSeedSpec { index: 1 },
-    TransferSeedSpec { index: 2 },
+    TransferSeedSpec {
+        index: 0,
+        radius_pct: 0.0,
+    },
+    TransferSeedSpec {
+        index: 1,
+        radius_pct: -0.03,
+    },
+    TransferSeedSpec {
+        index: 2,
+        radius_pct: 0.03,
+    },
 ];
 
 const TRANSFER_FULL_SEEDS: [TransferSeedSpec; 12] = [
-    TransferSeedSpec { index: 0 },
-    TransferSeedSpec { index: 1 },
-    TransferSeedSpec { index: 2 },
-    TransferSeedSpec { index: 3 },
-    TransferSeedSpec { index: 4 },
-    TransferSeedSpec { index: 5 },
-    TransferSeedSpec { index: 6 },
-    TransferSeedSpec { index: 7 },
-    TransferSeedSpec { index: 8 },
-    TransferSeedSpec { index: 9 },
-    TransferSeedSpec { index: 10 },
-    TransferSeedSpec { index: 11 },
+    TransferSeedSpec {
+        index: 0,
+        radius_pct: 0.0,
+    },
+    TransferSeedSpec {
+        index: 1,
+        radius_pct: -0.015,
+    },
+    TransferSeedSpec {
+        index: 2,
+        radius_pct: 0.015,
+    },
+    TransferSeedSpec {
+        index: 3,
+        radius_pct: -0.03,
+    },
+    TransferSeedSpec {
+        index: 4,
+        radius_pct: 0.03,
+    },
+    TransferSeedSpec {
+        index: 5,
+        radius_pct: -0.045,
+    },
+    TransferSeedSpec {
+        index: 6,
+        radius_pct: 0.045,
+    },
+    TransferSeedSpec {
+        index: 7,
+        radius_pct: -0.06,
+    },
+    TransferSeedSpec {
+        index: 8,
+        radius_pct: 0.06,
+    },
+    TransferSeedSpec {
+        index: 9,
+        radius_pct: -0.075,
+    },
+    TransferSeedSpec {
+        index: 10,
+        radius_pct: 0.075,
+    },
+    TransferSeedSpec {
+        index: 11,
+        radius_pct: -0.09,
+    },
 ];
 
 fn resolve_transfer_matrix_runs(
@@ -2704,7 +2750,36 @@ fn resolve_transfer_matrix_scenario(
     let mut resolved_parameters = BTreeMap::new();
     resolved_parameters.insert("gravity_mps2".to_owned(), family_spec.gravity_mps2);
     resolved_parameters.insert("route_angle_deg".to_owned(), route_angle.angle_deg);
-    resolved_parameters.insert("route_radius_m".to_owned(), radius_tier.radius_m);
+    let route_radius_jitter_m = radius_tier.radius_m * seed_spec.radius_pct;
+    let route_radius_m = radius_tier.radius_m + route_radius_jitter_m;
+    let resolved_radius_tier = TransferRadiusTierSpec {
+        id: radius_tier.id,
+        radius_m: route_radius_m,
+    };
+    resolved_parameters.insert("route_radius_nominal_m".to_owned(), radius_tier.radius_m);
+    resolved_parameters.insert("route_radius_pct".to_owned(), seed_spec.radius_pct);
+    resolved_parameters.insert("route_radius_jitter_m".to_owned(), route_radius_jitter_m);
+    resolved_parameters.insert("route_radius_m".to_owned(), route_radius_m);
+    scenario.metadata.insert(
+        "resolved.route_radius_nominal_m".to_owned(),
+        format!("{:.6}", radius_tier.radius_m),
+    );
+    scenario.metadata.insert(
+        "resolved.route_radius_pct".to_owned(),
+        format!("{:.6}", seed_spec.radius_pct),
+    );
+    scenario.metadata.insert(
+        "resolved.route_radius_jitter_m".to_owned(),
+        format!("{route_radius_jitter_m:.6}"),
+    );
+    scenario.metadata.insert(
+        "resolved.seed_variation".to_owned(),
+        if seed_spec.radius_pct.abs() > f64::EPSILON {
+            "route_radius".to_owned()
+        } else {
+            "none".to_owned()
+        },
+    );
 
     for adjustment in &entry.adjustments {
         apply_numeric_adjustment(&mut scenario, adjustment)?;
@@ -2718,7 +2793,7 @@ fn resolve_transfer_matrix_scenario(
     let (source_pad, target_pad) = configure_transfer_route_geometry(
         &mut scenario,
         route_angle,
-        radius_tier,
+        &resolved_radius_tier,
         entry.waypoint_profile.as_deref(),
     )?;
     resolved_parameters.insert("source_x_m".to_owned(), source_pad.center_x_m);
@@ -7515,8 +7590,18 @@ mod tests {
         assert_eq!(run.descriptor.selector.radius_tier, "nominal");
         assert!(source_pad.center_x_m < target_pad.center_x_m);
         assert!(source_pad.surface_y_m < target_pad.surface_y_m);
-        assert!((route.route_radius_m - 800.0).abs() < 1e-9);
+        assert!((route.route_radius_m - 824.0).abs() < 1e-9);
         assert!((route.route_angle_deg - 60.0).abs() < 1e-9);
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("route_radius_nominal_m"),
+            Some(&800.0)
+        );
+        assert_eq!(
+            run.descriptor.resolved_parameters.get("route_radius_pct"),
+            Some(&0.03)
+        );
         assert_eq!(run.scenario.initial_state.velocity_mps, Vec2::new(0.0, 0.0));
     }
 
@@ -7577,15 +7662,69 @@ mod tests {
         );
         assert!(long.descriptor.run_id.contains("_r00_long_seed_02_current"));
         assert!((short_route.route_radius_m - 400.0).abs() < 1e-9);
-        assert!((long_route.route_radius_m - 1200.0).abs() < 1e-9);
+        assert!((long_route.route_radius_m - 1236.0).abs() < 1e-9);
         assert_eq!(
             short.descriptor.resolved_parameters.get("route_radius_m"),
             Some(&400.0)
         );
         assert_eq!(
             long.descriptor.resolved_parameters.get("route_radius_m"),
+            Some(&1236.0)
+        );
+        assert_eq!(
+            long.descriptor
+                .resolved_parameters
+                .get("route_radius_nominal_m"),
             Some(&1200.0)
         );
+        assert_eq!(
+            long.descriptor.resolved_parameters.get("route_radius_pct"),
+            Some(&0.03)
+        );
+    }
+
+    #[test]
+    fn transfer_matrix_seed_tier_perturbs_route_radius() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_seed_variation".to_owned(),
+            name: "Transfer matrix seed variation".to_owned(),
+            description: "transfer matrix seed variation".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_seed_variation".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "core".to_owned(),
+                route_angles: vec!["r00".to_owned()],
+                radius_tiers: vec!["nominal".to_owned()],
+                waypoint_profile: None,
+                adjustments: Vec::new(),
+                tags: vec!["transfer".to_owned(), "seed_variation".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+        let radius_for_seed = |seed| {
+            resolved_runs
+                .iter()
+                .find(|run| run.descriptor.resolved_seed == seed)
+                .and_then(|run| run.scenario.mission.transfer_route.as_ref())
+                .map(|route| route.route_radius_m)
+                .expect("seeded transfer run should include a route")
+        };
+
+        assert_eq!(radius_for_seed(0), 800.0);
+        assert_eq!(radius_for_seed(1), 776.0);
+        assert_eq!(radius_for_seed(2), 824.0);
     }
 
     #[test]

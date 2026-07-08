@@ -41,6 +41,14 @@ The initial family is `signed_route_arc_transfer_v1`:
 - full route angles: `r-80`, `r-60`, `r-45`, `r-30`, `r-15`, `r00`, `r+15`,
   `r+30`, `r+45`, `r+60`, `r+80`
 
+Transfer seeds are deterministic geometry perturbations, not controller
+randomness. Seed `0` keeps the nominal radius. Smoke seeds cover nominal and
+`+/-3%` route radius. Full seeds cover the nominal radius plus progressively
+wider radius offsets up to about `9%`. The selector `radius_tier` still names
+the nominal tier (`short`, `nominal`, or `long`); resolved metadata records the
+actual `route_radius_m`, `route_radius_nominal_m`, `route_radius_pct`, and
+`route_radius_jitter_m`.
+
 ## Terrain
 
 Transfer v1 may generate simple monotonic source-to-target terrain for physical
@@ -133,6 +141,7 @@ Resolved transfer runs use transfer-specific selector fields:
 - `route_family = signed_route_arc_transfer_v1`
 - `route_angle = r-60` style signed labels
 - `radius_tier = nominal`
+- `resolved_seed = 0` style seed labels
 - `vehicle_variant = empty | half | full`
 - `lane = current`
 
@@ -407,8 +416,9 @@ Waypoint `r+80` checkpoint:
 
 Focused `full/r-80` radius triage:
 
-- the failures are deterministic across smoke seeds because these cases have no
-  seed perturbation after route resolution
+- earlier artifacts were deterministic across smoke seeds because transfer
+  seeds did not perturb geometry after route resolution; current transfer seeds
+  perturb route radius within the selected radius tier
 - all three radius tiers enter direct terminal capture from the source pad; there
   is no boost/cutoff phase for these steep downhill routes
 - `short` fails while still near the elevated source pad: final position is about
