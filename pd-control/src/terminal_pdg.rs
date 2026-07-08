@@ -23,6 +23,10 @@ fn default_terrain_clearance_enabled() -> bool {
     true
 }
 
+fn default_terminal_gate_latest_safe_release_buffer_s() -> f64 {
+    0.20
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerminalPdgControllerConfig {
     #[serde(default = "default_terrain_clearance_enabled")]
@@ -71,6 +75,8 @@ pub struct TerminalPdgControllerConfig {
     pub terminal_gate_burn_time_offset_short_s: f64,
     pub terminal_gate_burn_time_offset_long_s: f64,
     pub terminal_gate_latest_safe_buffer_s: f64,
+    #[serde(default = "default_terminal_gate_latest_safe_release_buffer_s")]
+    pub terminal_gate_latest_safe_release_buffer_s: f64,
     pub terminal_gate_latest_safe_aggressive_dx_abs_m: f64,
     pub terminal_gate_latest_safe_aggressive_dx_ratio: f64,
     pub terminal_overshoot_tilt_altitude_min_m: f64,
@@ -126,6 +132,8 @@ impl Default for TerminalPdgControllerConfig {
             terminal_gate_burn_time_offset_short_s: 0.8,
             terminal_gate_burn_time_offset_long_s: 0.8,
             terminal_gate_latest_safe_buffer_s: 0.6,
+            terminal_gate_latest_safe_release_buffer_s:
+                default_terminal_gate_latest_safe_release_buffer_s(),
             terminal_gate_latest_safe_aggressive_dx_abs_m: 24.0,
             terminal_gate_latest_safe_aggressive_dx_ratio: 1.25,
             terminal_overshoot_tilt_altitude_min_m: 35.0,
@@ -258,6 +266,7 @@ pub struct TerminalPdgController {
     last_phase: Option<String>,
     last_mode: Option<GuidanceMode>,
     nominal_ready_ticks: u32,
+    latest_safe_release_ticks: u32,
     touchdown_idle_cut_active: bool,
 }
 
@@ -274,6 +283,7 @@ impl TerminalPdgController {
             last_phase: None,
             last_mode: None,
             nominal_ready_ticks: 0,
+            latest_safe_release_ticks: 0,
             touchdown_idle_cut_active: false,
         }
     }
@@ -436,15 +446,10 @@ impl TerminalPdgController {
             self.nominal_ready_ticks = 0;
         }
 
-        let guidance_mode = if latest_safe.latest_safe_margin_s <= 0.0 {
-            GuidanceMode::LatestSafe
-        } else if nominal.ready
-            && self.nominal_ready_ticks >= self.config.terminal_gate_hysteresis_ticks
-        {
-            GuidanceMode::NominalReady
-        } else {
-            GuidanceMode::NominalPending
-        };
+        let nominal_ready =
+            nominal.ready && self.nominal_ready_ticks >= self.config.terminal_gate_hysteresis_ticks;
+        let guidance_mode =
+            self.select_guidance_mode(latest_safe.latest_safe_margin_s, nominal_ready);
 
         let selected = match guidance_mode {
             GuidanceMode::LatestSafe => latest_safe.best_candidate,
@@ -497,6 +502,57 @@ impl TerminalPdgController {
             max_tilt_rad,
             latest_safe_margin_s: latest_safe.latest_safe_margin_s,
         }
+    }
+
+    fn select_guidance_mode(
+        &mut self,
+        latest_safe_margin_s: f64,
+        nominal_ready: bool,
+    ) -> GuidanceMode {
+        if latest_safe_margin_s <= 0.0 {
+            self.latest_safe_release_ticks = 0;
+            return GuidanceMode::LatestSafe;
+        }
+
+        if self.last_mode == Some(GuidanceMode::LatestSafe) {
+            if !nominal_ready {
+                self.latest_safe_release_ticks = 0;
+                return GuidanceMode::LatestSafe;
+            }
+
+            let release_buffer_s = self
+                .config
+                .terminal_gate_latest_safe_release_buffer_s
+                .max(0.0);
+            if latest_safe_margin_s > release_buffer_s {
+                self.latest_safe_release_ticks = self.latest_safe_release_ticks.saturating_add(1);
+            } else {
+                self.latest_safe_release_ticks = 0;
+            }
+
+            if self.latest_safe_release_ticks >= self.config.terminal_gate_hysteresis_ticks {
+                self.latest_safe_release_ticks = 0;
+                return GuidanceMode::NominalReady;
+            }
+
+            return GuidanceMode::LatestSafe;
+        }
+
+        if nominal_ready {
+            self.latest_safe_release_ticks = 0;
+            return GuidanceMode::NominalReady;
+        }
+
+        self.latest_safe_release_ticks = 0;
+        GuidanceMode::NominalPending
+    }
+
+    fn reset_state(&mut self) {
+        self.last_phase = None;
+        self.last_mode = None;
+        self.nominal_ready_ticks = 0;
+        self.latest_safe_release_ticks = 0;
+        self.touchdown_idle_cut_active = false;
     }
 
     fn braking_speed_limit(
@@ -1606,10 +1662,7 @@ impl Controller for TerminalPdgController {
     }
 
     fn reset(&mut self, _ctx: &RunContext) {
-        self.last_phase = None;
-        self.last_mode = None;
-        self.nominal_ready_ticks = 0;
-        self.touchdown_idle_cut_active = false;
+        self.reset_state();
     }
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
@@ -1919,6 +1972,121 @@ mod tests {
             terrain_first_violation_time_s: None,
             terrain_clearance_safe: true,
         }
+    }
+
+    fn release_test_controller() -> TerminalPdgController {
+        let mut config = TerminalPdgControllerConfig::default();
+        config.terminal_gate_hysteresis_ticks = 2;
+        config.terminal_gate_latest_safe_release_buffer_s = 0.20;
+        TerminalPdgController::new(config)
+    }
+
+    fn step_guidance_mode(
+        controller: &mut TerminalPdgController,
+        latest_safe_margin_s: f64,
+        nominal_ready: bool,
+    ) -> GuidanceMode {
+        let mode = controller.select_guidance_mode(latest_safe_margin_s, nominal_ready);
+        controller.last_mode = Some(mode);
+        mode
+    }
+
+    #[test]
+    fn latest_safe_release_holds_through_small_positive_margins() {
+        let mut controller = release_test_controller();
+        controller.last_mode = Some(GuidanceMode::LatestSafe);
+
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.02, false),
+            GuidanceMode::LatestSafe
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.20, false),
+            GuidanceMode::LatestSafe
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+    }
+
+    #[test]
+    fn nominal_pending_can_start_when_not_previously_latest_safe() {
+        let mut controller = release_test_controller();
+
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.02, false),
+            GuidanceMode::NominalPending
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+    }
+
+    #[test]
+    fn latest_safe_does_not_release_to_nominal_pending_above_buffer() {
+        let mut controller = release_test_controller();
+        controller.last_mode = Some(GuidanceMode::LatestSafe);
+
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.21, false),
+            GuidanceMode::LatestSafe
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.22, false),
+            GuidanceMode::LatestSafe
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+    }
+
+    #[test]
+    fn nominal_ready_releases_latest_safe_after_buffered_consecutive_ticks() {
+        let mut controller = release_test_controller();
+        controller.last_mode = Some(GuidanceMode::LatestSafe);
+
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.21, true),
+            GuidanceMode::LatestSafe
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 1);
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.22, true),
+            GuidanceMode::NominalReady
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+    }
+
+    #[test]
+    fn non_positive_margin_stays_latest_safe_even_when_nominal_ready() {
+        let mut controller = release_test_controller();
+        controller.last_mode = Some(GuidanceMode::LatestSafe);
+        controller.latest_safe_release_ticks = 1;
+
+        assert_eq!(
+            step_guidance_mode(&mut controller, 0.0, true),
+            GuidanceMode::LatestSafe
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+        assert_eq!(
+            step_guidance_mode(&mut controller, -0.01, true),
+            GuidanceMode::LatestSafe
+        );
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+    }
+
+    #[test]
+    fn reset_state_clears_latest_safe_release_state() {
+        let mut controller = release_test_controller();
+        controller.last_phase = Some("descent".to_owned());
+        controller.last_mode = Some(GuidanceMode::LatestSafe);
+        controller.nominal_ready_ticks = 3;
+        controller.latest_safe_release_ticks = 1;
+        controller.touchdown_idle_cut_active = true;
+
+        controller.reset_state();
+
+        assert_eq!(controller.last_phase, None);
+        assert_eq!(controller.last_mode, None);
+        assert_eq!(controller.nominal_ready_ticks, 0);
+        assert_eq!(controller.latest_safe_release_ticks, 0);
+        assert!(!controller.touchdown_idle_cut_active);
     }
 
     #[test]
