@@ -81,6 +81,34 @@ pub struct PreviewSeries<'a> {
     pub controller_updates: Option<&'a [ControllerUpdateRecord]>,
 }
 
+#[derive(Clone, Copy)]
+struct PreviewOptions {
+    show_context: bool,
+    show_waypoint_guides: bool,
+    show_reference: bool,
+    show_endpoint_markers: bool,
+}
+
+impl PreviewOptions {
+    const fn full() -> Self {
+        Self {
+            show_context: true,
+            show_waypoint_guides: true,
+            show_reference: true,
+            show_endpoint_markers: true,
+        }
+    }
+
+    const fn aggregate_lane() -> Self {
+        Self {
+            show_context: true,
+            show_waypoint_guides: false,
+            show_reference: false,
+            show_endpoint_markers: true,
+        }
+    }
+}
+
 struct PreviewWaypoint {
     id: String,
     x_m: f64,
@@ -95,7 +123,7 @@ struct PreviewWaypoint {
 }
 
 pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
-    build_preview_svg(series)
+    build_preview_svg(series, PreviewOptions::aggregate_lane())
 }
 
 fn build_report_data(
@@ -176,15 +204,18 @@ fn build_run_preview_svg(
     samples: &[SampleRecord],
     controller_updates: &[ControllerUpdateRecord],
 ) -> String {
-    build_preview_svg(&[PreviewSeries {
-        scenario,
-        manifest,
-        samples,
-        controller_updates: Some(controller_updates),
-    }])
+    build_preview_svg(
+        &[PreviewSeries {
+            scenario,
+            manifest,
+            samples,
+            controller_updates: Some(controller_updates),
+        }],
+        PreviewOptions::full(),
+    )
 }
 
-fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
+fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> String {
     const WIDTH_PX: f64 = 156.0;
     const HEIGHT_PX: f64 = 92.0;
     const PADDING_PX: f64 = 6.0;
@@ -207,67 +238,73 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
         })
         .unwrap_or(1.0);
     let transform_x = |x_world: f64, flip_sign: f64| (x_world - normalize_center_x) * flip_sign;
-    let terrain = series
-        .first()
-        .map(|series| {
-            series
-                .scenario
-                .world
-                .terrain
-                .points()
-                .iter()
-                .map(|point| (transform_x(point.x, first_flip_sign), point.y))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|(x, y)| x.is_finite() && y.is_finite())
-        .collect::<Vec<_>>();
+    let terrain = if options.show_context {
+        series
+            .first()
+            .map(|series| {
+                series
+                    .scenario
+                    .world
+                    .terrain
+                    .points()
+                    .iter()
+                    .map(|point| (transform_x(point.x, first_flip_sign), point.y))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(x, y)| x.is_finite() && y.is_finite())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let pad = pad_world.map(|(_, surface_y_m, width_m)| (0.0, surface_y_m, width_m));
     let mut waypoint_keys = BTreeSet::new();
     let mut waypoints = Vec::new();
     let mut route_guides = Vec::new();
-    for series in series {
-        let Some(route) = series.scenario.mission.transfer_route.as_ref() else {
-            continue;
-        };
-        if route.waypoints.is_empty() {
-            continue;
-        }
-        let flip_sign =
-            preview_flip_sign(series.scenario.initial_state.position_m.x - normalize_center_x);
-        let mut route_guide = Vec::with_capacity(route.waypoints.len() + 2);
-        route_guide.push((
-            transform_x(series.scenario.initial_state.position_m.x, flip_sign),
-            series.scenario.initial_state.position_m.y,
-        ));
-        for waypoint in &route.waypoints {
-            let x = transform_x(waypoint.position_m.x, flip_sign);
-            let y = waypoint.position_m.y;
-            let key = format!(
-                "{}:{x:.2}:{y:.2}:{:.2}:{:.2}",
-                waypoint.id, waypoint.capture_radius_m, waypoint.max_cross_track_m
-            );
-            if waypoint_keys.insert(key) {
-                waypoints.push(PreviewWaypoint {
-                    id: waypoint.id.clone(),
-                    x_m: x,
-                    y_m: y,
-                    capture_radius_m: waypoint.capture_radius_m,
-                    max_cross_track_m: waypoint.max_cross_track_m,
-                    min_outbound_progress_mps: waypoint.min_outbound_progress_mps,
-                    min_speed_mps: waypoint.min_speed_mps,
-                    max_speed_mps: waypoint.max_speed_mps,
-                    min_vertical_speed_mps: waypoint.min_vertical_speed_mps,
-                    max_vertical_speed_mps: waypoint.max_vertical_speed_mps,
-                });
+    if options.show_waypoint_guides {
+        for series in series {
+            let Some(route) = series.scenario.mission.transfer_route.as_ref() else {
+                continue;
+            };
+            if route.waypoints.is_empty() {
+                continue;
             }
-            route_guide.push((x, y));
+            let flip_sign =
+                preview_flip_sign(series.scenario.initial_state.position_m.x - normalize_center_x);
+            let mut route_guide = Vec::with_capacity(route.waypoints.len() + 2);
+            route_guide.push((
+                transform_x(series.scenario.initial_state.position_m.x, flip_sign),
+                series.scenario.initial_state.position_m.y,
+            ));
+            for waypoint in &route.waypoints {
+                let x = transform_x(waypoint.position_m.x, flip_sign);
+                let y = waypoint.position_m.y;
+                let key = format!(
+                    "{}:{x:.2}:{y:.2}:{:.2}:{:.2}",
+                    waypoint.id, waypoint.capture_radius_m, waypoint.max_cross_track_m
+                );
+                if waypoint_keys.insert(key) {
+                    waypoints.push(PreviewWaypoint {
+                        id: waypoint.id.clone(),
+                        x_m: x,
+                        y_m: y,
+                        capture_radius_m: waypoint.capture_radius_m,
+                        max_cross_track_m: waypoint.max_cross_track_m,
+                        min_outbound_progress_mps: waypoint.min_outbound_progress_mps,
+                        min_speed_mps: waypoint.min_speed_mps,
+                        max_speed_mps: waypoint.max_speed_mps,
+                        min_vertical_speed_mps: waypoint.min_vertical_speed_mps,
+                        max_vertical_speed_mps: waypoint.max_vertical_speed_mps,
+                    });
+                }
+                route_guide.push((x, y));
+            }
+            if let Some((target_x_m, target_y_m, _)) = pad {
+                route_guide.push((target_x_m, target_y_m));
+            }
+            route_guides.push(route_guide);
         }
-        if let Some((target_x_m, target_y_m, _)) = pad {
-            route_guide.push((target_x_m, target_y_m));
-        }
-        route_guides.push(route_guide);
     }
     let trajectories = series
         .iter()
@@ -285,7 +322,7 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
                 })
                 .filter(|(x, y)| x.is_finite() && y.is_finite())
                 .collect::<Vec<_>>();
-            let reference = if multi_run {
+            let reference = if multi_run || !options.show_reference {
                 Vec::new()
             } else {
                 pad.map(|(target_x_m, target_y_m, _)| {
@@ -351,7 +388,9 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
             waypoint.y_m + envelope_radius_m,
         );
     }
-    if let Some((center_x_m, surface_y_m, width_m)) = pad {
+    if options.show_context
+        && let Some((center_x_m, surface_y_m, width_m)) = pad
+    {
         include_point(center_x_m - (0.5 * width_m), surface_y_m);
         include_point(center_x_m + (0.5 * width_m), surface_y_m);
     }
@@ -398,7 +437,7 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
     };
 
     let terrain_points = polyline_points(&terrain);
-    let start_markers = (!multi_run)
+    let start_markers = (options.show_endpoint_markers && !multi_run)
         .then(|| {
             trajectories
                 .iter()
@@ -413,48 +452,56 @@ fn build_preview_svg(series: &[PreviewSeries<'_>]) -> String {
                 .collect::<String>()
         })
         .unwrap_or_default();
-    let end_markers = trajectories
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (trajectory, _, outcome))| {
-            trajectory.last().copied().map(|(x, y)| {
-                let (px, py) = project(x, y);
-                let seed_color = preview_seed_color(index, trajectories.len());
-                match outcome.as_str() {
-                    "success" => format!(
-                        r##"<circle cx="{px:.2}" cy="{py:.2}" r="{radius:.2}" fill="{fill}" stroke="#fffaf2" stroke-width="{stroke:.2}"/>"##,
-                        radius = if multi_run { 2.6 } else { 3.4 },
-                        fill = if multi_run { seed_color.as_str() } else { "#2f9e44" },
-                        stroke = if multi_run { 1.0 } else { 1.4 },
-                    ),
-                    "failed_off_target" => format!(
-                        r##"<path d="M {x1:.2} {py:.2} L {px:.2} {y1:.2} L {x2:.2} {py:.2} L {px:.2} {y2:.2} Z" fill="#d6a237" stroke="{stroke_color}" stroke-width="{stroke:.2}"/>"##,
-                        x1 = px - if multi_run { 2.9 } else { 3.8 },
-                        y1 = py - if multi_run { 2.9 } else { 3.8 },
-                        x2 = px + if multi_run { 2.9 } else { 3.8 },
-                        y2 = py + if multi_run { 2.9 } else { 3.8 },
-                        stroke_color = if multi_run { seed_color.as_str() } else { "#fffaf2" },
-                        stroke = if multi_run { 0.9 } else { 1.1 },
-                    ),
-                    _ => format!(
-                        r##"<path d="M {x1:.2} {y1:.2} L {x2:.2} {y2:.2} M {x2:.2} {y1:.2} L {x1:.2} {y2:.2}" stroke="#b5542d" stroke-width="{stroke:.2}" stroke-linecap="round"/>"##,
-                        x1 = px - if multi_run { 2.8 } else { 3.6 },
-                        y1 = py - if multi_run { 2.8 } else { 3.6 },
-                        x2 = px + if multi_run { 2.8 } else { 3.6 },
-                        y2 = py + if multi_run { 2.8 } else { 3.6 },
-                        stroke = if multi_run { 1.35 } else { 1.8 },
-                    ),
-                }
+    let end_markers = if options.show_endpoint_markers {
+        trajectories
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (trajectory, _, outcome))| {
+                trajectory.last().copied().map(|(x, y)| {
+                    let (px, py) = project(x, y);
+                    let seed_color = preview_seed_color(index, trajectories.len());
+                    match outcome.as_str() {
+                        "success" => format!(
+                            r##"<circle cx="{px:.2}" cy="{py:.2}" r="{radius:.2}" fill="{fill}" stroke="#fffaf2" stroke-width="{stroke:.2}"/>"##,
+                            radius = if multi_run { 2.6 } else { 3.4 },
+                            fill = if multi_run { seed_color.as_str() } else { "#2f9e44" },
+                            stroke = if multi_run { 1.0 } else { 1.4 },
+                        ),
+                        "failed_off_target" => format!(
+                            r##"<path d="M {x1:.2} {py:.2} L {px:.2} {y1:.2} L {x2:.2} {py:.2} L {px:.2} {y2:.2} Z" fill="#d6a237" stroke="{stroke_color}" stroke-width="{stroke:.2}"/>"##,
+                            x1 = px - if multi_run { 2.9 } else { 3.8 },
+                            y1 = py - if multi_run { 2.9 } else { 3.8 },
+                            x2 = px + if multi_run { 2.9 } else { 3.8 },
+                            y2 = py + if multi_run { 2.9 } else { 3.8 },
+                            stroke_color = if multi_run { seed_color.as_str() } else { "#fffaf2" },
+                            stroke = if multi_run { 0.9 } else { 1.1 },
+                        ),
+                        _ => format!(
+                            r##"<path d="M {x1:.2} {y1:.2} L {x2:.2} {y2:.2} M {x2:.2} {y1:.2} L {x1:.2} {y2:.2}" stroke="#b5542d" stroke-width="{stroke:.2}" stroke-linecap="round"/>"##,
+                            x1 = px - if multi_run { 2.8 } else { 3.6 },
+                            y1 = py - if multi_run { 2.8 } else { 3.6 },
+                            x2 = px + if multi_run { 2.8 } else { 3.6 },
+                            y2 = py + if multi_run { 2.8 } else { 3.6 },
+                            stroke = if multi_run { 1.35 } else { 1.8 },
+                        ),
+                    }
+                })
             })
+            .collect::<String>()
+    } else {
+        String::new()
+    };
+    let pad_svg = if options.show_context {
+        pad.map(|(center_x_m, surface_y_m, width_m)| {
+            let (x1, y1) = project(center_x_m - (0.5 * width_m), surface_y_m);
+            let (x2, y2) = project(center_x_m + (0.5 * width_m), surface_y_m);
+            format!(
+                r##"<line x1="{x1:.2}" y1="{y1:.2}" x2="{x2:.2}" y2="{y2:.2}" stroke="#2f9e44" stroke-width="3.2" stroke-linecap="round"/>"##
+            )
         })
-        .collect::<String>();
-    let pad_svg = pad.map(|(center_x_m, surface_y_m, width_m)| {
-        let (x1, y1) = project(center_x_m - (0.5 * width_m), surface_y_m);
-        let (x2, y2) = project(center_x_m + (0.5 * width_m), surface_y_m);
-        format!(
-            r##"<line x1="{x1:.2}" y1="{y1:.2}" x2="{x2:.2}" y2="{y2:.2}" stroke="#2f9e44" stroke-width="3.2" stroke-linecap="round"/>"##
-        )
-    });
+    } else {
+        None
+    };
     let mut route_guide_keys = BTreeSet::new();
     let route_guide_svg = route_guides
         .iter()
