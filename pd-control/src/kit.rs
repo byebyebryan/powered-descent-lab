@@ -78,6 +78,14 @@ pub mod metric {
     pub const WAYPOINT_OUTBOUND_PROGRESS_MPS: &str = "waypoint.outbound_progress_mps";
     pub const WAYPOINT_SPEED_MPS: &str = "waypoint.speed_mps";
     pub const WAYPOINT_VERTICAL_SPEED_MPS: &str = "waypoint.vertical_speed_mps";
+    pub const WAYPOINT_BOOST_SCORE: &str = "waypoint.boost_score";
+    pub const WAYPOINT_PREDICTED_HANDOFF_TIME_S: &str = "waypoint.predicted_handoff_time_s";
+    pub const WAYPOINT_PREDICTED_CROSS_TRACK_M: &str = "waypoint.predicted_cross_track_m";
+    pub const WAYPOINT_PREDICTED_HEADING_ERROR_RAD: &str = "waypoint.predicted_heading_error_rad";
+    pub const WAYPOINT_PREDICTED_OUTBOUND_PROGRESS_MPS: &str =
+        "waypoint.predicted_outbound_progress_mps";
+    pub const WAYPOINT_PREDICTED_SPEED_MPS: &str = "waypoint.predicted_speed_mps";
+    pub const WAYPOINT_PREDICTED_VERTICAL_SPEED_MPS: &str = "waypoint.predicted_vertical_speed_mps";
 }
 
 pub mod marker {
