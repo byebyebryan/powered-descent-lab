@@ -223,6 +223,16 @@ pub struct BatchRunReviewMetrics {
     pub waypoint_speed_mps: Option<f64>,
     #[serde(default)]
     pub waypoint_vertical_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub waypoint_remaining_to_plane_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_time_to_plane_s: Option<f64>,
+    #[serde(default)]
+    pub waypoint_required_turn_distance_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_shaping_start_distance_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_turn_margin_m: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -5075,6 +5085,11 @@ fn derive_run_review_metrics(
         waypoint_outbound_progress_mps: waypoint.outbound_progress_mps,
         waypoint_speed_mps: waypoint.speed_mps,
         waypoint_vertical_speed_mps: waypoint.vertical_speed_mps,
+        waypoint_remaining_to_plane_m: waypoint.remaining_to_plane_m,
+        waypoint_time_to_plane_s: waypoint.time_to_plane_s,
+        waypoint_required_turn_distance_m: waypoint.required_turn_distance_m,
+        waypoint_shaping_start_distance_m: waypoint.shaping_start_distance_m,
+        waypoint_turn_margin_m: waypoint.turn_margin_m,
     }
 }
 
@@ -5091,6 +5106,11 @@ struct WaypointReviewMetrics {
     outbound_progress_mps: Option<f64>,
     speed_mps: Option<f64>,
     vertical_speed_mps: Option<f64>,
+    remaining_to_plane_m: Option<f64>,
+    time_to_plane_s: Option<f64>,
+    required_turn_distance_m: Option<f64>,
+    shaping_start_distance_m: Option<f64>,
+    turn_margin_m: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -5151,6 +5171,24 @@ fn waypoint_review_metrics(
             &update.frame.metrics,
             metric::WAYPOINT_VERTICAL_SPEED_MPS,
         ),
+        remaining_to_plane_m: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_REMAINING_TO_PLANE_M,
+        )
+        .filter(|value| *value >= 0.0),
+        time_to_plane_s: telemetry_float(&update.frame.metrics, metric::WAYPOINT_TIME_TO_PLANE_S)
+            .filter(|value| *value >= 0.0 && value.is_finite()),
+        required_turn_distance_m: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_REQUIRED_TURN_DISTANCE_M,
+        )
+        .filter(|value| *value >= 0.0),
+        shaping_start_distance_m: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_SHAPING_START_DISTANCE_M,
+        )
+        .filter(|value| *value >= 0.0),
+        turn_margin_m: telemetry_float(&update.frame.metrics, metric::WAYPOINT_TURN_MARGIN_M),
     }
 }
 
@@ -5197,6 +5235,11 @@ fn waypoint_handoff_goal_review_metrics(
         outbound_progress_mps: Some(stats.outbound_progress_mps),
         speed_mps: Some(stats.speed_mps),
         vertical_speed_mps: Some(stats.vertical_speed_mps),
+        remaining_to_plane_m: None,
+        time_to_plane_s: None,
+        required_turn_distance_m: None,
+        shaping_start_distance_m: None,
+        turn_margin_m: None,
     })
 }
 
@@ -8446,6 +8489,14 @@ mod tests {
                 metric::WAYPOINT_OUTBOUND_PROGRESS_MPS.to_owned(),
                 TelemetryValue::from(24.0),
             ),
+            (
+                metric::WAYPOINT_REQUIRED_TURN_DISTANCE_M.to_owned(),
+                TelemetryValue::from(72.0),
+            ),
+            (
+                metric::WAYPOINT_TURN_MARGIN_M.to_owned(),
+                TelemetryValue::from(38.0),
+            ),
         ]));
 
         let metrics = waypoint_review_metrics(&[tracking, captured]);
@@ -8456,6 +8507,8 @@ mod tests {
         assert_eq!(metrics.closest_distance_m, Some(12.0));
         assert_eq!(metrics.cross_track_m, Some(8.0));
         assert_eq!(metrics.outbound_progress_mps, Some(24.0));
+        assert_eq!(metrics.required_turn_distance_m, Some(72.0));
+        assert_eq!(metrics.turn_margin_m, Some(38.0));
     }
 
     #[test]

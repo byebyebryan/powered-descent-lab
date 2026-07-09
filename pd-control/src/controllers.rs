@@ -47,6 +47,7 @@ const WAYPOINT_LEG_LOOKAHEAD_MAX_CAPTURE_RADII: f64 = 12.0;
 const WAYPOINT_LEG_REMAINING_LOOKAHEAD_FRAC: f64 = 0.75;
 const WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII: f64 = 8.0;
 const WAYPOINT_OUTBOUND_CROSS_TRACK_BLEND_CAPTURE_RADII: f64 = 4.0;
+const WAYPOINT_OUTBOUND_TURN_MARGIN_CAPTURE_RADII: f64 = 2.0;
 const WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII: f64 = 7.0;
 const WAYPOINT_OUTBOUND_VELOCITY_BLEND_WEIGHT: f64 = 0.75;
 const WAYPOINT_SCORE_SPATIAL: f64 = 900.0;
@@ -58,6 +59,7 @@ const WAYPOINT_SCORE_VERTICAL_SPEED: f64 = 30.0;
 const WAYPOINT_SCORE_NO_TRIGGER: f64 = 8.0;
 const WAYPOINT_SCORE_TIE_BREAK_WEIGHT: f64 = 0.001;
 const WAYPOINT_OUTBOUND_ATTITUDE_SCALE: f64 = 0.45;
+const WAYPOINT_HANDOFF_PREDICTION_MAX_S: f64 = 12.0;
 const WAYPOINT_COAST_MIN_CLOSING_MPS: f64 = 1.0;
 const WAYPOINT_COAST_REACHABILITY_MARGIN_S: f64 = 2.0;
 const WAYPOINT_COAST_REACHABILITY_MAX_S: f64 = 20.0;
@@ -830,6 +832,11 @@ struct WaypointTelemetry {
     outbound_progress_mps: f64,
     speed_mps: f64,
     vertical_speed_mps: f64,
+    remaining_to_plane_m: f64,
+    time_to_plane_s: f64,
+    required_turn_distance_m: f64,
+    shaping_start_distance_m: f64,
+    turn_margin_m: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -845,6 +852,7 @@ struct WaypointCaptureSnapshot {
     outbound_progress_mps: f64,
     speed_mps: f64,
     vertical_speed_mps: f64,
+    approach: WaypointApproachState,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -868,6 +876,15 @@ struct WaypointLegStats {
     outbound_progress_mps: f64,
     speed_mps: f64,
     vertical_speed_mps: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointApproachState {
+    remaining_to_plane_m: f64,
+    time_to_plane_s: f64,
+    required_turn_distance_m: f64,
+    shaping_start_distance_m: f64,
+    turn_margin_m: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1122,6 +1139,7 @@ impl TransferPdgController {
 
         let geometry = self.waypoint_leg_geometry(ctx)?;
         let stats = waypoint_leg_stats(observation, &geometry);
+        let approach = self.waypoint_approach_state(ctx, observation, &geometry, stats);
         self.waypoint_closest_distance_m = self.waypoint_closest_distance_m.min(stats.distance_m);
         let should_switch =
             stats.plane_progress_m >= 0.0 || stats.distance_m <= geometry.waypoint.capture_radius_m;
@@ -1143,6 +1161,7 @@ impl TransferPdgController {
                 outbound_progress_mps: stats.outbound_progress_mps,
                 speed_mps: stats.speed_mps,
                 vertical_speed_mps: stats.vertical_speed_mps,
+                approach,
             };
             self.last_waypoint_capture = Some(capture);
             self.waypoint_active_index += 1;
@@ -1161,7 +1180,10 @@ impl TransferPdgController {
             }
             let next_geometry = self.waypoint_leg_geometry(ctx)?;
             let next_stats = waypoint_leg_stats(observation, &next_geometry);
-            let next_target_m = waypoint_guidance_target_m(&next_geometry, next_stats);
+            let next_approach =
+                self.waypoint_approach_state(ctx, observation, &next_geometry, next_stats);
+            let next_target_m =
+                waypoint_guidance_target_m(&next_geometry, next_stats, next_approach);
             return Some(WaypointUpdateContext {
                 observation: waypoint_adjusted_observation(
                     observation,
@@ -1173,7 +1195,7 @@ impl TransferPdgController {
             });
         }
 
-        let active_target_m = waypoint_guidance_target_m(&geometry, stats);
+        let active_target_m = waypoint_guidance_target_m(&geometry, stats, approach);
         Some(WaypointUpdateContext {
             observation: waypoint_adjusted_observation(
                 observation,
@@ -1194,6 +1216,11 @@ impl TransferPdgController {
                 outbound_progress_mps: stats.outbound_progress_mps,
                 speed_mps: stats.speed_mps,
                 vertical_speed_mps: stats.vertical_speed_mps,
+                remaining_to_plane_m: approach.remaining_to_plane_m,
+                time_to_plane_s: approach.time_to_plane_s,
+                required_turn_distance_m: approach.required_turn_distance_m,
+                shaping_start_distance_m: approach.shaping_start_distance_m,
+                turn_margin_m: approach.turn_margin_m,
             },
         })
     }
@@ -1244,6 +1271,11 @@ impl TransferPdgController {
             outbound_progress_mps: -1.0,
             speed_mps: -1.0,
             vertical_speed_mps: -1.0,
+            remaining_to_plane_m: -1.0,
+            time_to_plane_s: -1.0,
+            required_turn_distance_m: -1.0,
+            shaping_start_distance_m: -1.0,
+            turn_margin_m: -1.0,
         }
     }
 
@@ -1306,6 +1338,26 @@ impl TransferPdgController {
         frame.metrics.insert(
             metric::WAYPOINT_VERTICAL_SPEED_MPS.to_owned(),
             TelemetryValue::from(telemetry.vertical_speed_mps),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_REMAINING_TO_PLANE_M.to_owned(),
+            TelemetryValue::from(telemetry.remaining_to_plane_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_TIME_TO_PLANE_S.to_owned(),
+            TelemetryValue::from(telemetry.time_to_plane_s),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_REQUIRED_TURN_DISTANCE_M.to_owned(),
+            TelemetryValue::from(telemetry.required_turn_distance_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_SHAPING_START_DISTANCE_M.to_owned(),
+            TelemetryValue::from(telemetry.shaping_start_distance_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_TURN_MARGIN_M.to_owned(),
+            TelemetryValue::from(telemetry.turn_margin_m),
         );
     }
 
@@ -2608,6 +2660,24 @@ impl TransferPdgController {
         60.0 * away_ratio * away_ratio * command.throttle_frac.clamp(0.0, 1.0)
     }
 
+    fn waypoint_approach_state(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        geometry: &WaypointLegGeometry<'_>,
+        stats: WaypointLegStats,
+    ) -> WaypointApproachState {
+        waypoint_approach_state(
+            ctx,
+            observation,
+            geometry,
+            stats,
+            self.config
+                .boost_tilt_rad
+                .max(self.config.uphill_boost_tilt_rad),
+        )
+    }
+
     fn score_waypoint_boost_candidate(
         &self,
         ctx: &RunContext,
@@ -3117,6 +3187,11 @@ impl WaypointTelemetry {
             outbound_progress_mps: capture.outbound_progress_mps,
             speed_mps: capture.speed_mps,
             vertical_speed_mps: capture.vertical_speed_mps,
+            remaining_to_plane_m: capture.approach.remaining_to_plane_m,
+            time_to_plane_s: capture.approach.time_to_plane_s,
+            required_turn_distance_m: capture.approach.required_turn_distance_m,
+            shaping_start_distance_m: capture.approach.shaping_start_distance_m,
+            turn_margin_m: capture.approach.turn_margin_m,
         }
     }
 }
@@ -3169,7 +3244,67 @@ fn waypoint_leg_stats_from_kinematics(
     }
 }
 
-fn waypoint_guidance_target_m(geometry: &WaypointLegGeometry<'_>, stats: WaypointLegStats) -> Vec2 {
+fn waypoint_approach_state(
+    ctx: &RunContext,
+    observation: &Observation,
+    geometry: &WaypointLegGeometry<'_>,
+    stats: WaypointLegStats,
+    max_tilt_rad: f64,
+) -> WaypointApproachState {
+    let capture_radius_m = geometry.waypoint.capture_radius_m.max(1.0);
+    let remaining_to_plane_m = (-stats.plane_progress_m).max(0.0);
+    let closing_speed_mps = vec_dot(observation.velocity_mps, geometry.leg_unit).max(0.0);
+    let time_to_plane_s = if remaining_to_plane_m <= 1.0e-6 {
+        0.0
+    } else if closing_speed_mps > 1.0e-6 {
+        remaining_to_plane_m / closing_speed_mps
+    } else {
+        WAYPOINT_HANDOFF_PREDICTION_MAX_S
+    };
+    let max_lateral_accel_mps2 = waypoint_max_lateral_accel_mps2(ctx, observation, max_tilt_rad);
+    let turn_delta_v_mps = 2.0 * stats.speed_mps * (0.5 * stats.outbound_heading_error_rad).sin();
+    let required_turn_distance_m =
+        (stats.speed_mps * turn_delta_v_mps / max_lateral_accel_mps2.max(1.0e-6)).clamp(
+            capture_radius_m,
+            geometry.leg_length_m.max(capture_radius_m),
+        );
+    let fixed_shaping_start_m = capture_radius_m * WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII;
+    let turn_shaping_start_m =
+        required_turn_distance_m + (capture_radius_m * WAYPOINT_OUTBOUND_TURN_MARGIN_CAPTURE_RADII);
+    let shaping_start_distance_m = fixed_shaping_start_m.max(turn_shaping_start_m).clamp(
+        capture_radius_m,
+        geometry.leg_length_m.max(capture_radius_m),
+    );
+    let turn_margin_m = remaining_to_plane_m - required_turn_distance_m;
+
+    WaypointApproachState {
+        remaining_to_plane_m,
+        time_to_plane_s,
+        required_turn_distance_m,
+        shaping_start_distance_m,
+        turn_margin_m,
+    }
+}
+
+fn waypoint_max_lateral_accel_mps2(
+    ctx: &RunContext,
+    observation: &Observation,
+    max_tilt_rad: f64,
+) -> f64 {
+    let tilt_rad = observation
+        .attitude_rad
+        .abs()
+        .max(TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD)
+        .max(max_tilt_rad.max(0.0))
+        .min(std::f64::consts::FRAC_PI_2);
+    (ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0)) * tilt_rad.sin().abs().max(0.05)
+}
+
+fn waypoint_guidance_target_m(
+    geometry: &WaypointLegGeometry<'_>,
+    stats: WaypointLegStats,
+    _approach: WaypointApproachState,
+) -> Vec2 {
     let capture_radius_m = geometry.waypoint.capture_radius_m.max(1.0);
     let progress_m =
         (stats.plane_progress_m + geometry.leg_length_m).clamp(0.0, geometry.leg_length_m);
@@ -3589,6 +3724,50 @@ mod tests {
             frame.metrics.get(metric::WAYPOINT_CAPTURE_STATUS),
             Some(&TelemetryValue::from("tracking"))
         );
+        assert!(frame.metrics.contains_key(metric::WAYPOINT_TURN_MARGIN_M));
+        assert!(
+            frame
+                .metrics
+                .contains_key(metric::WAYPOINT_REQUIRED_TURN_DISTANCE_M)
+        );
+    }
+
+    #[test]
+    fn transfer_waypoint_approach_state_reports_positive_turn_margin_for_viable_handoff() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * 28.0, 4.0);
+        observation.position_m =
+            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 6.0);
+        observation.mass_kg = 940.0;
+
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+
+        assert!(approach.required_turn_distance_m <= geometry.waypoint.capture_radius_m * 1.1);
+        assert!(approach.turn_margin_m > geometry.waypoint.capture_radius_m * 4.0);
+        assert!(approach.shaping_start_distance_m >= approach.required_turn_distance_m);
+    }
+
+    #[test]
+    fn transfer_waypoint_approach_state_reports_negative_turn_margin_for_late_sharp_turn() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -70.0, 4.0);
+        observation.position_m =
+            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 1.5);
+        observation.mass_kg = 940.0;
+
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+
+        assert!(approach.turn_margin_m < 0.0);
+        assert!(
+            approach.shaping_start_distance_m
+                > geometry.waypoint.capture_radius_m * WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII
+        );
     }
 
     #[test]
@@ -3605,7 +3784,8 @@ mod tests {
                 * 0.8);
 
         let stats = waypoint_leg_stats(&observation, &geometry);
-        let target_m = waypoint_guidance_target_m(&geometry, stats);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+        let target_m = waypoint_guidance_target_m(&geometry, stats, approach);
         let target_from_anchor = target_m - geometry.anchor_m;
         let target_cross_track_m = vec_cross(target_from_anchor, geometry.leg_unit).abs();
         let target_progress_m = vec_dot(target_from_anchor, geometry.leg_unit);
@@ -3625,7 +3805,8 @@ mod tests {
             geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 0.5);
 
         let stats = waypoint_leg_stats(&observation, &geometry);
-        let target_m = waypoint_guidance_target_m(&geometry, stats);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+        let target_m = waypoint_guidance_target_m(&geometry, stats, approach);
         let target_from_waypoint = target_m - geometry.target_m;
 
         assert!(vec_dot(target_from_waypoint, geometry.next_leg_unit) > 0.0);
@@ -3644,6 +3825,7 @@ mod tests {
                 * 1.5);
 
         let stats = waypoint_leg_stats(&observation, &geometry);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
         let blend = waypoint_outbound_blend(
             &geometry,
             stats,
@@ -3655,7 +3837,7 @@ mod tests {
             .max(0.0),
             geometry.waypoint.capture_radius_m,
         );
-        let target_m = waypoint_guidance_target_m(&geometry, stats);
+        let target_m = waypoint_guidance_target_m(&geometry, stats, approach);
         let target_cross_track_m = vec_cross(target_m - geometry.anchor_m, geometry.leg_unit).abs();
 
         assert!(blend > 0.2);
