@@ -229,6 +229,13 @@ Implementation checkpoint:
   variant. It tracks the active leg, blocks terminal handoff until the waypoint
   is captured, and then lets the existing terminal handoff logic solve the
   final target leg.
+- Active-waypoint coast is guarded by a short coast preview: the controller may
+  reject coast if it would hit terrain before reaching the active waypoint. This
+  is a safety veto against premature ballistic handoff, not terrain avoidance,
+  rerouting, or fixture-specific obstacle logic.
+- The experimental waypoint handoff boost scorer remains default-off. When
+  enabled, waypoint quality is only a small tie-breaker on top of transfer
+  scoring; it must not replace the base transfer safety score.
 - V1 capture status is deliberately spatial: capture means reaching the
   configured radius or crossing the waypoint plane inside the cross-track band.
   The stricter waypoint contract is reported separately: spatial misses are
@@ -322,6 +329,8 @@ The current staged controller uses the transfer diagnostics directly:
 - uphill coast may enter terminal control just before crossing target height,
   but only when the crossing is imminent, the projected terminal miss is
   centered, and the latest-safe gate is already close
+- waypoint coast is blocked while the active waypoint cannot be reached before
+  terrain contact under passive coast
 
 The corridor guard is still route-local, not broad terrain avoidance. It is
 intended to protect near-source uphill climbs from terrain collision without
