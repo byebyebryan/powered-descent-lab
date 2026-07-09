@@ -285,10 +285,16 @@ Status:
 - `transfer_waypoint_rpos80_smoke` and `transfer_waypoint_rpos80_full` are the
   first waypoint-guidance probes for that `r+80` frontier, using a preplanned
   `single_dogleg_v1` waypoint profile rather than terrain-aware waypoint
-  planning
+  planning. They are retained as hairpin/stress probes.
 - `transfer_waypoint_contract_rpos80_smoke` and
   `transfer_waypoint_contract_rpos80_full` score the same dogleg route at the
   first waypoint handoff instead of after final-landing recovery
+- `transfer_waypoint_bend_rpos80_smoke` and
+  `transfer_waypoint_bend_rpos80_full` are the smoother `single_bend_v1`
+  waypoint-guidance workbench packs for the same `r+80` axes
+- `transfer_waypoint_bend_contract_rpos80_smoke` and
+  `transfer_waypoint_bend_contract_rpos80_full` score the smoother bend profile
+  at the first waypoint handoff
 - `transfer_waypoint_pdg_v1` provides the first terrain-blind waypoint guidance
   variant: track active leg, spatially capture the waypoint, then resume the
   final target leg
@@ -341,6 +347,8 @@ Status:
   - keep waypoints preplanned
   - keep terrain avoidance encoded in waypoint positions/envelopes, not in
     terrain-reactive controller branches
+  - use `single_bend_v1` as the main waypoint-guidance corpus before adding a
+    true corridor/waypoint-plane objective
   - harden waypoint capture quality, outbound progress, and route shape beyond
     the current spatial capture status
   - trim landing time and near-landing hover without using arbitrary sim-time

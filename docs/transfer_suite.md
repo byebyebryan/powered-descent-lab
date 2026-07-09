@@ -127,13 +127,13 @@ Current corpus tiers:
   - 27 runs
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, smoke seeds
   - injects the `single_dogleg_v1` waypoint profile
-  - intended as the fast waypoint-guidance probe for the known direct-transfer
+  - retained as the fast hairpin/stress probe for the known direct-transfer
     frontier
 - `transfer_waypoint_rpos80_full`
   - 108 runs
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, all 12 transfer seeds
   - injects the `single_dogleg_v1` waypoint profile
-  - intended as the full-seed waypoint-guidance frontier probe
+  - retained as the full-seed hairpin/stress probe
 - `transfer_waypoint_contract_rpos80_smoke`
   - 27 runs
   - same geometry as `transfer_waypoint_rpos80_smoke`
@@ -143,6 +143,20 @@ Current corpus tiers:
   - 108 runs
   - same geometry as `transfer_waypoint_rpos80_full`
   - full-seed contract probe for waypoint controller tuning
+- `transfer_waypoint_bend_rpos80_smoke`
+  - 27 runs
+  - same axes as the dogleg smoke pack
+  - injects the smoother `single_bend_v1` waypoint profile
+  - intended as the default waypoint-guidance workbench before controller tuning
+- `transfer_waypoint_bend_rpos80_full`
+  - 108 runs
+  - full-seed reliability gate for the smoother waypoint workbench
+- `transfer_waypoint_bend_contract_rpos80_smoke`
+  - 27 runs
+  - scores the smoother waypoint profile at the first handoff
+- `transfer_waypoint_bend_contract_rpos80_full`
+  - 108 runs
+  - full-seed contract probe for the smoother waypoint profile
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -224,7 +238,15 @@ Implementation checkpoint:
 - `TransferRouteSpec` now carries preplanned waypoints.
 - `single_dogleg_v1` is the first matrix waypoint profile. It is intentionally
   narrow: the profile exists for the `r+80` frontier and inserts one dogleg
-  waypoint before final descent to the target.
+  waypoint before final descent to the target. It is now treated as a stress
+  route, not the primary waypoint-guidance workbench.
+- `single_bend_v1` is the first smoother waypoint profile. It places one
+  pass-through waypoint at 55% of the source-to-target route plus a 20%
+  route-radius source-side lateral offset, producing a roughly 44 degree
+  nominal turn instead of the roughly 143 degree dogleg hairpin.
+- Its distance capture radius stays tight at 10% of route radius, but its
+  plane-crossing cross-track band is wider than the dogleg profile because this
+  is a pass-through waypoint, not a precision stop.
 - `transfer_waypoint_pdg_v1` is the first terrain-blind waypoint controller
   variant. It tracks the active leg, blocks terminal handoff until the waypoint
   is captured, and then lets the existing terminal handoff logic solve the
@@ -258,6 +280,9 @@ Implementation checkpoint:
   tweaks did not produce contract-passing handoffs; the next useful waypoint
   work should revisit route/profile shape or add a true corridor/reference
   objective rather than adding more handoff-specific target heuristics.
+- Waypoint-profile report rows now include the profile label and resolved turn
+  angle so smooth pass-through packs are not confused with the dogleg stress
+  packs.
 
 Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:

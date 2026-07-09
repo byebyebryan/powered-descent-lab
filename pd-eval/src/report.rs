@@ -2486,6 +2486,8 @@ struct WaypointCellSummary<'a> {
     captured_runs: usize,
     missed_runs: usize,
     tracking_runs: usize,
+    waypoint_profile: String,
+    turn_angle_deg: Option<crate::BatchMetricSummary>,
     closest_distance_m: Option<crate::BatchMetricSummary>,
     cross_track_m: Option<crate::BatchMetricSummary>,
     heading_error_deg: Option<crate::BatchMetricSummary>,
@@ -2552,9 +2554,11 @@ fn render_waypoint_triage_section(
         <tr>
           <th>Route</th>
           <th>Vehicle</th>
+          <th>Profile</th>
           <th>Success</th>
           <th>Contract</th>
           <th>Waypoint</th>
+          <th>Turn Angle</th>
           <th>Closest</th>
           <th>Cross Track</th>
           <th>Heading Error</th>
@@ -2584,9 +2588,15 @@ fn render_waypoint_triage_row(
         r#"<code>{}</code>"#,
         escape_html(&summary.key.vehicle_variant)
     );
+    let profile_html = render_waypoint_profile_cell(summary);
     let success_html = render_waypoint_success_cell(summary);
     let contract_html = render_waypoint_contract_cell(summary);
     let waypoint_html = render_waypoint_capture_cell(summary);
+    let turn_angle_html = render_transfer_handoff_metric_cell(
+        summary.turn_angle_deg.as_ref(),
+        MetricDisplayKind::Degrees,
+        None,
+    );
     let closest_html = render_transfer_handoff_metric_cell(
         summary.closest_distance_m.as_ref(),
         MetricDisplayKind::Meters,
@@ -2612,9 +2622,11 @@ fn render_waypoint_triage_row(
         r#"<tr>
   <td>{route}</td>
   <td>{vehicle}</td>
+  <td>{profile}</td>
   <td>{success}</td>
   <td>{contract}</td>
   <td>{waypoint}</td>
+  <td>{turn_angle}</td>
   <td>{closest}</td>
   <td>{cross_track}</td>
   <td>{heading_error}</td>
@@ -2623,9 +2635,11 @@ fn render_waypoint_triage_row(
 </tr>"#,
         route = route_html,
         vehicle = vehicle_html,
+        profile = profile_html,
         success = success_html,
         contract = contract_html,
         waypoint = waypoint_html,
+        turn_angle = turn_angle_html,
         closest = closest_html,
         cross_track = cross_track_html,
         heading_error = heading_error_html,
@@ -2723,6 +2737,14 @@ fn waypoint_cell_summary<'a>(
         captured_runs,
         missed_runs,
         tracking_runs,
+        waypoint_profile: waypoint_profile_summary(records),
+        turn_angle_deg: transfer_shape_record_metric_summary(records, |record| {
+            record
+                .resolved
+                .resolved_parameters
+                .get("waypoint_0_turn_angle_deg")
+                .copied()
+        }),
         closest_distance_m: transfer_shape_metric_summary(records, |review| {
             review.waypoint_closest_distance_m
         }),
@@ -2787,6 +2809,15 @@ fn waypoint_record_score(record: &crate::BatchRunRecord) -> f64 {
     score += record.review.waypoint_cross_track_m.unwrap_or(0.0);
     score += record.review.waypoint_closest_distance_m.unwrap_or(0.0) * 0.2;
     score
+}
+
+fn render_waypoint_profile_cell(summary: &WaypointCellSummary<'_>) -> String {
+    let profile = if summary.waypoint_profile.trim().is_empty() {
+        UNSPECIFIED_SELECTOR_VALUE
+    } else {
+        summary.waypoint_profile.as_str()
+    };
+    format!(r#"<code>{}</code>"#, escape_html(profile))
 }
 
 fn render_waypoint_success_cell(summary: &WaypointCellSummary<'_>) -> String {
@@ -3789,6 +3820,36 @@ where
         .filter(|value| value.is_finite())
         .collect::<Vec<_>>();
     crate::metric_summary(&values)
+}
+
+fn transfer_shape_record_metric_summary<F>(
+    records: &[&crate::BatchRunRecord],
+    extractor: F,
+) -> Option<crate::BatchMetricSummary>
+where
+    F: Fn(&crate::BatchRunRecord) -> Option<f64>,
+{
+    let values = records
+        .iter()
+        .filter_map(|record| extractor(record))
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    crate::metric_summary(&values)
+}
+
+fn waypoint_profile_summary(records: &[&crate::BatchRunRecord]) -> String {
+    let profiles = records
+        .iter()
+        .map(|record| selector_value_or_unspecified(&record.resolved.selector.waypoint_profile))
+        .collect::<BTreeSet<_>>();
+    match profiles.len() {
+        0 => UNSPECIFIED_SELECTOR_VALUE.to_owned(),
+        1 => profiles
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| UNSPECIFIED_SELECTOR_VALUE.to_owned()),
+        _ => "mixed".to_owned(),
+    }
 }
 
 fn dominant_transfer_shape_mode<F>(
@@ -8034,9 +8095,14 @@ mod report_tests {
         record.resolved.selector.route_family = "signed_route_arc_transfer_v1".to_owned();
         record.resolved.selector.route_angle = route_angle.to_owned();
         record.resolved.selector.radius_tier = "nominal".to_owned();
+        record.resolved.selector.waypoint_profile = "single_bend_v1".to_owned();
         record.resolved.selector.expectation_tier = Some("core".to_owned());
         record.resolved.lane_id = "current".to_owned();
         record.resolved.resolved_seed = seed;
+        record
+            .resolved
+            .resolved_parameters
+            .insert("waypoint_0_turn_angle_deg".to_owned(), 44.0);
         record.resolved.controller_id = "transfer_pdg_v1".to_owned();
         record.manifest.scenario_seed = seed;
         record.manifest.sim_time_s = 20.0 + seed as f64;
@@ -8096,6 +8162,9 @@ mod report_tests {
         assert!(html.contains("<h2>Waypoint Handoff Triage</h2>"));
         assert!(html.contains("1 spatial"));
         assert!(html.contains("landed with waypoint warning"));
+        assert!(html.contains("<th>Profile</th>"));
+        assert!(html.contains("<th>Turn Angle</th>"));
+        assert!(html.contains("single_bend_v1"));
         assert!(html.contains("Heading Error"));
         assert!(html.contains("Outbound Progress"));
     }

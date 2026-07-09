@@ -2,6 +2,33 @@
 
 ## 2026-07-09
 
+### Waypoint smooth-profile workbench checkpoint
+
+- Added `single_bend_v1` as the first smoother pass-through waypoint profile for
+  the `r+80` waypoint corpus. The profile places one waypoint at 55% of the
+  route with a 20% route-radius source-side offset, making the nominal turn about
+  44 degrees instead of the `single_dogleg_v1` hairpin.
+- Kept the bend distance capture tight while widening the plane-crossing
+  cross-track envelope, matching the intended pass-through contract without
+  making the waypoint a precision stop.
+- Added resolved waypoint geometry diagnostics for inbound leg length, outbound
+  leg length, turn angle, profile progress, and lateral offset.
+- Added `transfer_waypoint_bend_*` final-landing and contract packs for smoke
+  and full-seed runs. The existing `single_dogleg_v1` packs remain as stress
+  probes; the bend packs are the default waypoint-guidance workbench for the
+  next controller slice.
+- Updated waypoint triage reports to show the waypoint profile and resolved turn
+  angle so smooth-profile results are not mixed up with dogleg stress results.
+- Current smoke validation:
+  - `transfer_waypoint_bend_rpos80_smoke`: `25 / 27` final-landing successes,
+    with the remaining two crashes both in short-radius payload cases after
+    waypoint capture.
+  - `transfer_waypoint_bend_contract_rpos80_smoke`: `15 / 27` contract
+    successes, up from the initial `12 / 27` with the narrower bend
+    cross-track envelope.
+  - The remaining failures are controller handoff/recovery debt, not a reason
+    to keep reshaping the workbench fixture.
+
 ### Waypoint turn-feasibility checkpoint
 
 - Added controller telemetry for waypoint approach feasibility:

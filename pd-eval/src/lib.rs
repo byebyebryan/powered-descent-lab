@@ -306,6 +306,8 @@ pub struct SelectorAxes {
     pub route_angle: String,
     #[serde(default = "default_selector_value")]
     pub radius_tier: String,
+    #[serde(default = "default_selector_value")]
+    pub waypoint_profile: String,
     #[serde(default)]
     pub expectation_tier: Option<String>,
 }
@@ -322,6 +324,7 @@ impl Default for SelectorAxes {
             route_family: default_selector_value(),
             route_angle: default_selector_value(),
             radius_tier: default_selector_value(),
+            waypoint_profile: default_selector_value(),
             expectation_tier: None,
         }
     }
@@ -1931,7 +1934,10 @@ fn validate_transfer_waypoint_profile(entry_id: &str, profile: &str) -> Result<(
     if profile.trim().is_empty() {
         bail!("transfer matrix entry '{entry_id}' waypoint_profile must not be empty");
     }
-    if profile != TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1 {
+    if !matches!(
+        profile,
+        TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1 | TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1
+    ) {
         bail!(
             "transfer matrix entry '{}' waypoint_profile '{}' is not supported",
             entry_id,
@@ -2464,6 +2470,9 @@ const SIGNED_ROUTE_ARC_TRANSFER_V1_SPEC: TransferRouteFamilySpec = TransferRoute
 };
 
 const TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1: &str = "single_dogleg_v1";
+const TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1: &str = "single_bend_v1";
+const TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC: f64 = 0.55;
+const TRANSFER_WAYPOINT_SINGLE_BEND_LATERAL_OFFSET_RATIO: f64 = 0.20;
 
 const TRANSFER_SMOKE_SEEDS: [TransferSeedSpec; 3] = [
     TransferSeedSpec {
@@ -2863,6 +2872,13 @@ fn resolve_transfer_matrix_scenario(
         resolved_parameters.insert("waypoint_handoff_index".to_owned(), 0.0);
     }
     if let Some(route) = scenario.mission.transfer_route.as_ref() {
+        insert_waypoint_geometry_resolved_parameters(
+            &mut resolved_parameters,
+            Vec2::new(source_pad.center_x_m, source_pad.surface_y_m),
+            Vec2::new(target_pad.center_x_m, target_pad.surface_y_m),
+            &route.waypoints,
+            route.route_radius_m,
+        );
         for (index, waypoint) in route.waypoints.iter().enumerate() {
             let prefix = format!("waypoint_{index}");
             resolved_parameters.insert(format!("{prefix}_x_m"), waypoint.position_m.x);
@@ -2916,6 +2932,10 @@ fn resolve_transfer_matrix_scenario(
         route_family: family_spec.route_family.to_owned(),
         route_angle: route_angle.id.to_owned(),
         radius_tier: radius_tier.id.to_owned(),
+        waypoint_profile: entry
+            .waypoint_profile
+            .clone()
+            .unwrap_or_else(default_selector_value),
         expectation_tier: Some(entry.expectation_tier.clone()),
     };
 
@@ -2997,6 +3017,10 @@ fn configure_transfer_route_geometry(
         "route_mode".to_owned(),
         waypoint_profile.unwrap_or("direct").to_owned(),
     );
+    scenario.metadata.insert(
+        "waypoint_profile".to_owned(),
+        waypoint_profile.unwrap_or("direct").to_owned(),
+    );
     if let Some(route) = scenario.mission.transfer_route.as_ref() {
         for (index, waypoint) in route.waypoints.iter().enumerate() {
             scenario
@@ -3056,7 +3080,105 @@ fn transfer_route_waypoints_for_profile(
                 max_vertical_speed_mps: 65.0,
             }])
         }
+        TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1 => {
+            if route_angle.angle_deg < 70.0 {
+                bail!(
+                    "waypoint profile '{}' requires a steep uphill route angle, got '{}'",
+                    profile,
+                    route_angle.id
+                );
+            }
+            let source_m = Vec2::new(source_pad.center_x_m, source_pad.surface_y_m);
+            let target_m = Vec2::new(target_pad.center_x_m, target_pad.surface_y_m);
+            let route_m = target_m - source_m;
+            let route_unit_m = waypoint_normalized(route_m).ok_or_else(|| {
+                anyhow!("waypoint profile '{profile}' cannot resolve a zero-length route")
+            })?;
+            let direction = if route_m.x >= 0.0 { 1.0 } else { -1.0 };
+            let source_side_normal_m =
+                Vec2::new(-route_unit_m.y * direction, route_unit_m.x * direction);
+            let radius_m = radius_tier.radius_m;
+            let position_m = source_m
+                + (route_m * TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC)
+                + (source_side_normal_m
+                    * (radius_m * TRANSFER_WAYPOINT_SINGLE_BEND_LATERAL_OFFSET_RATIO));
+            let capture_radius_m = (radius_m * 0.10).clamp(40.0, 100.0);
+            Ok(vec![TransferWaypointSpec {
+                id: "wp_bend_01".to_owned(),
+                position_m,
+                capture_radius_m,
+                max_cross_track_m: capture_radius_m * 1.75,
+                max_outbound_heading_error_rad: 0.85,
+                min_outbound_progress_mps: 8.0,
+                min_speed_mps: 10.0,
+                max_speed_mps: 130.0,
+                min_vertical_speed_mps: -80.0,
+                max_vertical_speed_mps: 65.0,
+            }])
+        }
         _ => unreachable!("validated transfer waypoint profile should be supported"),
+    }
+}
+
+fn insert_waypoint_geometry_resolved_parameters(
+    resolved_parameters: &mut BTreeMap<String, f64>,
+    source_m: Vec2,
+    target_m: Vec2,
+    waypoints: &[TransferWaypointSpec],
+    route_radius_m: f64,
+) {
+    let route_m = target_m - source_m;
+    let Some(route_unit_m) = waypoint_normalized(route_m) else {
+        return;
+    };
+    let route_length_m = route_m.length();
+    if route_length_m <= 1.0e-9 {
+        return;
+    }
+
+    for (index, waypoint) in waypoints.iter().enumerate() {
+        let prefix = format!("waypoint_{index}");
+        let anchor_m = if index == 0 {
+            source_m
+        } else {
+            waypoints[index - 1].position_m
+        };
+        let next_target_m = waypoints
+            .get(index + 1)
+            .map(|next| next.position_m)
+            .unwrap_or(target_m);
+        let inbound_m = waypoint.position_m - anchor_m;
+        let outbound_m = next_target_m - waypoint.position_m;
+        let inbound_length_m = inbound_m.length();
+        let outbound_length_m = outbound_m.length();
+        resolved_parameters.insert(format!("{prefix}_inbound_leg_length_m"), inbound_length_m);
+        resolved_parameters.insert(format!("{prefix}_outbound_leg_length_m"), outbound_length_m);
+        if inbound_length_m > 1.0e-9 && outbound_length_m > 1.0e-9 {
+            let turn_angle_cos =
+                waypoint_dot(inbound_m, outbound_m) / (inbound_length_m * outbound_length_m);
+            resolved_parameters.insert(
+                format!("{prefix}_turn_angle_deg"),
+                turn_angle_cos.clamp(-1.0, 1.0).acos().to_degrees(),
+            );
+        }
+
+        let from_source_m = waypoint.position_m - source_m;
+        let profile_progress_frac = waypoint_dot(from_source_m, route_unit_m) / route_length_m;
+        let profile_lateral_offset_m = waypoint_cross(from_source_m, route_unit_m).abs();
+        resolved_parameters.insert(
+            format!("{prefix}_profile_progress_frac"),
+            profile_progress_frac,
+        );
+        resolved_parameters.insert(
+            format!("{prefix}_profile_lateral_offset_m"),
+            profile_lateral_offset_m,
+        );
+        if route_radius_m > 1.0e-9 {
+            resolved_parameters.insert(
+                format!("{prefix}_profile_lateral_offset_ratio"),
+                profile_lateral_offset_m / route_radius_m,
+            );
+        }
     }
 }
 
@@ -3579,6 +3701,7 @@ fn resolve_terminal_matrix_scenario(
         route_family: default_selector_value(),
         route_angle: default_selector_value(),
         radius_tier: default_selector_value(),
+        waypoint_profile: default_selector_value(),
         expectation_tier: Some(entry.expectation_tier.clone()),
     };
 
@@ -3925,6 +4048,12 @@ fn selector_axes_from_metadata(metadata: &BTreeMap<String, String>) -> SelectorA
         route_family: selector_value(metadata.get("route_family"), "unspecified"),
         route_angle: selector_value(metadata.get("route_angle"), "unspecified"),
         radius_tier: selector_value(metadata.get("radius_tier"), "unspecified"),
+        waypoint_profile: selector_value(
+            metadata
+                .get("waypoint_profile")
+                .or_else(|| metadata.get("route_mode")),
+            "unspecified",
+        ),
         expectation_tier: metadata
             .get("expectation_tier")
             .map(String::as_str)
@@ -8172,6 +8301,17 @@ mod tests {
             Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1)
         );
         assert_eq!(
+            run.scenario
+                .metadata
+                .get("waypoint_profile")
+                .map(String::as_str),
+            Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1)
+        );
+        assert_eq!(
+            run.descriptor.selector.waypoint_profile,
+            TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1
+        );
+        assert_eq!(
             run.descriptor.resolved_parameters.get("waypoint_0_x_m"),
             Some(&waypoint.position_m.x)
         );
@@ -8199,6 +8339,93 @@ mod tests {
                 .get("waypoint_0_max_vertical_speed_mps"),
             Some(&waypoint.max_vertical_speed_mps)
         );
+        let turn_angle_deg = run
+            .descriptor
+            .resolved_parameters
+            .get("waypoint_0_turn_angle_deg")
+            .expect("dogleg profile should expose turn angle");
+        assert!(*turn_angle_deg > 140.0);
+    }
+
+    #[test]
+    fn transfer_matrix_waypoint_profile_injects_smooth_bend_waypoint() {
+        let base_dir = fixtures_root();
+        let pack = ScenarioPackSpec {
+            id: "transfer_matrix_waypoint_bend_profile".to_owned(),
+            name: "Transfer matrix waypoint bend profile".to_owned(),
+            description: "transfer matrix waypoint bend profile".to_owned(),
+            terminal_matrix_max_time_s: None,
+            entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
+                id: "transfer_guidance_waypoint_bend".to_owned(),
+                transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+                base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+                lanes: vec![TransferMatrixLaneSpec {
+                    id: "current".to_owned(),
+                    controller: "transfer_pdg".to_owned(),
+                    controller_config: None,
+                }],
+                seed_tier: TransferSeedTier::Smoke,
+                vehicle_variant: "nominal".to_owned(),
+                expectation_tier: "frontier_probe".to_owned(),
+                route_angles: vec!["r+80".to_owned()],
+                radius_tiers: vec!["short".to_owned()],
+                waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1.to_owned()),
+                evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
+                adjustments: Vec::new(),
+                tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
+                metadata: BTreeMap::new(),
+            })],
+        };
+
+        let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
+
+        assert_eq!(resolved_runs.len(), 3);
+        let run = resolved_runs
+            .iter()
+            .find(|run| run.descriptor.resolved_seed == 0)
+            .expect("seed 0 waypoint transfer run should be present");
+        let route = run
+            .scenario
+            .mission
+            .transfer_route
+            .as_ref()
+            .expect("transfer route should be present");
+        let waypoint = route
+            .waypoints
+            .first()
+            .expect("bend waypoint should be present");
+
+        assert_eq!(route.waypoints.len(), 1);
+        assert_eq!(waypoint.id, "wp_bend_01");
+        assert_eq!(
+            run.descriptor.selector.waypoint_profile,
+            TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1
+        );
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("waypoint_0_capture_radius_m"),
+            Some(&40.0)
+        );
+        assert_eq!(
+            run.descriptor
+                .resolved_parameters
+                .get("waypoint_0_max_cross_track_m"),
+            Some(&70.0)
+        );
+        let params = &run.descriptor.resolved_parameters;
+        let progress_frac = params
+            .get("waypoint_0_profile_progress_frac")
+            .expect("bend profile should expose progress fraction");
+        let offset_ratio = params
+            .get("waypoint_0_profile_lateral_offset_ratio")
+            .expect("bend profile should expose offset ratio");
+        let turn_angle_deg = params
+            .get("waypoint_0_turn_angle_deg")
+            .expect("bend profile should expose turn angle");
+        assert!((*progress_frac - 0.55).abs() < 1.0e-9);
+        assert!((*offset_ratio - 0.20).abs() < 1.0e-9);
+        assert!(*turn_angle_deg > 40.0 && *turn_angle_deg < 48.0);
     }
 
     #[test]
