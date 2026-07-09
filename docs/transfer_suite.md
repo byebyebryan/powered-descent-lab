@@ -250,6 +250,14 @@ Implementation checkpoint:
 - Waypoint misses and outbound-unviable captures are route-contract warnings in
   reports, not mission failures by themselves. The maintained score remains
   final landing, but capture/contract warnings keep route quality visible.
+- Waypoint turn-feasibility telemetry now reports remaining distance to the
+  waypoint plane, estimated time to plane, required turn distance, shaping-start
+  distance, and turn margin. The first tuning pass using those fields confirmed
+  that `single_dogleg_v1` is usually already turn-margin negative before the
+  handoff plane. Local outbound target blending and low-throttle candidate
+  tweaks did not produce contract-passing handoffs; the next useful waypoint
+  work should revisit route/profile shape or add a true corridor/reference
+  objective rather than adding more handoff-specific target heuristics.
 
 Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:

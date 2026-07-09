@@ -1,5 +1,32 @@
 # Progress
 
+## 2026-07-09
+
+### Waypoint turn-feasibility checkpoint
+
+- Added controller telemetry for waypoint approach feasibility:
+  `remaining_to_plane_m`, `time_to_plane_s`, `required_turn_distance_m`,
+  `shaping_start_distance_m`, and `turn_margin_m`.
+- Verified the telemetry path with `cargo test -p pd-control waypoint` and
+  `cargo test -p pd-eval waypoint`.
+- Rejected two waypoint-controller tuning experiments after focused smoke runs:
+  - turn-feasibility target blending plus bounded waypoint boost scoring still
+    left `transfer_waypoint_contract_rpos80_smoke` at `0 / 27`; the best safe
+    variant preserved `transfer_waypoint_rpos80_smoke` at `27 / 27` but shifted
+    the contract failures to spatial misses rather than producing viable
+    handoffs
+  - adding low/idle boost candidates when waypoint turn margin went negative
+    was worse: both `transfer_waypoint_contract_rpos80_smoke` and
+    `transfer_waypoint_rpos80_smoke` regressed to `0 / 27` crashes
+- Result interpretation:
+  - the new telemetry confirms the core problem: the `single_dogleg_v1`
+    waypoint is usually reached with negative turn margin, so local target
+    blending is too weak and late for the current pass-through envelope
+  - the next waypoint slice should not keep stacking local waypoint-target
+    heuristics; it should revisit route/profile shape or introduce an explicit
+    corridor/reference objective that makes the pass-through contract feasible
+    before first waypoint-plane crossing
+
 ## 2026-07-08
 
 ### Waypoint contract probe checkpoint
