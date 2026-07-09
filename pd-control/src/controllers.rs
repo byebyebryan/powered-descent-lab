@@ -1867,7 +1867,7 @@ impl TransferPdgController {
         observation: &Observation,
         diagnostics: TransferDiagnostics,
         gate: TransferGateReadiness,
-        _corridor: TransferCorridorState,
+        corridor: TransferCorridorState,
     ) -> TransferPhase {
         let Some(route) = ctx.mission.transfer_route.as_ref() else {
             return TransferPhase::Terminal;
@@ -1925,7 +1925,9 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         }
 
-        if diagnostics.boost_quality.passed && self.should_coast(ctx, observation, diagnostics) {
+        if diagnostics.boost_quality.passed
+            && self.should_coast(ctx, observation, diagnostics, corridor)
+        {
             return TransferPhase::Coast;
         }
 
@@ -2027,7 +2029,11 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
     ) -> bool {
+        if corridor.active {
+            return false;
+        }
         if !self
             .boost_settled_quality(ctx, observation, diagnostics)
             .quality
@@ -2230,7 +2236,7 @@ impl TransferPdgController {
         corridor: TransferCorridorState,
         target_attitude_rad: f64,
     ) -> f64 {
-        if corridor.tilt_limited {
+        if corridor.active {
             return 1.0;
         }
 
@@ -2302,11 +2308,15 @@ impl TransferPdgController {
         }
 
         let mut throttle_candidates = Vec::new();
-        for throttle in [0.45, 0.70, 1.0, eased_throttle] {
-            self.push_unique_candidate(
-                &mut throttle_candidates,
-                throttle.clamp(ctx.vehicle.min_throttle_frac, 1.0),
-            );
+        if corridor.active {
+            self.push_unique_candidate(&mut throttle_candidates, 1.0);
+        } else {
+            for throttle in [0.45, 0.70, 1.0, eased_throttle] {
+                self.push_unique_candidate(
+                    &mut throttle_candidates,
+                    throttle.clamp(ctx.vehicle.min_throttle_frac, 1.0),
+                );
+            }
         }
         if self.boost_projected_overshoot(observation, diagnostics) {
             self.push_unique_candidate(&mut throttle_candidates, 0.0);
@@ -4081,7 +4091,12 @@ mod tests {
             controller.waypoint_coast_preview(&ctx, &observation, &geometry),
             WaypointCoastPreview::TerrainBeforeWaypoint
         );
-        assert!(!controller.should_coast(&ctx, &observation, diagnostics));
+        assert!(!controller.should_coast(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive()
+        ));
     }
 
     #[test]
@@ -4107,7 +4122,44 @@ mod tests {
             controller.waypoint_coast_preview(&ctx, &observation, &geometry),
             WaypointCoastPreview::ReachesWaypoint
         );
-        assert!(controller.should_coast(&ctx, &observation, diagnostics));
+        assert!(controller.should_coast(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive()
+        ));
+    }
+
+    #[test]
+    fn transfer_waypoint_coast_blocks_while_corridor_active() {
+        let mut waypoint = waypoint_fixture();
+        waypoint.position_m = Vec2::new(-220.0, 250.0);
+        let ctx = context_with_waypoint_spec(waypoint);
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        config.boost_projected_dx_limit_m = 1.0e6;
+        config.coast_min_altitude_m = 1.0;
+        let controller = TransferPdgController::new(config);
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let observation = waypoint_transfer_observation(
+            &ctx,
+            geometry.target_m - (geometry.leg_unit * 20.0),
+            geometry.leg_unit * 60.0,
+            12.0,
+        );
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let corridor = TransferCorridorState {
+            mode: "active",
+            active: true,
+            tilt_limited: false,
+            margin_m: 8.0,
+        };
+
+        assert_eq!(
+            controller.waypoint_coast_preview(&ctx, &observation, &geometry),
+            WaypointCoastPreview::ReachesWaypoint
+        );
+        assert!(!controller.should_coast(&ctx, &observation, diagnostics, corridor));
     }
 
     #[test]
@@ -4335,7 +4387,12 @@ mod tests {
                 .quality
                 .passed
         );
-        assert!(controller.should_coast(&ctx, &observation, diagnostics));
+        assert!(controller.should_coast(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive()
+        ));
     }
 
     #[test]
@@ -4481,6 +4538,25 @@ mod tests {
         );
         assert!(throttle < 1.0);
         assert!(throttle >= ctx.vehicle.min_throttle_frac);
+    }
+
+    #[test]
+    fn transfer_boost_throttle_stays_full_while_corridor_active() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let observation = transfer_observation(700.0, -200.0, Vec2::new(10.0, 100.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let corridor = TransferCorridorState {
+            mode: "active",
+            active: true,
+            tilt_limited: false,
+            margin_m: 40.0,
+        };
+
+        let throttle =
+            controller.boost_throttle_frac(&ctx, &observation, diagnostics, corridor, 0.3);
+
+        assert_eq!(throttle, 1.0);
     }
 
     #[test]
