@@ -58,6 +58,9 @@ const WAYPOINT_SCORE_VERTICAL_SPEED: f64 = 30.0;
 const WAYPOINT_SCORE_NO_TRIGGER: f64 = 8.0;
 const WAYPOINT_SCORE_BASE_TRANSFER_WEIGHT: f64 = 0.20;
 const WAYPOINT_OUTBOUND_ATTITUDE_SCALE: f64 = 0.45;
+const WAYPOINT_COAST_MIN_CLOSING_MPS: f64 = 1.0;
+const WAYPOINT_COAST_REACHABILITY_MARGIN_S: f64 = 2.0;
+const WAYPOINT_COAST_REACHABILITY_MAX_S: f64 = 20.0;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -911,6 +914,13 @@ struct WaypointHandoffPrediction {
 struct WaypointBoostScore {
     score: f64,
     prediction: WaypointHandoffPrediction,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WaypointCoastPreview {
+    ReachesWaypoint,
+    NotReachable,
+    TerrainBeforeWaypoint,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1978,6 +1988,10 @@ impl TransferPdgController {
             return false;
         }
 
+        if !self.waypoint_coast_reaches_active_waypoint(ctx, observation) {
+            return false;
+        }
+
         if observation.velocity_mps.y > 0.0 {
             return true;
         }
@@ -1991,6 +2005,73 @@ impl TransferPdgController {
 
         diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m
             && (observation.height_above_target_m < 0.0 || observation.velocity_mps.y > 0.0)
+    }
+
+    fn waypoint_coast_reaches_active_waypoint(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+    ) -> bool {
+        if !self.config.waypoint_guidance_enabled {
+            return true;
+        }
+        let Some(geometry) = self.waypoint_leg_geometry(ctx) else {
+            return true;
+        };
+
+        self.waypoint_coast_preview(ctx, observation, &geometry)
+            == WaypointCoastPreview::ReachesWaypoint
+    }
+
+    fn waypoint_coast_preview(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        geometry: &WaypointLegGeometry<'_>,
+    ) -> WaypointCoastPreview {
+        let stats = waypoint_leg_stats(observation, geometry);
+        if waypoint_handoff_triggered(geometry.waypoint, stats) {
+            return WaypointCoastPreview::ReachesWaypoint;
+        }
+
+        let remaining_m = (-stats.plane_progress_m).max(0.0);
+        let closing_mps = vec_dot(observation.velocity_mps, geometry.leg_unit);
+        if closing_mps <= WAYPOINT_COAST_MIN_CLOSING_MPS {
+            return WaypointCoastPreview::NotReachable;
+        }
+
+        let duration_s = ((remaining_m / closing_mps) + WAYPOINT_COAST_REACHABILITY_MARGIN_S)
+            .clamp(
+                self.config.boost_candidate_horizon_s,
+                WAYPOINT_COAST_REACHABILITY_MAX_S,
+            );
+        let step_s = self
+            .config
+            .boost_candidate_step_s
+            .clamp(1.0e-3, duration_s.max(1.0e-3));
+        let command = Command {
+            throttle_frac: 0.0,
+            target_attitude_rad: self.coast_attitude_rad(observation),
+        };
+
+        for state in
+            self.simulate_transfer_command_samples(ctx, observation, command, duration_s, step_s)
+        {
+            let predicted_stats =
+                waypoint_leg_stats_from_kinematics(state.position_m, state.velocity_mps, geometry);
+            if waypoint_handoff_triggered(geometry.waypoint, predicted_stats) {
+                return WaypointCoastPreview::ReachesWaypoint;
+            }
+
+            let terrain_y_m = ctx.world.terrain.sample_height(state.position_m.x);
+            let touchdown_clearance_m =
+                state.position_m.y - terrain_y_m - ctx.vehicle.geometry.touchdown_base_offset_m;
+            if touchdown_clearance_m <= 0.0 {
+                return WaypointCoastPreview::TerrainBeforeWaypoint;
+            }
+        }
+
+        WaypointCoastPreview::NotReachable
     }
 
     fn boost_attitude_rad(
@@ -3439,13 +3520,40 @@ mod tests {
     }
 
     fn context_with_waypoint() -> RunContext {
+        context_with_waypoint_spec(waypoint_fixture())
+    }
+
+    fn context_with_waypoint_spec(waypoint: TransferWaypointSpec) -> RunContext {
         let mut ctx = uphill_transfer_context();
         ctx.mission
             .transfer_route
             .as_mut()
             .expect("transfer route")
-            .waypoints = vec![waypoint_fixture()];
+            .waypoints = vec![waypoint];
         ctx
+    }
+
+    fn waypoint_transfer_observation(
+        ctx: &RunContext,
+        position_m: Vec2,
+        velocity_mps: Vec2,
+        sim_time_s: f64,
+    ) -> Observation {
+        let terrain_y_m = ctx.world.terrain.sample_height(position_m.x);
+        let touchdown_clearance_m =
+            position_m.y - terrain_y_m - ctx.vehicle.geometry.touchdown_base_offset_m;
+        let mut observation = transfer_observation(
+            ctx.target_pad.center_x_m - position_m.x,
+            position_m.y - ctx.target_pad.surface_y_m,
+            velocity_mps,
+            sim_time_s,
+        );
+        observation.position_m = position_m;
+        observation.target_surface_y_m = ctx.target_pad.surface_y_m;
+        observation.target_pad_half_width_m = ctx.target_pad.width_m * 0.5;
+        observation.touchdown_clearance_m = touchdown_clearance_m;
+        observation.min_hull_clearance_m = touchdown_clearance_m;
+        observation
     }
 
     #[test]
@@ -3721,6 +3829,64 @@ mod tests {
         assert!(default_selection.waypoint_score.is_none());
         assert_eq!(enabled_selection.scoring_mode, "waypoint_handoff");
         assert!(enabled_selection.waypoint_score.is_some());
+    }
+
+    #[test]
+    fn transfer_waypoint_coast_blocks_terrain_before_active_waypoint() {
+        let mut waypoint = waypoint_fixture();
+        waypoint.position_m = Vec2::new(-220.0, 250.0);
+        let ctx = context_with_waypoint_spec(waypoint);
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        config.boost_projected_dx_limit_m = 1.0e6;
+        config.coast_min_altitude_m = 1.0;
+        let controller = TransferPdgController::new(config);
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let observation = waypoint_transfer_observation(
+            &ctx,
+            geometry.target_m - (geometry.leg_unit * 200.0),
+            geometry.leg_unit * 2.0,
+            12.0,
+        );
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert!(
+            controller
+                .boost_settled_quality(&ctx, &observation, diagnostics)
+                .quality
+                .passed
+        );
+        assert_eq!(
+            controller.waypoint_coast_preview(&ctx, &observation, &geometry),
+            WaypointCoastPreview::TerrainBeforeWaypoint
+        );
+        assert!(!controller.should_coast(&ctx, &observation, diagnostics));
+    }
+
+    #[test]
+    fn transfer_waypoint_coast_allows_reachable_active_waypoint() {
+        let mut waypoint = waypoint_fixture();
+        waypoint.position_m = Vec2::new(-220.0, 250.0);
+        let ctx = context_with_waypoint_spec(waypoint);
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        config.boost_projected_dx_limit_m = 1.0e6;
+        config.coast_min_altitude_m = 1.0;
+        let controller = TransferPdgController::new(config);
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let observation = waypoint_transfer_observation(
+            &ctx,
+            geometry.target_m - (geometry.leg_unit * 20.0),
+            geometry.leg_unit * 60.0,
+            12.0,
+        );
+        let diagnostics = controller.transfer_diagnostics(&observation);
+
+        assert_eq!(
+            controller.waypoint_coast_preview(&ctx, &observation, &geometry),
+            WaypointCoastPreview::ReachesWaypoint
+        );
+        assert!(controller.should_coast(&ctx, &observation, diagnostics));
     }
 
     #[test]
