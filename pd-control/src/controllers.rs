@@ -56,7 +56,7 @@ const WAYPOINT_SCORE_PROGRESS: f64 = 150.0;
 const WAYPOINT_SCORE_SPEED: f64 = 35.0;
 const WAYPOINT_SCORE_VERTICAL_SPEED: f64 = 30.0;
 const WAYPOINT_SCORE_NO_TRIGGER: f64 = 8.0;
-const WAYPOINT_SCORE_BASE_TRANSFER_WEIGHT: f64 = 0.20;
+const WAYPOINT_SCORE_TIE_BREAK_WEIGHT: f64 = 0.001;
 const WAYPOINT_OUTBOUND_ATTITUDE_SCALE: f64 = 0.45;
 const WAYPOINT_COAST_MIN_CLOSING_MPS: f64 = 1.0;
 const WAYPOINT_COAST_REACHABILITY_MARGIN_S: f64 = 2.0;
@@ -2319,15 +2319,10 @@ impl TransferPdgController {
         let mut score =
             self.score_boost_candidate(ctx, observation, diagnostics, corridor, command);
         if let Some(geometry) = waypoint_geometry
-            && let Some(waypoint_score) = self.score_waypoint_boost_candidate(
-                ctx,
-                observation,
-                geometry,
-                command,
-                score.score,
-            )
+            && let Some(waypoint_score) =
+                self.score_waypoint_boost_candidate(ctx, observation, geometry, command)
         {
-            score.score = waypoint_score.score;
+            score.score += waypoint_score.score * WAYPOINT_SCORE_TIE_BREAK_WEIGHT;
             score.waypoint_score = Some(waypoint_score);
         }
         score
@@ -2619,7 +2614,6 @@ impl TransferPdgController {
         observation: &Observation,
         geometry: &WaypointLegGeometry<'_>,
         command: Command,
-        base_score: f64,
     ) -> Option<WaypointBoostScore> {
         let current_stats = waypoint_leg_stats(observation, geometry);
         let weight = self.waypoint_handoff_score_weight(ctx, observation, geometry, current_stats);
@@ -2631,7 +2625,7 @@ impl TransferPdgController {
         let handoff_score =
             self.score_waypoint_handoff_prediction(geometry, prediction, current_stats);
         Some(WaypointBoostScore {
-            score: (base_score * WAYPOINT_SCORE_BASE_TRANSFER_WEIGHT) + (handoff_score * weight),
+            score: handoff_score * weight,
             prediction,
         })
     }
@@ -3691,7 +3685,6 @@ mod tests {
                     throttle_frac: 1.0,
                     target_attitude_rad: outbound_attitude,
                 },
-                0.0,
             )
             .expect("waypoint score should be active near handoff");
         let inbound = controller
@@ -3703,11 +3696,57 @@ mod tests {
                     throttle_frac: 1.0,
                     target_attitude_rad: -outbound_attitude,
                 },
-                0.0,
             )
             .expect("waypoint score should be active near handoff");
 
         assert!(outbound.score < inbound.score);
+    }
+
+    #[test]
+    fn transfer_waypoint_boost_scorer_is_transfer_score_tie_breaker() {
+        let ctx = context_with_waypoint();
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        config.waypoint_boost_handoff_scoring_enabled = true;
+        let controller = TransferPdgController::new(config);
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -36.0, 12.0);
+        observation.position_m =
+            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 1.8);
+        observation.mass_kg = 940.0;
+        observation.fuel_kg = 240.0;
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let command = Command {
+            throttle_frac: 1.0,
+            target_attitude_rad: geometry.next_leg_unit.x.signum() * 0.5,
+        };
+
+        let base = controller.score_boost_candidate(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+            command,
+        );
+        let combined = controller.score_boost_candidate_with_waypoint(
+            &ctx,
+            &observation,
+            diagnostics,
+            TransferCorridorState::inactive(),
+            Some(&geometry),
+            command,
+        );
+        let waypoint_score = combined
+            .waypoint_score
+            .expect("waypoint score should be active near handoff");
+
+        assert!(combined.score >= base.score);
+        assert!(
+            (combined.score
+                - (base.score + (waypoint_score.score * WAYPOINT_SCORE_TIE_BREAK_WEIGHT)))
+                .abs()
+                < 1.0e-9
+        );
     }
 
     #[test]
