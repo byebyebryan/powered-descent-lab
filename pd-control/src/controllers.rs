@@ -820,6 +820,7 @@ struct WaypointUpdateContext {
     observation: Observation,
     allow_terminal: bool,
     telemetry: WaypointTelemetry,
+    guidance: Option<WaypointGuidanceFrame>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -842,6 +843,8 @@ struct WaypointTelemetry {
     required_turn_distance_m: f64,
     shaping_start_distance_m: f64,
     turn_margin_m: f64,
+    endpoint_m: Vec2,
+    steering_target_m: Vec2,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -859,6 +862,8 @@ struct WaypointCaptureSnapshot {
     speed_mps: f64,
     vertical_speed_mps: f64,
     approach: WaypointApproachState,
+    endpoint_m: Vec2,
+    steering_target_m: Vec2,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -873,7 +878,7 @@ struct WaypointLegGeometry<'a> {
     next_leg_unit: Vec2,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointLegStats {
     distance_m: f64,
     cross_track_m: f64,
@@ -885,13 +890,20 @@ struct WaypointLegStats {
     vertical_speed_mps: f64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointApproachState {
     remaining_to_plane_m: f64,
     time_to_plane_s: f64,
     required_turn_distance_m: f64,
     shaping_start_distance_m: f64,
     turn_margin_m: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointGuidanceFrame {
+    endpoint_m: Vec2,
+    steering_target_m: Vec2,
+    capture_radius_m: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1141,12 +1153,14 @@ impl TransferPdgController {
                 observation: observation.clone(),
                 allow_terminal: true,
                 telemetry,
+                guidance: None,
             });
         }
 
         let geometry = self.waypoint_leg_geometry(ctx)?;
         let stats = waypoint_leg_stats(observation, &geometry);
         let approach = self.waypoint_approach_state(ctx, observation, &geometry, stats);
+        let guidance = waypoint_guidance_frame(&geometry, stats, approach);
         self.waypoint_closest_distance_m = self.waypoint_closest_distance_m.min(stats.distance_m);
         let should_switch =
             stats.plane_progress_m >= 0.0 || stats.distance_m <= geometry.waypoint.capture_radius_m;
@@ -1170,6 +1184,8 @@ impl TransferPdgController {
                 speed_mps: stats.speed_mps,
                 vertical_speed_mps: stats.vertical_speed_mps,
                 approach,
+                endpoint_m: guidance.endpoint_m,
+                steering_target_m: guidance.steering_target_m,
             };
             self.last_waypoint_capture = Some(capture);
             self.waypoint_active_index += 1;
@@ -1184,32 +1200,24 @@ impl TransferPdgController {
                     observation: observation.clone(),
                     allow_terminal: true,
                     telemetry: WaypointTelemetry::from_capture(capture),
+                    guidance: None,
                 });
             }
             let next_geometry = self.waypoint_leg_geometry(ctx)?;
             let next_stats = waypoint_leg_stats(observation, &next_geometry);
             let next_approach =
                 self.waypoint_approach_state(ctx, observation, &next_geometry, next_stats);
-            let next_target_m =
-                waypoint_guidance_target_m(&next_geometry, next_stats, next_approach);
+            let next_guidance = waypoint_guidance_frame(&next_geometry, next_stats, next_approach);
             return Some(WaypointUpdateContext {
-                observation: waypoint_adjusted_observation(
-                    observation,
-                    next_target_m,
-                    next_geometry.waypoint.capture_radius_m,
-                ),
+                observation: observation.clone(),
                 allow_terminal: false,
                 telemetry: WaypointTelemetry::from_capture(capture),
+                guidance: Some(next_guidance),
             });
         }
 
-        let active_target_m = waypoint_guidance_target_m(&geometry, stats, approach);
         Some(WaypointUpdateContext {
-            observation: waypoint_adjusted_observation(
-                observation,
-                active_target_m,
-                geometry.waypoint.capture_radius_m,
-            ),
+            observation: observation.clone(),
             allow_terminal: false,
             telemetry: WaypointTelemetry {
                 active_index: geometry.active_index as i64,
@@ -1230,7 +1238,10 @@ impl TransferPdgController {
                 required_turn_distance_m: approach.required_turn_distance_m,
                 shaping_start_distance_m: approach.shaping_start_distance_m,
                 turn_margin_m: approach.turn_margin_m,
+                endpoint_m: guidance.endpoint_m,
+                steering_target_m: guidance.steering_target_m,
             },
+            guidance: Some(guidance),
         })
     }
 
@@ -1286,6 +1297,8 @@ impl TransferPdgController {
             required_turn_distance_m: -1.0,
             shaping_start_distance_m: -1.0,
             turn_margin_m: -1.0,
+            endpoint_m: Vec2::new(-1.0, -1.0),
+            steering_target_m: Vec2::new(-1.0, -1.0),
         }
     }
 
@@ -1372,6 +1385,22 @@ impl TransferPdgController {
         frame.metrics.insert(
             metric::WAYPOINT_TURN_MARGIN_M.to_owned(),
             TelemetryValue::from(telemetry.turn_margin_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_ENDPOINT_X_M.to_owned(),
+            TelemetryValue::from(telemetry.endpoint_m.x),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_ENDPOINT_Y_M.to_owned(),
+            TelemetryValue::from(telemetry.endpoint_m.y),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_STEERING_TARGET_X_M.to_owned(),
+            TelemetryValue::from(telemetry.steering_target_m.x),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_STEERING_TARGET_Y_M.to_owned(),
+            TelemetryValue::from(telemetry.steering_target_m.y),
         );
     }
 
@@ -3259,7 +3288,27 @@ impl WaypointTelemetry {
             required_turn_distance_m: capture.approach.required_turn_distance_m,
             shaping_start_distance_m: capture.approach.shaping_start_distance_m,
             turn_margin_m: capture.approach.turn_margin_m,
+            endpoint_m: capture.endpoint_m,
+            steering_target_m: capture.steering_target_m,
         }
+    }
+}
+
+impl WaypointGuidanceFrame {
+    fn legacy_adjusted_observation(self, observation: &Observation) -> Observation {
+        waypoint_adjusted_observation(observation, self.steering_target_m, self.capture_radius_m)
+    }
+}
+
+fn waypoint_guidance_frame(
+    geometry: &WaypointLegGeometry<'_>,
+    stats: WaypointLegStats,
+    approach: WaypointApproachState,
+) -> WaypointGuidanceFrame {
+    WaypointGuidanceFrame {
+        endpoint_m: geometry.target_m,
+        steering_target_m: waypoint_guidance_target_m(geometry, stats, approach),
+        capture_radius_m: geometry.waypoint.capture_radius_m,
     }
 }
 
@@ -3603,9 +3652,13 @@ impl Controller for TransferPdgController {
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
         if let Some(waypoint_context) = self.waypoint_update_context(ctx, observation) {
+            let control_observation = waypoint_context.guidance.map_or_else(
+                || waypoint_context.observation.clone(),
+                |guidance| guidance.legacy_adjusted_observation(&waypoint_context.observation),
+            );
             self.update_transfer_frame(
                 ctx,
-                &waypoint_context.observation,
+                &control_observation,
                 waypoint_context.allow_terminal,
                 Some(waypoint_context.telemetry),
             )
@@ -3892,6 +3945,58 @@ mod tests {
         assert!(target_cross_track_m < 1.0e-6);
         assert!(target_progress_m > current_progress_m);
         assert!(target_progress_m < geometry.leg_length_m);
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_frame_separates_endpoint_from_steering_target() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let mut observation = transfer_observation(0.0, 0.0, geometry.leg_unit * 25.0, 4.0);
+        observation.position_m = geometry.anchor_m + (geometry.leg_unit * 80.0);
+
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+        let guidance = waypoint_guidance_frame(&geometry, stats, approach);
+        let adjusted = guidance.legacy_adjusted_observation(&observation);
+
+        assert_eq!(guidance.endpoint_m, geometry.target_m);
+        assert_ne!(guidance.steering_target_m, guidance.endpoint_m);
+        assert_eq!(
+            guidance.capture_radius_m,
+            geometry.waypoint.capture_radius_m
+        );
+        assert!(
+            (adjusted.target_dx_m - (guidance.steering_target_m.x - observation.position_m.x))
+                .abs()
+                < 1.0e-9
+        );
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_endpoint_is_stable_while_steering_target_advances() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let mut first = transfer_observation(0.0, 0.0, geometry.leg_unit * 25.0, 4.0);
+        first.position_m = geometry.anchor_m + (geometry.leg_unit * 60.0);
+        let mut second = first.clone();
+        second.position_m += geometry.leg_unit * 90.0;
+
+        let first_stats = waypoint_leg_stats(&first, &geometry);
+        let first_approach =
+            controller.waypoint_approach_state(&ctx, &first, &geometry, first_stats);
+        let first_guidance = waypoint_guidance_frame(&geometry, first_stats, first_approach);
+        let second_stats = waypoint_leg_stats(&second, &geometry);
+        let second_approach =
+            controller.waypoint_approach_state(&ctx, &second, &geometry, second_stats);
+        let second_guidance = waypoint_guidance_frame(&geometry, second_stats, second_approach);
+
+        assert_eq!(first_guidance.endpoint_m, second_guidance.endpoint_m);
+        assert_ne!(
+            first_guidance.steering_target_m,
+            second_guidance.steering_target_m
+        );
     }
 
     #[test]

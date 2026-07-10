@@ -84,6 +84,10 @@ pub mod metric {
     pub const WAYPOINT_REQUIRED_TURN_DISTANCE_M: &str = "waypoint.required_turn_distance_m";
     pub const WAYPOINT_SHAPING_START_DISTANCE_M: &str = "waypoint.shaping_start_distance_m";
     pub const WAYPOINT_TURN_MARGIN_M: &str = "waypoint.turn_margin_m";
+    pub const WAYPOINT_ENDPOINT_X_M: &str = "waypoint.endpoint_x_m";
+    pub const WAYPOINT_ENDPOINT_Y_M: &str = "waypoint.endpoint_y_m";
+    pub const WAYPOINT_STEERING_TARGET_X_M: &str = "waypoint.steering_target_x_m";
+    pub const WAYPOINT_STEERING_TARGET_Y_M: &str = "waypoint.steering_target_y_m";
     pub const WAYPOINT_BOOST_SCORE: &str = "waypoint.boost_score";
     pub const WAYPOINT_PREDICTED_HANDOFF_TIME_S: &str = "waypoint.predicted_handoff_time_s";
     pub const WAYPOINT_PREDICTED_CROSS_TRACK_M: &str = "waypoint.predicted_cross_track_m";
