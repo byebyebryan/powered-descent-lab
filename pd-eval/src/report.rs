@@ -2473,25 +2473,35 @@ struct TransferShapeCellSummary<'a> {
     worst_record: Option<&'a crate::BatchRunRecord>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct WaypointCellKey {
+    condition_set: String,
+    vehicle_variant: String,
+    route_angle: String,
+    radius_tier: String,
+    waypoint_profile: String,
+    waypoint_handoff_envelope: String,
+}
+
 struct WaypointCellSummary<'a> {
-    key: TransferShapeCellKey,
+    key: WaypointCellKey,
     total_runs: usize,
     scored_runs: usize,
     success_runs: usize,
     contract_pass_runs: usize,
     spatial_miss_runs: usize,
-    outbound_unviable_runs: usize,
+    outbound_envelope_failure_runs: usize,
     incomplete_runs: usize,
     unknown_contract_runs: usize,
     captured_runs: usize,
     missed_runs: usize,
     tracking_runs: usize,
-    waypoint_profile: String,
     turn_angle_deg: Option<crate::BatchMetricSummary>,
     closest_distance_m: Option<crate::BatchMetricSummary>,
     cross_track_m: Option<crate::BatchMetricSummary>,
     heading_error_deg: Option<crate::BatchMetricSummary>,
     outbound_progress_mps: Option<crate::BatchMetricSummary>,
+    outbound_cross_speed_mps: Option<crate::BatchMetricSummary>,
     worst_record: Option<&'a crate::BatchRunRecord>,
 }
 
@@ -2563,6 +2573,7 @@ fn render_waypoint_triage_section(
           <th>Cross Track</th>
           <th>Heading Error</th>
           <th>Outbound Progress</th>
+          <th>Outbound Cross</th>
           <th>Worst Seed</th>
         </tr>
       </thead>
@@ -2617,6 +2628,11 @@ fn render_waypoint_triage_row(
         MetricDisplayKind::Speed,
         None,
     );
+    let outbound_cross_html = render_transfer_handoff_metric_cell(
+        summary.outbound_cross_speed_mps.as_ref(),
+        MetricDisplayKind::Speed,
+        None,
+    );
     let worst_seed_html = render_waypoint_worst_seed(summary, output_dir, candidate_record_map);
     format!(
         r#"<tr>
@@ -2631,6 +2647,7 @@ fn render_waypoint_triage_row(
   <td>{cross_track}</td>
   <td>{heading_error}</td>
   <td>{outbound_progress}</td>
+  <td>{outbound_cross}</td>
   <td>{worst_seed}</td>
 </tr>"#,
         route = route_html,
@@ -2644,6 +2661,7 @@ fn render_waypoint_triage_row(
         cross_track = cross_track_html,
         heading_error = heading_error_html,
         outbound_progress = outbound_progress_html,
+        outbound_cross = outbound_cross_html,
         worst_seed = worst_seed_html,
     )
 }
@@ -2651,14 +2669,28 @@ fn render_waypoint_triage_row(
 fn waypoint_cell_summaries<'a>(
     records: &[&'a crate::BatchRunRecord],
 ) -> Vec<WaypointCellSummary<'a>> {
-    let mut grouped = BTreeMap::<TransferShapeCellKey, Vec<&'a crate::BatchRunRecord>>::new();
+    let mut grouped = BTreeMap::<WaypointCellKey, Vec<&'a crate::BatchRunRecord>>::new();
     for &record in records {
         if record.review.waypoint_capture_status.is_none() {
             continue;
         }
-        if let Some(key) = transfer_shape_cell_key(record) {
-            grouped.entry(key).or_default().push(record);
-        }
+        let selector = &record.resolved.selector;
+        grouped
+            .entry(WaypointCellKey {
+                condition_set: selector.condition_set.clone(),
+                vehicle_variant: selector.vehicle_variant.clone(),
+                route_angle: selector_preferred_value(&selector.route_angle, &selector.arc_point),
+                radius_tier: selector_preferred_value(
+                    &selector.radius_tier,
+                    &selector.velocity_band,
+                ),
+                waypoint_profile: selector_value_or_unspecified(&selector.waypoint_profile),
+                waypoint_handoff_envelope: selector_value_or_unspecified(
+                    &selector.waypoint_handoff_envelope,
+                ),
+            })
+            .or_default()
+            .push(record);
     }
     grouped
         .into_iter()
@@ -2667,7 +2699,7 @@ fn waypoint_cell_summaries<'a>(
 }
 
 fn waypoint_cell_summary<'a>(
-    key: TransferShapeCellKey,
+    key: WaypointCellKey,
     records: &[&'a crate::BatchRunRecord],
 ) -> WaypointCellSummary<'a> {
     let scored_runs = records
@@ -2690,7 +2722,7 @@ fn waypoint_cell_summary<'a>(
                     && record.review.waypoint_capture_status.as_deref() == Some("missed"))
         })
         .count();
-    let outbound_unviable_runs = records
+    let outbound_envelope_failure_runs = records
         .iter()
         .filter(|record| {
             matches!(
@@ -2734,13 +2766,12 @@ fn waypoint_cell_summary<'a>(
         success_runs,
         contract_pass_runs,
         spatial_miss_runs,
-        outbound_unviable_runs,
+        outbound_envelope_failure_runs,
         incomplete_runs,
         unknown_contract_runs,
         captured_runs,
         missed_runs,
         tracking_runs,
-        waypoint_profile: waypoint_profile_summary(records),
         turn_angle_deg: transfer_shape_record_metric_summary(records, |record| {
             record
                 .resolved
@@ -2762,6 +2793,9 @@ fn waypoint_cell_summary<'a>(
         outbound_progress_mps: transfer_shape_metric_summary(records, |review| {
             review.waypoint_outbound_progress_mps
         }),
+        outbound_cross_speed_mps: transfer_shape_metric_summary(records, |review| {
+            review.waypoint_outbound_cross_speed_mps
+        }),
         worst_record,
     }
 }
@@ -2772,7 +2806,10 @@ fn compare_waypoint_cells(
 ) -> Ordering {
     rhs.missed_runs
         .cmp(&lhs.missed_runs)
-        .then_with(|| rhs.outbound_unviable_runs.cmp(&lhs.outbound_unviable_runs))
+        .then_with(|| {
+            rhs.outbound_envelope_failure_runs
+                .cmp(&lhs.outbound_envelope_failure_runs)
+        })
         .then_with(|| rhs.tracking_runs.cmp(&lhs.tracking_runs))
         .then_with(|| rhs.unknown_contract_runs.cmp(&lhs.unknown_contract_runs))
         .then_with(|| {
@@ -2815,12 +2852,16 @@ fn waypoint_record_score(record: &crate::BatchRunRecord) -> f64 {
 }
 
 fn render_waypoint_profile_cell(summary: &WaypointCellSummary<'_>) -> String {
-    let profile = if summary.waypoint_profile.trim().is_empty() {
+    let profile = if summary.key.waypoint_profile.trim().is_empty() {
         UNSPECIFIED_SELECTOR_VALUE
     } else {
-        summary.waypoint_profile.as_str()
+        summary.key.waypoint_profile.as_str()
     };
-    format!(r#"<code>{}</code>"#, escape_html(profile))
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">{}</div></div>"#,
+        escape_html(profile),
+        escape_html(&summary.key.waypoint_handoff_envelope),
+    )
 }
 
 fn render_waypoint_success_cell(summary: &WaypointCellSummary<'_>) -> String {
@@ -2855,7 +2896,7 @@ fn render_waypoint_contract_cell(summary: &WaypointCellSummary<'_>) -> String {
         ""
     };
     let sub = if summary.contract_warning_runs() == 0 {
-        "all viable".to_owned()
+        "all in envelope".to_owned()
     } else {
         waypoint_contract_warning_summary(summary)
     };
@@ -2892,7 +2933,7 @@ fn render_waypoint_capture_cell(summary: &WaypointCellSummary<'_>) -> String {
 impl<'a> WaypointCellSummary<'a> {
     fn contract_warning_runs(&self) -> usize {
         self.spatial_miss_runs
-            + self.outbound_unviable_runs
+            + self.outbound_envelope_failure_runs
             + self.incomplete_runs
             + self.unknown_contract_runs
     }
@@ -2903,8 +2944,11 @@ fn waypoint_contract_warning_summary(summary: &WaypointCellSummary<'_>) -> Strin
     if summary.spatial_miss_runs > 0 {
         parts.push(format!("{} spatial", summary.spatial_miss_runs));
     }
-    if summary.outbound_unviable_runs > 0 {
-        parts.push(format!("{} outbound", summary.outbound_unviable_runs));
+    if summary.outbound_envelope_failure_runs > 0 {
+        parts.push(format!(
+            "{} outbound envelope",
+            summary.outbound_envelope_failure_runs
+        ));
     }
     if summary.incomplete_runs > 0 {
         parts.push(format!("{} incomplete", summary.incomplete_runs));
@@ -3840,21 +3884,6 @@ where
     crate::metric_summary(&values)
 }
 
-fn waypoint_profile_summary(records: &[&crate::BatchRunRecord]) -> String {
-    let profiles = records
-        .iter()
-        .map(|record| selector_value_or_unspecified(&record.resolved.selector.waypoint_profile))
-        .collect::<BTreeSet<_>>();
-    match profiles.len() {
-        0 => UNSPECIFIED_SELECTOR_VALUE.to_owned(),
-        1 => profiles
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| UNSPECIFIED_SELECTOR_VALUE.to_owned()),
-        _ => "mixed".to_owned(),
-    }
-}
-
 fn dominant_transfer_shape_mode<F>(
     records: &[&crate::BatchRunRecord],
     extractor: F,
@@ -4046,6 +4075,7 @@ type MissionRecordGroups<'a> = BTreeMap<String, ArrivalRecordGroups<'a>>;
 type VehicleLaneRecordGroups<'a> = BTreeMap<String, LaneRecordGroups<'a>>;
 type VelocityVehicleRecordGroups<'a> = BTreeMap<String, VehicleLaneRecordGroups<'a>>;
 type ArcVelocityVehicleRecordGroups<'a> = BTreeMap<String, VelocityVehicleRecordGroups<'a>>;
+type WaypointProfileRecordGroups<'a> = BTreeMap<String, Vec<&'a crate::BatchRunRecord>>;
 
 fn render_review_tree(
     candidate: &BatchReport,
@@ -4431,8 +4461,39 @@ fn render_condition_review_section(
     let baseline_arcs = records_by_arc_velocity_vehicle_from_records(baseline_records.as_slice());
     let arc_keys = merged_map_keys(&candidate_arcs, Some(&baseline_arcs));
     let render_matrix_axes = has_meaningful_selector_keys(arc_keys.as_slice());
+    let candidate_profiles = records_by_waypoint_profile(candidate_records.as_slice());
+    let baseline_profiles = records_by_waypoint_profile(baseline_records.as_slice());
+    let profile_keys = merged_map_keys(&candidate_profiles, Some(&baseline_profiles));
+    let render_waypoint_profiles = mission == "transfer_guidance"
+        && profile_keys
+            .iter()
+            .filter(|profile| profile.as_str() != UNSPECIFIED_SELECTOR_VALUE)
+            .count()
+            > 1;
     let group_id = tree_group_id(&["condition", mission, arrival_family, condition_set]);
-    let child_rows = if render_matrix_axes {
+    let child_rows = if render_waypoint_profiles {
+        profile_keys
+            .iter()
+            .map(|waypoint_profile| {
+                render_waypoint_profile_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    waypoint_profile,
+                    candidate_profiles.get(waypoint_profile),
+                    baseline_profiles.get(waypoint_profile),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    } else if render_matrix_axes {
         arc_keys
             .iter()
             .map(|arc_point| {
@@ -4440,6 +4501,7 @@ fn render_condition_review_section(
                     mission,
                     arrival_family,
                     condition_set,
+                    None,
                     arc_point,
                     candidate_arcs.get(arc_point),
                     baseline_arcs.get(arc_point),
@@ -4504,10 +4566,128 @@ fn render_condition_review_section(
     rows
 }
 
+fn render_waypoint_profile_review_section(
+    mission: &str,
+    arrival_family: &str,
+    condition_set: &str,
+    waypoint_profile: &str,
+    candidate_records: Option<&Vec<&crate::BatchRunRecord>>,
+    baseline_records: Option<&Vec<&crate::BatchRunRecord>>,
+    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
+    comparison: Option<&BatchComparison>,
+    output_dir: &Path,
+    candidate_record_map: &BTreeMap<String, String>,
+    baseline_record_map: &BTreeMap<String, String>,
+    depth: usize,
+    parent_group_id: Option<&str>,
+) -> String {
+    let candidate_records = candidate_records.cloned().unwrap_or_default();
+    let baseline_records = baseline_records.cloned().unwrap_or_default();
+    let aggregate = (!candidate_records.is_empty())
+        .then(|| review_aggregate_from_records(candidate_records.as_slice()));
+    let baseline_aggregate = (!baseline_records.is_empty())
+        .then(|| review_aggregate_from_records(baseline_records.as_slice()));
+    let regression_count = count_regressions(comparison, |row| {
+        row.selector.mission == mission
+            && row.selector.arrival_family == arrival_family
+            && row.selector.condition_set == condition_set
+            && row.selector.waypoint_profile == waypoint_profile
+    });
+    let changed =
+        comparison.is_some() && aggregate_changed(aggregate.as_ref(), baseline_aggregate.as_ref());
+    let candidate_arcs = records_by_arc_velocity_vehicle_from_records(candidate_records.as_slice());
+    let baseline_arcs = records_by_arc_velocity_vehicle_from_records(baseline_records.as_slice());
+    let arc_keys = merged_map_keys(&candidate_arcs, Some(&baseline_arcs));
+    let render_matrix_axes = has_meaningful_selector_keys(arc_keys.as_slice());
+    let group_id = tree_group_id(&[
+        "waypoint-profile",
+        mission,
+        arrival_family,
+        condition_set,
+        waypoint_profile,
+    ]);
+    let child_rows = if render_matrix_axes {
+        arc_keys
+            .iter()
+            .map(|arc_point| {
+                render_condition_arc_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    Some(waypoint_profile),
+                    arc_point,
+                    candidate_arcs.get(arc_point),
+                    baseline_arcs.get(arc_point),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    } else {
+        let candidate_vehicles = records_by_vehicle_lane_from_records(candidate_records.as_slice());
+        let baseline_vehicles = records_by_vehicle_lane_from_records(baseline_records.as_slice());
+        merged_map_keys(&candidate_vehicles, Some(&baseline_vehicles))
+            .iter()
+            .map(|vehicle_variant| {
+                render_deep_vehicle_review_section(
+                    mission,
+                    arrival_family,
+                    condition_set,
+                    Some(waypoint_profile),
+                    vehicle_variant,
+                    None,
+                    None,
+                    candidate_vehicles.get(vehicle_variant),
+                    baseline_vehicles.get(vehicle_variant),
+                    run_change_map,
+                    comparison,
+                    output_dir,
+                    candidate_record_map,
+                    baseline_record_map,
+                    depth + 1,
+                    Some(group_id.as_str()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    };
+    let current_note = render_summary_note(
+        comparison.is_some(),
+        TreeRowTone::Current,
+        comparison.is_some().then_some(regression_count),
+        None,
+        aggregate.is_some(),
+        baseline_aggregate.is_some(),
+    );
+    let mut rows = render_summary_row(
+        waypoint_profile,
+        depth,
+        parent_group_id,
+        (!child_rows.is_empty()).then_some(group_id.as_str()),
+        "waypoint profile",
+        aggregate.as_ref(),
+        baseline_aggregate.as_ref(),
+        SummaryMetricStyle::MeanDelta,
+        changed,
+        current_note.as_str(),
+        baseline_aggregate.is_some().then_some("cur"),
+        TreeRowTone::Current,
+    );
+    rows.push_str(&child_rows);
+    rows
+}
+
 fn render_condition_arc_review_section(
     mission: &str,
     arrival_family: &str,
     condition_set: &str,
+    waypoint_profile: Option<&str>,
     arc_point: &str,
     candidate_velocities: Option<&VelocityVehicleRecordGroups<'_>>,
     baseline_velocities: Option<&VelocityVehicleRecordGroups<'_>>,
@@ -4547,6 +4727,9 @@ fn render_condition_arc_review_section(
         row.selector.mission == mission
             && row.selector.arrival_family == arrival_family
             && row.selector.condition_set == condition_set
+            && waypoint_profile
+                .map(|value| row.selector.waypoint_profile == value)
+                .unwrap_or(true)
             && row.selector.arc_point == arc_point
     });
     let changed =
@@ -4557,7 +4740,12 @@ fn render_condition_arc_review_section(
     let baseline_velocities = baseline_velocities.unwrap_or(&empty_baseline);
     let velocity_keys = merged_map_keys(candidate_velocities, Some(baseline_velocities));
     let render_velocity_axes = has_meaningful_selector_keys(velocity_keys.as_slice());
-    let group_id = tree_group_id(&["arc", mission, arrival_family, condition_set, arc_point]);
+    let mut group_parts = vec!["arc", mission, arrival_family, condition_set];
+    if let Some(waypoint_profile) = waypoint_profile {
+        group_parts.push(waypoint_profile);
+    }
+    group_parts.push(arc_point);
+    let group_id = tree_group_id(group_parts.as_slice());
     let child_rows = if render_velocity_axes {
         velocity_keys
             .iter()
@@ -4566,6 +4754,7 @@ fn render_condition_arc_review_section(
                     mission,
                     arrival_family,
                     condition_set,
+                    waypoint_profile,
                     arc_point,
                     velocity_band,
                     candidate_velocities.get(velocity_band),
@@ -4598,6 +4787,7 @@ fn render_condition_arc_review_section(
                     mission,
                     arrival_family,
                     condition_set,
+                    waypoint_profile,
                     vehicle_variant,
                     Some(arc_point),
                     None,
@@ -4646,6 +4836,7 @@ fn render_condition_velocity_review_section(
     mission: &str,
     arrival_family: &str,
     condition_set: &str,
+    waypoint_profile: Option<&str>,
     arc_point: &str,
     velocity_band: &str,
     candidate_vehicles: Option<&VehicleLaneRecordGroups<'_>>,
@@ -4686,6 +4877,9 @@ fn render_condition_velocity_review_section(
         row.selector.mission == mission
             && row.selector.arrival_family == arrival_family
             && row.selector.condition_set == condition_set
+            && waypoint_profile
+                .map(|value| row.selector.waypoint_profile == value)
+                .unwrap_or(true)
             && row.selector.arc_point == arc_point
             && row.selector.velocity_band == velocity_band
     });
@@ -4696,14 +4890,12 @@ fn render_condition_velocity_review_section(
     let candidate_vehicles = candidate_vehicles.unwrap_or(&empty_candidate);
     let baseline_vehicles = baseline_vehicles.unwrap_or(&empty_baseline);
     let vehicle_keys = merged_map_keys(candidate_vehicles, Some(baseline_vehicles));
-    let group_id = tree_group_id(&[
-        "band",
-        mission,
-        arrival_family,
-        condition_set,
-        arc_point,
-        velocity_band,
-    ]);
+    let mut group_parts = vec!["band", mission, arrival_family, condition_set];
+    if let Some(waypoint_profile) = waypoint_profile {
+        group_parts.push(waypoint_profile);
+    }
+    group_parts.extend([arc_point, velocity_band]);
+    let group_id = tree_group_id(group_parts.as_slice());
     let vehicle_rows = vehicle_keys
         .iter()
         .map(|vehicle_variant| {
@@ -4711,6 +4903,7 @@ fn render_condition_velocity_review_section(
                 mission,
                 arrival_family,
                 condition_set,
+                waypoint_profile,
                 vehicle_variant,
                 Some(arc_point),
                 Some(velocity_band),
@@ -4758,6 +4951,7 @@ fn render_deep_vehicle_review_section(
     mission: &str,
     arrival_family: &str,
     condition_set: &str,
+    waypoint_profile: Option<&str>,
     vehicle_variant: &str,
     arc_point: Option<&str>,
     velocity_band: Option<&str>,
@@ -4799,6 +4993,9 @@ fn render_deep_vehicle_review_section(
         row.selector.mission == mission
             && row.selector.arrival_family == arrival_family
             && row.selector.condition_set == condition_set
+            && waypoint_profile
+                .map(|value| row.selector.waypoint_profile == value)
+                .unwrap_or(true)
             && row.selector.vehicle_variant == vehicle_variant
             && arc_point
                 .map(|value| row.selector.arc_point == value)
@@ -4820,6 +5017,9 @@ fn render_deep_vehicle_review_section(
     let mut lane_keys = merged_map_keys(candidate_lanes, Some(baseline_lanes));
     sort_lane_keys(&mut lane_keys);
     let mut group_parts = vec!["vehicle", mission, arrival_family, condition_set];
+    if let Some(waypoint_profile) = waypoint_profile {
+        group_parts.push(waypoint_profile);
+    }
     if let Some(arc_point) = arc_point {
         group_parts.push(arc_point);
     }
@@ -4835,6 +5035,7 @@ fn render_deep_vehicle_review_section(
                 mission,
                 arrival_family,
                 condition_set,
+                waypoint_profile,
                 vehicle_variant,
                 arc_point,
                 velocity_band,
@@ -4982,6 +5183,7 @@ fn render_vehicle_review_section(
                     mission,
                     arrival_family,
                     condition_set,
+                    None,
                     vehicle_variant,
                     None,
                     None,
@@ -5132,6 +5334,7 @@ fn render_arc_review_section(
                     mission,
                     arrival_family,
                     condition_set,
+                    None,
                     vehicle_variant,
                     Some(arc_point),
                     None,
@@ -5250,6 +5453,7 @@ fn render_velocity_review_section(
                 mission,
                 arrival_family,
                 condition_set,
+                None,
                 vehicle_variant,
                 Some(arc_point),
                 Some(velocity_band),
@@ -5298,6 +5502,7 @@ fn render_lane_review_section(
     mission: &str,
     arrival_family: &str,
     condition_set: &str,
+    waypoint_profile: Option<&str>,
     vehicle_variant: &str,
     arc_point: Option<&str>,
     velocity_band: Option<&str>,
@@ -5322,6 +5527,9 @@ fn render_lane_review_section(
         row.selector.mission == mission
             && row.selector.arrival_family == arrival_family
             && row.selector.condition_set == condition_set
+            && waypoint_profile
+                .map(|value| row.selector.waypoint_profile == value)
+                .unwrap_or(true)
             && row.selector.vehicle_variant == vehicle_variant
             && arc_point
                 .map(|value| row.selector.arc_point == value)
@@ -5332,13 +5540,11 @@ fn render_lane_review_section(
             && row.lane_id == lane_id
     });
     let changed = aggregate_changed(aggregate.as_ref(), baseline_aggregate.as_ref());
-    let mut group_parts = vec![
-        "lane",
-        mission,
-        arrival_family,
-        condition_set,
-        vehicle_variant,
-    ];
+    let mut group_parts = vec!["lane", mission, arrival_family, condition_set];
+    if let Some(waypoint_profile) = waypoint_profile {
+        group_parts.push(waypoint_profile);
+    }
+    group_parts.push(vehicle_variant);
     if let Some(arc_point) = arc_point {
         group_parts.push(arc_point);
     }
@@ -5986,6 +6192,36 @@ fn records_by_arc_velocity_vehicle_from_records<'a>(
     grouped
 }
 
+fn records_by_waypoint_profile<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> WaypointProfileRecordGroups<'a> {
+    let mut grouped = WaypointProfileRecordGroups::new();
+    for &record in records {
+        grouped
+            .entry(selector_value_or_unspecified(
+                &record.resolved.selector.waypoint_profile,
+            ))
+            .or_default()
+            .push(record);
+    }
+    grouped
+}
+
+fn records_by_vehicle_lane_from_records<'a>(
+    records: &[&'a crate::BatchRunRecord],
+) -> VehicleLaneRecordGroups<'a> {
+    let mut grouped = VehicleLaneRecordGroups::new();
+    for &record in records {
+        grouped
+            .entry(record.resolved.selector.vehicle_variant.clone())
+            .or_default()
+            .entry(record.resolved.lane_id.clone())
+            .or_default()
+            .push(record);
+    }
+    grouped
+}
+
 fn merged_map_keys<T, U>(
     candidate: &BTreeMap<String, T>,
     baseline: Option<&BTreeMap<String, U>>,
@@ -6035,6 +6271,11 @@ fn selector_sort_rank(key: &str) -> u8 {
         "r+45" => 8,
         "r+60" => 9,
         "r+80" => 10,
+        "single_straight_v1" => 0,
+        "single_gentle_bend_v1" => 1,
+        "single_medium_bend_v1" | "single_bend_v1" => 2,
+        "single_sharp_bend_v1" => 3,
+        "single_dogleg_v1" => 4,
         "low" => 0,
         "mid" => 1,
         "high" => 2,
@@ -6267,8 +6508,14 @@ fn selector_case_key(selector: &crate::SelectorAxes) -> String {
         selector.mission.as_str(),
         selector.arrival_family.as_str(),
         selector.condition_set.as_str(),
-        selector.vehicle_variant.as_str(),
     ];
+    if selector.waypoint_profile != UNSPECIFIED_SELECTOR_VALUE {
+        parts.push(selector.waypoint_profile.as_str());
+    }
+    if selector.waypoint_handoff_envelope != UNSPECIFIED_SELECTOR_VALUE {
+        parts.push(selector.waypoint_handoff_envelope.as_str());
+    }
+    parts.push(selector.vehicle_variant.as_str());
     if selector.arc_point != UNSPECIFIED_SELECTOR_VALUE {
         parts.push(selector.arc_point.as_str());
     } else if selector.route_angle != UNSPECIFIED_SELECTOR_VALUE {
@@ -7955,7 +8202,9 @@ mod report_tests {
         compare_batch_reports, run_pack_with_workers,
     };
 
-    use super::{render_batch_report, sort_selector_keys, tree_group_id};
+    use super::{
+        records_by_waypoint_profile, render_batch_report, sort_selector_keys, tree_group_id,
+    };
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
@@ -8099,6 +8348,7 @@ mod report_tests {
         record.resolved.selector.route_angle = route_angle.to_owned();
         record.resolved.selector.radius_tier = "nominal".to_owned();
         record.resolved.selector.waypoint_profile = "single_bend_v1".to_owned();
+        record.resolved.selector.waypoint_handoff_envelope = "legacy_v1".to_owned();
         record.resolved.selector.expectation_tier = Some("core".to_owned());
         record.resolved.lane_id = "current".to_owned();
         record.resolved.resolved_seed = seed;
@@ -8170,6 +8420,7 @@ mod report_tests {
         assert!(html.contains("single_bend_v1"));
         assert!(html.contains("Heading Error"));
         assert!(html.contains("Outbound Progress"));
+        assert!(!html.contains(r#"data-kind="waypoint profile""#));
     }
 
     #[test]
@@ -8207,6 +8458,40 @@ mod report_tests {
             .expect("captured waypoint route row should render");
         assert!(missed_index < clean_index);
         assert!(html.contains("landed with waypoint warning"));
+    }
+
+    #[test]
+    fn waypoint_review_tree_groups_multiple_profiles_in_defined_order() {
+        let mut report = synthetic_transfer_shape_report(
+            "waypoint_profile_tree_unit",
+            &[("r00", "empty", 20.0, 7), ("r00", "empty", 22.0, 9)],
+        );
+        report.records[0].resolved.selector.waypoint_profile = "single_sharp_bend_v1".to_owned();
+        report.records[1].resolved.selector.waypoint_profile = "single_straight_v1".to_owned();
+
+        let grouped = records_by_waypoint_profile(&report.records.iter().collect::<Vec<_>>());
+        assert_eq!(grouped["single_sharp_bend_v1"][0].resolved.resolved_seed, 7);
+        assert_eq!(grouped["single_straight_v1"][0].resolved.resolved_seed, 9);
+
+        let html = render_batch_report(
+            Path::new("outputs/eval/waypoint_profile_tree_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert_eq!(html.matches(r#"data-kind="waypoint profile""#).count(), 2);
+        let straight_index = html
+            .find(
+                r#"selector-inline">waypoint profile</span> <span class="selector-code">single_straight_v1</span>"#,
+            )
+            .expect("straight waypoint profile row should render");
+        let sharp_index = html
+            .find(
+                r#"selector-inline">waypoint profile</span> <span class="selector-code">single_sharp_bend_v1</span>"#,
+            )
+            .expect("sharp waypoint profile row should render");
+        assert!(straight_index < sharp_index);
     }
 
     #[test]
@@ -8421,6 +8706,7 @@ mod report_tests {
                 route_angles: vec!["r00".to_owned()],
                 radius_tiers: Vec::new(),
                 waypoint_profile: None,
+                waypoint_handoff_envelope: None,
                 evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
                 tags: vec!["transfer".to_owned(), "bot_lab".to_owned()],
