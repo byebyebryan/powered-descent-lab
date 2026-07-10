@@ -2,6 +2,49 @@
 
 ## 2026-07-10
 
+### Retained waypoint terminal-horizon checkpoint
+
+- Added post-handoff apex gain, time-to-apex, and apex lateral-offset review
+  metrics. `Transfer Handoff Triage` now surfaces post-handoff climb directly,
+  sorts successful cells by that signal, and selects the highest-climb seed for
+  inspection instead of repeating shape RMSE from the separate shape table.
+- Confirmed the shape defect was moving-horizon procrastination: the terminal
+  state-target solve repeatedly selected a fresh arrival horizon, so lateral
+  velocity died before the target time advanced and the craft lofted over the
+  pad before descending vertically.
+- Waypoint-enabled transfer controllers now retain an absolute terminal arrival
+  time. The commanded horizon counts down, replans only after expiry or dynamic
+  infeasibility, targets upright touchdown-center height, and releases once the
+  ballistic touchdown projection is captured at the latest-safe braking
+  boundary. The admission and release rules use flight state, not route/profile
+  labels or the simulation timeout.
+- Retention is deliberately disabled for standalone terminal and direct
+  transfer. Enabling it for every terminal entry regressed the waypoint pack to
+  `5 / 81`; enabling it for every transfer regressed the wide direct matrix to
+  `220 / 297`. Those entry states still require receding-horizon recovery.
+- Fresh `8`-worker, `--no-reuse` validation:
+  - `transfer_waypoint_turn_contract_smoke`: `81 / 81`, `2.07s` wall clock
+  - `transfer_waypoint_turn_smoke`: `81 / 81`, `10.35s` wall clock, `52.65s`
+    mean sim time, and `70.87s` max sim time
+  - `transfer_route_angle_radius_suite`: `297 / 297`, `45.99s` wall clock
+  - `terminal_bot_lab_full`: `915` successes, `525` scored failures, and `72`
+    invalidations, matching the current standalone-terminal checkpoint
+  - `terminal_traj_err_full`: `2751` successes, `129` scored failures, and
+    `144` invalidations in the fresh current-tree capture
+  - `cargo test --workspace`: all tests pass
+- Across the six focused empty-payload `r00/r+30` cells, mean post-handoff
+  climb falls from `182.53m` to `56.13m`, mean sim time from `66.69s` to
+  `45.22s`, and mean fuel use from `27.69%` to `19.57%`. Gentle `r00` falls
+  from `120.85m` of climb to `0m`; the three `r+30` profiles fall from
+  `348.19m | 359.12m | 267.03m` to `127.65m | 131.41m | 77.68m`.
+- Mean controller-update compute on the waypoint landing pack changes only from
+  `156.7us` to `161.5us`, remaining far below the `1ms` budget.
+- The two residual `r+30` cells just above `120m` are candidate-density debt:
+  the retained mechanism correctly follows the selected `22s` horizon, but the
+  selector does not sample shorter feasible arrivals. Candidate generation is
+  unchanged in this checkpoint and should be evaluated separately rather than
+  hidden behind route-specific terminal tuning.
+
 ### Waypoint planner-clearance correction
 
 - Reclassified the last waypoint crashes as a corpus-planning defect rather

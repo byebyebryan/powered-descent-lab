@@ -338,6 +338,9 @@ changing controller behavior:
 - `transfer_terminal_handoff_boost_quality`
 - `transfer_terminal_handoff_latest_safe_margin_s`
 - `transfer_terminal_handoff_required_accel_ratio`
+- `transfer_terminal_post_handoff_apex_gain_m`
+- `transfer_terminal_post_handoff_time_to_apex_s`
+- `transfer_terminal_post_handoff_apex_dx_abs_m`
 - `transfer_boost_projected_dx_m`
 - `transfer_boost_impact_angle_deg`
 - `transfer_boost_apex_over_target_m`
@@ -368,12 +371,18 @@ for transfer batch reports. The shape fields are Pylander-inspired diagnostics:
 they freeze the first boost-window route to the target, compare the actual path
 against a parabolic reference, and keep final touchdown as the scored goal.
 
+Terminal guidance telemetry separates the fresh selector result from an active
+retained plan with `guidance.candidate_burn_time_s`, `guidance.plan_active`,
+`guidance.plan_arrival_time_s`, and `guidance.plan_replan_count`.
+
 Batch reports render transfer-specific triage sections before the Review Tree:
 
 - `Transfer Handoff Triage` is the primary controller-tuning view. It groups
   current-lane runs by condition, route, radius, and vehicle, then sorts by
-  failed/frontier status, low handoff height, high handoff speed, wide handoff
-  projected `dx`, and wide boost-cutoff projected `dx`.
+  failed/frontier status and post-handoff climb before handoff height, speed,
+  projected `dx`, and boost-cutoff projected `dx`. The climb cell includes
+  time-to-apex and apex lateral offset; worst-seed selection uses the same
+  signal.
 - `Waypoint Handoff Triage` appears for waypoint packs and keeps profile plus
   envelope provenance beside spatial status, outbound heading/progress/cross
   speed, and the worst seed.
@@ -408,6 +417,18 @@ The current staged controller uses the transfer diagnostics directly:
   centered, and the latest-safe gate is already close
 - an active waypoint stays under powered state-target guidance; generic
   boost/coast/terminal staging resumes only after spatial capture
+- after waypoint capture, long-horizon terminal entries retain an absolute
+  arrival time instead of selecting a fresh time-to-go every update. Short
+  candidates remain receding; an ascending short candidate can still enter the
+  retained plan if it reaches the long-capture ceiling before apex.
+- the retained horizon counts down against simulation time, targets the upright
+  touchdown-center height, and releases permanently to the existing terminal
+  recovery once projected touchdown is inside the safe footprint, lateral
+  speed is out of the high-energy regime, and the latest-safe braking boundary
+  has been reached
+- retained terminal plans are enabled only for waypoint transfer. Standalone
+  terminal and direct-transfer entries preserve their existing receding-horizon
+  behavior.
 
 The corridor guard is still route-local, not broad terrain avoidance. It is
 intended to protect near-source uphill climbs from terrain collision without
@@ -415,11 +436,12 @@ turning transfer guidance into a full route planner.
 
 ## Current Checkpoint
 
-Current direct-transfer checkpoint, generated on 2026-07-09 with `8` workers
+Current direct-transfer checkpoint, refreshed on 2026-07-10 with `8` workers
 and `--no-reuse`:
 
 - `transfer_route_angle_radius_suite`: `297 / 297` successes, `0` crashes, and
-  `0` invalidations across every route angle, radius, payload, and smoke seed
+  `0` invalidations across every route angle, radius, payload, and smoke seed;
+  wall clock is `45.99s`
 - `transfer_route_angle_radius_frontier_full`: `108 / 108` successes and `0`
   invalidations across the full-seed `r+80` partition
 - the focused uphill-corridor brake closes the former direct `r+80` failure
@@ -427,19 +449,24 @@ and `--no-reuse`:
 - `near_vertical_transfer_route` remains useful as a stress annotation, but it
   no longer describes a failing direct-transfer region
 
-Current balanced waypoint-turn checkpoint:
+Current balanced waypoint-turn checkpoint, refreshed on 2026-07-10:
 
 - `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes, `0`
   failures, `21.43s` mean sim time, and `32.13s` max sim time
 - `transfer_waypoint_turn_smoke`: `81 / 81` final-landing successes; `r-30`,
-  `r00`, and `r+30` each land `27 / 27`
+  `r00`, and `r+30` each land `27 / 27`; mean sim time is `52.65s` and max sim
+  time is `70.87s`
 - the state-target controller therefore closes the maintained pass-through
   guidance contract across all profiles, route orientations, payloads, and
   smoke seeds; planner-side terrain-clearance floors keep those routes valid
   without terrain queries or fixture branches in guidance
-- the contract pack completes in `2.29s` wall clock with `8` workers. Mean
-  controller-update compute is `16.6us`, versus `219.1us` for the `12 / 81`
-  baseline, so the wider guidance solve remains well below the `1ms` budget
+- the contract and landing packs complete in `2.07s` and `10.35s` wall clock
+  with `8` workers. Mean landing-pack controller-update compute is `161.5us`,
+  versus `156.7us` before horizon retention, and remains well below the `1ms`
+  budget
+- across empty-payload `r00/r+30`, mean post-handoff climb improves by `69%`,
+  mean sim time by `32%`, and mean fuel use by `29%`. Candidate density, not
+  plan retention, now limits the remaining gentle/medium `r+30` apex height.
 - direct-transfer regression remains `297 / 297`, confirming that the waypoint
   mechanism did not alter the non-waypoint controller path
 - next work should add multiple preplanned waypoint handoffs and broaden

@@ -204,9 +204,9 @@ Status:
     Earth corpus; clean full-payload issues are scored frontier failures plus
     analytically impossible warnings
   - trajectory-error full current lane:
-    `2754 / 2880` scored successes, `126` scored failures,
+    `2751 / 2880` scored successes, `129` scored failures,
     `144` impossible warnings, `192` frontier annotations
-  - trajectory-error `empty` is solved; `half` has only two high-energy
+  - trajectory-error `empty` is solved; `half` has only three high-energy
     overshoot-large outliers; `full` is represented as the main scored
     authority-frontier tier
   - terrain avoidance is parked outside the maintained terminal guidance
@@ -313,7 +313,8 @@ Status:
   on controller observation boundaries
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
-  per run
+  per run, including post-handoff apex gain, time-to-apex, and apex lateral
+  offset
 - batch reports now put `Transfer Handoff Triage` ahead of shape triage so
   controller tuning starts from entry kind, handoff gate, height/speed,
   projected `dx`, cutoff quality, and worst seed before visual-shape RMSE
@@ -336,13 +337,20 @@ Status:
   - `transfer_waypoint_turn_contract_smoke`: `81 / 81` contract successes with
     `21.43s` mean and `32.13s` max sim time
   - `transfer_waypoint_turn_smoke`: `81 / 81` final-landing successes; every
-    route orientation lands `27 / 27`
+    route orientation lands `27 / 27`, with `52.65s` mean and `70.87s` max sim
+    time after retained terminal-horizon guidance
   - balanced planner fixtures enforce gravity-aligned `20% | 25% | 30%`
     terrain-clearance floors for gentle through sharp profiles; the controller
     remains terrain-blind
   - the state-target solve uses fixed endpoint geometry, outbound target
     velocity, geometry-derived time-to-go candidates, and a bounded path
     correction; it does not use sim timeout or route/profile branches
+  - waypoint terminal recovery retains long-capture arrival time until the
+    projected touchdown is captured at the latest-safe braking boundary;
+    direct and standalone terminal controllers remain receding-horizon
+  - focused empty `r00/r+30` post-handoff climb improves by `69%` without
+    changing candidate generation; residual `r+30` apex height is tracked as
+    candidate-density debt
   - `single_straight_v1` is no longer supported because its capture volume
     intersected the route terrain; resolved corpus tests now enforce the planner
     floor and cross-track-plus-vehicle vertical clearance
@@ -509,13 +517,14 @@ The next useful work is:
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
-   direct-transfer regression gates. Keep the balanced waypoint contract at
-   `81 / 81` while improving the paired final-landing pack, then add
-   multi-waypoint sequencing before waypoint planning or terrain-aware routing.
+   direct-transfer regression gates. Preserve both balanced waypoint packs at
+   `81 / 81`, then add multi-waypoint sequencing before waypoint planning or
+   terrain-aware routing.
 
-The immediate controller direction should stay conservative. Direct transfer is
-clean across the maintained wide matrix and balanced pass-through handoff is
-clean across all `81` cells. The next controller change should explain the six
-post-handoff crashes with one target-state or recovery mechanism while
-preserving `81 / 81` handoffs and `297 / 297` direct transfer, not weaken the
-contract or add a profile-specific state machine.
+The immediate controller direction should stay conservative. Direct transfer,
+balanced pass-through handoff, and balanced final landing are all clean across
+their maintained matrices. The next mission slice should exercise multiple
+preplanned waypoint handoffs. A separate candidate-density pass is justified
+only if the residual `r+30` apex height blocks that work; it must preserve both
+`81 / 81` waypoint gates and `297 / 297` direct transfer without adding a
+profile-specific state machine.

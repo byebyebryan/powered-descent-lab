@@ -685,8 +685,8 @@ Clean matrix report entrypoints:
 
 Latest recorded wall-clock signal with `8` workers:
 
-- `terminal_bot_lab_suite`: `15.01s`
-- `terminal_bot_lab_full`: `55.47s`
+- `terminal_bot_lab_suite`: `11.84s`
+- `terminal_bot_lab_full`: `47.01s`
 
 Current-lane clean results:
 
@@ -713,14 +713,14 @@ Trajectory-error report entrypoints:
 - `outputs/eval/terminal_traj_err_suite/summary.json`
 - `outputs/eval/terminal_traj_err_full/summary.json`
 
-The numeric checkpoint below is from fresh schema-21 local captures. Regenerate
+The numeric checkpoint below is from fresh schema-25 local captures. Regenerate
 the ignored `outputs/eval` entrypoints after schema/report changes before
 treating the files in this checkout as authoritative.
 
-Latest verified schema-21 wall-clock signal with `8` workers:
+Latest verified schema-25 wall-clock signal with `8` workers:
 
-- `terminal_traj_err_suite`: `30.35s`
-- `terminal_traj_err_full`: `120.78s`
+- `terminal_traj_err_suite`: `28.38s`
+- `terminal_traj_err_full`: `114.24s`
 
 Current-lane trajectory-error results:
 
@@ -730,8 +730,8 @@ Current-lane trajectory-error results:
   - `36` impossible warnings
   - `48` frontier annotations
 - full pack:
-  - `2754 / 2880` scored successes
-  - `126` scored failures
+  - `2751 / 2880` scored successes
+  - `129` scored failures
   - `144` impossible warnings
   - `192` frontier annotations
 
@@ -739,17 +739,17 @@ Current-lane trajectory-error results:
 
 - by payload:
   - `empty`: `1008 / 1008`
-  - `half`: `1006 / 1008`, `2` scored failures
-  - `full`: `740 / 864` scored, `124` scored failures,
+  - `half`: `1005 / 1008`, `3` scored failures
+  - `full`: `738 / 864` scored, `126` scored failures,
     `144` impossible warnings, `192` frontier annotations
 - by condition:
   - `traj_undershoot_small`: `693 / 720` scored, `27` scored failures,
     `36` impossible warnings, `48` frontier annotations
-  - `traj_undershoot_large`: `707 / 720` scored, `13` scored failures,
+  - `traj_undershoot_large`: `705 / 720` scored, `15` scored failures,
     `36` impossible warnings, `48` frontier annotations
   - `traj_overshoot_small`: `683 / 720` scored, `37` scored failures,
     `36` impossible warnings, `48` frontier annotations
-  - `traj_overshoot_large`: `671 / 720` scored, `49` scored failures,
+  - `traj_overshoot_large`: `670 / 720` scored, `50` scored failures,
     `36` impossible warnings, `48` frontier annotations
 
 The current interpretation is:
@@ -758,7 +758,7 @@ The current interpretation is:
 - clean `full` is the low-thrust/high-energy frontier tier; failed frontier
   cells remain scored failures
 - trajectory-error `empty` is solved
-- trajectory-error `half` has only two high-energy overshoot-large outliers
+- trajectory-error `half` has only three high-energy overshoot-large outliers
 - trajectory-error `full` is the main scored low-thrust/high-energy frontier
   stress tier
 
