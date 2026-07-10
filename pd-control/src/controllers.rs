@@ -50,27 +50,8 @@ const WAYPOINT_LEG_LOOKAHEAD_MIN_CAPTURE_RADII: f64 = 3.0;
 const WAYPOINT_LEG_LOOKAHEAD_MAX_CAPTURE_RADII: f64 = 12.0;
 const WAYPOINT_LEG_REMAINING_LOOKAHEAD_FRAC: f64 = 0.75;
 const WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII: f64 = 8.0;
-#[cfg(test)]
-const WAYPOINT_OUTBOUND_CROSS_TRACK_BLEND_CAPTURE_RADII: f64 = 4.0;
 const WAYPOINT_OUTBOUND_TURN_MARGIN_CAPTURE_RADII: f64 = 2.0;
-#[cfg(test)]
-const WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII: f64 = 7.0;
-#[cfg(test)]
-const WAYPOINT_OUTBOUND_VELOCITY_BLEND_WEIGHT: f64 = 0.75;
-const WAYPOINT_SCORE_SPATIAL: f64 = 900.0;
-const WAYPOINT_SCORE_DISTANCE: f64 = 90.0;
-const WAYPOINT_SCORE_HEADING: f64 = 180.0;
-const WAYPOINT_SCORE_PROGRESS: f64 = 150.0;
-const WAYPOINT_SCORE_CROSS_SPEED: f64 = 80.0;
-const WAYPOINT_SCORE_SPEED: f64 = 35.0;
-const WAYPOINT_SCORE_VERTICAL_SPEED: f64 = 30.0;
-const WAYPOINT_SCORE_NO_TRIGGER: f64 = 8.0;
-const WAYPOINT_SCORE_TIE_BREAK_WEIGHT: f64 = 0.001;
-const WAYPOINT_OUTBOUND_ATTITUDE_SCALE: f64 = 0.45;
-const WAYPOINT_HANDOFF_PREDICTION_MAX_S: f64 = 12.0;
-const WAYPOINT_COAST_MIN_CLOSING_MPS: f64 = 1.0;
-const WAYPOINT_COAST_REACHABILITY_MARGIN_S: f64 = 2.0;
-const WAYPOINT_COAST_REACHABILITY_MAX_S: f64 = 20.0;
+const WAYPOINT_APPROACH_TIME_TO_PLANE_MAX_S: f64 = 12.0;
 const WAYPOINT_GUIDANCE_PATH_AUTHORITY_FRAC: f64 = 0.15;
 const WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S: f64 = 0.5;
 const WAYPOINT_GUIDANCE_MIN_CLOSURE_MPS: f64 = 1.0;
@@ -134,10 +115,6 @@ fn default_transfer_boost_recoverability_scoring_enabled() -> bool {
 }
 
 fn default_transfer_waypoint_guidance_enabled() -> bool {
-    false
-}
-
-fn default_transfer_waypoint_boost_handoff_scoring_enabled() -> bool {
     false
 }
 
@@ -295,8 +272,6 @@ pub struct TransferPdgControllerConfig {
     pub boost_recoverability_scoring_enabled: bool,
     #[serde(default = "default_transfer_waypoint_guidance_enabled")]
     pub waypoint_guidance_enabled: bool,
-    #[serde(default = "default_transfer_waypoint_boost_handoff_scoring_enabled")]
-    pub waypoint_boost_handoff_scoring_enabled: bool,
     #[serde(default = "default_transfer_gate_defer_lookahead_s")]
     pub transfer_gate_defer_lookahead_s: f64,
     #[serde(default = "default_transfer_gate_defer_step_s")]
@@ -341,8 +316,6 @@ impl Default for TransferPdgControllerConfig {
             boost_recoverability_scoring_enabled:
                 default_transfer_boost_recoverability_scoring_enabled(),
             waypoint_guidance_enabled: default_transfer_waypoint_guidance_enabled(),
-            waypoint_boost_handoff_scoring_enabled:
-                default_transfer_waypoint_boost_handoff_scoring_enabled(),
             transfer_gate_defer_lookahead_s: default_transfer_gate_defer_lookahead_s(),
             transfer_gate_defer_step_s: default_transfer_gate_defer_step_s(),
             transfer_gate_defer_min_ratio_improvement:
@@ -881,8 +854,6 @@ struct WaypointLegGeometry<'a> {
     waypoint: &'a TransferWaypointSpec,
     anchor_m: Vec2,
     target_m: Vec2,
-    #[cfg(test)]
-    next_target_m: Vec2,
     leg_unit: Vec2,
     leg_length_m: f64,
     next_leg_unit: Vec2,
@@ -978,7 +949,6 @@ struct TransferBoostCandidateScore {
     score: f64,
     projection: TransferBallisticProjection,
     quality: TransferBoostQuality,
-    waypoint_score: Option<WaypointBoostScore>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -988,27 +958,6 @@ struct TransferBoostCommandSelection {
     selected_score: f64,
     settled_projection: TransferBallisticProjection,
     settled_quality: TransferBoostQuality,
-    waypoint_score: Option<WaypointBoostScore>,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct WaypointHandoffPrediction {
-    triggered: bool,
-    elapsed_s: f64,
-    stats: WaypointLegStats,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct WaypointBoostScore {
-    score: f64,
-    prediction: WaypointHandoffPrediction,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum WaypointCoastPreview {
-    ReachesWaypoint,
-    NotReachable,
-    TerrainBeforeWaypoint,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1328,8 +1277,6 @@ impl TransferPdgController {
             waypoint,
             anchor_m,
             target_m,
-            #[cfg(test)]
-            next_target_m,
             leg_unit,
             leg_length_m,
             next_leg_unit,
@@ -2089,7 +2036,7 @@ impl TransferPdgController {
             .metric(metric::TRANSFER_CORRIDOR_MARGIN_M, corridor.margin_m);
 
         if let Some(selection) = boost_selection {
-            let builder = builder
+            builder
                 .metric(
                     metric::TRANSFER_BOOST_SELECTED_SCORE,
                     selection.selected_score,
@@ -2104,37 +2051,7 @@ impl TransferPdgController {
                         .settled_projection
                         .projected_dx_m
                         .unwrap_or(diagnostics.route_dx_m),
-                );
-            if let Some(waypoint_score) = selection.waypoint_score {
-                builder
-                    .metric(metric::WAYPOINT_BOOST_SCORE, waypoint_score.score)
-                    .metric(
-                        metric::WAYPOINT_PREDICTED_HANDOFF_TIME_S,
-                        waypoint_score.prediction.elapsed_s,
-                    )
-                    .metric(
-                        metric::WAYPOINT_PREDICTED_CROSS_TRACK_M,
-                        waypoint_score.prediction.stats.cross_track_m,
-                    )
-                    .metric(
-                        metric::WAYPOINT_PREDICTED_HEADING_ERROR_RAD,
-                        waypoint_score.prediction.stats.outbound_heading_error_rad,
-                    )
-                    .metric(
-                        metric::WAYPOINT_PREDICTED_OUTBOUND_PROGRESS_MPS,
-                        waypoint_score.prediction.stats.outbound_progress_mps,
-                    )
-                    .metric(
-                        metric::WAYPOINT_PREDICTED_SPEED_MPS,
-                        waypoint_score.prediction.stats.speed_mps,
-                    )
-                    .metric(
-                        metric::WAYPOINT_PREDICTED_VERTICAL_SPEED_MPS,
-                        waypoint_score.prediction.stats.vertical_speed_mps,
-                    )
-            } else {
-                builder
-            }
+                )
         } else {
             builder
         }
@@ -2647,10 +2564,6 @@ impl TransferPdgController {
             return false;
         }
 
-        if !self.waypoint_coast_reaches_active_waypoint(ctx, observation) {
-            return false;
-        }
-
         if observation.velocity_mps.y > 0.0 {
             return true;
         }
@@ -2664,73 +2577,6 @@ impl TransferPdgController {
 
         diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m
             && (observation.height_above_target_m < 0.0 || observation.velocity_mps.y > 0.0)
-    }
-
-    fn waypoint_coast_reaches_active_waypoint(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-    ) -> bool {
-        if !self.config.waypoint_guidance_enabled {
-            return true;
-        }
-        let Some(geometry) = self.waypoint_leg_geometry(ctx) else {
-            return true;
-        };
-
-        self.waypoint_coast_preview(ctx, observation, &geometry)
-            == WaypointCoastPreview::ReachesWaypoint
-    }
-
-    fn waypoint_coast_preview(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        geometry: &WaypointLegGeometry<'_>,
-    ) -> WaypointCoastPreview {
-        let stats = waypoint_leg_stats(observation, geometry);
-        if waypoint_handoff_triggered(geometry.waypoint, stats) {
-            return WaypointCoastPreview::ReachesWaypoint;
-        }
-
-        let remaining_m = (-stats.plane_progress_m).max(0.0);
-        let closing_mps = vec_dot(observation.velocity_mps, geometry.leg_unit);
-        if closing_mps <= WAYPOINT_COAST_MIN_CLOSING_MPS {
-            return WaypointCoastPreview::NotReachable;
-        }
-
-        let duration_s = ((remaining_m / closing_mps) + WAYPOINT_COAST_REACHABILITY_MARGIN_S)
-            .clamp(
-                self.config.boost_candidate_horizon_s,
-                WAYPOINT_COAST_REACHABILITY_MAX_S,
-            );
-        let step_s = self
-            .config
-            .boost_candidate_step_s
-            .clamp(1.0e-3, duration_s.max(1.0e-3));
-        let command = Command {
-            throttle_frac: 0.0,
-            target_attitude_rad: self.coast_attitude_rad(observation),
-        };
-
-        for state in
-            self.simulate_transfer_command_samples(ctx, observation, command, duration_s, step_s)
-        {
-            let predicted_stats =
-                waypoint_leg_stats_from_kinematics(state.position_m, state.velocity_mps, geometry);
-            if waypoint_handoff_triggered(geometry.waypoint, predicted_stats) {
-                return WaypointCoastPreview::ReachesWaypoint;
-            }
-
-            let terrain_y_m = ctx.world.terrain.sample_height(state.position_m.x);
-            let touchdown_clearance_m =
-                state.position_m.y - terrain_y_m - ctx.vehicle.geometry.touchdown_base_offset_m;
-            if touchdown_clearance_m <= 0.0 {
-                return WaypointCoastPreview::TerrainBeforeWaypoint;
-            }
-        }
-
-        WaypointCoastPreview::NotReachable
     }
 
     fn boost_attitude_rad(
@@ -2889,13 +2735,6 @@ impl TransferPdgController {
         diagnostics: TransferDiagnostics,
         corridor: TransferCorridorState,
     ) -> TransferBoostCommandSelection {
-        let waypoint_geometry = if self.config.waypoint_guidance_enabled
-            && self.config.waypoint_boost_handoff_scoring_enabled
-        {
-            self.waypoint_leg_geometry(ctx)
-        } else {
-            None
-        };
         let base_attitude = self.boost_attitude_rad(observation, diagnostics, corridor);
         let corridor_brake_attitude =
             self.corridor_lateral_brake_attitude_rad(observation, diagnostics, corridor);
@@ -2922,28 +2761,6 @@ impl TransferPdgController {
             );
             self.push_unique_candidate(&mut attitude_candidates, uphill_attitude);
         }
-        if let Some(geometry) = waypoint_geometry
-            && corridor_brake_attitude.is_none()
-        {
-            let outbound_direction = geometry.next_leg_unit.x.signum();
-            if outbound_direction != 0.0 {
-                let outbound_attitude = outbound_direction
-                    * self
-                        .config
-                        .boost_tilt_rad
-                        .max(self.config.uphill_boost_tilt_rad)
-                    * WAYPOINT_OUTBOUND_ATTITUDE_SCALE;
-                self.push_unique_candidate(
-                    &mut attitude_candidates,
-                    self.apply_corridor_tilt_cap(outbound_attitude, corridor),
-                );
-                self.push_unique_candidate(
-                    &mut attitude_candidates,
-                    self.apply_corridor_tilt_cap(outbound_attitude * 0.55, corridor),
-                );
-            }
-        }
-
         let mut throttle_candidates = Vec::new();
         if corridor.active {
             self.push_unique_candidate(&mut throttle_candidates, 1.0);
@@ -2963,28 +2780,16 @@ impl TransferPdgController {
             throttle_frac: eased_throttle,
             target_attitude_rad: base_attitude,
         };
-        let mut best_score = self.score_boost_candidate_with_waypoint(
-            ctx,
-            observation,
-            diagnostics,
-            corridor,
-            waypoint_geometry.as_ref(),
-            best_command,
-        );
+        let mut best_score =
+            self.score_boost_candidate(ctx, observation, diagnostics, corridor, best_command);
         for attitude in attitude_candidates {
             for throttle in &throttle_candidates {
                 let command = Command {
                     throttle_frac: *throttle,
                     target_attitude_rad: self.apply_corridor_tilt_cap(attitude, corridor),
                 };
-                let score = self.score_boost_candidate_with_waypoint(
-                    ctx,
-                    observation,
-                    diagnostics,
-                    corridor,
-                    waypoint_geometry.as_ref(),
-                    command,
-                );
+                let score =
+                    self.score_boost_candidate(ctx, observation, diagnostics, corridor, command);
                 if score.score < best_score.score {
                     best_command = command;
                     best_score = score;
@@ -2994,37 +2799,11 @@ impl TransferPdgController {
 
         TransferBoostCommandSelection {
             command: best_command.clamped(),
-            scoring_mode: if best_score.waypoint_score.is_some() {
-                "waypoint_handoff"
-            } else {
-                self.boost_scoring_mode()
-            },
+            scoring_mode: self.boost_scoring_mode(),
             selected_score: best_score.score,
             settled_projection: settled.projection,
             settled_quality: settled.quality,
-            waypoint_score: best_score.waypoint_score,
         }
-    }
-
-    fn score_boost_candidate_with_waypoint(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        diagnostics: TransferDiagnostics,
-        corridor: TransferCorridorState,
-        waypoint_geometry: Option<&WaypointLegGeometry<'_>>,
-        command: Command,
-    ) -> TransferBoostCandidateScore {
-        let mut score =
-            self.score_boost_candidate(ctx, observation, diagnostics, corridor, command);
-        if let Some(geometry) = waypoint_geometry
-            && let Some(waypoint_score) =
-                self.score_waypoint_boost_candidate(ctx, observation, geometry, command)
-        {
-            score.score += waypoint_score.score * WAYPOINT_SCORE_TIE_BREAK_WEIGHT;
-            score.waypoint_score = Some(waypoint_score);
-        }
-        score
     }
 
     fn score_boost_candidate(
@@ -3081,7 +2860,6 @@ impl TransferPdgController {
             score,
             projection,
             quality,
-            waypoint_score: None,
         }
     }
 
@@ -3273,7 +3051,6 @@ impl TransferPdgController {
             score,
             projection,
             quality,
-            waypoint_score: None,
         }
     }
 
@@ -3323,178 +3100,6 @@ impl TransferPdgController {
                 .boost_tilt_rad
                 .max(self.config.uphill_boost_tilt_rad),
         )
-    }
-
-    fn score_waypoint_boost_candidate(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        geometry: &WaypointLegGeometry<'_>,
-        command: Command,
-    ) -> Option<WaypointBoostScore> {
-        let current_stats = waypoint_leg_stats(observation, geometry);
-        let weight = self.waypoint_handoff_score_weight(ctx, observation, geometry, current_stats);
-        if weight <= 0.12 {
-            return None;
-        }
-
-        let prediction = self.predict_waypoint_handoff(ctx, observation, geometry, command);
-        let handoff_score =
-            self.score_waypoint_handoff_prediction(geometry, prediction, current_stats);
-        Some(WaypointBoostScore {
-            score: handoff_score * weight,
-            prediction,
-        })
-    }
-
-    fn predict_waypoint_handoff(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        geometry: &WaypointLegGeometry<'_>,
-        command: Command,
-    ) -> WaypointHandoffPrediction {
-        let duration_s = self.config.boost_candidate_horizon_s.max(0.0);
-        let step_s = self
-            .config
-            .boost_candidate_step_s
-            .clamp(1.0e-3, duration_s.max(1.0e-3));
-        let mut fallback = WaypointHandoffPrediction {
-            triggered: false,
-            elapsed_s: 0.0,
-            stats: waypoint_leg_stats(observation, geometry),
-        };
-        for (index, state) in self
-            .simulate_transfer_command_samples(ctx, observation, command, duration_s, step_s)
-            .into_iter()
-            .enumerate()
-        {
-            let elapsed_s = (((index + 1) as f64) * step_s).min(duration_s);
-            let stats =
-                waypoint_leg_stats_from_kinematics(state.position_m, state.velocity_mps, geometry);
-            let prediction = WaypointHandoffPrediction {
-                triggered: waypoint_handoff_triggered(geometry.waypoint, stats),
-                elapsed_s,
-                stats,
-            };
-            if prediction.triggered {
-                return prediction;
-            }
-            fallback = prediction;
-        }
-        fallback
-    }
-
-    fn waypoint_handoff_score_weight(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        geometry: &WaypointLegGeometry<'_>,
-        stats: WaypointLegStats,
-    ) -> f64 {
-        let remaining_m = (-stats.plane_progress_m).max(0.0);
-        if remaining_m <= geometry.waypoint.capture_radius_m {
-            return 1.0;
-        }
-
-        let max_lateral_accel_mps2 = (ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0))
-            * self
-                .config
-                .boost_tilt_rad
-                .max(self.config.uphill_boost_tilt_rad)
-                .sin()
-                .abs()
-                .max(0.05);
-        let turn_delta_v_mps =
-            2.0 * stats.speed_mps * (0.5 * stats.outbound_heading_error_rad).sin();
-        let turn_distance_m =
-            (stats.speed_mps * turn_delta_v_mps / max_lateral_accel_mps2.max(1.0e-6)).clamp(
-                geometry.waypoint.capture_radius_m * 6.0,
-                geometry
-                    .leg_length_m
-                    .max(geometry.waypoint.capture_radius_m),
-            );
-        let shaping_start_m = turn_distance_m
-            .max(geometry.waypoint.capture_radius_m * WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII);
-        (1.0 - (remaining_m / shaping_start_m).clamp(0.0, 1.0)).clamp(0.0, 1.0)
-    }
-
-    fn score_waypoint_handoff_prediction(
-        &self,
-        geometry: &WaypointLegGeometry<'_>,
-        prediction: WaypointHandoffPrediction,
-        current_stats: WaypointLegStats,
-    ) -> f64 {
-        let waypoint = geometry.waypoint;
-        let stats = prediction.stats;
-        let capture_radius_m = waypoint.capture_radius_m.max(1.0);
-        let cross_track_limit_m = waypoint.max_cross_track_m.max(1.0);
-        let mut score = 0.0;
-
-        let cross_track_ratio = ((stats.cross_track_m - waypoint.max_cross_track_m).max(0.0)
-            / cross_track_limit_m)
-            .min(8.0);
-        score += WAYPOINT_SCORE_SPATIAL * cross_track_ratio * cross_track_ratio;
-
-        let distance_ratio =
-            ((stats.distance_m - waypoint.capture_radius_m).max(0.0) / capture_radius_m).min(8.0);
-        score += WAYPOINT_SCORE_DISTANCE * distance_ratio * distance_ratio;
-
-        if !prediction.triggered {
-            let progress_ratio =
-                ((-stats.plane_progress_m).max(0.0) / (capture_radius_m * 4.0)).min(8.0);
-            score += WAYPOINT_SCORE_NO_TRIGGER * progress_ratio * progress_ratio;
-        }
-
-        let heading_ratio =
-            ((stats.outbound_heading_error_rad - waypoint.max_outbound_heading_error_rad).max(0.0)
-                / waypoint.max_outbound_heading_error_rad.max(1.0e-6))
-            .min(8.0);
-        score += WAYPOINT_SCORE_HEADING * heading_ratio * heading_ratio;
-
-        let progress_ratio = ((waypoint.min_outbound_progress_mps - stats.outbound_progress_mps)
-            .max(0.0)
-            / waypoint.min_outbound_progress_mps.max(10.0))
-        .min(12.0);
-        score += WAYPOINT_SCORE_PROGRESS * progress_ratio * progress_ratio;
-
-        if let Some(max_cross_speed_mps) = waypoint.max_outbound_cross_speed_mps {
-            let cross_speed_ratio = ((stats.outbound_cross_speed_mps - max_cross_speed_mps)
-                .max(0.0)
-                / max_cross_speed_mps.max(1.0))
-            .min(8.0);
-            score += WAYPOINT_SCORE_CROSS_SPEED * cross_speed_ratio * cross_speed_ratio;
-        }
-
-        let speed_ratio = waypoint_range_excess_ratio(
-            stats.speed_mps,
-            waypoint.min_speed_mps,
-            waypoint.max_speed_mps,
-            waypoint.max_speed_mps.max(10.0) - waypoint.min_speed_mps.min(0.0),
-        );
-        score += WAYPOINT_SCORE_SPEED * speed_ratio * speed_ratio;
-
-        if let Some(vertical_speed_ratio) = waypoint_optional_range_excess_ratio(
-            stats.vertical_speed_mps,
-            waypoint.min_vertical_speed_mps,
-            waypoint.max_vertical_speed_mps,
-        ) {
-            score += WAYPOINT_SCORE_VERTICAL_SPEED * vertical_speed_ratio * vertical_speed_ratio;
-        }
-
-        let current_progress_deficit_mps =
-            (waypoint.min_outbound_progress_mps - current_stats.outbound_progress_mps).max(0.0);
-        let predicted_progress_deficit_mps =
-            (waypoint.min_outbound_progress_mps - stats.outbound_progress_mps).max(0.0);
-        if predicted_progress_deficit_mps > current_progress_deficit_mps {
-            let regression_ratio = ((predicted_progress_deficit_mps
-                - current_progress_deficit_mps)
-                / waypoint.min_outbound_progress_mps.max(10.0))
-            .min(8.0);
-            score += WAYPOINT_SCORE_PROGRESS * 0.35 * regression_ratio * regression_ratio;
-        }
-
-        score
     }
 
     fn score_boost_candidate_recoverability(
@@ -3570,7 +3175,6 @@ impl TransferPdgController {
             score,
             projection,
             quality,
-            waypoint_score: None,
         }
     }
 
@@ -3637,7 +3241,6 @@ impl TransferPdgController {
             score: 0.0,
             projection: predicted_diagnostics.projection,
             quality: predicted_diagnostics.boost_quality,
-            waypoint_score: None,
         }
     }
 
@@ -3852,17 +3455,6 @@ impl WaypointTelemetry {
     }
 }
 
-impl WaypointGuidanceFrame {
-    #[cfg(test)]
-    fn legacy_adjusted_observation(self, observation: &Observation) -> Observation {
-        waypoint_adjusted_observation(
-            observation,
-            self.steering_target_m,
-            self.envelope.capture_radius_m,
-        )
-    }
-}
-
 fn waypoint_guidance_frame(
     geometry: &WaypointLegGeometry<'_>,
     stats: WaypointLegStats,
@@ -3950,7 +3542,7 @@ fn waypoint_approach_state(
     } else if closing_speed_mps > 1.0e-6 {
         remaining_to_plane_m / closing_speed_mps
     } else {
-        WAYPOINT_HANDOFF_PREDICTION_MAX_S
+        WAYPOINT_APPROACH_TIME_TO_PLANE_MAX_S
     };
     let max_lateral_accel_mps2 = waypoint_max_lateral_accel_mps2(ctx, observation, max_tilt_rad);
     let turn_delta_v_mps = 2.0 * stats.speed_mps * (0.5 * stats.outbound_heading_error_rad).sin();
@@ -3991,32 +3583,6 @@ fn waypoint_max_lateral_accel_mps2(
     (ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0)) * tilt_rad.sin().abs().max(0.05)
 }
 
-#[cfg(test)]
-fn waypoint_guidance_target_m(
-    geometry: &WaypointLegGeometry<'_>,
-    stats: WaypointLegStats,
-    _approach: WaypointApproachState,
-) -> Vec2 {
-    let active_leg_target_m = waypoint_leg_steering_target_m(geometry, stats);
-    let capture_radius_m = geometry.waypoint.capture_radius_m.max(1.0);
-    let progress_m =
-        (stats.plane_progress_m + geometry.leg_length_m).clamp(0.0, geometry.leg_length_m);
-    let remaining_m = (geometry.leg_length_m - progress_m).max(0.0);
-
-    let blend = waypoint_outbound_blend(geometry, stats, remaining_m, capture_radius_m);
-    if blend <= 1.0e-6 {
-        return active_leg_target_m;
-    }
-
-    let outbound_lookahead_m = (capture_radius_m * WAYPOINT_OUTBOUND_LOOKAHEAD_CAPTURE_RADII).min(
-        (geometry.next_target_m - geometry.target_m)
-            .length()
-            .max(capture_radius_m),
-    );
-    let outbound_target_m = geometry.target_m + (geometry.next_leg_unit * outbound_lookahead_m);
-    active_leg_target_m + ((outbound_target_m - active_leg_target_m) * blend)
-}
-
 fn waypoint_leg_steering_target_m(
     geometry: &WaypointLegGeometry<'_>,
     stats: WaypointLegStats,
@@ -4037,48 +3603,10 @@ fn waypoint_leg_steering_target_m(
     geometry.anchor_m + (geometry.leg_unit * target_progress_m)
 }
 
-#[cfg(test)]
-fn waypoint_outbound_blend(
-    geometry: &WaypointLegGeometry<'_>,
-    stats: WaypointLegStats,
-    remaining_m: f64,
-    capture_radius_m: f64,
-) -> f64 {
-    let distance_blend = 1.0
-        - (remaining_m / (capture_radius_m * WAYPOINT_OUTBOUND_BLEND_START_CAPTURE_RADII).max(1.0))
-            .clamp(0.0, 1.0);
-    if distance_blend <= 0.0 {
-        return 0.0;
-    }
-
-    let cross_track_scale_m = (geometry.waypoint.max_cross_track_m
-        + (capture_radius_m * WAYPOINT_OUTBOUND_CROSS_TRACK_BLEND_CAPTURE_RADII))
-        .max(1.0);
-    let cross_track_blend = 1.0 - (stats.cross_track_m / cross_track_scale_m).clamp(0.0, 1.0);
-    let heading_blend = (stats.outbound_heading_error_rad
-        / geometry.waypoint.max_outbound_heading_error_rad.max(1.0e-6))
-    .clamp(0.0, 1.0);
-    let progress_blend = ((geometry.waypoint.min_outbound_progress_mps
-        - stats.outbound_progress_mps)
-        / geometry.waypoint.min_outbound_progress_mps.max(1.0))
-    .clamp(0.0, 1.0);
-    let velocity_blend = heading_blend.max(progress_blend);
-
-    (distance_blend
-        * cross_track_blend.max(velocity_blend * WAYPOINT_OUTBOUND_VELOCITY_BLEND_WEIGHT))
-    .clamp(0.0, 1.0)
-}
-
 fn waypoint_capture_passes(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
     waypoint
         .assess_handoff(waypoint_handoff_kinematics(stats))
         .spatial_pass
-}
-
-fn waypoint_handoff_triggered(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
-    waypoint
-        .assess_handoff(waypoint_handoff_kinematics(stats))
-        .triggered
 }
 
 fn waypoint_handoff_kinematics(stats: WaypointLegStats) -> WaypointHandoffKinematics {
@@ -4092,46 +3620,6 @@ fn waypoint_handoff_kinematics(stats: WaypointLegStats) -> WaypointHandoffKinema
         speed_mps: stats.speed_mps,
         vertical_speed_mps: stats.vertical_speed_mps,
     }
-}
-
-#[cfg(test)]
-fn waypoint_handoff_contract_passes(
-    waypoint: &TransferWaypointSpec,
-    stats: WaypointLegStats,
-) -> bool {
-    waypoint
-        .assess_handoff(waypoint_handoff_kinematics(stats))
-        .contract_pass()
-}
-
-fn waypoint_range_excess_ratio(value: f64, min_value: f64, max_value: f64, scale: f64) -> f64 {
-    let excess = if value < min_value {
-        min_value - value
-    } else if value > max_value {
-        value - max_value
-    } else {
-        0.0
-    };
-    (excess / scale.max(1.0)).min(8.0)
-}
-
-fn waypoint_optional_range_excess_ratio(
-    value: f64,
-    min_value: Option<f64>,
-    max_value: Option<f64>,
-) -> Option<f64> {
-    let excess = match (min_value, max_value) {
-        (Some(min_value), Some(max_value)) => {
-            let scale = (max_value - min_value).abs().max(10.0);
-            return Some(waypoint_range_excess_ratio(
-                value, min_value, max_value, scale,
-            ));
-        }
-        (Some(min_value), None) => (min_value - value).max(0.0),
-        (None, Some(max_value)) => (value - max_value).max(0.0),
-        (None, None) => return None,
-    };
-    Some((excess / 10.0).min(8.0))
 }
 
 fn normalized_or_none(vector: Vec2) -> Option<Vec2> {
@@ -4530,8 +4018,7 @@ mod tests {
                 * 0.8);
 
         let stats = waypoint_leg_stats(&observation, &geometry);
-        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
-        let target_m = waypoint_guidance_target_m(&geometry, stats, approach);
+        let target_m = waypoint_leg_steering_target_m(&geometry, stats);
         let target_from_anchor = target_m - geometry.anchor_m;
         let target_cross_track_m = vec_cross(target_from_anchor, geometry.leg_unit).abs();
         let target_progress_m = vec_dot(target_from_anchor, geometry.leg_unit);
@@ -4552,18 +4039,12 @@ mod tests {
         let stats = waypoint_leg_stats(&observation, &geometry);
         let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
         let guidance = waypoint_guidance_frame(&geometry, stats, approach);
-        let adjusted = guidance.legacy_adjusted_observation(&observation);
 
         assert_eq!(guidance.endpoint_m, geometry.target_m);
         assert_ne!(guidance.steering_target_m, guidance.endpoint_m);
         assert_eq!(
             guidance.envelope.capture_radius_m,
             geometry.waypoint.capture_radius_m
-        );
-        assert!(
-            (adjusted.target_dx_m - (guidance.steering_target_m.x - observation.position_m.x))
-                .abs()
-                < 1.0e-9
         );
     }
 
@@ -4750,364 +4231,6 @@ mod tests {
                 .metrics
                 .contains_key(metric::WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO)
         );
-    }
-
-    #[test]
-    fn transfer_waypoint_guidance_target_blends_outbound_near_capture() {
-        let ctx = context_with_waypoint();
-        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let mut observation = transfer_observation(0.0, 0.0, geometry.leg_unit * 35.0, 4.0);
-        observation.position_m =
-            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 0.5);
-
-        let stats = waypoint_leg_stats(&observation, &geometry);
-        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
-        let target_m = waypoint_guidance_target_m(&geometry, stats, approach);
-        let target_from_waypoint = target_m - geometry.target_m;
-
-        assert!(vec_dot(target_from_waypoint, geometry.next_leg_unit) > 0.0);
-    }
-
-    #[test]
-    fn transfer_waypoint_guidance_target_blends_outbound_when_velocity_is_unviable() {
-        let ctx = context_with_waypoint();
-        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -30.0, 4.0);
-        observation.position_m = geometry.target_m
-            - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 5.0)
-            + (Vec2::new(-geometry.leg_unit.y, geometry.leg_unit.x)
-                * geometry.waypoint.max_cross_track_m
-                * 1.5);
-
-        let stats = waypoint_leg_stats(&observation, &geometry);
-        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
-        let blend = waypoint_outbound_blend(
-            &geometry,
-            stats,
-            (geometry.leg_length_m
-                - vec_dot(
-                    observation.position_m - geometry.anchor_m,
-                    geometry.leg_unit,
-                ))
-            .max(0.0),
-            geometry.waypoint.capture_radius_m,
-        );
-        let target_m = waypoint_guidance_target_m(&geometry, stats, approach);
-        let target_cross_track_m = vec_cross(target_m - geometry.anchor_m, geometry.leg_unit).abs();
-
-        assert!(blend > 0.2);
-        assert!(target_cross_track_m > 1.0);
-    }
-
-    #[test]
-    fn transfer_waypoint_boost_scorer_prefers_outbound_progress() {
-        let ctx = context_with_waypoint();
-        let mut config = TransferPdgControllerConfig::default();
-        config.waypoint_guidance_enabled = true;
-        let controller = TransferPdgController::new(config);
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -36.0, 12.0);
-        observation.position_m =
-            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 1.8);
-        observation.mass_kg = 940.0;
-        observation.fuel_kg = 240.0;
-
-        let outbound_attitude = geometry.next_leg_unit.x.signum() * 0.5;
-        let outbound = controller
-            .score_waypoint_boost_candidate(
-                &ctx,
-                &observation,
-                &geometry,
-                Command {
-                    throttle_frac: 1.0,
-                    target_attitude_rad: outbound_attitude,
-                },
-            )
-            .expect("waypoint score should be active near handoff");
-        let inbound = controller
-            .score_waypoint_boost_candidate(
-                &ctx,
-                &observation,
-                &geometry,
-                Command {
-                    throttle_frac: 1.0,
-                    target_attitude_rad: -outbound_attitude,
-                },
-            )
-            .expect("waypoint score should be active near handoff");
-
-        assert!(outbound.score < inbound.score);
-    }
-
-    #[test]
-    fn transfer_waypoint_boost_scorer_is_transfer_score_tie_breaker() {
-        let ctx = context_with_waypoint();
-        let mut config = TransferPdgControllerConfig::default();
-        config.waypoint_guidance_enabled = true;
-        config.waypoint_boost_handoff_scoring_enabled = true;
-        let controller = TransferPdgController::new(config);
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -36.0, 12.0);
-        observation.position_m =
-            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 1.8);
-        observation.mass_kg = 940.0;
-        observation.fuel_kg = 240.0;
-        let diagnostics = controller.transfer_diagnostics(&observation);
-        let command = Command {
-            throttle_frac: 1.0,
-            target_attitude_rad: geometry.next_leg_unit.x.signum() * 0.5,
-        };
-
-        let base = controller.score_boost_candidate(
-            &ctx,
-            &observation,
-            diagnostics,
-            TransferCorridorState::inactive(),
-            command,
-        );
-        let combined = controller.score_boost_candidate_with_waypoint(
-            &ctx,
-            &observation,
-            diagnostics,
-            TransferCorridorState::inactive(),
-            Some(&geometry),
-            command,
-        );
-        let waypoint_score = combined
-            .waypoint_score
-            .expect("waypoint score should be active near handoff");
-
-        assert!(combined.score >= base.score);
-        assert!(
-            (combined.score
-                - (base.score + (waypoint_score.score * WAYPOINT_SCORE_TIE_BREAK_WEIGHT)))
-                .abs()
-                < 1.0e-9
-        );
-    }
-
-    #[test]
-    fn transfer_waypoint_handoff_score_penalizes_spatial_and_outbound_failures() {
-        let ctx = context_with_waypoint();
-        let mut config = TransferPdgControllerConfig::default();
-        config.waypoint_guidance_enabled = true;
-        let controller = TransferPdgController::new(config);
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let current_stats = WaypointLegStats {
-            distance_m: geometry.waypoint.capture_radius_m,
-            cross_track_m: 0.0,
-            plane_progress_m: -geometry.waypoint.capture_radius_m,
-            outbound_heading_error_rad: std::f64::consts::PI,
-            outbound_progress_mps: -30.0,
-            outbound_cross_speed_mps: 0.0,
-            speed_mps: 30.0,
-            vertical_speed_mps: 20.0,
-        };
-        let pass_prediction = WaypointHandoffPrediction {
-            triggered: true,
-            elapsed_s: 1.0,
-            stats: waypoint_leg_stats_from_kinematics(
-                geometry.target_m,
-                geometry.next_leg_unit * 35.0,
-                &geometry,
-            ),
-        };
-        let spatial_miss_prediction = WaypointHandoffPrediction {
-            triggered: true,
-            elapsed_s: 1.0,
-            stats: waypoint_leg_stats_from_kinematics(
-                geometry.target_m
-                    + (Vec2::new(-geometry.leg_unit.y, geometry.leg_unit.x)
-                        * geometry.waypoint.max_cross_track_m
-                        * 3.0),
-                geometry.next_leg_unit * 35.0,
-                &geometry,
-            ),
-        };
-        let outbound_bad_prediction = WaypointHandoffPrediction {
-            triggered: true,
-            elapsed_s: 1.0,
-            stats: waypoint_leg_stats_from_kinematics(
-                geometry.target_m,
-                geometry.next_leg_unit * -35.0,
-                &geometry,
-            ),
-        };
-
-        let pass_score =
-            controller.score_waypoint_handoff_prediction(&geometry, pass_prediction, current_stats);
-        let spatial_miss_score = controller.score_waypoint_handoff_prediction(
-            &geometry,
-            spatial_miss_prediction,
-            current_stats,
-        );
-        let outbound_bad_score = controller.score_waypoint_handoff_prediction(
-            &geometry,
-            outbound_bad_prediction,
-            current_stats,
-        );
-
-        assert!(waypoint_handoff_contract_passes(
-            geometry.waypoint,
-            pass_prediction.stats
-        ));
-        assert!(spatial_miss_score > pass_score + 100.0);
-        assert!(outbound_bad_score > pass_score + 100.0);
-    }
-
-    #[test]
-    fn transfer_waypoint_scorer_stays_disabled_for_non_waypoint_controller() {
-        let ctx = context_with_waypoint();
-        let controller = TransferPdgController::default();
-        let mut observation = transfer_observation(140.0, -700.0, Vec2::new(-5.0, 24.0), 4.0);
-        observation.position_m = Vec2::new(-145.0, -700.0);
-        let diagnostics = controller.transfer_diagnostics(&observation);
-
-        let selection = controller.select_boost_command(
-            &ctx,
-            &observation,
-            diagnostics,
-            TransferCorridorState::inactive(),
-        );
-
-        assert_ne!(selection.scoring_mode, "waypoint_handoff");
-        assert!(selection.waypoint_score.is_none());
-    }
-
-    #[test]
-    fn transfer_waypoint_boost_scorer_requires_experimental_flag() {
-        let ctx = context_with_waypoint();
-        let mut config = TransferPdgControllerConfig::default();
-        config.waypoint_guidance_enabled = true;
-        let controller = TransferPdgController::new(config.clone());
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -36.0, 12.0);
-        observation.position_m =
-            geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 1.8);
-        let diagnostics = controller.transfer_diagnostics(&observation);
-
-        let default_selection = controller.select_boost_command(
-            &ctx,
-            &observation,
-            diagnostics,
-            TransferCorridorState::inactive(),
-        );
-
-        config.waypoint_boost_handoff_scoring_enabled = true;
-        let enabled_controller = TransferPdgController::new(config);
-        let enabled_selection = enabled_controller.select_boost_command(
-            &ctx,
-            &observation,
-            diagnostics,
-            TransferCorridorState::inactive(),
-        );
-
-        assert_ne!(default_selection.scoring_mode, "waypoint_handoff");
-        assert!(default_selection.waypoint_score.is_none());
-        assert_eq!(enabled_selection.scoring_mode, "waypoint_handoff");
-        assert!(enabled_selection.waypoint_score.is_some());
-    }
-
-    #[test]
-    fn transfer_waypoint_coast_blocks_terrain_before_active_waypoint() {
-        let mut waypoint = waypoint_fixture();
-        waypoint.position_m = Vec2::new(-220.0, 250.0);
-        let ctx = context_with_waypoint_spec(waypoint);
-        let mut config = TransferPdgControllerConfig::default();
-        config.waypoint_guidance_enabled = true;
-        config.boost_projected_dx_limit_m = 1.0e6;
-        config.coast_min_altitude_m = 1.0;
-        let controller = TransferPdgController::new(config);
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let observation = waypoint_transfer_observation(
-            &ctx,
-            geometry.target_m - (geometry.leg_unit * 200.0),
-            geometry.leg_unit * 2.0,
-            12.0,
-        );
-        let diagnostics = controller.transfer_diagnostics(&observation);
-
-        assert!(
-            controller
-                .boost_settled_quality(&ctx, &observation, diagnostics)
-                .quality
-                .passed
-        );
-        assert_eq!(
-            controller.waypoint_coast_preview(&ctx, &observation, &geometry),
-            WaypointCoastPreview::TerrainBeforeWaypoint
-        );
-        assert!(!controller.should_coast(
-            &ctx,
-            &observation,
-            diagnostics,
-            TransferCorridorState::inactive()
-        ));
-    }
-
-    #[test]
-    fn transfer_waypoint_coast_allows_reachable_active_waypoint() {
-        let mut waypoint = waypoint_fixture();
-        waypoint.position_m = Vec2::new(-220.0, 250.0);
-        let ctx = context_with_waypoint_spec(waypoint);
-        let mut config = TransferPdgControllerConfig::default();
-        config.waypoint_guidance_enabled = true;
-        config.boost_projected_dx_limit_m = 1.0e6;
-        config.coast_min_altitude_m = 1.0;
-        let controller = TransferPdgController::new(config);
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let observation = waypoint_transfer_observation(
-            &ctx,
-            geometry.target_m - (geometry.leg_unit * 20.0),
-            geometry.leg_unit * 60.0,
-            12.0,
-        );
-        let diagnostics = controller.transfer_diagnostics(&observation);
-
-        assert_eq!(
-            controller.waypoint_coast_preview(&ctx, &observation, &geometry),
-            WaypointCoastPreview::ReachesWaypoint
-        );
-        assert!(controller.should_coast(
-            &ctx,
-            &observation,
-            diagnostics,
-            TransferCorridorState::inactive()
-        ));
-    }
-
-    #[test]
-    fn transfer_waypoint_coast_blocks_while_corridor_active() {
-        let mut waypoint = waypoint_fixture();
-        waypoint.position_m = Vec2::new(-220.0, 250.0);
-        let ctx = context_with_waypoint_spec(waypoint);
-        let mut config = TransferPdgControllerConfig::default();
-        config.waypoint_guidance_enabled = true;
-        config.boost_projected_dx_limit_m = 1.0e6;
-        config.coast_min_altitude_m = 1.0;
-        let controller = TransferPdgController::new(config);
-        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let observation = waypoint_transfer_observation(
-            &ctx,
-            geometry.target_m - (geometry.leg_unit * 20.0),
-            geometry.leg_unit * 60.0,
-            12.0,
-        );
-        let diagnostics = controller.transfer_diagnostics(&observation);
-        let corridor = TransferCorridorState {
-            mode: "active",
-            active: true,
-            tilt_limited: false,
-            margin_m: 8.0,
-        };
-
-        assert_eq!(
-            controller.waypoint_coast_preview(&ctx, &observation, &geometry),
-            WaypointCoastPreview::ReachesWaypoint
-        );
-        assert!(!controller.should_coast(&ctx, &observation, diagnostics, corridor));
     }
 
     #[test]
