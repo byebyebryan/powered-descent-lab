@@ -88,6 +88,16 @@ pub mod metric {
     pub const WAYPOINT_ENDPOINT_Y_M: &str = "waypoint.endpoint_y_m";
     pub const WAYPOINT_STEERING_TARGET_X_M: &str = "waypoint.steering_target_x_m";
     pub const WAYPOINT_STEERING_TARGET_Y_M: &str = "waypoint.steering_target_y_m";
+    pub const WAYPOINT_GUIDANCE_MODE: &str = "waypoint.guidance_mode";
+    pub const WAYPOINT_TARGET_VX_MPS: &str = "waypoint.target_vx_mps";
+    pub const WAYPOINT_TARGET_VY_MPS: &str = "waypoint.target_vy_mps";
+    pub const WAYPOINT_TARGET_SPEED_MPS: &str = "waypoint.target_speed_mps";
+    pub const WAYPOINT_GUIDANCE_TIME_TO_GO_S: &str = "waypoint.guidance_time_to_go_s";
+    pub const WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO: &str =
+        "waypoint.guidance_required_accel_ratio";
+    pub const WAYPOINT_GUIDANCE_FEASIBLE: &str = "waypoint.guidance_feasible";
+    pub const WAYPOINT_PATH_CORRECTION_MPS2: &str = "waypoint.path_correction_mps2";
+    pub const WAYPOINT_GUIDANCE_REPLAN_COUNT: &str = "waypoint.guidance_replan_count";
     pub const WAYPOINT_BOOST_SCORE: &str = "waypoint.boost_score";
     pub const WAYPOINT_PREDICTED_HANDOFF_TIME_S: &str = "waypoint.predicted_handoff_time_s";
     pub const WAYPOINT_PREDICTED_CROSS_TRACK_M: &str = "waypoint.predicted_cross_track_m";
