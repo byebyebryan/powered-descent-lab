@@ -2521,7 +2521,9 @@ struct TransferHandoffCellSummary<'a> {
     cutoff_quality: Option<String>,
     cutoff_projected_dx_abs_m: Option<crate::BatchMetricSummary>,
     cutoff_impact_angle_deg: Option<crate::BatchMetricSummary>,
-    shape_rmse_m: Option<crate::BatchMetricSummary>,
+    post_handoff_apex_gain_m: Option<crate::BatchMetricSummary>,
+    post_handoff_time_to_apex_s: Option<crate::BatchMetricSummary>,
+    post_handoff_apex_dx_abs_m: Option<crate::BatchMetricSummary>,
     worst_record: Option<&'a crate::BatchRunRecord>,
 }
 
@@ -3051,7 +3053,7 @@ fn render_transfer_handoff_triage_section(
           <th>Handoff Angle</th>
           <th>Cutoff</th>
           <th>Cutoff pdx</th>
-          <th>Shape RMSE</th>
+          <th>Post-handoff Climb</th>
           <th>Worst Seed</th>
         </tr>
       </thead>
@@ -3106,11 +3108,7 @@ fn render_transfer_handoff_triage_row(
         MetricDisplayKind::Meters,
         projected_dx_class(summary.cutoff_projected_dx_abs_m.as_ref()),
     );
-    let shape_html = render_transfer_handoff_metric_cell(
-        summary.shape_rmse_m.as_ref(),
-        MetricDisplayKind::Meters,
-        None,
-    );
+    let post_handoff_climb_html = render_transfer_handoff_climb(summary);
     let worst_seed_html =
         render_transfer_handoff_worst_seed(summary, output_dir, candidate_record_map);
 
@@ -3126,7 +3124,7 @@ fn render_transfer_handoff_triage_row(
   <td>{handoff_angle}</td>
   <td>{cutoff}</td>
   <td>{cutoff_dx}</td>
-  <td>{shape}</td>
+  <td>{post_handoff_climb}</td>
   <td>{worst_seed}</td>
 </tr>"#,
         cell_id = escape_html(&cell_id),
@@ -3140,7 +3138,7 @@ fn render_transfer_handoff_triage_row(
         handoff_angle = handoff_angle_html,
         cutoff = cutoff_html,
         cutoff_dx = cutoff_dx_html,
-        shape = shape_html,
+        post_handoff_climb = post_handoff_climb_html,
         worst_seed = worst_seed_html,
     )
 }
@@ -3228,8 +3226,14 @@ fn summarize_transfer_handoff_cell<'a>(
         cutoff_impact_angle_deg: transfer_shape_metric_summary(records, |review| {
             review.transfer_boost_cutoff_impact_angle_deg
         }),
-        shape_rmse_m: transfer_shape_metric_summary(records, |review| {
-            review.transfer_shape_curve_rmse_m
+        post_handoff_apex_gain_m: transfer_shape_metric_summary(records, |review| {
+            review.transfer_terminal_post_handoff_apex_gain_m
+        }),
+        post_handoff_time_to_apex_s: transfer_shape_metric_summary(records, |review| {
+            review.transfer_terminal_post_handoff_time_to_apex_s
+        }),
+        post_handoff_apex_dx_abs_m: transfer_shape_metric_summary(records, |review| {
+            review.transfer_terminal_post_handoff_apex_dx_abs_m
         }),
         worst_record,
     }
@@ -3241,6 +3245,12 @@ fn compare_transfer_handoff_cells(
 ) -> Ordering {
     transfer_handoff_problem_rank(lhs)
         .cmp(&transfer_handoff_problem_rank(rhs))
+        .then_with(|| {
+            compare_f64_desc(
+                metric_mean_or(lhs.post_handoff_apex_gain_m.as_ref(), 0.0),
+                metric_mean_or(rhs.post_handoff_apex_gain_m.as_ref(), 0.0),
+            )
+        })
         .then_with(|| {
             compare_f64_asc(
                 metric_mean_or(lhs.handoff_height_m.as_ref(), f64::INFINITY),
@@ -3334,7 +3344,36 @@ fn transfer_handoff_record_score(record: &crate::BatchRunRecord) -> f64 {
     if let Some(impact_angle_deg) = review.transfer_terminal_handoff_impact_angle_deg {
         score += (55.0 - impact_angle_deg).max(0.0) * 8.0;
     }
+    if let Some(apex_gain_m) = review.transfer_terminal_post_handoff_apex_gain_m {
+        score += apex_gain_m * 10.0;
+    }
     score
+}
+
+fn render_transfer_handoff_climb(summary: &TransferHandoffCellSummary<'_>) -> String {
+    let gain = format_metric_mean(
+        summary.post_handoff_apex_gain_m.as_ref(),
+        MetricDisplayKind::Meters,
+    );
+    let gain_stddev = format_metric_stddev(
+        summary.post_handoff_apex_gain_m.as_ref(),
+        MetricDisplayKind::Meters,
+    );
+    let time_to_apex = format_metric_mean(
+        summary.post_handoff_time_to_apex_s.as_ref(),
+        MetricDisplayKind::Seconds,
+    );
+    let apex_dx = format_metric_mean(
+        summary.post_handoff_apex_dx_abs_m.as_ref(),
+        MetricDisplayKind::Meters,
+    );
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{} · apex {} · dx {}</div></div>"#,
+        escape_html(&gain),
+        escape_html(&gain_stddev),
+        escape_html(&time_to_apex),
+        escape_html(&apex_dx),
+    )
 }
 
 fn render_transfer_handoff_success_cell(summary: &TransferHandoffCellSummary<'_>) -> String {
@@ -3451,6 +3490,9 @@ fn transfer_handoff_worst_seed_note(record: &crate::BatchRunRecord) -> String {
             crate::BatchRunAnalyticClass::Frontier => "frontier failure".to_owned(),
             _ => "scored failure".to_owned(),
         };
+    }
+    if let Some(apex_gain_m) = record.review.transfer_terminal_post_handoff_apex_gain_m {
+        return format!("climb {apex_gain_m:.0}m");
     }
     if let Some(height_m) = record.review.transfer_terminal_handoff_height_m {
         return format!("height {height_m:.0}m");
@@ -8372,6 +8414,9 @@ mod report_tests {
         record.review.transfer_terminal_handoff_gate_mode = Some("ready".to_owned());
         record.review.transfer_terminal_handoff_projected_dx_m = Some(18.0);
         record.review.transfer_terminal_handoff_impact_angle_deg = Some(58.0);
+        record.review.transfer_terminal_post_handoff_apex_gain_m = Some(shape_rmse_m * 0.5);
+        record.review.transfer_terminal_post_handoff_time_to_apex_s = Some(8.0);
+        record.review.transfer_terminal_post_handoff_apex_dx_abs_m = Some(4.0);
         record.review.transfer_final_phase = Some("terminal".to_owned());
         record.review.transfer_boost_quality = Some("balanced".to_owned());
         record.review.transfer_boost_cutoff_quality = Some("pass".to_owned());
@@ -8775,7 +8820,8 @@ mod report_tests {
         assert!(html.contains("Handoff Speed"));
         assert!(html.contains("Handoff pdx"));
         assert!(html.contains("Cutoff pdx"));
-        assert!(html.contains("Shape RMSE"));
+        assert!(html.contains("Post-handoff Climb"));
+        assert!(html.contains("apex 8.00s"));
         assert!(html.contains(r#"data-transfer-handoff-cell="clean|empty|r00|nominal""#));
         assert!(html.contains("terminal handoff"));
         assert!(html.contains("handoff gate ready"));
@@ -8848,6 +8894,53 @@ mod report_tests {
             "handoff triage rows should sort risky cells before clean cells"
         );
         assert!(html.contains("triage-risk"));
+    }
+
+    #[test]
+    fn transfer_handoff_triage_sorts_successful_cells_by_post_handoff_climb() {
+        let report = synthetic_transfer_shape_report(
+            "transfer_handoff_climb_sort_unit",
+            &[("r00", "empty", 90.0, 0), ("r+30", "empty", 12.0, 1)],
+        );
+        let mut records = report.records.clone();
+        records[0].review.transfer_terminal_post_handoff_apex_gain_m = Some(8.0);
+        records[1].review.transfer_terminal_post_handoff_apex_gain_m = Some(75.0);
+        let report = report_with_records(report, records);
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_handoff_climb_sort_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        let high_pos = html
+            .find(r#"data-transfer-handoff-cell="clean|empty|r+30|nominal""#)
+            .expect("high-climb handoff cell should render");
+        let low_pos = html
+            .find(r#"data-transfer-handoff-cell="clean|empty|r00|nominal""#)
+            .expect("low-climb handoff cell should render");
+        assert!(high_pos < low_pos);
+    }
+
+    #[test]
+    fn transfer_handoff_triage_uses_highest_climb_as_worst_successful_seed() {
+        let report = synthetic_transfer_shape_report(
+            "transfer_handoff_climb_seed_unit",
+            &[("r00", "empty", 12.0, 0), ("r00", "empty", 14.0, 1)],
+        );
+        let mut records = report.records.clone();
+        records[0].review.transfer_terminal_post_handoff_apex_gain_m = Some(10.0);
+        records[1].review.transfer_terminal_post_handoff_apex_gain_m = Some(90.0);
+        let report = report_with_records(report, records);
+        let html = render_batch_report(
+            Path::new("outputs/eval/transfer_handoff_climb_seed_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("seed 0001"));
+        assert!(html.contains("climb 90m"));
     }
 
     #[test]

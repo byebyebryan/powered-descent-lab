@@ -154,6 +154,12 @@ pub struct BatchRunReviewMetrics {
     #[serde(default)]
     pub transfer_terminal_handoff_required_accel_ratio: Option<f64>,
     #[serde(default)]
+    pub transfer_terminal_post_handoff_apex_gain_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_post_handoff_time_to_apex_s: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_post_handoff_apex_dx_abs_m: Option<f64>,
+    #[serde(default)]
     pub transfer_final_phase: Option<String>,
     #[serde(default)]
     pub transfer_boost_projected_dx_m: Option<f64>,
@@ -600,6 +606,12 @@ pub struct BatchGroupSummary {
     pub transfer_shape_projected_dx_abs_mean_m: Option<BatchMetricSummary>,
     #[serde(default)]
     pub transfer_shape_shortfall_ratio: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_terminal_post_handoff_apex_gain_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_terminal_post_handoff_time_to_apex_s: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_terminal_post_handoff_apex_dx_abs_m: Option<BatchMetricSummary>,
     pub mission_outcomes: BTreeMap<String, usize>,
     pub end_reasons: BTreeMap<String, usize>,
     pub sample_run_ids: Vec<String>,
@@ -5168,6 +5180,9 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
     let mut success_transfer_shape_apex_error_m = Vec::new();
     let mut success_transfer_shape_projected_dx_abs_mean_m = Vec::new();
     let mut success_transfer_shape_shortfall_ratio = Vec::new();
+    let mut success_transfer_terminal_post_handoff_apex_gain_m = Vec::new();
+    let mut success_transfer_terminal_post_handoff_time_to_apex_s = Vec::new();
+    let mut success_transfer_terminal_post_handoff_apex_dx_abs_m = Vec::new();
     let mut success_sim_time_s = Vec::new();
     let mut success_pointers = Vec::new();
     let mut failure_pointers = Vec::new();
@@ -5213,6 +5228,15 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             if let Some(value) = record.review.transfer_shape_shortfall_ratio {
                 success_transfer_shape_shortfall_ratio.push(value);
             }
+            if let Some(value) = record.review.transfer_terminal_post_handoff_apex_gain_m {
+                success_transfer_terminal_post_handoff_apex_gain_m.push(value);
+            }
+            if let Some(value) = record.review.transfer_terminal_post_handoff_time_to_apex_s {
+                success_transfer_terminal_post_handoff_time_to_apex_s.push(value);
+            }
+            if let Some(value) = record.review.transfer_terminal_post_handoff_apex_dx_abs_m {
+                success_transfer_terminal_post_handoff_apex_dx_abs_m.push(value);
+            }
             success_pointers.push(pointer);
         }
         if sample_run_ids.len() < 5 {
@@ -5254,6 +5278,15 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             &success_transfer_shape_projected_dx_abs_mean_m,
         ),
         transfer_shape_shortfall_ratio: metric_summary(&success_transfer_shape_shortfall_ratio),
+        transfer_terminal_post_handoff_apex_gain_m: metric_summary(
+            &success_transfer_terminal_post_handoff_apex_gain_m,
+        ),
+        transfer_terminal_post_handoff_time_to_apex_s: metric_summary(
+            &success_transfer_terminal_post_handoff_time_to_apex_s,
+        ),
+        transfer_terminal_post_handoff_apex_dx_abs_m: metric_summary(
+            &success_transfer_terminal_post_handoff_apex_dx_abs_m,
+        ),
         mission_outcomes,
         end_reasons,
         sample_run_ids,
@@ -5366,6 +5399,10 @@ fn derive_run_review_metrics(
             .terminal_handoff_latest_safe_margin_s,
         transfer_terminal_handoff_required_accel_ratio: transfer
             .terminal_handoff_required_accel_ratio,
+        transfer_terminal_post_handoff_apex_gain_m: transfer.terminal_post_handoff_apex_gain_m,
+        transfer_terminal_post_handoff_time_to_apex_s: transfer
+            .terminal_post_handoff_time_to_apex_s,
+        transfer_terminal_post_handoff_apex_dx_abs_m: transfer.terminal_post_handoff_apex_dx_abs_m,
         transfer_final_phase: transfer.final_phase,
         transfer_boost_projected_dx_m: transfer.boost_projected_dx_m,
         transfer_boost_impact_angle_deg: transfer.boost_impact_angle_deg,
@@ -5798,6 +5835,9 @@ struct TransferReviewMetrics {
     terminal_handoff_boost_quality: Option<String>,
     terminal_handoff_latest_safe_margin_s: Option<f64>,
     terminal_handoff_required_accel_ratio: Option<f64>,
+    terminal_post_handoff_apex_gain_m: Option<f64>,
+    terminal_post_handoff_time_to_apex_s: Option<f64>,
+    terminal_post_handoff_apex_dx_abs_m: Option<f64>,
     final_phase: Option<String>,
     boost_projected_dx_m: Option<f64>,
     boost_impact_angle_deg: Option<f64>,
@@ -5879,6 +5919,27 @@ fn transfer_review_metrics(
         &handoff.frame.metrics,
         metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO,
     );
+    let terminal_samples = samples
+        .iter()
+        .filter(|sample| sample.physics_step >= handoff.physics_step)
+        .collect::<Vec<_>>();
+    let terminal_apex = terminal_samples.iter().copied().max_by(|lhs, rhs| {
+        lhs.observation
+            .height_above_target_m
+            .partial_cmp(&rhs.observation.height_above_target_m)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let terminal_entry = terminal_samples.first().copied();
+    let terminal_post_handoff_apex_gain_m =
+        terminal_entry.zip(terminal_apex).map(|(entry, apex)| {
+            (apex.observation.height_above_target_m - entry.observation.height_above_target_m)
+                .max(0.0)
+        });
+    let terminal_post_handoff_time_to_apex_s = terminal_entry
+        .zip(terminal_apex)
+        .map(|(entry, apex)| (apex.sim_time_s - entry.sim_time_s).max(0.0));
+    let terminal_post_handoff_apex_dx_abs_m =
+        terminal_apex.map(|apex| apex.observation.target_dx_m.abs());
     let mut metrics = transfer_review_metrics_without_handoff(controller_updates, samples);
     metrics.terminal_entry_kind = Some(terminal_entry_kind.to_owned());
     metrics.terminal_handoff_time_s = Some(handoff.sim_time_s);
@@ -5891,6 +5952,9 @@ fn transfer_review_metrics(
     metrics.terminal_handoff_boost_quality = terminal_handoff_boost_quality;
     metrics.terminal_handoff_latest_safe_margin_s = terminal_handoff_latest_safe_margin_s;
     metrics.terminal_handoff_required_accel_ratio = terminal_handoff_required_accel_ratio;
+    metrics.terminal_post_handoff_apex_gain_m = terminal_post_handoff_apex_gain_m;
+    metrics.terminal_post_handoff_time_to_apex_s = terminal_post_handoff_time_to_apex_s;
+    metrics.terminal_post_handoff_apex_dx_abs_m = terminal_post_handoff_apex_dx_abs_m;
     metrics.final_phase = final_phase;
     metrics
 }
@@ -9535,6 +9599,43 @@ mod tests {
         assert_eq!(metrics.boost_quality.as_deref(), Some("pass"));
         assert_eq!(metrics.boost_cutoff_time_s, Some(1.0));
         assert_eq!(metrics.boost_cutoff_quality.as_deref(), Some("pass"));
+    }
+
+    #[test]
+    fn transfer_review_metrics_capture_post_handoff_apex() {
+        let updates = vec![
+            transfer_update(60, 0.5, "boost", 200.0, 80.0, 1.0),
+            transfer_update(120, 1.0, "terminal", 120.0, 20.0, 0.8),
+        ];
+        let samples = vec![
+            transfer_sample(
+                120,
+                1.0,
+                Vec2::new(-120.0, 80.0),
+                Vec2::new(40.0, 15.0),
+                95.0,
+            ),
+            transfer_sample(
+                240,
+                2.0,
+                Vec2::new(-60.0, 110.0),
+                Vec2::new(25.0, 0.0),
+                90.0,
+            ),
+            transfer_sample(
+                360,
+                3.0,
+                Vec2::new(-10.0, 100.0),
+                Vec2::new(10.0, -10.0),
+                88.0,
+            ),
+        ];
+
+        let metrics = transfer_review_metrics(&updates, &samples);
+
+        assert_eq!(metrics.terminal_post_handoff_apex_gain_m, Some(30.0));
+        assert_eq!(metrics.terminal_post_handoff_time_to_apex_s, Some(1.0));
+        assert_eq!(metrics.terminal_post_handoff_apex_dx_abs_m, Some(60.0));
     }
 
     #[test]
