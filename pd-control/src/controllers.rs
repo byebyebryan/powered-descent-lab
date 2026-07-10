@@ -20,6 +20,7 @@ const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_FRAC: f64 = 0.35;
 const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MIN_M: f64 = 35.0;
 const TRANSFER_UPHILL_CORRIDOR_LOOKAHEAD_MAX_M: f64 = 160.0;
 const TRANSFER_UPHILL_CORRIDOR_TILT_SLOPE_MIN: f64 = 1.25;
+const TRANSFER_UPHILL_CORRIDOR_BRAKE_VX_MPS: f64 = 3.0;
 const TRANSFER_CORRIDOR_SAMPLE_COUNT: usize = 24;
 const TRANSFER_BOOST_SCORE_NO_TARGET_Y: f64 = 10_000.0;
 const TRANSFER_BOOST_SCORE_PROJECTED_DX: f64 = 100.0;
@@ -2153,6 +2154,11 @@ impl TransferPdgController {
         } else {
             self.config.boost_tilt_rad
         };
+        if let Some(brake_attitude_rad) =
+            self.corridor_lateral_brake_attitude_rad(observation, diagnostics, corridor)
+        {
+            return brake_attitude_rad;
+        }
         if corridor.tilt_limited {
             return direction * tilt_rad.min(TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
         }
@@ -2184,6 +2190,27 @@ impl TransferPdgController {
             .projected_dx_m
             .filter(|projected_dx_m| projected_dx_m.abs() > observation.target_pad_half_width_m)
             .map_or_else(|| observation.target_dx_m.signum(), f64::signum)
+    }
+
+    fn corridor_lateral_brake_attitude_rad(
+        &self,
+        observation: &Observation,
+        diagnostics: TransferDiagnostics,
+        corridor: TransferCorridorState,
+    ) -> Option<f64> {
+        if !corridor.tilt_limited {
+            return None;
+        }
+        let direction = self.boost_lateral_direction(observation, diagnostics);
+        if direction == 0.0 {
+            return None;
+        }
+        let targetward_velocity_mps = observation.velocity_mps.x * direction;
+        if targetward_velocity_mps <= TRANSFER_UPHILL_CORRIDOR_BRAKE_VX_MPS {
+            return None;
+        }
+
+        Some(-direction * TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD)
     }
 
     fn boost_dx_limit_m(&self, observation: &Observation) -> f64 {
@@ -2270,24 +2297,34 @@ impl TransferPdgController {
             None
         };
         let base_attitude = self.boost_attitude_rad(observation, diagnostics, corridor);
+        let corridor_brake_attitude =
+            self.corridor_lateral_brake_attitude_rad(observation, diagnostics, corridor);
         let eased_throttle =
             self.boost_throttle_frac(ctx, observation, diagnostics, corridor, base_attitude);
         let settled = self.boost_settled_quality(ctx, observation, diagnostics);
 
         let mut attitude_candidates = Vec::new();
-        if base_attitude.abs() <= 1.0e-6 {
+        if let Some(brake_attitude) = corridor_brake_attitude {
+            self.push_unique_candidate(&mut attitude_candidates, 0.0);
+            self.push_unique_candidate(&mut attitude_candidates, brake_attitude * 0.6);
+            self.push_unique_candidate(&mut attitude_candidates, brake_attitude);
+        } else if base_attitude.abs() <= 1.0e-6 {
             self.push_unique_candidate(&mut attitude_candidates, 0.0);
         } else {
             self.push_unique_candidate(&mut attitude_candidates, base_attitude * 0.6);
             self.push_unique_candidate(&mut attitude_candidates, base_attitude);
         }
-        let uphill_attitude = self.apply_corridor_tilt_cap(
-            self.boost_lateral_direction(observation, diagnostics)
-                * self.uphill_clearance_limited_boost_tilt_rad(observation, diagnostics),
-            corridor,
-        );
-        self.push_unique_candidate(&mut attitude_candidates, uphill_attitude);
-        if let Some(geometry) = waypoint_geometry {
+        if corridor_brake_attitude.is_none() {
+            let uphill_attitude = self.apply_corridor_tilt_cap(
+                self.boost_lateral_direction(observation, diagnostics)
+                    * self.uphill_clearance_limited_boost_tilt_rad(observation, diagnostics),
+                corridor,
+            );
+            self.push_unique_candidate(&mut attitude_candidates, uphill_attitude);
+        }
+        if let Some(geometry) = waypoint_geometry
+            && corridor_brake_attitude.is_none()
+        {
             let outbound_direction = geometry.next_leg_unit.x.signum();
             if outbound_direction != 0.0 {
                 let outbound_attitude = outbound_direction
@@ -4493,6 +4530,48 @@ mod tests {
         assert!(corridor.margin_m < 0.0);
         assert!(attitude_rad.abs() <= TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
         assert!(attitude_rad.abs() < controller.config.uphill_boost_tilt_rad);
+    }
+
+    #[test]
+    fn transfer_uphill_corridor_brakes_targetward_lateral_speed() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(140.0, -780.0, Vec2::new(10.0, 15.0), 6.0);
+        observation.position_m = Vec2::new(-140.0, -780.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        let brake_attitude_rad = controller
+            .corridor_lateral_brake_attitude_rad(&observation, diagnostics, corridor)
+            .expect("targetward speed should trigger corridor braking");
+        let boost_attitude_rad = controller.boost_attitude_rad(&observation, diagnostics, corridor);
+        let selection = controller.select_boost_command(&ctx, &observation, diagnostics, corridor);
+
+        assert!(corridor.active);
+        assert!(corridor.tilt_limited);
+        assert_eq!(brake_attitude_rad, -TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
+        assert_eq!(boost_attitude_rad, brake_attitude_rad);
+        assert!(selection.command.target_attitude_rad <= 0.0);
+    }
+
+    #[test]
+    fn transfer_uphill_corridor_brake_waits_for_targetward_speed() {
+        let ctx = uphill_transfer_context();
+        let controller = TransferPdgController::default();
+        let mut observation = transfer_observation(140.0, -780.0, Vec2::new(1.0, 15.0), 6.0);
+        observation.position_m = Vec2::new(-140.0, -780.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
+
+        let brake_attitude_rad =
+            controller.corridor_lateral_brake_attitude_rad(&observation, diagnostics, corridor);
+        let boost_attitude_rad = controller.boost_attitude_rad(&observation, diagnostics, corridor);
+
+        assert!(corridor.active);
+        assert!(corridor.tilt_limited);
+        assert_eq!(brake_attitude_rad, None);
+        assert!(boost_attitude_rad > 0.0);
+        assert!(boost_attitude_rad <= TRANSFER_UPHILL_CORRIDOR_TILT_CAP_RAD);
     }
 
     #[test]
