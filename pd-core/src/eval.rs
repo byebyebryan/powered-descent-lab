@@ -107,6 +107,9 @@ fn apply_waypoint_handoff_progress(
     state: &mut SimulationState,
     waypoint_index: usize,
 ) -> Vec<EventRecord> {
+    if state.physics_step % ctx.sim.control_interval_steps() != 0 {
+        return Vec::new();
+    }
     let Some(evaluation) = waypoint_handoff_evaluation(ctx, state, waypoint_index) else {
         return Vec::new();
     };
@@ -614,5 +617,22 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(events[0].kind, EventKind::CheckpointFailed));
         assert_eq!(events[0].message, "waypoint_handoff_failed");
+    }
+
+    #[test]
+    fn waypoint_handoff_waits_for_controller_observation_boundary() {
+        let scenario = waypoint_handoff_scenario();
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut state = SimulationState::new(&ctx).unwrap();
+        state.sim_time_s = 1.0 / 120.0;
+        state.physics_step = 1;
+        state.position_m = Vec2::new(0.0, 0.0);
+        state.velocity_mps = Vec2::new(25.0, 0.0);
+
+        let events = apply_progress_evaluation(&ctx, &mut state);
+
+        assert!(events.is_empty());
+        assert!(matches!(state.mission_outcome, MissionOutcome::InProgress));
+        assert!(matches!(state.end_reason, EndReason::Running));
     }
 }
