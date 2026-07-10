@@ -268,7 +268,7 @@ pub struct TerminalPdgController {
     last_mode: Option<GuidanceMode>,
     nominal_ready_ticks: u32,
     latest_safe_release_ticks: u32,
-    touchdown_idle_cut_active: bool,
+    touchdown_settle_active: bool,
 }
 
 impl Default for TerminalPdgController {
@@ -285,7 +285,7 @@ impl TerminalPdgController {
             last_mode: None,
             nominal_ready_ticks: 0,
             latest_safe_release_ticks: 0,
-            touchdown_idle_cut_active: false,
+            touchdown_settle_active: false,
         }
     }
 
@@ -552,7 +552,7 @@ impl TerminalPdgController {
         self.last_mode = None;
         self.nominal_ready_ticks = 0;
         self.latest_safe_release_ticks = 0;
-        self.touchdown_idle_cut_active = false;
+        self.touchdown_settle_active = false;
     }
 
     fn braking_speed_limit(
@@ -1273,21 +1273,33 @@ impl TerminalPdgController {
             .vehicle
             .safe_touchdown_tangential_speed_mps
             .max(0.0);
-        if self.touchdown_idle_cut_active {
-            if touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m.min(1.0) && on_pad
-            {
+        let attitude_safe = view.observation.attitude_rad.abs()
+            <= view.ctx.vehicle.safe_touchdown_attitude_error_rad;
+        let angular_rate_safe = view.observation.angular_rate_radps.abs()
+            <= view.ctx.vehicle.safe_touchdown_angular_rate_radps;
+        let attitude_settle_region = touchdown_clearance_m
+            <= self.config.touchdown_rescue_clearance_m
+            && on_pad
+            && vx_mps.abs() <= safe_touchdown_vx_mps
+            && down_speed <= self.config.vy_touch_cap_mps;
+        if self.touchdown_settle_active {
+            if attitude_settle_region {
                 return Some(self.touchdown_settle_command(view));
             }
-            self.touchdown_idle_cut_active = false;
+            self.touchdown_settle_active = false;
         }
         let settle_cut = touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m.min(1.0)
             && on_pad
             && vx_mps.abs() <= safe_touchdown_vx_mps
             && down_speed <= self.config.touchdown_zero_vy_mps
-            && view.observation.attitude_rad.abs()
-                <= view.ctx.vehicle.safe_touchdown_attitude_error_rad;
+            && attitude_safe
+            && angular_rate_safe;
         if settle_cut {
-            self.touchdown_idle_cut_active = true;
+            self.touchdown_settle_active = true;
+            return Some(self.touchdown_settle_command(view));
+        }
+        if attitude_settle_region && !(attitude_safe && angular_rate_safe) {
+            self.touchdown_settle_active = true;
             return Some(self.touchdown_settle_command(view));
         }
         let next_step_clearance_m =
@@ -1484,7 +1496,10 @@ impl TerminalPdgController {
         let down_speed = (-view.observation.velocity_mps.y).max(0.0);
         let target_down_speed = self.config.touchdown_zero_vy_mps;
         if down_speed <= target_down_speed {
-            return Command::idle();
+            return Command {
+                throttle_frac: 0.0,
+                target_attitude_rad: 0.0,
+            };
         }
 
         let mass = view.observation.mass_kg.max(0.5);
@@ -2062,7 +2077,7 @@ mod tests {
         controller.last_mode = Some(GuidanceMode::LatestSafe);
         controller.nominal_ready_ticks = 3;
         controller.latest_safe_release_ticks = 1;
-        controller.touchdown_idle_cut_active = true;
+        controller.touchdown_settle_active = true;
 
         controller.reset_state();
 
@@ -2070,7 +2085,7 @@ mod tests {
         assert_eq!(controller.last_mode, None);
         assert_eq!(controller.nominal_ready_ticks, 0);
         assert_eq!(controller.latest_safe_release_ticks, 0);
-        assert!(!controller.touchdown_idle_cut_active);
+        assert!(!controller.touchdown_settle_active);
     }
 
     #[test]

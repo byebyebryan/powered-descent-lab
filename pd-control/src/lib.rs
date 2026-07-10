@@ -443,6 +443,42 @@ mod tests {
     }
 
     #[test]
+    fn terminal_pdg_settles_unsafe_angular_rate_inside_touchdown_envelope() {
+        let mut scenario = earth_terminal_reference_scenario();
+        scenario.id = "terminal_pdg_angular_rate_settle".to_owned();
+        scenario.name = "Terminal PDG angular-rate settle".to_owned();
+        scenario.initial_state.position_m = Vec2::new(0.0, 7.0);
+        scenario.initial_state.velocity_mps = Vec2::new(1.9, -0.85);
+        scenario.initial_state.attitude_rad = 0.025;
+        scenario.initial_state.angular_rate_radps = 1.35;
+
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let artifacts = run_controller_spec(
+            &ctx,
+            &ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            artifacts.run.manifest.end_reason,
+            EndReason::TouchdownOnTarget,
+            "summary: {:?}",
+            artifacts.run.manifest.summary
+        );
+        let landing = artifacts
+            .run
+            .manifest
+            .summary
+            .landing
+            .as_ref()
+            .expect("touchdown should include a landing summary");
+        assert_eq!(landing.angular_rate_radps, 0.0);
+        assert_eq!(landing.attitude_error_rad, 0.0);
+    }
+
+    #[test]
     fn terminal_pdg_lands_scored_shallow_half_high_terminal_case() {
         let mut scenario = earth_terminal_reference_scenario();
         scenario.id = "terminal_pdg_shallow_half_high".to_owned();
