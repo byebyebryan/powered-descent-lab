@@ -2,7 +2,65 @@
 
 ## 2026-07-09
 
-### Waypoint smooth-profile workbench checkpoint
+### Balanced waypoint-turn baseline and direct-transfer closure
+
+- Added a route-local uphill-corridor brake that opposes targetward lateral
+  speed once the steep source-clearance corridor is tilt-limited. The rule uses
+  corridor geometry and velocity, not route labels or waypoint-profile IDs.
+- Fresh `8`-worker, `--no-reuse` direct-transfer validation now shows:
+  - `transfer_route_angle_radius_suite`: `297 / 297` landed, `0` invalidations,
+    `44.12s` wall clock, `63.79s` mean sim time, and `86.04s` max sim time
+  - `transfer_route_angle_radius_frontier_full`: `108 / 108` landed across all
+    payloads, radii, and full seeds, with `14.11s` wall clock, `64.31s` mean sim
+    time, and `79.07s` max sim time
+  - the legacy `frontier` pack name remains a useful steep-uphill regression
+    label, but `r+80` is no longer a current direct-transfer failure frontier
+- Centralized waypoint spatial and outbound-envelope assessment in `pd-core` so
+  controller capture, handoff goals, and report classification use one
+  contract. Handoff goals are evaluated on controller observation boundaries,
+  eliminating physics-step/controller-step discrepancies in paired packs.
+- Bumped the run schema to `3` and batch schema to `25` so caches produced
+  before the handoff-contract change cannot be reused as equivalent evidence.
+- Added an explicit `waypoint_handoff_envelope` selector. The new
+  `pass_through_v1` envelope requires at most `0.35rad` outbound heading error,
+  at least `8m/s` outbound progress, at most `20m/s` outbound cross speed, and
+  total speed from `10m/s` through `130m/s`; it deliberately leaves vertical
+  speed unbounded for this first route-relative corpus.
+- Added four balanced one-waypoint profiles at 55% route progress with common
+  spatial tolerances:
+  - `single_straight_v1`: `0%` lateral offset, `0.0deg` turn
+  - `single_gentle_bend_v1`: `10%` offset, `22.8deg` turn
+  - `single_medium_bend_v1`: `20%` offset, `43.9deg` turn
+  - `single_sharp_bend_v1`: `30%` offset, `62.3deg` turn
+- Added paired `transfer_waypoint_turn_smoke` final-landing and
+  `transfer_waypoint_turn_contract_smoke` handoff packs. Each has `108` unique
+  runs over four profiles, `r-30 | r00 | r+30`, `empty | half | full`, nominal
+  radius, and three smoke seeds. Reports group this dense matrix by waypoint
+  profile before route and expose the resolved envelope and outbound cross
+  speed.
+- Fresh paired baseline:
+  - final landing: `60 / 108` successes and `48` crashes; `r+30` is `36 / 36`,
+    `r00` is `24 / 36`, and `r-30` is `0 / 36`
+  - profile landing totals are straight `10 / 27`, gentle `14 / 27`, medium
+    `18 / 27`, and sharp `18 / 27`
+  - handoff contract: `12 / 108` passes, `64` spatial misses, `25` outbound
+    envelope failures, and `7` incomplete/crash-before-handoff cases
+  - all `12` handoff passes are level-route cells; profile totals are straight
+    `0`, gentle `3`, medium `3`, and sharp `6`
+  - paired landing and contract records now agree on handoff status for all
+    `108` selector cells
+- Legacy regression results remain stable:
+  - dogleg smoke landing `27 / 27`, dogleg contract `0 / 27`
+  - smooth-bend smoke landing `27 / 27`, smooth-bend contract `15 / 27`
+  - smooth-bend full landing `108 / 108`, smooth-bend full contract `57 / 108`
+- Interpretation: direct transfer no longer blocks Phase 3. The balanced corpus
+  shows that waypoint guidance itself is not general yet: downhill waypoint
+  routes fail completely, level straight-through guidance is unexpectedly
+  weak, and many recoverable landings violate the handoff contract. The next
+  pass should analyze route-frame guidance and capture timing across these
+  broad axes, not add per-profile or per-route-angle state-machine branches.
+
+### Initial waypoint smooth-profile workbench checkpoint
 
 - Added `single_bend_v1` as the first smoother pass-through waypoint profile for
   the `r+80` waypoint corpus. The profile places one waypoint at 55% of the
@@ -19,7 +77,7 @@
   next controller slice.
 - Updated waypoint triage reports to show the waypoint profile and resolved turn
   angle so smooth-profile results are not mixed up with dogleg stress results.
-- Current smoke validation:
+- Initial smoke validation:
   - `transfer_waypoint_bend_rpos80_smoke`: `25 / 27` final-landing successes,
     with the remaining two crashes both in short-radius payload cases after
     waypoint capture.

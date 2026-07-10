@@ -112,23 +112,20 @@ Current corpus tiers:
   - 1080 runs
   - the same 3 payload tiers and all 12 full seeds
   - all 3 radius tiers
-  - route angles from `r-80` through `r+60`, excluding the known `r+80`
-    frontier
-  - intended as the full-seed reliability gate for the solved direct-transfer
-    region
+  - route angles from `r-80` through `r+60`; this historical partition still
+    provides the broad full-seed direct-transfer reliability gate
 - `transfer_route_angle_radius_frontier_full`
   - 108 runs
   - the same 3 payload tiers and all 12 full seeds
   - all 3 radius tiers
   - `r+80` only
-  - intended as an explicit frontier watch, not as the direct-transfer
-    controller pass/fail gate
+  - retained as the focused steep-uphill regression despite its historical
+    `frontier` name; the current controller lands all `108` runs
 - `transfer_waypoint_rpos80_smoke`
   - 27 runs
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, smoke seeds
   - injects the `single_dogleg_v1` waypoint profile
-  - retained as the fast hairpin/stress probe for the known direct-transfer
-    frontier
+  - retained as the fast hairpin/stress probe for waypoint guidance
 - `transfer_waypoint_rpos80_full`
   - 108 runs
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, all 12 transfer seeds
@@ -147,7 +144,7 @@ Current corpus tiers:
   - 27 runs
   - same axes as the dogleg smoke pack
   - injects the smoother `single_bend_v1` waypoint profile
-  - intended as the default waypoint-guidance workbench before controller tuning
+  - retained as the focused smooth `r+80` waypoint regression
 - `transfer_waypoint_bend_rpos80_full`
   - 108 runs
   - full-seed reliability gate for the smoother waypoint workbench
@@ -157,6 +154,14 @@ Current corpus tiers:
 - `transfer_waypoint_bend_contract_rpos80_full`
   - 108 runs
   - full-seed contract probe for the smoother waypoint profile
+- `transfer_waypoint_turn_smoke`
+  - 108 landing runs over `r-30 | r00 | r+30`, nominal radius, all 3 payload
+    tiers, all 3 smoke seeds, and four balanced turn profiles
+  - the maintained broad waypoint-guidance workbench
+- `transfer_waypoint_turn_contract_smoke`
+  - the same `108` selector cells as `transfer_waypoint_turn_smoke`
+  - scores `pass_through_v1` at the first waypoint handoff instead of allowing
+    final-landing recovery to hide route-quality errors
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -166,6 +171,10 @@ Resolved transfer runs use transfer-specific selector fields:
 - `radius_tier = nominal`
 - `resolved_seed = 0` style seed labels
 - `vehicle_variant = empty | half | full`
+- `waypoint_profile` selects `single_straight_v1`, `single_gentle_bend_v1`,
+  `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn
+  corpus
+- `waypoint_handoff_envelope = pass_through_v1` for the balanced turn corpus
 - `lane = current`
 
 For report compatibility, transfer records also populate the existing matrix
@@ -213,8 +222,8 @@ Waypoint arrival should therefore be an envelope:
   not by skimming the radius from the wrong side
 - outbound state: velocity should have positive progress along the next leg and
   a bounded outbound heading error
-- energy: speed and vertical rate should stay within bounds supplied by the
-  route plan, so the next leg is not immediately impossible
+- energy: total speed and any optional vertical-rate bounds supplied by the
+  route plan should keep the next leg usable
 
 Terrain remains outside waypoint guidance for v1. The planner may place
 waypoints and envelopes so terrain clearance is valid, but the guidance
@@ -247,6 +256,18 @@ Implementation checkpoint:
 - Its distance capture radius stays tight at 10% of route radius, but its
   plane-crossing cross-track band is wider than the dogleg profile because this
   is a pass-through waypoint, not a precision stop.
+- The balanced turn profiles keep progress and spatial tolerance fixed while
+  varying only source-side offset: `single_straight_v1` resolves to `0.0deg`,
+  `single_gentle_bend_v1` to `22.8deg`, `single_medium_bend_v1` to `43.9deg`,
+  and `single_sharp_bend_v1` to `62.3deg`.
+- `pass_through_v1` is an explicit route-relative handoff envelope: maximum
+  outbound heading error `0.35rad`, minimum outbound progress `8m/s`, maximum
+  outbound cross speed `20m/s`, and total speed from `10m/s` through `130m/s`.
+  It intentionally leaves vertical speed unbounded so the first balanced
+  corpus does not encode world-frame climb/descent policy into every turn.
+- `TransferWaypointSpec::assess_handoff` is the single source of truth for
+  spatial triggering and outbound-envelope classification in `pd-core`,
+  `pd-control`, and `pd-eval`.
 - `transfer_waypoint_pdg_v1` is the first terrain-blind waypoint controller
   variant. It tracks the active leg, blocks terminal handoff until the waypoint
   is captured, and then lets the existing terminal handoff logic solve the
@@ -261,28 +282,32 @@ Implementation checkpoint:
 - V1 capture status is deliberately spatial: capture means reaching the
   configured radius or crossing the waypoint plane inside the cross-track band.
   The stricter waypoint contract is reported separately: spatial misses are
-  split from captures whose outbound heading, outbound progress, speed, or
-  vertical rate would make the next leg unviable.
+  split from captures whose configured outbound heading, progress, cross-speed,
+  total-speed, or optional vertical-speed bounds are out of envelope.
 - `evaluation_goal = waypoint_handoff` is the first waypoint contract probe. It
-  stops at capture-radius entry or waypoint-plane crossing and scores the
-  selected waypoint's spatial and outbound envelope directly.
+  evaluates at controller observation boundaries, stops at capture-radius entry
+  or waypoint-plane crossing, and scores the selected waypoint's spatial and
+  outbound envelope directly. This keeps paired landing/contract status aligned
+  with what the controller could actually observe.
 - Waypoint-profile transfer runs use a `130s` sim cap. This keeps the first
   pass focused on route feasibility while leaving landing-time tightening as
   follow-up controller work.
-- Waypoint misses and outbound-unviable captures are route-contract warnings in
-  reports, not mission failures by themselves. The maintained score remains
-  final landing, but capture/contract warnings keep route quality visible.
+- Waypoint misses and outbound-out-of-envelope captures are route-contract
+  warnings in reports, not mission failures by themselves. The maintained
+  score remains final landing, but capture/contract warnings keep route quality
+  visible.
 - Waypoint turn-feasibility telemetry now reports remaining distance to the
   waypoint plane, estimated time to plane, required turn distance, shaping-start
   distance, and turn margin. The first tuning pass using those fields confirmed
   that `single_dogleg_v1` is usually already turn-margin negative before the
   handoff plane. Local outbound target blending and low-throttle candidate
-  tweaks did not produce contract-passing handoffs; the next useful waypoint
-  work should revisit route/profile shape or add a true corridor/reference
-  objective rather than adding more handoff-specific target heuristics.
-- Waypoint-profile report rows now include the profile label and resolved turn
-  angle so smooth pass-through packs are not confused with the dogleg stress
-  packs.
+  tweaks did not produce contract-passing handoffs; that result motivated the
+  balanced turn corpus. Current work should diagnose route-frame guidance on
+  that corpus rather than adding more dogleg-specific target heuristics.
+- Waypoint-profile report rows now include the profile, resolved handoff
+  envelope, turn angle, and outbound cross speed. Multi-profile review trees add
+  a profile level before route; single-profile reports retain their compact
+  route-first hierarchy.
 
 Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:
@@ -329,13 +354,15 @@ for transfer batch reports. The shape fields are Pylander-inspired diagnostics:
 they freeze the first boost-window route to the target, compare the actual path
 against a parabolic reference, and keep final touchdown as the scored goal.
 
-Batch reports now render two transfer-specific triage sections before the
-Review Tree:
+Batch reports render transfer-specific triage sections before the Review Tree:
 
 - `Transfer Handoff Triage` is the primary controller-tuning view. It groups
   current-lane runs by condition, route, radius, and vehicle, then sorts by
   failed/frontier status, low handoff height, high handoff speed, wide handoff
   projected `dx`, and wide boost-cutoff projected `dx`.
+- `Waypoint Handoff Triage` appears for waypoint packs and keeps profile plus
+  envelope provenance beside spatial status, outbound heading/progress/cross
+  speed, and the worst seed.
 - `Transfer Shape Triage` remains a visual-shape diagnostic sorted by worst
   successful shape RMSE. It should explain "landed but ugly" transfer paths,
   not replace the handoff gate/cutoff read.
@@ -355,6 +382,9 @@ The current staged controller uses the transfer diagnostics directly:
   recoverability estimate rather than just route distance/height
 - uphill boost samples a local source-to-target terrain corridor and caps tilt
   near vertical until the craft has clearance over the immediate ramp
+- while that steep corridor is tilt-limited, targetward lateral speed above
+  `3m/s` selects bounded opposite-tilt braking candidates. This is a generic
+  geometry/velocity rule, not an `r+80` branch.
 - coast pre-aligns upright retrograde without commanding max tilt during
   ascent
 - once the target-y crossing is reachable, boost steering and candidate scoring
@@ -370,6 +400,44 @@ intended to protect near-source uphill climbs from terrain collision without
 turning transfer guidance into a full route planner.
 
 ## Current Checkpoint
+
+Current direct-transfer checkpoint, generated on 2026-07-09 with `8` workers
+and `--no-reuse`:
+
+- `transfer_route_angle_radius_suite`: `297 / 297` successes, `0` crashes, and
+  `0` invalidations across every route angle, radius, payload, and smoke seed
+- `transfer_route_angle_radius_frontier_full`: `108 / 108` successes and `0`
+  invalidations across the full-seed `r+80` partition
+- the focused uphill-corridor brake closes the former direct `r+80` failure
+  without regressing the wider matrix
+- `near_vertical_transfer_route` remains useful as a stress annotation, but it
+  no longer describes a failing direct-transfer region
+
+Current balanced waypoint-turn checkpoint:
+
+- `transfer_waypoint_turn_smoke`: `60 / 108` final-landing successes
+  - by route: `r+30` is `36 / 36`, `r00` is `24 / 36`, and `r-30` is `0 / 36`
+  - by profile: straight `10 / 27`, gentle `14 / 27`, medium `18 / 27`, sharp
+    `18 / 27`
+- `transfer_waypoint_turn_contract_smoke`: `12 / 108` handoff successes, `64`
+  spatial misses, `25` outbound-envelope failures, and `7` incomplete/crash
+  cases
+- all `12` contract passes are level-route runs; the final-landing and contract
+  packs agree on handoff status for all `108` paired selector cells
+- the main gap is now route-frame waypoint guidance: downhill waypoint routes
+  fail completely, while the straight-through profile is unexpectedly weaker
+  than the medium and sharp profiles on level routes
+- next work should diagnose active-leg targeting, route-orientation handling,
+  and spatial-capture timing across the balanced matrix before any more tuning
+  of the old `r+80` profiles
+
+Legacy waypoint regression checkpoint:
+
+- dogleg smoke landing `27 / 27`; dogleg smoke contract `0 / 27`
+- smooth-bend smoke landing `27 / 27`; smooth-bend smoke contract `15 / 27`
+- smooth-bend full landing `108 / 108`; smooth-bend full contract `57 / 108`
+
+The following checkpoints are retained as historical tuning evidence.
 
 Initial `transfer_route_angle_suite` baseline:
 
@@ -399,7 +467,7 @@ Handoff read:
 - `75 / 99` runs reached terminal handoff
 - `24 / 99` runs ended while still in boost
 
-Latest transfer tuning checkpoint:
+Historical transfer tuning checkpoint:
 
 - generated locally after the source-clearance hold and transfer-scoped terminal
   gate horizon pass with `8` workers
@@ -427,7 +495,7 @@ Latest transfer tuning checkpoint:
   the scored `near_vertical_transfer_route` frontier. It is waypoint/corridor
   debt, not terminal guidance debt, and it must not be invalidated.
 
-Radius-tier expansion checkpoint:
+Historical radius-tier expansion checkpoint:
 
 - latest clean-cache refresh was generated from commit `673954f` with `8`
   workers
@@ -445,7 +513,7 @@ Radius-tier expansion checkpoint:
   by the focused handoff pass; the wide matrix now has no non-frontier transfer
   failures
 
-Full-seed transfer coverage checkpoint:
+Historical full-seed transfer coverage checkpoint:
 
 - generated locally after the full-seed pack split with `8` workers
 - `transfer_route_angle_radius_full_solved`: `1080 / 1080` successes, `0`
@@ -457,7 +525,7 @@ Full-seed transfer coverage checkpoint:
 - the frontier pack keeps the known `r+80` near-vertical route failure visible
   without polluting the solved-region reliability gate
 
-Waypoint `r+80` checkpoint:
+Legacy dogleg waypoint `r+80` checkpoint:
 
 - generated locally after adding `single_dogleg_v1`, `transfer_waypoint_pdg_v1`,
   contract diagnostics, and the first outbound-velocity blend pass with `8`

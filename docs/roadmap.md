@@ -38,13 +38,15 @@ Current implementation status:
   - scored authority-frontier annotations for low-thrust/high-energy cells
   - default thresholded regression policy over batch comparisons, scoped to the
     preferred current controller lane when both reports contain one
-- Phase 3 has started as an evaluation workbench rather than a finished
-  transfer controller:
+- Phase 3 is active as an evaluation and controller workbench:
   - `timed_checkpoint` remains available as an early-termination contract probe
   - `signed_route_arc_transfer_v1` now exists as the first source-to-target
     matrix family
   - `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
     handoff controller
+  - direct transfer is clean across the maintained route-angle/radius matrix
+  - `transfer_waypoint_pdg_v1` and paired landing/handoff packs expose
+    terrain-blind pass-through waypoint guidance as the active gap
 
 ## 2. What Not To Build First
 
@@ -278,83 +280,78 @@ Status:
   diagnostic: 297 smoke-seed runs over all 11 route angles and all 3 radius
   tiers
 - `transfer_route_angle_radius_full_solved` is the full-seed reliability gate
-  for the solved direct-transfer region: all non-`r+80` route angles, all
+  for the historical non-`r+80` partition: all included route angles, all
   radius tiers, all payload tiers, and all 12 transfer seeds
-- `transfer_route_angle_radius_frontier_full` is the explicit full-seed `r+80`
-  near-vertical frontier watch
+- `transfer_route_angle_radius_frontier_full` retains the historical name but
+  is now the focused full-seed `r+80` steep-uphill regression
 - `transfer_waypoint_rpos80_smoke` and `transfer_waypoint_rpos80_full` are the
-  first waypoint-guidance probes for that `r+80` frontier, using a preplanned
-  `single_dogleg_v1` waypoint profile rather than terrain-aware waypoint
-  planning. They are retained as hairpin/stress probes.
+  first waypoint-guidance probes for the steep `r+80` stress geometry, using a
+  preplanned `single_dogleg_v1` waypoint profile rather than terrain-aware
+  waypoint planning. They are retained as hairpin/stress probes.
 - `transfer_waypoint_contract_rpos80_smoke` and
   `transfer_waypoint_contract_rpos80_full` score the same dogleg route at the
   first waypoint handoff instead of after final-landing recovery
 - `transfer_waypoint_bend_rpos80_smoke` and
-  `transfer_waypoint_bend_rpos80_full` are the smoother `single_bend_v1`
-  waypoint-guidance workbench packs for the same `r+80` axes
+  `transfer_waypoint_bend_rpos80_full` are the focused smoother
+  `single_bend_v1` regressions for the same `r+80` axes
 - `transfer_waypoint_bend_contract_rpos80_smoke` and
   `transfer_waypoint_bend_contract_rpos80_full` score the smoother bend profile
   at the first waypoint handoff
+- `transfer_waypoint_turn_smoke` and
+  `transfer_waypoint_turn_contract_smoke` are the paired broad waypoint
+  workbench: four `0deg` through `62deg` turn profiles, three representative
+  route angles, all payloads, nominal radius, and smoke seeds
+- waypoint profiles and handoff envelopes are separate selectors. The balanced
+  corpus uses one `pass_through_v1` route-relative envelope across every turn
+  profile so geometry and contract difficulty are not conflated.
 - `transfer_waypoint_pdg_v1` provides the first terrain-blind waypoint guidance
   variant: track active leg, spatially capture the waypoint, then resume the
   final target leg
+- `TransferWaypointSpec::assess_handoff` centralizes handoff semantics across
+  core evaluation, controller capture, and reporting; contract probes evaluate
+  on controller observation boundaries
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run
 - batch reports now put `Transfer Handoff Triage` ahead of shape triage so
   controller tuning starts from entry kind, handoff gate, height/speed,
   projected `dx`, cutoff quality, and worst seed before visual-shape RMSE
-- current route-angle checkpoint after the first boost/handoff tuning pass:
-  - `90 / 99` successes
-  - `9` crashes
-  - `0` invalidations
-  - all `r-80` through `r+60` cells solve across `empty`, `half`, and `full`
-  - only `r+80` remains failed across payload tiers, and that should be treated
-    as near-cliff launch/waypoint debt
-- current route/radius checkpoint:
-  - `transfer_radius_tier_suite`: `135 / 135` successes and `0` invalidations
-  - `transfer_route_angle_radius_suite`: `270 / 297` successes, `27` crashes,
-    and `0` invalidations
-  - all remaining crashes are the known `r+80` near-vertical frontier across
-    payload and radius tiers
-  - the previous non-frontier `full/r-80` short/long radius failures were
-    resolved by a focused source-clearance hold and transfer-scoped terminal
-    gate horizon pass
-- current full-seed transfer checkpoint:
-  - `transfer_route_angle_radius_full_solved`: `1080 / 1080` successes and `0`
-    invalidations
-  - `transfer_route_angle_radius_frontier_full`: `0 / 108` successes, `108`
-    crashes, and `0` invalidations
-  - the full-seed solved-region gate is clean; the only remaining transfer
-    matrix debt is the separately tracked `r+80` route/waypoint frontier
-- current waypoint-guidance checkpoint:
-  - `transfer_waypoint_rpos80_smoke`: `27 / 27` successes, `0` timeouts, `0`
-    invalidations, `15` spatial waypoint misses, `12` outbound-unviable
-    captures, and `0` contract-passing handoffs
-  - `transfer_waypoint_rpos80_full`: `108 / 108` successes, `0` timeouts, `0`
-    invalidations, `56` spatial waypoint misses, `52` outbound-unviable
-    captures, and `0` contract-passing handoffs
-  - `transfer_waypoint_contract_rpos80_smoke`: `0 / 27` contract successes,
-    `0` invalidations, `15` spatial waypoint misses, and `12`
-    outbound-unviable captures
-  - `transfer_waypoint_contract_rpos80_full`: `0 / 108` contract successes,
-    `0` invalidations, `56` spatial waypoint misses, and `52`
-    outbound-unviable captures
-  - all waypoint `r+80` payload/radius/seed cases land; remaining waypoint
-    debt is pass-through route quality, not final landing reliability
-- next transfer slice should improve waypoint route quality and landing time
-  without moving waypoint planning into the controller:
-  - keep waypoints preplanned
-  - keep terrain avoidance encoded in waypoint positions/envelopes, not in
-    terrain-reactive controller branches
-  - use `single_bend_v1` as the main waypoint-guidance corpus before adding a
-    true corridor/waypoint-plane objective
-  - harden waypoint capture quality, outbound progress, and route shape beyond
-    the current spatial capture status
-  - trim landing time and near-landing hover without using arbitrary sim-time
-    limits as controller state
-  - use waypoint handoff probe packs as the primary tuning target, while final
-    landing packs remain the recovery/reliability regression gate
+- current direct-transfer checkpoint:
+  - `transfer_route_angle_radius_suite`: `297 / 297` successes and `0`
+    invalidations across all route angles, radii, payloads, and smoke seeds
+  - `transfer_route_angle_radius_frontier_full`: `108 / 108` successes and `0`
+    invalidations across the full-seed `r+80` partition
+  - the route-local uphill-corridor brake closes the old near-vertical failure
+    without route-label branching or a regression elsewhere in the wide matrix
+  - the historical `near_vertical_transfer_route` annotation and frontier pack
+    remain useful stress labels, but direct transfer is no longer the active
+    Phase 3 blocker
+- current legacy waypoint regression checkpoint:
+  - dogleg smoke landing `27 / 27`, dogleg smoke contract `0 / 27`
+  - smooth-bend smoke landing `27 / 27`, smooth-bend smoke contract `15 / 27`
+  - smooth-bend full landing `108 / 108`, smooth-bend full contract `57 / 108`
+- current balanced waypoint-guidance checkpoint:
+  - `transfer_waypoint_turn_smoke`: `60 / 108` final-landing successes; route
+    split is `r+30 36 / 36`, `r00 24 / 36`, and `r-30 0 / 36`
+  - `transfer_waypoint_turn_contract_smoke`: `12 / 108` contract successes,
+    `64` spatial misses, `25` outbound-envelope failures, and `7` incomplete or
+    crash-before-handoff cases
+  - paired landing and contract packs agree on the handoff status of all `108`
+    selector cells
+  - all contract passes are level-route runs; straight-through waypoint
+    guidance is unexpectedly weaker than medium/sharp turns, while downhill
+    waypoint routes fail completely
+- next transfer slice should improve waypoint route quality before landing-time
+  optimization, without moving waypoint planning into the controller:
+  - keep waypoints preplanned and terrain avoidance encoded in the plan
+  - diagnose active-leg target construction, signed route-frame handling, and
+    spatial-capture timing on the balanced corpus
+  - require a general controller hypothesis that improves multiple profiles and
+    route orientations; do not add profile-ID or route-angle branches
+  - use the handoff pack as the primary guidance target and the paired landing
+    pack as the recovery/reliability regression gate
+  - defer hover/landing-time tightening until waypoint capture and handoff
+    reliability are structurally sound
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
@@ -508,13 +505,14 @@ The next useful work is:
 5. Keep a later terminal-arrival extension on the roadmap: a signed
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
-6. Keep `transfer_bot_lab_suite` as the fast gate, use
-   `transfer_route_angle_suite` for route-shape diagnosis, and tune the
-   transfer-specific takeoff/boost/coast handoff before broadening route radius
-   or full-seed coverage.
+6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
+   direct-transfer regression gates. Use the paired balanced waypoint-turn
+   packs to diagnose route-frame waypoint guidance before adding waypoint
+   planning, terrain-aware routing, more route radii, or multiple waypoints.
 
-The immediate controller direction should stay conservative. Recent broad
-landing-time and touchdown shortcuts either did not move outcomes or added
-scored crashes, so another broad terminal tuning loop is lower value than
-transfer-handoff analysis, regression policy, and frontier/feasibility
-semantics.
+The immediate controller direction should stay conservative. Direct transfer is
+now clean across the maintained wide matrix; the active gap is terrain-blind
+pass-through waypoint guidance. The next controller change should explain the
+balanced corpus's route-orientation and straight-through failures with one
+route-frame mechanism, not another broad terminal tune or a profile-specific
+state machine.
