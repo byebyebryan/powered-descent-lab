@@ -116,10 +116,11 @@ struct PreviewWaypoint {
     capture_radius_m: f64,
     max_cross_track_m: f64,
     min_outbound_progress_mps: f64,
+    max_outbound_cross_speed_mps: Option<f64>,
     min_speed_mps: f64,
     max_speed_mps: f64,
-    min_vertical_speed_mps: f64,
-    max_vertical_speed_mps: f64,
+    min_vertical_speed_mps: Option<f64>,
+    max_vertical_speed_mps: Option<f64>,
 }
 
 pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
@@ -292,6 +293,7 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
                         capture_radius_m: waypoint.capture_radius_m,
                         max_cross_track_m: waypoint.max_cross_track_m,
                         min_outbound_progress_mps: waypoint.min_outbound_progress_mps,
+                        max_outbound_cross_speed_mps: waypoint.max_outbound_cross_speed_mps,
                         min_speed_mps: waypoint.min_speed_mps,
                         max_speed_mps: waypoint.max_speed_mps,
                         min_vertical_speed_mps: waypoint.min_vertical_speed_mps,
@@ -546,6 +548,21 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
                     label_y = py - 1.8,
                 )
             };
+            let outbound_cross = waypoint
+                .max_outbound_cross_speed_mps
+                .map(|value| format!("cross <= {value:.1} m/s"))
+                .unwrap_or_else(|| "cross unbounded".to_owned());
+            let vertical = match (
+                waypoint.min_vertical_speed_mps,
+                waypoint.max_vertical_speed_mps,
+            ) {
+                (Some(min_value), Some(max_value)) => {
+                    format!("vertical {min_value:.1}-{max_value:.1} m/s")
+                }
+                (Some(min_value), None) => format!("vertical >= {min_value:.1} m/s"),
+                (None, Some(max_value)) => format!("vertical <= {max_value:.1} m/s"),
+                (None, None) => "vertical unbounded".to_owned(),
+            };
             format!(
                 r##"<g>
   <title>{title}</title>
@@ -555,15 +572,15 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
   {label}
 </g>"##,
                 title = escape_html(&format!(
-                    "{}: capture radius {:.1} m, cross-track {:.1} m, outbound >= {:.1} m/s, speed {:.1}-{:.1} m/s, vertical {:.1}-{:.1} m/s",
+                    "{}: capture radius {:.1} m, cross-track {:.1} m, outbound >= {:.1} m/s, {}, speed {:.1}-{:.1} m/s, {}",
                     waypoint.id,
                     waypoint.capture_radius_m,
                     waypoint.max_cross_track_m,
                     waypoint.min_outbound_progress_mps,
+                    outbound_cross,
                     waypoint.min_speed_mps,
                     waypoint.max_speed_mps,
-                    waypoint.min_vertical_speed_mps,
-                    waypoint.max_vertical_speed_mps,
+                    vertical,
                 )),
             )
         })
@@ -1236,6 +1253,7 @@ fn build_mission_details(scenario: &ScenarioSpec) -> ReportMissionDetails {
                             .max_outbound_heading_error_rad
                             .to_degrees(),
                         min_outbound_progress_mps: waypoint.min_outbound_progress_mps,
+                        max_outbound_cross_speed_mps: waypoint.max_outbound_cross_speed_mps,
                         min_speed_mps: waypoint.min_speed_mps,
                         max_speed_mps: waypoint.max_speed_mps,
                         min_vertical_speed_mps: waypoint.min_vertical_speed_mps,
@@ -1610,10 +1628,11 @@ struct ReportWaypointDetails {
     max_cross_track_m: f64,
     max_outbound_heading_error_deg: f64,
     min_outbound_progress_mps: f64,
+    max_outbound_cross_speed_mps: Option<f64>,
     min_speed_mps: f64,
     max_speed_mps: f64,
-    min_vertical_speed_mps: f64,
-    max_vertical_speed_mps: f64,
+    min_vertical_speed_mps: Option<f64>,
+    max_vertical_speed_mps: Option<f64>,
 }
 
 impl ReportMissionGoalDetails {

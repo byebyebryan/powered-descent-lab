@@ -76,6 +76,7 @@ pub mod metric {
     pub const WAYPOINT_PLANE_PROGRESS_M: &str = "waypoint.plane_progress_m";
     pub const WAYPOINT_OUTBOUND_HEADING_ERROR_RAD: &str = "waypoint.outbound_heading_error_rad";
     pub const WAYPOINT_OUTBOUND_PROGRESS_MPS: &str = "waypoint.outbound_progress_mps";
+    pub const WAYPOINT_OUTBOUND_CROSS_SPEED_MPS: &str = "waypoint.outbound_cross_speed_mps";
     pub const WAYPOINT_SPEED_MPS: &str = "waypoint.speed_mps";
     pub const WAYPOINT_VERTICAL_SPEED_MPS: &str = "waypoint.vertical_speed_mps";
     pub const WAYPOINT_REMAINING_TO_PLANE_M: &str = "waypoint.remaining_to_plane_m";

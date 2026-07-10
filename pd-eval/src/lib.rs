@@ -14,7 +14,7 @@ use pd_control::{
 use pd_core::{
     EndReason, EvaluationGoal, LandingPadSpec, MissionOutcome, Observation, RunContext,
     RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec,
-    TransferWaypointSpec, Vec2, VehicleSpec,
+    TransferWaypointSpec, Vec2, VehicleSpec, WaypointHandoffKinematics,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 24;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 25;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -219,6 +219,8 @@ pub struct BatchRunReviewMetrics {
     pub waypoint_outbound_heading_error_rad: Option<f64>,
     #[serde(default)]
     pub waypoint_outbound_progress_mps: Option<f64>,
+    #[serde(default)]
+    pub waypoint_outbound_cross_speed_mps: Option<f64>,
     #[serde(default)]
     pub waypoint_speed_mps: Option<f64>,
     #[serde(default)]
@@ -2899,16 +2901,26 @@ fn resolve_transfer_matrix_scenario(
                 format!("{prefix}_min_outbound_progress_mps"),
                 waypoint.min_outbound_progress_mps,
             );
+            if let Some(max_cross_speed_mps) = waypoint.max_outbound_cross_speed_mps {
+                resolved_parameters.insert(
+                    format!("{prefix}_max_outbound_cross_speed_mps"),
+                    max_cross_speed_mps,
+                );
+            }
             resolved_parameters.insert(format!("{prefix}_min_speed_mps"), waypoint.min_speed_mps);
             resolved_parameters.insert(format!("{prefix}_max_speed_mps"), waypoint.max_speed_mps);
-            resolved_parameters.insert(
-                format!("{prefix}_min_vertical_speed_mps"),
-                waypoint.min_vertical_speed_mps,
-            );
-            resolved_parameters.insert(
-                format!("{prefix}_max_vertical_speed_mps"),
-                waypoint.max_vertical_speed_mps,
-            );
+            if let Some(min_vertical_speed_mps) = waypoint.min_vertical_speed_mps {
+                resolved_parameters.insert(
+                    format!("{prefix}_min_vertical_speed_mps"),
+                    min_vertical_speed_mps,
+                );
+            }
+            if let Some(max_vertical_speed_mps) = waypoint.max_vertical_speed_mps {
+                resolved_parameters.insert(
+                    format!("{prefix}_max_vertical_speed_mps"),
+                    max_vertical_speed_mps,
+                );
+            }
         }
     }
 
@@ -3074,10 +3086,11 @@ fn transfer_route_waypoints_for_profile(
                 max_cross_track_m: capture_radius_m * 1.25,
                 max_outbound_heading_error_rad: 0.85,
                 min_outbound_progress_mps: 8.0,
+                max_outbound_cross_speed_mps: None,
                 min_speed_mps: 10.0,
                 max_speed_mps: 130.0,
-                min_vertical_speed_mps: -80.0,
-                max_vertical_speed_mps: 65.0,
+                min_vertical_speed_mps: Some(-80.0),
+                max_vertical_speed_mps: Some(65.0),
             }])
         }
         TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1 => {
@@ -3110,10 +3123,11 @@ fn transfer_route_waypoints_for_profile(
                 max_cross_track_m: capture_radius_m * 1.75,
                 max_outbound_heading_error_rad: 0.85,
                 min_outbound_progress_mps: 8.0,
+                max_outbound_cross_speed_mps: None,
                 min_speed_mps: 10.0,
                 max_speed_mps: 130.0,
-                min_vertical_speed_mps: -80.0,
-                max_vertical_speed_mps: 65.0,
+                min_vertical_speed_mps: Some(-80.0),
+                max_vertical_speed_mps: Some(65.0),
             }])
         }
         _ => unreachable!("validated transfer waypoint profile should be supported"),
@@ -5212,6 +5226,7 @@ fn derive_run_review_metrics(
         waypoint_plane_progress_m: waypoint.plane_progress_m,
         waypoint_outbound_heading_error_rad: waypoint.outbound_heading_error_rad,
         waypoint_outbound_progress_mps: waypoint.outbound_progress_mps,
+        waypoint_outbound_cross_speed_mps: waypoint.outbound_cross_speed_mps,
         waypoint_speed_mps: waypoint.speed_mps,
         waypoint_vertical_speed_mps: waypoint.vertical_speed_mps,
         waypoint_remaining_to_plane_m: waypoint.remaining_to_plane_m,
@@ -5233,6 +5248,7 @@ struct WaypointReviewMetrics {
     plane_progress_m: Option<f64>,
     outbound_heading_error_rad: Option<f64>,
     outbound_progress_mps: Option<f64>,
+    outbound_cross_speed_mps: Option<f64>,
     speed_mps: Option<f64>,
     vertical_speed_mps: Option<f64>,
     remaining_to_plane_m: Option<f64>,
@@ -5294,6 +5310,11 @@ fn waypoint_review_metrics(
             &update.frame.metrics,
             metric::WAYPOINT_OUTBOUND_PROGRESS_MPS,
         ),
+        outbound_cross_speed_mps: telemetry_float(
+            &update.frame.metrics,
+            metric::WAYPOINT_OUTBOUND_CROSS_SPEED_MPS,
+        )
+        .filter(|value| *value >= 0.0),
         speed_mps: telemetry_float(&update.frame.metrics, metric::WAYPOINT_SPEED_MPS)
             .filter(|value| *value >= 0.0),
         vertical_speed_mps: telemetry_float(
@@ -5362,6 +5383,7 @@ fn waypoint_handoff_goal_review_metrics(
         plane_progress_m: Some(stats.plane_progress_m),
         outbound_heading_error_rad: Some(stats.outbound_heading_error_rad),
         outbound_progress_mps: Some(stats.outbound_progress_mps),
+        outbound_cross_speed_mps: Some(stats.outbound_cross_speed_mps),
         speed_mps: Some(stats.speed_mps),
         vertical_speed_mps: Some(stats.vertical_speed_mps),
         remaining_to_plane_m: None,
@@ -5372,22 +5394,11 @@ fn waypoint_handoff_goal_review_metrics(
     })
 }
 
-#[derive(Clone, Copy, Debug)]
-struct WaypointSampleStats {
-    distance_m: f64,
-    cross_track_m: f64,
-    plane_progress_m: f64,
-    outbound_heading_error_rad: f64,
-    outbound_progress_mps: f64,
-    speed_mps: f64,
-    vertical_speed_mps: f64,
-}
-
 fn waypoint_sample_stats(
     scenario: &ScenarioSpec,
     observation: &Observation,
     waypoint_index: usize,
-) -> Option<WaypointSampleStats> {
+) -> Option<WaypointHandoffKinematics> {
     let route = scenario.mission.transfer_route.as_ref()?;
     let waypoint = route.waypoints.get(waypoint_index)?;
     let anchor_m = if waypoint_index == 0 {
@@ -5419,12 +5430,13 @@ fn waypoint_sample_stats(
     let outbound_heading_error_rad = waypoint_dot(velocity_unit, next_leg_unit)
         .clamp(-1.0, 1.0)
         .acos();
-    Some(WaypointSampleStats {
+    Some(WaypointHandoffKinematics {
         distance_m: to_waypoint_m.length(),
         cross_track_m: waypoint_cross(to_waypoint_m, leg_unit).abs(),
         plane_progress_m: waypoint_dot(to_waypoint_m, leg_unit),
         outbound_heading_error_rad,
         outbound_progress_mps: waypoint_dot(observation.velocity_mps, next_leg_unit),
+        outbound_cross_speed_mps: waypoint_cross(observation.velocity_mps, next_leg_unit).abs(),
         speed_mps,
         vertical_speed_mps: observation.velocity_mps.y,
     })
@@ -5432,11 +5444,9 @@ fn waypoint_sample_stats(
 
 fn waypoint_capture_passes_review(
     waypoint: &TransferWaypointSpec,
-    stats: &WaypointSampleStats,
+    stats: &WaypointHandoffKinematics,
 ) -> bool {
-    stats.distance_m <= waypoint.capture_radius_m
-        || (stats.cross_track_m <= waypoint.max_cross_track_m
-            && stats.plane_progress_m >= -waypoint.capture_radius_m)
+    waypoint.assess_handoff(*stats).spatial_pass
 }
 
 fn waypoint_normalized(vector: Vec2) -> Option<Vec2> {
@@ -5529,26 +5539,64 @@ fn waypoint_outbound_contract_review_metrics(
     waypoint: &WaypointReviewMetrics,
 ) -> WaypointContractReviewMetrics {
     let mut reasons = Vec::new();
-    match waypoint.outbound_heading_error_rad {
-        Some(value) if value <= spec.max_outbound_heading_error_rad => {}
-        Some(_) => reasons.push("heading".to_owned()),
-        None => reasons.push("missing_heading".to_owned()),
-    }
-    match waypoint.outbound_progress_mps {
-        Some(value) if value >= spec.min_outbound_progress_mps => {}
-        Some(_) => reasons.push("outbound_progress".to_owned()),
-        None => reasons.push("missing_outbound_progress".to_owned()),
-    }
-    match waypoint.speed_mps {
-        Some(value) if value >= spec.min_speed_mps && value <= spec.max_speed_mps => {}
-        Some(_) => reasons.push("speed".to_owned()),
-        None => reasons.push("missing_speed".to_owned()),
-    }
-    match waypoint.vertical_speed_mps {
-        Some(value)
-            if value >= spec.min_vertical_speed_mps && value <= spec.max_vertical_speed_mps => {}
-        Some(_) => reasons.push("vertical_speed".to_owned()),
-        None => reasons.push("missing_vertical_speed".to_owned()),
+    let Some(outbound_heading_error_rad) = waypoint.outbound_heading_error_rad else {
+        reasons.push("missing_heading".to_owned());
+        return WaypointContractReviewMetrics {
+            status: Some("outbound_out_of_envelope".to_owned()),
+            reasons,
+        };
+    };
+    let Some(outbound_progress_mps) = waypoint.outbound_progress_mps else {
+        reasons.push("missing_outbound_progress".to_owned());
+        return WaypointContractReviewMetrics {
+            status: Some("outbound_out_of_envelope".to_owned()),
+            reasons,
+        };
+    };
+    let Some(speed_mps) = waypoint.speed_mps else {
+        reasons.push("missing_speed".to_owned());
+        return WaypointContractReviewMetrics {
+            status: Some("outbound_out_of_envelope".to_owned()),
+            reasons,
+        };
+    };
+    let outbound_cross_speed_mps = match (
+        spec.max_outbound_cross_speed_mps,
+        waypoint.outbound_cross_speed_mps,
+    ) {
+        (Some(_), None) => {
+            reasons.push("missing_outbound_cross_speed".to_owned());
+            0.0
+        }
+        (_, value) => value.unwrap_or(0.0),
+    };
+    let vertical_speed_mps = match (
+        spec.min_vertical_speed_mps.is_some() || spec.max_vertical_speed_mps.is_some(),
+        waypoint.vertical_speed_mps,
+    ) {
+        (true, None) => {
+            reasons.push("missing_vertical_speed".to_owned());
+            0.0
+        }
+        (_, value) => value.unwrap_or(0.0),
+    };
+
+    if reasons.is_empty() {
+        reasons.extend(
+            spec.assess_handoff(WaypointHandoffKinematics {
+                distance_m: waypoint.distance_m.unwrap_or(0.0),
+                cross_track_m: waypoint.cross_track_m.unwrap_or(0.0),
+                plane_progress_m: waypoint.plane_progress_m.unwrap_or(0.0),
+                outbound_heading_error_rad,
+                outbound_progress_mps,
+                outbound_cross_speed_mps,
+                speed_mps,
+                vertical_speed_mps,
+            })
+            .violations
+            .into_iter()
+            .map(|violation| violation.as_str().to_owned()),
+        );
     }
 
     if reasons.is_empty() {
@@ -5558,7 +5606,7 @@ fn waypoint_outbound_contract_review_metrics(
         }
     } else {
         WaypointContractReviewMetrics {
-            status: Some("outbound_unviable".to_owned()),
+            status: Some("outbound_out_of_envelope".to_owned()),
             reasons,
         }
     }
@@ -7386,10 +7434,11 @@ mod tests {
                 max_cross_track_m: 50.0,
                 max_outbound_heading_error_rad: 0.85,
                 min_outbound_progress_mps: 8.0,
+                max_outbound_cross_speed_mps: None,
                 min_speed_mps: 10.0,
                 max_speed_mps: 130.0,
-                min_vertical_speed_mps: -80.0,
-                max_vertical_speed_mps: 65.0,
+                min_vertical_speed_mps: Some(-80.0),
+                max_vertical_speed_mps: Some(65.0),
             }],
         });
         scenario
@@ -8337,7 +8386,7 @@ mod tests {
             run.descriptor
                 .resolved_parameters
                 .get("waypoint_0_max_vertical_speed_mps"),
-            Some(&waypoint.max_vertical_speed_mps)
+            waypoint.max_vertical_speed_mps.as_ref()
         );
         let turn_angle_deg = run
             .descriptor
@@ -8555,7 +8604,7 @@ mod tests {
 
         let contract = waypoint_contract_review_metrics(&scenario, &metrics);
 
-        assert_eq!(contract.status.as_deref(), Some("outbound_unviable"));
+        assert_eq!(contract.status.as_deref(), Some("outbound_out_of_envelope"));
         assert_eq!(
             contract.reasons,
             vec![
@@ -8564,6 +8613,35 @@ mod tests {
                 "vertical_speed".to_owned()
             ]
         );
+    }
+
+    #[test]
+    fn waypoint_contract_review_scores_outbound_cross_speed_without_vertical_bounds() {
+        let mut scenario = waypoint_contract_scenario();
+        let waypoint = scenario
+            .mission
+            .transfer_route
+            .as_mut()
+            .and_then(|route| route.waypoints.first_mut())
+            .expect("waypoint fixture");
+        waypoint.max_outbound_cross_speed_mps = Some(20.0);
+        waypoint.min_vertical_speed_mps = None;
+        waypoint.max_vertical_speed_mps = None;
+        let metrics = WaypointReviewMetrics {
+            capture_status: Some("captured".to_owned()),
+            active_index: Some(0),
+            outbound_heading_error_rad: Some(0.4),
+            outbound_progress_mps: Some(18.0),
+            outbound_cross_speed_mps: Some(24.0),
+            speed_mps: Some(42.0),
+            vertical_speed_mps: Some(92.0),
+            ..WaypointReviewMetrics::default()
+        };
+
+        let contract = waypoint_contract_review_metrics(&scenario, &metrics);
+
+        assert_eq!(contract.status.as_deref(), Some("outbound_out_of_envelope"));
+        assert_eq!(contract.reasons, vec!["outbound_cross_speed".to_owned()]);
     }
 
     #[test]

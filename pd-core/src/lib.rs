@@ -11,7 +11,8 @@ pub use model::{
     EventRecord, LandingPadSpec, LandingRunSummary, MissionOutcome, MissionSpec, Observation,
     PhysicalOutcome, RunArtifacts, RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec,
     SimConfig, TransferRouteSpec, TransferWaypointSpec, VehicleGeometry, VehicleInitialState,
-    VehicleSpec, WorldSpec,
+    VehicleSpec, WaypointHandoffAssessment, WaypointHandoffKinematics, WaypointHandoffViolation,
+    WorldSpec,
 };
 pub use sim::{SimulationError, SimulationState, replay_simulation, run_simulation};
 pub use terrain::TerrainDefinition;

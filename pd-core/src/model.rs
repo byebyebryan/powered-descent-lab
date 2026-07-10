@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{math::Vec2, terrain::TerrainDefinition};
 
-pub const RUN_SCHEMA_VERSION: u32 = 2;
+pub const RUN_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SimConfig {
@@ -294,10 +294,61 @@ pub struct TransferWaypointSpec {
     pub max_cross_track_m: f64,
     pub max_outbound_heading_error_rad: f64,
     pub min_outbound_progress_mps: f64,
+    #[serde(default)]
+    pub max_outbound_cross_speed_mps: Option<f64>,
     pub min_speed_mps: f64,
     pub max_speed_mps: f64,
-    pub min_vertical_speed_mps: f64,
-    pub max_vertical_speed_mps: f64,
+    #[serde(default)]
+    pub min_vertical_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub max_vertical_speed_mps: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WaypointHandoffKinematics {
+    pub distance_m: f64,
+    pub cross_track_m: f64,
+    pub plane_progress_m: f64,
+    pub outbound_heading_error_rad: f64,
+    pub outbound_progress_mps: f64,
+    pub outbound_cross_speed_mps: f64,
+    pub speed_mps: f64,
+    pub vertical_speed_mps: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WaypointHandoffViolation {
+    Heading,
+    OutboundProgress,
+    OutboundCrossSpeed,
+    Speed,
+    VerticalSpeed,
+}
+
+impl WaypointHandoffViolation {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Heading => "heading",
+            Self::OutboundProgress => "outbound_progress",
+            Self::OutboundCrossSpeed => "outbound_cross_speed",
+            Self::Speed => "speed",
+            Self::VerticalSpeed => "vertical_speed",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WaypointHandoffAssessment {
+    pub triggered: bool,
+    pub spatial_pass: bool,
+    pub envelope_pass: bool,
+    pub violations: Vec<WaypointHandoffViolation>,
+}
+
+impl WaypointHandoffAssessment {
+    pub fn contract_pass(&self) -> bool {
+        self.spatial_pass && self.envelope_pass
+    }
 }
 
 impl TransferWaypointSpec {
@@ -317,8 +368,6 @@ impl TransferWaypointSpec {
             ("min_outbound_progress_mps", self.min_outbound_progress_mps),
             ("min_speed_mps", self.min_speed_mps),
             ("max_speed_mps", self.max_speed_mps),
-            ("min_vertical_speed_mps", self.min_vertical_speed_mps),
-            ("max_vertical_speed_mps", self.max_vertical_speed_mps),
         ] {
             if !value.is_finite() {
                 return Err(format!("transfer_route waypoint {label} must be finite"));
@@ -336,15 +385,79 @@ impl TransferWaypointSpec {
                     .to_owned(),
             );
         }
+        if let Some(max_cross_speed_mps) = self.max_outbound_cross_speed_mps {
+            if !max_cross_speed_mps.is_finite() || max_cross_speed_mps <= 0.0 {
+                return Err(
+                    "transfer_route waypoint max_outbound_cross_speed_mps must be positive and finite"
+                        .to_owned(),
+                );
+            }
+        }
         if self.min_speed_mps < 0.0 || self.max_speed_mps < self.min_speed_mps {
             return Err(
                 "transfer_route waypoint speed bounds must be non-negative and ordered".to_owned(),
             );
         }
-        if self.max_vertical_speed_mps < self.min_vertical_speed_mps {
+        for (label, value) in [
+            ("min_vertical_speed_mps", self.min_vertical_speed_mps),
+            ("max_vertical_speed_mps", self.max_vertical_speed_mps),
+        ] {
+            if value.is_some_and(|value| !value.is_finite()) {
+                return Err(format!("transfer_route waypoint {label} must be finite"));
+            }
+        }
+        if self
+            .min_vertical_speed_mps
+            .zip(self.max_vertical_speed_mps)
+            .is_some_and(|(min_value, max_value)| max_value < min_value)
+        {
             return Err("transfer_route waypoint vertical speed bounds must be ordered".to_owned());
         }
         Ok(())
+    }
+
+    pub fn assess_handoff(
+        &self,
+        kinematics: WaypointHandoffKinematics,
+    ) -> WaypointHandoffAssessment {
+        let triggered =
+            kinematics.plane_progress_m >= 0.0 || kinematics.distance_m <= self.capture_radius_m;
+        let spatial_pass = kinematics.distance_m <= self.capture_radius_m
+            || (kinematics.cross_track_m <= self.max_cross_track_m
+                && kinematics.plane_progress_m >= -self.capture_radius_m);
+        let mut violations = Vec::new();
+
+        if kinematics.outbound_heading_error_rad > self.max_outbound_heading_error_rad {
+            violations.push(WaypointHandoffViolation::Heading);
+        }
+        if kinematics.outbound_progress_mps < self.min_outbound_progress_mps {
+            violations.push(WaypointHandoffViolation::OutboundProgress);
+        }
+        if self
+            .max_outbound_cross_speed_mps
+            .is_some_and(|limit| kinematics.outbound_cross_speed_mps.abs() > limit)
+        {
+            violations.push(WaypointHandoffViolation::OutboundCrossSpeed);
+        }
+        if kinematics.speed_mps < self.min_speed_mps || kinematics.speed_mps > self.max_speed_mps {
+            violations.push(WaypointHandoffViolation::Speed);
+        }
+        if self
+            .min_vertical_speed_mps
+            .is_some_and(|limit| kinematics.vertical_speed_mps < limit)
+            || self
+                .max_vertical_speed_mps
+                .is_some_and(|limit| kinematics.vertical_speed_mps > limit)
+        {
+            violations.push(WaypointHandoffViolation::VerticalSpeed);
+        }
+
+        WaypointHandoffAssessment {
+            triggered,
+            spatial_pass,
+            envelope_pass: violations.is_empty(),
+            violations,
+        }
     }
 }
 
@@ -866,10 +979,11 @@ mod tests {
             max_cross_track_m: 80.0,
             max_outbound_heading_error_rad: 0.7,
             min_outbound_progress_mps: 5.0,
+            max_outbound_cross_speed_mps: None,
             min_speed_mps: 10.0,
             max_speed_mps: 90.0,
-            min_vertical_speed_mps: -45.0,
-            max_vertical_speed_mps: 35.0,
+            min_vertical_speed_mps: Some(-45.0),
+            max_vertical_speed_mps: Some(35.0),
         };
         let route = TransferRouteSpec {
             source_pad_id: "source".to_owned(),
@@ -896,6 +1010,57 @@ mod tests {
     }
 
     #[test]
+    fn waypoint_handoff_assessment_uses_optional_outbound_bounds() {
+        let waypoint = TransferWaypointSpec {
+            id: "wp_1".to_owned(),
+            position_m: Vec2::new(0.0, 0.0),
+            capture_radius_m: 20.0,
+            max_cross_track_m: 30.0,
+            max_outbound_heading_error_rad: 0.35,
+            min_outbound_progress_mps: 8.0,
+            max_outbound_cross_speed_mps: Some(20.0),
+            min_speed_mps: 10.0,
+            max_speed_mps: 130.0,
+            min_vertical_speed_mps: None,
+            max_vertical_speed_mps: None,
+        };
+        let kinematics = WaypointHandoffKinematics {
+            distance_m: 10.0,
+            cross_track_m: 5.0,
+            plane_progress_m: -5.0,
+            outbound_heading_error_rad: 0.2,
+            outbound_progress_mps: 30.0,
+            outbound_cross_speed_mps: 12.0,
+            speed_mps: 50.0,
+            vertical_speed_mps: 90.0,
+        };
+
+        let pass = waypoint.assess_handoff(kinematics);
+        assert!(pass.triggered);
+        assert!(pass.contract_pass());
+
+        let cross_speed_failure = waypoint.assess_handoff(WaypointHandoffKinematics {
+            outbound_cross_speed_mps: 25.0,
+            ..kinematics
+        });
+        assert_eq!(
+            cross_speed_failure.violations,
+            vec![WaypointHandoffViolation::OutboundCrossSpeed]
+        );
+
+        let vertically_bounded = TransferWaypointSpec {
+            max_outbound_cross_speed_mps: None,
+            max_vertical_speed_mps: Some(65.0),
+            ..waypoint
+        };
+        let vertical_failure = vertically_bounded.assess_handoff(kinematics);
+        assert_eq!(
+            vertical_failure.violations,
+            vec![WaypointHandoffViolation::VerticalSpeed]
+        );
+    }
+
+    #[test]
     fn waypoint_handoff_goal_requires_matching_route_waypoint() {
         let waypoint = TransferWaypointSpec {
             id: "wp_1".to_owned(),
@@ -904,10 +1069,11 @@ mod tests {
             max_cross_track_m: 30.0,
             max_outbound_heading_error_rad: 0.8,
             min_outbound_progress_mps: 5.0,
+            max_outbound_cross_speed_mps: None,
             min_speed_mps: 8.0,
             max_speed_mps: 90.0,
-            min_vertical_speed_mps: -50.0,
-            max_vertical_speed_mps: 40.0,
+            min_vertical_speed_mps: Some(-50.0),
+            max_vertical_speed_mps: Some(40.0),
         };
         let mut scenario = ScenarioSpec {
             id: "waypoint_handoff_validation".to_owned(),

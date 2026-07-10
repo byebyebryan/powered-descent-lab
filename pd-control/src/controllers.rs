@@ -4,7 +4,9 @@ use crate::terminal_pdg::{
     TransferGateReadinessMode,
 };
 use crate::{Controller, ControllerFrame, TelemetryValue};
-use pd_core::{Command, Observation, RunContext, TransferWaypointSpec, Vec2};
+use pd_core::{
+    Command, Observation, RunContext, TransferWaypointSpec, Vec2, WaypointHandoffKinematics,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -55,6 +57,7 @@ const WAYPOINT_SCORE_SPATIAL: f64 = 900.0;
 const WAYPOINT_SCORE_DISTANCE: f64 = 90.0;
 const WAYPOINT_SCORE_HEADING: f64 = 180.0;
 const WAYPOINT_SCORE_PROGRESS: f64 = 150.0;
+const WAYPOINT_SCORE_CROSS_SPEED: f64 = 80.0;
 const WAYPOINT_SCORE_SPEED: f64 = 35.0;
 const WAYPOINT_SCORE_VERTICAL_SPEED: f64 = 30.0;
 const WAYPOINT_SCORE_NO_TRIGGER: f64 = 8.0;
@@ -831,6 +834,7 @@ struct WaypointTelemetry {
     plane_progress_m: f64,
     outbound_heading_error_rad: f64,
     outbound_progress_mps: f64,
+    outbound_cross_speed_mps: f64,
     speed_mps: f64,
     vertical_speed_mps: f64,
     remaining_to_plane_m: f64,
@@ -851,6 +855,7 @@ struct WaypointCaptureSnapshot {
     plane_progress_m: f64,
     outbound_heading_error_rad: f64,
     outbound_progress_mps: f64,
+    outbound_cross_speed_mps: f64,
     speed_mps: f64,
     vertical_speed_mps: f64,
     approach: WaypointApproachState,
@@ -875,6 +880,7 @@ struct WaypointLegStats {
     plane_progress_m: f64,
     outbound_heading_error_rad: f64,
     outbound_progress_mps: f64,
+    outbound_cross_speed_mps: f64,
     speed_mps: f64,
     vertical_speed_mps: f64,
 }
@@ -1160,6 +1166,7 @@ impl TransferPdgController {
                 plane_progress_m: stats.plane_progress_m,
                 outbound_heading_error_rad: stats.outbound_heading_error_rad,
                 outbound_progress_mps: stats.outbound_progress_mps,
+                outbound_cross_speed_mps: stats.outbound_cross_speed_mps,
                 speed_mps: stats.speed_mps,
                 vertical_speed_mps: stats.vertical_speed_mps,
                 approach,
@@ -1215,6 +1222,7 @@ impl TransferPdgController {
                 plane_progress_m: stats.plane_progress_m,
                 outbound_heading_error_rad: stats.outbound_heading_error_rad,
                 outbound_progress_mps: stats.outbound_progress_mps,
+                outbound_cross_speed_mps: stats.outbound_cross_speed_mps,
                 speed_mps: stats.speed_mps,
                 vertical_speed_mps: stats.vertical_speed_mps,
                 remaining_to_plane_m: approach.remaining_to_plane_m,
@@ -1270,6 +1278,7 @@ impl TransferPdgController {
             plane_progress_m: -1.0,
             outbound_heading_error_rad: -1.0,
             outbound_progress_mps: -1.0,
+            outbound_cross_speed_mps: -1.0,
             speed_mps: -1.0,
             vertical_speed_mps: -1.0,
             remaining_to_plane_m: -1.0,
@@ -1331,6 +1340,10 @@ impl TransferPdgController {
         frame.metrics.insert(
             metric::WAYPOINT_OUTBOUND_PROGRESS_MPS.to_owned(),
             TelemetryValue::from(telemetry.outbound_progress_mps),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
+            TelemetryValue::from(telemetry.outbound_cross_speed_mps),
         );
         frame.metrics.insert(
             metric::WAYPOINT_SPEED_MPS.to_owned(),
@@ -2858,6 +2871,14 @@ impl TransferPdgController {
         .min(12.0);
         score += WAYPOINT_SCORE_PROGRESS * progress_ratio * progress_ratio;
 
+        if let Some(max_cross_speed_mps) = waypoint.max_outbound_cross_speed_mps {
+            let cross_speed_ratio = ((stats.outbound_cross_speed_mps - max_cross_speed_mps)
+                .max(0.0)
+                / max_cross_speed_mps.max(1.0))
+            .min(8.0);
+            score += WAYPOINT_SCORE_CROSS_SPEED * cross_speed_ratio * cross_speed_ratio;
+        }
+
         let speed_ratio = waypoint_range_excess_ratio(
             stats.speed_mps,
             waypoint.min_speed_mps,
@@ -2866,15 +2887,13 @@ impl TransferPdgController {
         );
         score += WAYPOINT_SCORE_SPEED * speed_ratio * speed_ratio;
 
-        let vertical_speed_ratio = waypoint_range_excess_ratio(
+        if let Some(vertical_speed_ratio) = waypoint_optional_range_excess_ratio(
             stats.vertical_speed_mps,
             waypoint.min_vertical_speed_mps,
             waypoint.max_vertical_speed_mps,
-            (waypoint.max_vertical_speed_mps - waypoint.min_vertical_speed_mps)
-                .abs()
-                .max(10.0),
-        );
-        score += WAYPOINT_SCORE_VERTICAL_SPEED * vertical_speed_ratio * vertical_speed_ratio;
+        ) {
+            score += WAYPOINT_SCORE_VERTICAL_SPEED * vertical_speed_ratio * vertical_speed_ratio;
+        }
 
         let current_progress_deficit_mps =
             (waypoint.min_outbound_progress_mps - current_stats.outbound_progress_mps).max(0.0);
@@ -3232,6 +3251,7 @@ impl WaypointTelemetry {
             plane_progress_m: capture.plane_progress_m,
             outbound_heading_error_rad: capture.outbound_heading_error_rad,
             outbound_progress_mps: capture.outbound_progress_mps,
+            outbound_cross_speed_mps: capture.outbound_cross_speed_mps,
             speed_mps: capture.speed_mps,
             vertical_speed_mps: capture.vertical_speed_mps,
             remaining_to_plane_m: capture.approach.remaining_to_plane_m,
@@ -3286,6 +3306,7 @@ fn waypoint_leg_stats_from_kinematics(
             std::f64::consts::PI
         },
         outbound_progress_mps: vec_dot(velocity_mps, geometry.next_leg_unit),
+        outbound_cross_speed_mps: vec_cross(velocity_mps, geometry.next_leg_unit).abs(),
         speed_mps,
         vertical_speed_mps: velocity_mps.y,
     }
@@ -3413,13 +3434,28 @@ fn waypoint_outbound_blend(
 }
 
 fn waypoint_capture_passes(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
-    stats.distance_m <= waypoint.capture_radius_m
-        || (stats.cross_track_m <= waypoint.max_cross_track_m
-            && stats.plane_progress_m >= -waypoint.capture_radius_m)
+    waypoint
+        .assess_handoff(waypoint_handoff_kinematics(stats))
+        .spatial_pass
 }
 
 fn waypoint_handoff_triggered(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
-    stats.plane_progress_m >= 0.0 || stats.distance_m <= waypoint.capture_radius_m
+    waypoint
+        .assess_handoff(waypoint_handoff_kinematics(stats))
+        .triggered
+}
+
+fn waypoint_handoff_kinematics(stats: WaypointLegStats) -> WaypointHandoffKinematics {
+    WaypointHandoffKinematics {
+        distance_m: stats.distance_m,
+        cross_track_m: stats.cross_track_m,
+        plane_progress_m: stats.plane_progress_m,
+        outbound_heading_error_rad: stats.outbound_heading_error_rad,
+        outbound_progress_mps: stats.outbound_progress_mps,
+        outbound_cross_speed_mps: stats.outbound_cross_speed_mps,
+        speed_mps: stats.speed_mps,
+        vertical_speed_mps: stats.vertical_speed_mps,
+    }
 }
 
 #[cfg(test)]
@@ -3427,13 +3463,9 @@ fn waypoint_handoff_contract_passes(
     waypoint: &TransferWaypointSpec,
     stats: WaypointLegStats,
 ) -> bool {
-    waypoint_capture_passes(waypoint, stats)
-        && stats.outbound_heading_error_rad <= waypoint.max_outbound_heading_error_rad
-        && stats.outbound_progress_mps >= waypoint.min_outbound_progress_mps
-        && stats.speed_mps >= waypoint.min_speed_mps
-        && stats.speed_mps <= waypoint.max_speed_mps
-        && stats.vertical_speed_mps >= waypoint.min_vertical_speed_mps
-        && stats.vertical_speed_mps <= waypoint.max_vertical_speed_mps
+    waypoint
+        .assess_handoff(waypoint_handoff_kinematics(stats))
+        .contract_pass()
 }
 
 fn waypoint_range_excess_ratio(value: f64, min_value: f64, max_value: f64, scale: f64) -> f64 {
@@ -3445,6 +3477,25 @@ fn waypoint_range_excess_ratio(value: f64, min_value: f64, max_value: f64, scale
         0.0
     };
     (excess / scale.max(1.0)).min(8.0)
+}
+
+fn waypoint_optional_range_excess_ratio(
+    value: f64,
+    min_value: Option<f64>,
+    max_value: Option<f64>,
+) -> Option<f64> {
+    let excess = match (min_value, max_value) {
+        (Some(min_value), Some(max_value)) => {
+            let scale = (max_value - min_value).abs().max(10.0);
+            return Some(waypoint_range_excess_ratio(
+                value, min_value, max_value, scale,
+            ));
+        }
+        (Some(min_value), None) => (min_value - value).max(0.0),
+        (None, Some(max_value)) => (value - max_value).max(0.0),
+        (None, None) => return None,
+    };
+    Some((excess / 10.0).min(8.0))
 }
 
 fn normalized_or_none(vector: Vec2) -> Option<Vec2> {
@@ -3688,10 +3739,11 @@ mod tests {
             max_cross_track_m: 45.0,
             max_outbound_heading_error_rad: 0.6,
             min_outbound_progress_mps: 5.0,
+            max_outbound_cross_speed_mps: None,
             min_speed_mps: 10.0,
             max_speed_mps: 80.0,
-            min_vertical_speed_mps: -60.0,
-            max_vertical_speed_mps: 60.0,
+            min_vertical_speed_mps: Some(-60.0),
+            max_vertical_speed_mps: Some(60.0),
         }
     }
 
@@ -3991,6 +4043,7 @@ mod tests {
             plane_progress_m: -geometry.waypoint.capture_radius_m,
             outbound_heading_error_rad: std::f64::consts::PI,
             outbound_progress_mps: -30.0,
+            outbound_cross_speed_mps: 0.0,
             speed_mps: 30.0,
             vertical_speed_mps: 20.0,
         };

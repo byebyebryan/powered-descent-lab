@@ -2,7 +2,7 @@ use crate::{
     math::Vec2,
     model::{
         EndReason, EvaluationGoal, EventKind, EventRecord, MissionOutcome, PhysicalOutcome,
-        RunContext,
+        RunContext, WaypointHandoffKinematics,
     },
     sim::SimulationState,
 };
@@ -114,7 +114,7 @@ fn apply_waypoint_handoff_progress(
         return Vec::new();
     }
 
-    if evaluation.contract_pass {
+    if evaluation.contract_pass() {
         state.mission_outcome = MissionOutcome::Success;
         state.end_reason = EndReason::CheckpointSatisfied;
         vec![
@@ -151,17 +151,11 @@ fn apply_waypoint_handoff_progress(
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct WaypointHandoffEvaluation {
-    triggered: bool,
-    contract_pass: bool,
-}
-
 fn waypoint_handoff_evaluation(
     ctx: &RunContext,
     state: &SimulationState,
     waypoint_index: usize,
-) -> Option<WaypointHandoffEvaluation> {
+) -> Option<crate::WaypointHandoffAssessment> {
     let route = ctx.mission.transfer_route.as_ref()?;
     let waypoint = route.waypoints.get(waypoint_index)?;
     let anchor_m = if waypoint_index == 0 {
@@ -192,21 +186,16 @@ fn waypoint_handoff_evaluation(
     let cross_track_m = vec_cross(to_waypoint_m, leg_unit).abs();
     let plane_progress_m = vec_dot(to_waypoint_m, leg_unit);
     let outbound_progress_mps = vec_dot(state.velocity_mps, next_leg_unit);
-    let triggered = plane_progress_m >= 0.0 || distance_m <= waypoint.capture_radius_m;
-    let spatial_pass = distance_m <= waypoint.capture_radius_m
-        || (cross_track_m <= waypoint.max_cross_track_m
-            && plane_progress_m >= -waypoint.capture_radius_m);
-    let outbound_pass = outbound_heading_error_rad <= waypoint.max_outbound_heading_error_rad
-        && outbound_progress_mps >= waypoint.min_outbound_progress_mps
-        && speed_mps >= waypoint.min_speed_mps
-        && speed_mps <= waypoint.max_speed_mps
-        && state.velocity_mps.y >= waypoint.min_vertical_speed_mps
-        && state.velocity_mps.y <= waypoint.max_vertical_speed_mps;
-
-    Some(WaypointHandoffEvaluation {
-        triggered,
-        contract_pass: spatial_pass && outbound_pass,
-    })
+    Some(waypoint.assess_handoff(WaypointHandoffKinematics {
+        distance_m,
+        cross_track_m,
+        plane_progress_m,
+        outbound_heading_error_rad,
+        outbound_progress_mps,
+        outbound_cross_speed_mps: vec_cross(state.velocity_mps, next_leg_unit).abs(),
+        speed_mps,
+        vertical_speed_mps: state.velocity_mps.y,
+    }))
 }
 
 fn normalized(vector: Vec2) -> Option<Vec2> {
@@ -467,10 +456,11 @@ mod tests {
                         max_cross_track_m: 15.0,
                         max_outbound_heading_error_rad: 0.7,
                         min_outbound_progress_mps: 5.0,
+                        max_outbound_cross_speed_mps: None,
                         min_speed_mps: 10.0,
                         max_speed_mps: 90.0,
-                        min_vertical_speed_mps: -40.0,
-                        max_vertical_speed_mps: 40.0,
+                        min_vertical_speed_mps: Some(-40.0),
+                        max_vertical_speed_mps: Some(40.0),
                     }],
                 }),
                 goal: EvaluationGoal::WaypointHandoff {

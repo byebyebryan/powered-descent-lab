@@ -2693,7 +2693,10 @@ fn waypoint_cell_summary<'a>(
     let outbound_unviable_runs = records
         .iter()
         .filter(|record| {
-            record.review.waypoint_contract_status.as_deref() == Some("outbound_unviable")
+            matches!(
+                record.review.waypoint_contract_status.as_deref(),
+                Some("outbound_out_of_envelope" | "outbound_unviable")
+            )
         })
         .count();
     let incomplete_runs = records
@@ -2782,7 +2785,7 @@ fn waypoint_record_score(record: &crate::BatchRunRecord) -> f64 {
     let mut score = 0.0;
     match record.review.waypoint_contract_status.as_deref() {
         Some("spatial_miss") => score += 12_000.0,
-        Some("outbound_unviable") => score += 10_000.0,
+        Some("outbound_out_of_envelope" | "outbound_unviable") => score += 10_000.0,
         Some("incomplete") => score += 8_000.0,
         Some("unknown") => score += 6_000.0,
         Some("pass") => {}
