@@ -155,11 +155,11 @@ Current corpus tiers:
   - 108 runs
   - full-seed contract probe for the smoother waypoint profile
 - `transfer_waypoint_turn_smoke`
-  - 108 landing runs over `r-30 | r00 | r+30`, nominal radius, all 3 payload
-    tiers, all 3 smoke seeds, and four balanced turn profiles
+  - 81 landing runs over `r-30 | r00 | r+30`, nominal radius, all 3 payload
+    tiers, all 3 smoke seeds, and three balanced turn profiles
   - the maintained broad waypoint-guidance workbench
 - `transfer_waypoint_turn_contract_smoke`
-  - the same `108` selector cells as `transfer_waypoint_turn_smoke`
+  - the same `81` selector cells as `transfer_waypoint_turn_smoke`
   - scores `pass_through_v1` at the first waypoint handoff instead of allowing
     final-landing recovery to hide route-quality errors
 
@@ -171,9 +171,8 @@ Resolved transfer runs use transfer-specific selector fields:
 - `radius_tier = nominal`
 - `resolved_seed = 0` style seed labels
 - `vehicle_variant = empty | half | full`
-- `waypoint_profile` selects `single_straight_v1`, `single_gentle_bend_v1`,
-  `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn
-  corpus
+- `waypoint_profile` selects `single_gentle_bend_v1`,
+  `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn corpus
 - `waypoint_handoff_envelope = pass_through_v1` for the balanced turn corpus
 - `lane = current`
 
@@ -257,9 +256,13 @@ Implementation checkpoint:
   plane-crossing cross-track band is wider than the dogleg profile because this
   is a pass-through waypoint, not a precision stop.
 - The balanced turn profiles keep progress and spatial tolerance fixed while
-  varying only source-side offset: `single_straight_v1` resolves to `0.0deg`,
-  `single_gentle_bend_v1` to `22.8deg`, `single_medium_bend_v1` to `43.9deg`,
-  and `single_sharp_bend_v1` to `62.3deg`.
+  varying only source-side offset: `single_gentle_bend_v1` resolves to
+  `22.8deg`, `single_medium_bend_v1` to `43.9deg`, and
+  `single_sharp_bend_v1` to `62.3deg`.
+- `single_straight_v1` was removed because its zero-offset capture volume
+  intersected the monotonic route terrain. Pack-resolution tests now require
+  every maintained waypoint volume plus vehicle touchdown offset to clear the
+  resolved terrain.
 - `pass_through_v1` is an explicit route-relative handoff envelope: maximum
   outbound heading error `0.35rad`, minimum outbound progress `8m/s`, maximum
   outbound cross speed `20m/s`, and total speed from `10m/s` through `130m/s`.
@@ -415,21 +418,22 @@ and `--no-reuse`:
 
 Current balanced waypoint-turn checkpoint:
 
-- `transfer_waypoint_turn_smoke`: `60 / 108` final-landing successes
-  - by route: `r+30` is `36 / 36`, `r00` is `24 / 36`, and `r-30` is `0 / 36`
-  - by profile: straight `10 / 27`, gentle `14 / 27`, medium `18 / 27`, sharp
-    `18 / 27`
-- `transfer_waypoint_turn_contract_smoke`: `12 / 108` handoff successes, `64`
-  spatial misses, `25` outbound-envelope failures, and `7` incomplete/crash
+- `transfer_waypoint_turn_smoke`: `50 / 81` final-landing successes
+  - by route: `r+30` is `27 / 27`, `r00` is `23 / 27`, and `r-30` is `0 / 27`
+  - by profile: gentle `14 / 27`, medium `18 / 27`, sharp `18 / 27`
+- `transfer_waypoint_turn_contract_smoke`: `12 / 81` handoff successes, `46`
+  spatial misses, `21` outbound-envelope failures, and `2` incomplete/crash
   cases
 - all `12` contract passes are level-route runs; the final-landing and contract
-  packs agree on handoff status for all `108` paired selector cells
+  packs agree on handoff status for all `81` paired selector cells
 - the main gap is now route-frame waypoint guidance: downhill waypoint routes
-  fail completely, while the straight-through profile is unexpectedly weaker
-  than the medium and sharp profiles on level routes
-- next work should diagnose active-leg targeting, route-orientation handling,
-  and spatial-capture timing across the balanced matrix before any more tuning
-  of the old `r+80` profiles
+  fail completely and many successful landings still miss the handoff contract
+- a staged full-contract coast gate plus active-waypoint corridor suppression
+  was rejected: landing stayed `50 / 81`, contract fell to `3 / 81`, and no
+  downhill cell improved
+- next work should separate the fixed active-leg endpoint used for acceptance
+  and prediction from the moving lookahead target used for steering, then retest
+  route orientation and capture timing before more `r+80` tuning
 
 Legacy waypoint regression checkpoint:
 

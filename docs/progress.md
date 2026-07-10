@@ -2,7 +2,7 @@
 
 ## 2026-07-09
 
-### Balanced waypoint-turn baseline and direct-transfer closure
+### Balanced waypoint-turn corpus repair and direct-transfer closure
 
 - Added a route-local uphill-corridor brake that opposes targetward lateral
   speed once the steep source-clearance corridor is tilt-limited. The rule uses
@@ -26,39 +26,49 @@
   at least `8m/s` outbound progress, at most `20m/s` outbound cross speed, and
   total speed from `10m/s` through `130m/s`; it deliberately leaves vertical
   speed unbounded for this first route-relative corpus.
-- Added four balanced one-waypoint profiles at 55% route progress with common
-  spatial tolerances:
-  - `single_straight_v1`: `0%` lateral offset, `0.0deg` turn
+- The maintained balanced corpus now has three one-waypoint profiles at 55%
+  route progress with common spatial tolerances:
   - `single_gentle_bend_v1`: `10%` offset, `22.8deg` turn
   - `single_medium_bend_v1`: `20%` offset, `43.9deg` turn
   - `single_sharp_bend_v1`: `30%` offset, `62.3deg` turn
+- Removed `single_straight_v1`: placing its waypoint directly on the monotonic
+  source-to-target terrain made the capture volume intersect terrain. Resolved
+  pack tests now require every maintained waypoint capture volume plus vehicle
+  touchdown offset to clear the actual scenario terrain.
 - Added paired `transfer_waypoint_turn_smoke` final-landing and
-  `transfer_waypoint_turn_contract_smoke` handoff packs. Each has `108` unique
-  runs over four profiles, `r-30 | r00 | r+30`, `empty | half | full`, nominal
+  `transfer_waypoint_turn_contract_smoke` handoff packs. Each has `81` unique
+  runs over three profiles, `r-30 | r00 | r+30`, `empty | half | full`, nominal
   radius, and three smoke seeds. Reports group this dense matrix by waypoint
   profile before route and expose the resolved envelope and outbound cross
   speed.
-- Fresh paired baseline:
-  - final landing: `60 / 108` successes and `48` crashes; `r+30` is `36 / 36`,
-    `r00` is `24 / 36`, and `r-30` is `0 / 36`
-  - profile landing totals are straight `10 / 27`, gentle `14 / 27`, medium
-    `18 / 27`, and sharp `18 / 27`
-  - handoff contract: `12 / 108` passes, `64` spatial misses, `25` outbound
-    envelope failures, and `7` incomplete/crash-before-handoff cases
-  - all `12` handoff passes are level-route cells; profile totals are straight
-    `0`, gentle `3`, medium `3`, and sharp `6`
+- Fresh `8`-worker, `--no-reuse` paired baseline at `1c88f87`:
+  - final landing: `50 / 81` successes and `31` crashes; `r+30` is `27 / 27`,
+    `r00` is `23 / 27`, and `r-30` is `0 / 27`
+  - profile landing totals are gentle `14 / 27`, medium `18 / 27`, and sharp
+    `18 / 27`
+  - handoff contract: `12 / 81` passes, `46` spatial misses, `21` outbound
+    envelope failures, and `2` incomplete/crash-before-handoff cases
+  - all `12` handoff passes are level-route cells; profile totals are gentle
+    `3`, medium `3`, and sharp `6`
   - paired landing and contract records now agree on handoff status for all
-    `108` selector cells
+    `81` selector cells
+- Rejected a staged coast/corridor controller experiment after the repaired
+  corpus stayed at `50 / 81` landings with no downhill gain while contract
+  passes regressed from `12 / 81` to `3 / 81`. Requiring a full predicted
+  handoff before coast and suppressing the direct terrain corridor did not add a
+  corrective waypoint objective; it prolonged boost against the same moving
+  virtual target and shifted failures to `42` spatial misses, `33` outbound
+  failures, and `3` incomplete timeouts.
 - Legacy regression results remain stable:
   - dogleg smoke landing `27 / 27`, dogleg contract `0 / 27`
   - smooth-bend smoke landing `27 / 27`, smooth-bend contract `15 / 27`
   - smooth-bend full landing `108 / 108`, smooth-bend full contract `57 / 108`
 - Interpretation: direct transfer no longer blocks Phase 3. The balanced corpus
   shows that waypoint guidance itself is not general yet: downhill waypoint
-  routes fail completely, level straight-through guidance is unexpectedly
-  weak, and many recoverable landings violate the handoff contract. The next
-  pass should analyze route-frame guidance and capture timing across these
-  broad axes, not add per-profile or per-route-angle state-machine branches.
+  routes fail completely and many recoverable landings violate the handoff
+  contract. The next controller slice should separate fixed leg-end acceptance
+  geometry from the moving steering/lookahead target before revisiting coast or
+  corridor policy; it should not add per-profile or per-route-angle branches.
 
 ### Initial waypoint smooth-profile workbench checkpoint
 

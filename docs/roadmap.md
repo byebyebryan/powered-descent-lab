@@ -299,7 +299,7 @@ Status:
   at the first waypoint handoff
 - `transfer_waypoint_turn_smoke` and
   `transfer_waypoint_turn_contract_smoke` are the paired broad waypoint
-  workbench: four `0deg` through `62deg` turn profiles, three representative
+  workbench: three `23deg` through `62deg` turn profiles, three representative
   route angles, all payloads, nominal radius, and smoke seeds
 - waypoint profiles and handoff envelopes are separate selectors. The balanced
   corpus uses one `pass_through_v1` route-relative envelope across every turn
@@ -331,20 +331,26 @@ Status:
   - smooth-bend smoke landing `27 / 27`, smooth-bend smoke contract `15 / 27`
   - smooth-bend full landing `108 / 108`, smooth-bend full contract `57 / 108`
 - current balanced waypoint-guidance checkpoint:
-  - `transfer_waypoint_turn_smoke`: `60 / 108` final-landing successes; route
-    split is `r+30 36 / 36`, `r00 24 / 36`, and `r-30 0 / 36`
-  - `transfer_waypoint_turn_contract_smoke`: `12 / 108` contract successes,
-    `64` spatial misses, `25` outbound-envelope failures, and `7` incomplete or
+  - `transfer_waypoint_turn_smoke`: `50 / 81` final-landing successes; route
+    split is `r+30 27 / 27`, `r00 23 / 27`, and `r-30 0 / 27`
+  - `transfer_waypoint_turn_contract_smoke`: `12 / 81` contract successes,
+    `46` spatial misses, `21` outbound-envelope failures, and `2` incomplete or
     crash-before-handoff cases
-  - paired landing and contract packs agree on the handoff status of all `108`
+  - paired landing and contract packs agree on the handoff status of all `81`
     selector cells
-  - all contract passes are level-route runs; straight-through waypoint
-    guidance is unexpectedly weaker than medium/sharp turns, while downhill
-    waypoint routes fail completely
+  - all contract passes are level-route runs, while downhill waypoint routes
+    fail completely
+  - `single_straight_v1` is no longer supported because its capture volume
+    intersected the route terrain; resolved corpus tests now enforce terrain
+    clearance for maintained waypoint volumes
+  - a staged full-contract coast gate plus active-waypoint corridor suppression
+    was rejected after landing stayed `50 / 81`, contract regressed to `3 / 81`,
+    and no downhill cell improved
 - next transfer slice should improve waypoint route quality before landing-time
   optimization, without moving waypoint planning into the controller:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - diagnose active-leg target construction, signed route-frame handling, and
+  - separate fixed leg-end acceptance/prediction geometry from the moving
+    steering/lookahead target, then diagnose signed route-frame handling and
     spatial-capture timing on the balanced corpus
   - require a general controller hypothesis that improves multiple profiles and
     route orientations; do not add profile-ID or route-angle branches
@@ -513,6 +519,6 @@ The next useful work is:
 The immediate controller direction should stay conservative. Direct transfer is
 now clean across the maintained wide matrix; the active gap is terrain-blind
 pass-through waypoint guidance. The next controller change should explain the
-balanced corpus's route-orientation and straight-through failures with one
-route-frame mechanism, not another broad terminal tune or a profile-specific
-state machine.
+balanced corpus's route-orientation failures with one route-frame mechanism,
+starting by separating fixed leg-end acceptance geometry from moving steering
+lookahead, not another broad terminal tune or a profile-specific state machine.
