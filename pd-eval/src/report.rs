@@ -6271,11 +6271,10 @@ fn selector_sort_rank(key: &str) -> u8 {
         "r+45" => 8,
         "r+60" => 9,
         "r+80" => 10,
-        "single_straight_v1" => 0,
-        "single_gentle_bend_v1" => 1,
-        "single_medium_bend_v1" | "single_bend_v1" => 2,
-        "single_sharp_bend_v1" => 3,
-        "single_dogleg_v1" => 4,
+        "single_gentle_bend_v1" => 0,
+        "single_medium_bend_v1" | "single_bend_v1" => 1,
+        "single_sharp_bend_v1" => 2,
+        "single_dogleg_v1" => 3,
         "low" => 0,
         "mid" => 1,
         "high" => 2,
@@ -8467,11 +8466,14 @@ mod report_tests {
             &[("r00", "empty", 20.0, 7), ("r00", "empty", 22.0, 9)],
         );
         report.records[0].resolved.selector.waypoint_profile = "single_sharp_bend_v1".to_owned();
-        report.records[1].resolved.selector.waypoint_profile = "single_straight_v1".to_owned();
+        report.records[1].resolved.selector.waypoint_profile = "single_gentle_bend_v1".to_owned();
 
         let grouped = records_by_waypoint_profile(&report.records.iter().collect::<Vec<_>>());
         assert_eq!(grouped["single_sharp_bend_v1"][0].resolved.resolved_seed, 7);
-        assert_eq!(grouped["single_straight_v1"][0].resolved.resolved_seed, 9);
+        assert_eq!(
+            grouped["single_gentle_bend_v1"][0].resolved.resolved_seed,
+            9
+        );
 
         let html = render_batch_report(
             Path::new("outputs/eval/waypoint_profile_tree_unit"),
@@ -8481,17 +8483,17 @@ mod report_tests {
         );
 
         assert_eq!(html.matches(r#"data-kind="waypoint profile""#).count(), 2);
-        let straight_index = html
+        let gentle_index = html
             .find(
-                r#"selector-inline">waypoint profile</span> <span class="selector-code">single_straight_v1</span>"#,
+                r#"selector-inline">waypoint profile</span> <span class="selector-code">single_gentle_bend_v1</span>"#,
             )
-            .expect("straight waypoint profile row should render");
+            .expect("gentle waypoint profile row should render");
         let sharp_index = html
             .find(
                 r#"selector-inline">waypoint profile</span> <span class="selector-code">single_sharp_bend_v1</span>"#,
             )
             .expect("sharp waypoint profile row should render");
-        assert!(straight_index < sharp_index);
+        assert!(gentle_index < sharp_index);
     }
 
     #[test]

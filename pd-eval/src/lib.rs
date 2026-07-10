@@ -1954,7 +1954,6 @@ fn validate_transfer_waypoint_profile(entry_id: &str, profile: &str) -> Result<(
         profile,
         TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1
             | TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1
-            | TRANSFER_WAYPOINT_PROFILE_SINGLE_STRAIGHT_V1
             | TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1
             | TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1
             | TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1
@@ -2509,7 +2508,6 @@ const SIGNED_ROUTE_ARC_TRANSFER_V1_SPEC: TransferRouteFamilySpec = TransferRoute
 
 const TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1: &str = "single_dogleg_v1";
 const TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1: &str = "single_bend_v1";
-const TRANSFER_WAYPOINT_PROFILE_SINGLE_STRAIGHT_V1: &str = "single_straight_v1";
 const TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1: &str = "single_gentle_bend_v1";
 const TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1: &str = "single_medium_bend_v1";
 const TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1: &str = "single_sharp_bend_v1";
@@ -3238,7 +3236,6 @@ fn transfer_waypoint_bend_profile_spec(profile: &str) -> Option<TransferWaypoint
             max_cross_track_factor: 1.75,
             min_route_angle_deg: Some(70.0),
         }),
-        TRANSFER_WAYPOINT_PROFILE_SINGLE_STRAIGHT_V1 => Some(balanced("wp_straight_01", 0.0)),
         TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1 => {
             Some(balanced("wp_gentle_bend_01", 0.10))
         }
@@ -8645,20 +8642,19 @@ mod tests {
         let mission_runs = resolve_pack_runs(&mission_pack, &packs_dir).unwrap();
         let contract_runs = resolve_pack_runs(&contract_pack, &packs_dir).unwrap();
 
-        assert_eq!(mission_runs.len(), 108);
-        assert_eq!(contract_runs.len(), 108);
+        assert_eq!(mission_runs.len(), 81);
+        assert_eq!(contract_runs.len(), 81);
         for runs in [&mission_runs, &contract_runs] {
             let run_ids = runs
                 .iter()
                 .map(|run| run.descriptor.run_id.as_str())
                 .collect::<BTreeSet<_>>();
-            assert_eq!(run_ids.len(), 108);
+            assert_eq!(run_ids.len(), 81);
             assert!(runs.iter().all(|run| {
                 run.descriptor.selector.waypoint_handoff_envelope
                     == TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1
             }));
             for profile in [
-                TRANSFER_WAYPOINT_PROFILE_SINGLE_STRAIGHT_V1,
                 TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1,
                 TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1,
                 TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1,
@@ -8675,7 +8671,7 @@ mod tests {
                     runs.iter()
                         .filter(|run| run.descriptor.selector.vehicle_variant == vehicle)
                         .count(),
-                    36
+                    27
                 );
             }
             for route_angle in ["r-30", "r00", "r+30"] {
@@ -8683,7 +8679,32 @@ mod tests {
                     runs.iter()
                         .filter(|run| run.descriptor.selector.route_angle == route_angle)
                         .count(),
-                    36
+                    27
+                );
+            }
+            for run in runs.iter() {
+                let waypoint = run
+                    .scenario
+                    .mission
+                    .transfer_route
+                    .as_ref()
+                    .and_then(|route| route.waypoints.first())
+                    .expect("balanced waypoint profile should resolve one waypoint");
+                let terrain_y_m = run
+                    .scenario
+                    .world
+                    .terrain
+                    .sample_height(waypoint.position_m.x);
+                let waypoint_clearance_m = waypoint.position_m.y - terrain_y_m;
+                let required_clearance_m = waypoint.capture_radius_m
+                    + run.scenario.vehicle.geometry.touchdown_base_offset_m;
+                assert!(
+                    waypoint_clearance_m > required_clearance_m,
+                    "profile {} route {} waypoint clearance {:.3} must exceed capture and vehicle clearance {:.3}",
+                    run.descriptor.selector.waypoint_profile,
+                    run.descriptor.selector.route_angle,
+                    waypoint_clearance_m,
+                    required_clearance_m,
                 );
             }
         }
@@ -8717,7 +8738,6 @@ mod tests {
         )));
 
         for (profile, expected_turn_angle_deg) in [
-            (TRANSFER_WAYPOINT_PROFILE_SINGLE_STRAIGHT_V1, 0.0),
             (TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1, 23.0),
             (TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1, 44.0),
             (TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1, 62.0),
