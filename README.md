@@ -446,15 +446,15 @@ Transfer route-angle checkpoint:
   - fixed-endpoint state-target guidance solves every balanced profile, route,
     payload, and smoke seed without route/profile branches
 - `transfer_waypoint_turn_smoke`
-  - `current`: `75 / 81` final landings
-  - all six failures pass the waypoint contract first, then crash during the
-    final direct-transfer/terminal leg
+  - `current`: `81 / 81` final landings
+  - balanced waypoint profiles now enforce gravity-aligned terrain-clearance
+    floors in the planner fixture; guidance remains terrain-blind
 
 So the main next bottleneck is no longer basic controller viability on the
 Earth-aligned workbench or balanced waypoint handoff. The next Phase 3 slice is
-the six post-handoff crashes: improve target-state energy or final-leg recovery
-while preserving `81 / 81` waypoint contracts and `297 / 297` direct transfer.
-After that boundary is stable, extend the same terrain-blind guidance to
-multiple preplanned waypoints. General terrain avoidance remains parked at the
-planning/collision-warning layer. Detailed checkpoint history lives in
-`docs/progress.md`, `docs/transfer_suite.md`, and `docs/terminal_suite.md`.
+to extend the same terrain-blind guidance to multiple preplanned waypoints and
+broaden route/radius evidence while preserving all `81 / 81` waypoint contracts
+and the `297 / 297` direct-transfer result. General terrain avoidance remains
+parked at the planning/collision-warning layer. Detailed checkpoint history
+lives in `docs/progress.md`, `docs/transfer_suite.md`, and
+`docs/terminal_suite.md`.

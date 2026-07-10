@@ -46,7 +46,7 @@ Current implementation status:
     handoff controller
   - direct transfer is clean across the maintained route-angle/radius matrix
   - `transfer_waypoint_pdg_v1` closes the balanced terrain-blind pass-through
-    handoff corpus; paired landing packs expose final-leg recovery as the active
+    handoff and paired landing corpus; multi-waypoint sequencing is the active
     gap
 
 ## 2. What Not To Build First
@@ -334,29 +334,27 @@ Status:
     older full-seed results predate the state-target controller
 - current balanced waypoint-guidance checkpoint:
   - `transfer_waypoint_turn_contract_smoke`: `81 / 81` contract successes with
-    `20.10s` mean and `32.13s` max sim time
-  - `transfer_waypoint_turn_smoke`: `75 / 81` final-landing successes; route
-    split is `r-30 24 / 27`, `r00 27 / 27`, and `r+30 24 / 27`
-  - all six failures pass the configured handoff envelope and then crash on the
-    final leg, separating arrival guidance from recovery debt
+    `21.43s` mean and `32.13s` max sim time
+  - `transfer_waypoint_turn_smoke`: `81 / 81` final-landing successes; every
+    route orientation lands `27 / 27`
+  - balanced planner fixtures enforce gravity-aligned `20% | 25% | 30%`
+    terrain-clearance floors for gentle through sharp profiles; the controller
+    remains terrain-blind
   - the state-target solve uses fixed endpoint geometry, outbound target
     velocity, geometry-derived time-to-go candidates, and a bounded path
     correction; it does not use sim timeout or route/profile branches
   - `single_straight_v1` is no longer supported because its capture volume
-    intersected the route terrain; resolved corpus tests now enforce terrain
-    clearance for maintained waypoint volumes
-- next transfer slice should improve final-leg recovery without moving waypoint
-  planning into the controller:
+    intersected the route terrain; resolved corpus tests now enforce the planner
+    floor and cross-track-plus-vehicle vertical clearance
+- next transfer slice should extend sequencing without moving waypoint planning
+  into the controller:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - diagnose the six post-handoff crashes by handoff energy, target-state choice,
-    and direct-transfer/terminal entry quality
-  - require a general controller hypothesis that improves multiple profiles and
-    route orientations; do not add profile-ID or route-angle branches
+  - add multiple waypoint handoffs before final landing, preserving useful
+    outbound state at every intermediate point
   - use the handoff pack as the primary guidance target and the paired landing
     pack as the recovery/reliability regression gate
-  - add multi-waypoint sequencing only after final-leg recovery is stable, then
-    expand route count and radius coverage without adding terrain reaction to
-    guidance
+  - expand route count and radius coverage without adding terrain reaction to
+    guidance or route/profile-specific controller branches
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 

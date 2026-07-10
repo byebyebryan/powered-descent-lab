@@ -2521,6 +2521,7 @@ struct TransferWaypointBendProfileSpec {
     waypoint_id: &'static str,
     progress_frac: f64,
     lateral_offset_ratio: f64,
+    min_terrain_clearance_ratio: f64,
     capture_radius_ratio: f64,
     min_capture_radius_m: f64,
     max_capture_radius_m: f64,
@@ -2938,10 +2939,25 @@ fn resolve_transfer_matrix_scenario(
         resolved_parameters.insert("waypoint_handoff_index".to_owned(), 0.0);
     }
     if let Some(route) = scenario.mission.transfer_route.as_ref() {
+        if let Some(profile_spec) = entry
+            .waypoint_profile
+            .as_deref()
+            .and_then(transfer_waypoint_bend_profile_spec)
+        {
+            resolved_parameters.insert(
+                "waypoint_planner_min_terrain_clearance_ratio".to_owned(),
+                profile_spec.min_terrain_clearance_ratio,
+            );
+            resolved_parameters.insert(
+                "waypoint_planner_min_terrain_clearance_m".to_owned(),
+                route.route_radius_m * profile_spec.min_terrain_clearance_ratio,
+            );
+        }
         insert_waypoint_geometry_resolved_parameters(
             &mut resolved_parameters,
             Vec2::new(source_pad.center_x_m, source_pad.surface_y_m),
             Vec2::new(target_pad.center_x_m, target_pad.surface_y_m),
+            &scenario.world.terrain,
             &route.waypoints,
             route.route_radius_m,
         );
@@ -3068,6 +3084,7 @@ fn configure_transfer_route_geometry(
         waypoint_profile,
         &source_pad,
         &target_pad,
+        &scenario.world.terrain,
         route_angle,
         radius_tier,
     )?;
@@ -3130,6 +3147,7 @@ fn transfer_route_waypoints_for_profile(
     waypoint_profile: Option<&str>,
     source_pad: &LandingPadSpec,
     target_pad: &LandingPadSpec,
+    terrain: &TerrainDefinition,
     route_angle: &TransferRouteAngleSpec,
     radius_tier: &TransferRadiusTierSpec,
 ) -> Result<Vec<TransferWaypointSpec>> {
@@ -3190,9 +3208,15 @@ fn transfer_route_waypoints_for_profile(
             let source_side_normal_m =
                 Vec2::new(-route_unit_m.y * direction, route_unit_m.x * direction);
             let radius_m = radius_tier.radius_m;
-            let position_m = source_m
+            let mut position_m = source_m
                 + (route_m * profile_spec.progress_frac)
                 + (source_side_normal_m * (radius_m * profile_spec.lateral_offset_ratio));
+            let minimum_terrain_clearance_m = radius_m * profile_spec.min_terrain_clearance_ratio;
+            if minimum_terrain_clearance_m > 0.0 {
+                position_m.y = position_m
+                    .y
+                    .max(terrain.sample_height(position_m.x) + minimum_terrain_clearance_m);
+            }
             let capture_radius_m = (radius_m * profile_spec.capture_radius_ratio).clamp(
                 profile_spec.min_capture_radius_m,
                 profile_spec.max_capture_radius_m,
@@ -3215,21 +3239,25 @@ fn transfer_route_waypoints_for_profile(
 }
 
 fn transfer_waypoint_bend_profile_spec(profile: &str) -> Option<TransferWaypointBendProfileSpec> {
-    let balanced = |waypoint_id, lateral_offset_ratio| TransferWaypointBendProfileSpec {
-        waypoint_id,
-        progress_frac: TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC,
-        lateral_offset_ratio,
-        capture_radius_ratio: 0.08,
-        min_capture_radius_m: 35.0,
-        max_capture_radius_m: 95.0,
-        max_cross_track_factor: 1.25,
-        min_route_angle_deg: None,
+    let balanced = |waypoint_id, lateral_offset_ratio, min_terrain_clearance_ratio| {
+        TransferWaypointBendProfileSpec {
+            waypoint_id,
+            progress_frac: TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC,
+            lateral_offset_ratio,
+            min_terrain_clearance_ratio,
+            capture_radius_ratio: 0.08,
+            min_capture_radius_m: 35.0,
+            max_capture_radius_m: 95.0,
+            max_cross_track_factor: 1.25,
+            min_route_angle_deg: None,
+        }
     };
     match profile {
         TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1 => Some(TransferWaypointBendProfileSpec {
             waypoint_id: "wp_bend_01",
             progress_frac: TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC,
             lateral_offset_ratio: TRANSFER_WAYPOINT_SINGLE_BEND_LATERAL_OFFSET_RATIO,
+            min_terrain_clearance_ratio: 0.0,
             capture_radius_ratio: 0.10,
             min_capture_radius_m: 40.0,
             max_capture_radius_m: 100.0,
@@ -3237,12 +3265,14 @@ fn transfer_waypoint_bend_profile_spec(profile: &str) -> Option<TransferWaypoint
             min_route_angle_deg: Some(70.0),
         }),
         TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1 => {
-            Some(balanced("wp_gentle_bend_01", 0.10))
+            Some(balanced("wp_gentle_bend_01", 0.10, 0.20))
         }
         TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1 => {
-            Some(balanced("wp_medium_bend_01", 0.20))
+            Some(balanced("wp_medium_bend_01", 0.20, 0.25))
         }
-        TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1 => Some(balanced("wp_sharp_bend_01", 0.30)),
+        TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1 => {
+            Some(balanced("wp_sharp_bend_01", 0.30, 0.30))
+        }
         _ => None,
     }
 }
@@ -3269,6 +3299,7 @@ fn insert_waypoint_geometry_resolved_parameters(
     resolved_parameters: &mut BTreeMap<String, f64>,
     source_m: Vec2,
     target_m: Vec2,
+    terrain: &TerrainDefinition,
     waypoints: &[TransferWaypointSpec],
     route_radius_m: f64,
 ) {
@@ -3283,6 +3314,12 @@ fn insert_waypoint_geometry_resolved_parameters(
 
     for (index, waypoint) in waypoints.iter().enumerate() {
         let prefix = format!("waypoint_{index}");
+        let terrain_y_m = terrain.sample_height(waypoint.position_m.x);
+        resolved_parameters.insert(format!("{prefix}_terrain_y_m"), terrain_y_m);
+        resolved_parameters.insert(
+            format!("{prefix}_terrain_clearance_m"),
+            waypoint.position_m.y - terrain_y_m,
+        );
         let anchor_m = if index == 0 {
             source_m
         } else {
@@ -8683,12 +8720,15 @@ mod tests {
                 );
             }
             for run in runs.iter() {
-                let waypoint = run
+                let route = run
                     .scenario
                     .mission
                     .transfer_route
                     .as_ref()
-                    .and_then(|route| route.waypoints.first())
+                    .expect("balanced waypoint profile should resolve a route");
+                let waypoint = route
+                    .waypoints
+                    .first()
                     .expect("balanced waypoint profile should resolve one waypoint");
                 let terrain_y_m = run
                     .scenario
@@ -8696,15 +8736,44 @@ mod tests {
                     .terrain
                     .sample_height(waypoint.position_m.x);
                 let waypoint_clearance_m = waypoint.position_m.y - terrain_y_m;
-                let required_clearance_m = waypoint.capture_radius_m
-                    + run.scenario.vehicle.geometry.touchdown_base_offset_m;
+                let profile_spec =
+                    transfer_waypoint_bend_profile_spec(&run.descriptor.selector.waypoint_profile)
+                        .expect("balanced waypoint profile should have geometry");
+                let minimum_profile_clearance_m =
+                    route.route_radius_m * profile_spec.min_terrain_clearance_ratio;
+                let required_envelope_clearance_m =
+                    waypoint.capture_radius_m.max(waypoint.max_cross_track_m)
+                        + run.scenario.vehicle.geometry.touchdown_base_offset_m;
                 assert!(
-                    waypoint_clearance_m > required_clearance_m,
-                    "profile {} route {} waypoint clearance {:.3} must exceed capture and vehicle clearance {:.3}",
+                    waypoint_clearance_m + 1.0e-6 >= minimum_profile_clearance_m,
+                    "profile {} route {} waypoint clearance {:.3} must meet planner floor {:.3}",
                     run.descriptor.selector.waypoint_profile,
                     run.descriptor.selector.route_angle,
                     waypoint_clearance_m,
-                    required_clearance_m,
+                    minimum_profile_clearance_m,
+                );
+                assert!(
+                    waypoint_clearance_m > required_envelope_clearance_m,
+                    "profile {} route {} waypoint clearance {:.3} must exceed envelope and vehicle clearance {:.3}",
+                    run.descriptor.selector.waypoint_profile,
+                    run.descriptor.selector.route_angle,
+                    waypoint_clearance_m,
+                    required_envelope_clearance_m,
+                );
+                let params = &run.descriptor.resolved_parameters;
+                assert_eq!(
+                    params["waypoint_planner_min_terrain_clearance_ratio"],
+                    profile_spec.min_terrain_clearance_ratio,
+                );
+                assert!(
+                    (params["waypoint_planner_min_terrain_clearance_m"]
+                        - minimum_profile_clearance_m)
+                        .abs()
+                        < 1.0e-9
+                );
+                assert!(
+                    (params["waypoint_0_terrain_clearance_m"] - waypoint_clearance_m).abs()
+                        < 1.0e-9
                 );
             }
         }
@@ -8738,8 +8807,8 @@ mod tests {
         )));
 
         for (profile, expected_turn_angle_deg) in [
-            (TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1, 23.0),
-            (TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1, 44.0),
+            (TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1, 44.0),
+            (TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1, 54.0),
             (TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1, 62.0),
         ] {
             let run = mission_runs

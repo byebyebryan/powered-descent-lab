@@ -1,5 +1,48 @@
 # Progress
 
+## 2026-07-10
+
+### Waypoint planner-clearance correction
+
+- Reclassified the last waypoint crashes as a corpus-planning defect rather
+  than controller terrain-recovery debt. The balanced profiles were offset from
+  the source-to-target terrain chord but had no gravity-aligned clearance floor;
+  the gentle `r00` waypoint sat only `80m` above terrain, exactly equal to its
+  maximum cross-track allowance.
+- Added planner-side minimum terrain-clearance ratios of `20% | 25% | 30%` for
+  the gentle, medium, and sharp profiles. At nominal radius, the `r00` waypoint
+  centers now clear terrain by `160m | 200m | 240m`; `r+30` uses the same
+  gravity-aligned floor over its local rising terrain.
+- Resolved parameters now expose waypoint terrain height, actual terrain
+  clearance, and the planner floor. Pack-resolution tests require both the
+  profile floor and more vertical clearance than the cross-track allowance plus
+  vehicle offset.
+- Removed the experimental final-descent speed cap after the corrected corpus
+  landed `81 / 81` without it. The speed cap modestly shortened mean sim time
+  but was no longer needed for correctness and would have preserved controller
+  complexity introduced to compensate for bad route planning.
+- Made touchdown settle persistent from the low-clearance rescue region through
+  contact and require safe angular rate before idle cutoff. This closes the
+  independently reproducible unsafe-angular-rate touchdown case without
+  changing the translational touchdown envelope.
+- Fresh `8`-worker, `--no-reuse` validation:
+  - `transfer_waypoint_turn_contract_smoke`: `81 / 81`, `2.29s` wall clock,
+    `21.43s` mean sim time, and `32.13s` max sim time
+  - `transfer_waypoint_turn_smoke`: `81 / 81`, `11.66s` wall clock, `62.72s`
+    mean sim time, and `90.72s` max sim time
+  - every route lands `27 / 27`; the worst reported uphill corridor margin
+    improves from about `-20m` to `+41m`
+  - `transfer_route_angle_radius_suite`: `297 / 297`, `44.51s` wall clock,
+    `63.78s` mean sim time, and `86.04s` max sim time
+  - `cargo test --workspace`: all tests pass
+- Rejected a blanket extra `10%` clearance floor (`160m | 240m | 320m`) because
+  the sharp `r00` waypoint became unreachable and regressed the handoff pack to
+  `73 / 81`. The narrower explicit tiers preserve all contracts and three
+  distinct route shapes.
+- The balanced single-waypoint workbench no longer has known landing or handoff
+  failures. Next work can move to multiple preplanned waypoints and wider
+  route/radius coverage without adding terrain reaction to guidance.
+
 ## 2026-07-09
 
 ### Fixed-endpoint state-target waypoint guidance checkpoint

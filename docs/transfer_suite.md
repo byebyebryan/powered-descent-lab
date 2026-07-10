@@ -255,14 +255,16 @@ Implementation checkpoint:
 - Its distance capture radius stays tight at 10% of route radius, but its
   plane-crossing cross-track band is wider than the dogleg profile because this
   is a pass-through waypoint, not a precision stop.
-- The balanced turn profiles keep progress and spatial tolerance fixed while
-  varying only source-side offset: `single_gentle_bend_v1` resolves to
-  `22.8deg`, `single_medium_bend_v1` to `43.9deg`, and
-  `single_sharp_bend_v1` to `62.3deg`.
+- The balanced turn profiles keep progress and spatial tolerance fixed. Their
+  initial route-normal offsets are `10% | 20% | 30%`, then the planner fixture
+  lifts each waypoint vertically as needed to clear local terrain by at least
+  `20% | 25% | 30%` of route radius. At nominal-radius `r00`, this produces
+  `160m | 200m | 240m` terrain clearance and turns of roughly
+  `43.9deg | 53.5deg | 62.3deg`.
 - `single_straight_v1` was removed because its zero-offset capture volume
   intersected the monotonic route terrain. Pack-resolution tests now require
-  every maintained waypoint volume plus vehicle touchdown offset to clear the
-  resolved terrain.
+  every maintained waypoint to meet its planner floor and leave more vertical
+  clearance than its cross-track allowance plus vehicle touchdown offset.
 - `pass_through_v1` is an explicit route-relative handoff envelope: maximum
   outbound heading error `0.35rad`, minimum outbound progress `8m/s`, maximum
   outbound cross speed `20m/s`, and total speed from `10m/s` through `130m/s`.
@@ -428,23 +430,21 @@ and `--no-reuse`:
 Current balanced waypoint-turn checkpoint:
 
 - `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes, `0`
-  failures, `20.10s` mean sim time, and `32.13s` max sim time
-- `transfer_waypoint_turn_smoke`: `75 / 81` final-landing successes
-  - by route: `r-30` is `24 / 27`, `r00` is `27 / 27`, and `r+30` is `24 / 27`
-  - all six failed runs satisfy the waypoint contract, then crash during the
-    final direct-transfer/terminal leg
+  failures, `21.43s` mean sim time, and `32.13s` max sim time
+- `transfer_waypoint_turn_smoke`: `81 / 81` final-landing successes; `r-30`,
+  `r00`, and `r+30` each land `27 / 27`
 - the state-target controller therefore closes the maintained pass-through
   guidance contract across all profiles, route orientations, payloads, and
-  smoke seeds; the active gap is final-leg energy/recovery quality, not waypoint
-  capture or outbound alignment
-- the contract pack completes in `1.98s` wall clock with `8` workers. Mean
+  smoke seeds; planner-side terrain-clearance floors keep those routes valid
+  without terrain queries or fixture branches in guidance
+- the contract pack completes in `2.29s` wall clock with `8` workers. Mean
   controller-update compute is `16.6us`, versus `219.1us` for the `12 / 81`
   baseline, so the wider guidance solve remains well below the `1ms` budget
 - direct-transfer regression remains `297 / 297`, confirming that the waypoint
   mechanism did not alter the non-waypoint controller path
-- next work should diagnose the six post-handoff crashes and improve target
-  state selection or final-leg recovery without weakening the handoff envelope
-  or adding route/profile-specific branches
+- next work should add multiple preplanned waypoint handoffs and broaden
+  route/radius coverage without weakening the handoff envelope, adding
+  route/profile branches, or reviving generalized terrain avoidance
 
 Legacy waypoint regression checkpoint:
 
