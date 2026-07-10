@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use pd_core::{Command, Observation, RunContext};
 use serde::{Deserialize, Serialize};
 
+use crate::guidance::{allocate_accel_command, required_control_accel};
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
 use crate::{Controller, ControllerFrame, TelemetryValue};
 
@@ -487,8 +488,7 @@ impl TerminalPdgController {
             selected.burn_time_s,
             view.observation.gravity_mps2,
         );
-        let (throttle_frac, target_attitude_rad) =
-            self.allocate_command(ax_req, ay_req, max_thrust_accel_mps2, max_tilt_rad);
+        let command = allocate_accel_command(ax_req, ay_req, max_thrust_accel_mps2, max_tilt_rad);
 
         TerminalCommandState {
             mode: guidance_mode,
@@ -497,8 +497,8 @@ impl TerminalPdgController {
             projected_time_s: projection.time_to_cross_s,
             has_target_y_solution: projection.has_target_y_solution,
             desired_vertical_speed_mps,
-            target_attitude_rad,
-            throttle_frac,
+            target_attitude_rad: command.target_attitude_rad,
+            throttle_frac: command.throttle_frac,
             max_tilt_rad,
             latest_safe_margin_s: latest_safe.latest_safe_margin_s,
         }
@@ -1120,22 +1120,6 @@ impl TerminalPdgController {
             best_candidate,
             ready: candidates.iter().any(|candidate| candidate.ready),
         }
-    }
-
-    fn allocate_command(
-        &self,
-        ax_req_mps2: f64,
-        ay_req_mps2: f64,
-        max_thrust_accel_mps2: f64,
-        max_tilt_rad: f64,
-    ) -> (f64, f64) {
-        let ay = ay_req_mps2.clamp(0.0, max_thrust_accel_mps2);
-        let tilt_tan = max_tilt_rad.tan();
-        let ax = ax_req_mps2.clamp(-tilt_tan * ay.max(0.2), tilt_tan * ay.max(0.2));
-        let thrust_accel = (ax * ax + ay * ay).sqrt();
-        let throttle_frac = (thrust_accel / max_thrust_accel_mps2.max(1e-6)).clamp(0.0, 1.0);
-        let target_attitude_rad = ax.atan2(ay.max(0.2)).clamp(-max_tilt_rad, max_tilt_rad);
-        (throttle_frac, target_attitude_rad)
     }
 
     fn settled_descent_command(
@@ -2176,27 +2160,6 @@ mod tests {
 
         assert_eq!(candidates[0], safe_high_ratio);
     }
-}
-
-fn required_control_accel(
-    dx_m: f64,
-    dy_m: f64,
-    vx_mps: f64,
-    vy_up_mps: f64,
-    target_vx_mps: f64,
-    target_vy_up_mps: f64,
-    time_to_go_s: f64,
-    gravity_mps2: f64,
-) -> (f64, f64) {
-    let t = time_to_go_s.max(1e-3);
-    let t2 = t * t;
-    let zem_x = dx_m - (vx_mps * t);
-    let zem_y = dy_m - (vy_up_mps * t) + (0.5 * gravity_mps2 * t2);
-    let zev_x = target_vx_mps - vx_mps;
-    let zev_y = target_vy_up_mps - vy_up_mps + (gravity_mps2 * t);
-    let ax = ((6.0 * zem_x) / t2) - ((2.0 * zev_x) / t);
-    let ay = ((6.0 * zem_y) / t2) - ((2.0 * zev_y) / t);
-    (ax, ay)
 }
 
 #[allow(clippy::too_many_arguments)]

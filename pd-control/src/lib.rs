@@ -5,6 +5,7 @@ use pd_core::{Observation, RunArtifacts, RunContext, SimulationError, run_simula
 use serde::{Deserialize, Serialize};
 
 mod controllers;
+mod guidance;
 pub mod kit;
 mod terminal_pdg;
 
