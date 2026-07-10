@@ -857,6 +857,22 @@ mod tests {
             Some(&TelemetryValue::from("nominal pending"))
         );
         assert!(frame.metrics.contains_key(metric::GUIDANCE_BURN_TIME_S));
+        assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_PLAN_ACTIVE),
+            Some(&TelemetryValue::from(false))
+        );
+        assert_eq!(
+            frame_metric_f64(&frame, metric::GUIDANCE_PLAN_ARRIVAL_TIME_S),
+            -1.0
+        );
+        assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_PLAN_REPLAN_COUNT),
+            Some(&TelemetryValue::from(0_i64))
+        );
+        assert_eq!(
+            frame_metric_f64(&frame, metric::GUIDANCE_CANDIDATE_BURN_TIME_S),
+            frame_metric_f64(&frame, metric::GUIDANCE_BURN_TIME_S)
+        );
         assert!(
             frame
                 .metrics

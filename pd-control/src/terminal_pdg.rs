@@ -9,6 +9,7 @@ use crate::{Controller, ControllerFrame, TelemetryValue};
 
 const TERMINAL_GATE_LONG_CAPTURE_BURN_TIME_MAX_S: f64 = 30.0;
 const TERMINAL_GATE_CANDIDATE_TIME_EPS_S: f64 = 1e-6;
+const TERMINAL_GUIDANCE_TIME_FLOOR_S: f64 = 0.5;
 // Local hover-avoidance horizon for centered terminal settle; intentionally
 // independent of the scenario's simulation stop time.
 const SETTLED_DESCENT_TIME_HORIZON_S: f64 = 3.0;
@@ -211,6 +212,11 @@ struct TerminalGateCandidate {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+struct TerminalGuidancePlan {
+    arrival_time_s: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct TerminalCommandState {
     mode: GuidanceMode,
     candidate: TerminalGateCandidate,
@@ -222,6 +228,9 @@ struct TerminalCommandState {
     throttle_frac: f64,
     max_tilt_rad: f64,
     latest_safe_margin_s: f64,
+    candidate_burn_time_s: f64,
+    plan_arrival_time_s: Option<f64>,
+    plan_replan_count: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -269,6 +278,11 @@ pub struct TerminalPdgController {
     nominal_ready_ticks: u32,
     latest_safe_release_ticks: u32,
     touchdown_settle_active: bool,
+    guidance_plan_retention_enabled: bool,
+    guidance_plan_admitted: bool,
+    guidance_plan_completed: bool,
+    guidance_plan: Option<TerminalGuidancePlan>,
+    guidance_replan_count: u32,
 }
 
 impl Default for TerminalPdgController {
@@ -286,6 +300,11 @@ impl TerminalPdgController {
             nominal_ready_ticks: 0,
             latest_safe_release_ticks: 0,
             touchdown_settle_active: false,
+            guidance_plan_retention_enabled: false,
+            guidance_plan_admitted: false,
+            guidance_plan_completed: false,
+            guidance_plan: None,
+            guidance_replan_count: 0,
         }
     }
 
@@ -378,6 +397,21 @@ impl TerminalPdgController {
         }
     }
 
+    pub(crate) fn set_guidance_plan_retention_enabled(&mut self, enabled: bool) {
+        self.guidance_plan_retention_enabled = enabled;
+        if !enabled {
+            self.guidance_plan_admitted = false;
+            self.guidance_plan_completed = false;
+            self.guidance_plan = None;
+            self.guidance_replan_count = 0;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn guidance_plan_retention_enabled(&self) -> bool {
+        self.guidance_plan_retention_enabled
+    }
+
     fn phase_for_height(&self, height_above_target_m: f64) -> &'static str {
         if height_above_target_m > self.config.vy_low_alt_cap_alt_m {
             phase::DESCENT
@@ -452,7 +486,7 @@ impl TerminalPdgController {
         let guidance_mode =
             self.select_guidance_mode(latest_safe.latest_safe_margin_s, nominal_ready);
 
-        let selected = match guidance_mode {
+        let selected_candidate = match guidance_mode {
             GuidanceMode::LatestSafe => latest_safe.best_candidate,
             GuidanceMode::NominalReady | GuidanceMode::NominalPending => nominal.best_candidate,
         };
@@ -478,21 +512,112 @@ impl TerminalPdgController {
             vy_up_mps,
             gravity_mps2,
         );
+        let candidate_burn_time_s = selected_candidate.burn_time_s;
+        self.update_guidance_plan_admission(candidate_burn_time_s, vy_up_mps);
+        if self.guidance_plan_retention_enabled
+            && self.guidance_plan_admitted
+            && !self.guidance_plan_completed
+            && self.guidance_plan_release_ready(
+                vy_up_mps,
+                lateral_dx_m,
+                touchdown_center_limit_m,
+                vx_mps,
+                latest_safe.latest_safe_margin_s,
+            )
+        {
+            self.guidance_plan_completed = true;
+            self.guidance_plan = None;
+        }
+        let guidance_plan_active = self.guidance_plan_retention_enabled
+            && self.guidance_plan_admitted
+            && !self.guidance_plan_completed;
+        let (active_candidate, plan_arrival_time_s) = if guidance_plan_active {
+            let replacement_candidate = self.evaluate_candidate(
+                view,
+                dx_m,
+                dy_m,
+                true,
+                vx_mps,
+                vy_up_mps,
+                candidate_burn_time_s,
+                desired_vertical_speed_mps,
+                max_tilt_rad,
+                max_thrust_accel_mps2,
+                1.0,
+                0.0,
+                gravity_mps2,
+            );
+            let retained_candidate = self.guidance_plan.map(|plan| {
+                self.evaluate_candidate(
+                    view,
+                    dx_m,
+                    dy_m,
+                    true,
+                    vx_mps,
+                    vy_up_mps,
+                    (plan.arrival_time_s - view.observation.sim_time_s)
+                        .max(TERMINAL_GUIDANCE_TIME_FLOOR_S),
+                    desired_vertical_speed_mps,
+                    max_tilt_rad,
+                    max_thrust_accel_mps2,
+                    1.0,
+                    0.0,
+                    gravity_mps2,
+                )
+            });
+            let plan = self.maintain_guidance_plan(
+                view.observation.sim_time_s,
+                candidate_burn_time_s,
+                retained_candidate.is_none_or(|candidate| candidate.ready),
+                replacement_candidate.ready,
+            );
+            let plan_horizon_s = (plan.arrival_time_s - view.observation.sim_time_s)
+                .max(TERMINAL_GUIDANCE_TIME_FLOOR_S);
+            let active_candidate = if (plan_horizon_s - candidate_burn_time_s).abs()
+                <= TERMINAL_GATE_CANDIDATE_TIME_EPS_S
+            {
+                replacement_candidate
+            } else {
+                self.evaluate_candidate(
+                    view,
+                    dx_m,
+                    dy_m,
+                    true,
+                    vx_mps,
+                    vy_up_mps,
+                    plan_horizon_s,
+                    desired_vertical_speed_mps,
+                    max_tilt_rad,
+                    max_thrust_accel_mps2,
+                    1.0,
+                    0.0,
+                    gravity_mps2,
+                )
+            };
+            (active_candidate, Some(plan.arrival_time_s))
+        } else {
+            (selected_candidate, None)
+        };
+        let guidance_dy_m = if guidance_plan_active {
+            dy_m + view.ctx.vehicle.geometry.touchdown_base_offset_m
+        } else {
+            dy_m
+        };
         let (ax_req, ay_req) = required_control_accel(
             dx_m,
-            dy_m,
+            guidance_dy_m,
             vx_mps,
             vy_up_mps,
             0.0,
             desired_vertical_speed_mps,
-            selected.burn_time_s,
+            active_candidate.burn_time_s,
             view.observation.gravity_mps2,
         );
         let command = allocate_accel_command(ax_req, ay_req, max_thrust_accel_mps2, max_tilt_rad);
 
         TerminalCommandState {
             mode: guidance_mode,
-            candidate: selected,
+            candidate: active_candidate,
             projected_dx_m: projection.projected_dx_m,
             projected_time_s: projection.time_to_cross_s,
             has_target_y_solution: projection.has_target_y_solution,
@@ -501,7 +626,67 @@ impl TerminalPdgController {
             throttle_frac: command.throttle_frac,
             max_tilt_rad,
             latest_safe_margin_s: latest_safe.latest_safe_margin_s,
+            candidate_burn_time_s,
+            plan_arrival_time_s,
+            plan_replan_count: self.guidance_replan_count,
         }
+    }
+
+    fn maintain_guidance_plan(
+        &mut self,
+        sim_time_s: f64,
+        candidate_burn_time_s: f64,
+        retained_plan_feasible: bool,
+        replacement_candidate_feasible: bool,
+    ) -> TerminalGuidancePlan {
+        let expired = self
+            .guidance_plan
+            .is_some_and(|plan| plan.arrival_time_s <= sim_time_s);
+        let dynamically_infeasible = self.guidance_plan.is_some()
+            && !retained_plan_feasible
+            && replacement_candidate_feasible;
+        let should_replace = self.guidance_plan.is_none() || expired || dynamically_infeasible;
+        if should_replace {
+            if self.guidance_plan.is_some() {
+                self.guidance_replan_count = self.guidance_replan_count.saturating_add(1);
+            }
+            self.guidance_plan = Some(TerminalGuidancePlan {
+                arrival_time_s: sim_time_s
+                    + candidate_burn_time_s.max(TERMINAL_GUIDANCE_TIME_FLOOR_S),
+            });
+        }
+        self.guidance_plan
+            .expect("terminal guidance plan should exist after maintenance")
+    }
+
+    fn update_guidance_plan_admission(&mut self, candidate_burn_time_s: f64, vy_up_mps: f64) {
+        if !self.guidance_plan_retention_enabled
+            || self.guidance_plan_admitted
+            || self.guidance_plan_completed
+        {
+            return;
+        }
+        if candidate_burn_time_s
+            >= self.config.terminal_gate_burn_time_max_s - TERMINAL_GATE_CANDIDATE_TIME_EPS_S
+        {
+            self.guidance_plan_admitted = true;
+        } else if vy_up_mps <= 0.0 {
+            self.guidance_plan_completed = true;
+        }
+    }
+
+    fn guidance_plan_release_ready(
+        &self,
+        vy_up_mps: f64,
+        lateral_dx_m: f64,
+        touchdown_center_limit_m: f64,
+        vx_mps: f64,
+        latest_safe_margin_s: f64,
+    ) -> bool {
+        vy_up_mps <= 0.0
+            && lateral_dx_m.abs() <= touchdown_center_limit_m
+            && vx_mps.abs() <= self.config.terminal_overshoot_tilt_vx_min_mps
+            && latest_safe_margin_s <= 0.0
     }
 
     fn select_guidance_mode(
@@ -553,6 +738,10 @@ impl TerminalPdgController {
         self.nominal_ready_ticks = 0;
         self.latest_safe_release_ticks = 0;
         self.touchdown_settle_active = false;
+        self.guidance_plan_admitted = false;
+        self.guidance_plan_completed = false;
+        self.guidance_plan = None;
+        self.guidance_replan_count = 0;
     }
 
     fn braking_speed_limit(
@@ -899,6 +1088,7 @@ impl TerminalPdgController {
         view: &ControllerView<'_>,
         dx_m: f64,
         dy_m: f64,
+        target_touchdown_center: bool,
         vx_mps: f64,
         vy_up_mps: f64,
         burn_time_s: f64,
@@ -909,9 +1099,14 @@ impl TerminalPdgController {
         min_upward_accel_mps2: f64,
         gravity_mps2: f64,
     ) -> TerminalGateCandidate {
+        let guidance_dy_m = if target_touchdown_center {
+            dy_m + view.ctx.vehicle.geometry.touchdown_base_offset_m
+        } else {
+            dy_m
+        };
         let (ax_req, ay_req) = required_control_accel(
             dx_m,
-            dy_m,
+            guidance_dy_m,
             vx_mps,
             vy_up_mps,
             0.0,
@@ -1015,6 +1210,7 @@ impl TerminalPdgController {
                     view,
                     dx_m,
                     dy_m,
+                    false,
                     vx_mps,
                     vy_up_mps,
                     burn_time_s,
@@ -1098,6 +1294,7 @@ impl TerminalPdgController {
                     view,
                     dx_m,
                     dy_m,
+                    false,
                     vx_mps,
                     vy_up_mps,
                     burn_time_s,
@@ -1629,6 +1826,7 @@ impl TerminalPdgController {
                 view,
                 dx_m,
                 dy_m,
+                false,
                 vx_mps,
                 vy_up_mps,
                 burn_time_s,
@@ -1724,6 +1922,22 @@ impl Controller for TerminalPdgController {
             .metric(
                 metric::GUIDANCE_BURN_TIME_S,
                 command_state.candidate.burn_time_s,
+            )
+            .metric(
+                metric::GUIDANCE_CANDIDATE_BURN_TIME_S,
+                command_state.candidate_burn_time_s,
+            )
+            .metric(
+                metric::GUIDANCE_PLAN_ACTIVE,
+                command_state.plan_arrival_time_s.is_some(),
+            )
+            .metric(
+                metric::GUIDANCE_PLAN_ARRIVAL_TIME_S,
+                command_state.plan_arrival_time_s.unwrap_or(-1.0),
+            )
+            .metric(
+                metric::GUIDANCE_PLAN_REPLAN_COUNT,
+                i64::from(command_state.plan_replan_count),
             )
             .metric(
                 metric::GUIDANCE_REQUIRED_ACCEL_RATIO,
@@ -2078,6 +2292,12 @@ mod tests {
         controller.nominal_ready_ticks = 3;
         controller.latest_safe_release_ticks = 1;
         controller.touchdown_settle_active = true;
+        controller.guidance_plan_admitted = true;
+        controller.guidance_plan_completed = true;
+        controller.guidance_plan = Some(TerminalGuidancePlan {
+            arrival_time_s: 22.0,
+        });
+        controller.guidance_replan_count = 2;
 
         controller.reset_state();
 
@@ -2086,6 +2306,109 @@ mod tests {
         assert_eq!(controller.nominal_ready_ticks, 0);
         assert_eq!(controller.latest_safe_release_ticks, 0);
         assert!(!controller.touchdown_settle_active);
+        assert!(!controller.guidance_plan_admitted);
+        assert!(!controller.guidance_plan_completed);
+        assert_eq!(controller.guidance_plan, None);
+        assert_eq!(controller.guidance_replan_count, 0);
+    }
+
+    #[test]
+    fn terminal_guidance_plan_counts_down_without_moving_arrival_time() {
+        let mut controller = TerminalPdgController::default();
+
+        let first = controller.maintain_guidance_plan(10.0, 22.0, true, true);
+        let second = controller.maintain_guidance_plan(11.5, 22.0, true, true);
+
+        assert_eq!(first.arrival_time_s, 32.0);
+        assert_eq!(second.arrival_time_s, first.arrival_time_s);
+        assert_eq!(second.arrival_time_s - 11.5, 20.5);
+        assert_eq!(controller.guidance_replan_count, 0);
+    }
+
+    #[test]
+    fn terminal_guidance_plan_waits_for_long_capture_while_ascending() {
+        let mut controller = TerminalPdgController::default();
+        controller.set_guidance_plan_retention_enabled(true);
+
+        controller.update_guidance_plan_admission(4.0, 11.0);
+        assert!(!controller.guidance_plan_admitted);
+        assert!(!controller.guidance_plan_completed);
+
+        controller
+            .update_guidance_plan_admission(controller.config.terminal_gate_burn_time_max_s, 10.0);
+        assert!(controller.guidance_plan_admitted);
+        assert!(!controller.guidance_plan_completed);
+    }
+
+    #[test]
+    fn terminal_guidance_plan_declines_short_capture_after_apex() {
+        let mut controller = TerminalPdgController::default();
+        controller.set_guidance_plan_retention_enabled(true);
+
+        controller.update_guidance_plan_admission(10.0, -1.0);
+
+        assert!(!controller.guidance_plan_admitted);
+        assert!(controller.guidance_plan_completed);
+    }
+
+    #[test]
+    fn terminal_guidance_plan_releases_only_at_captured_braking_boundary() {
+        let controller = TerminalPdgController::default();
+
+        assert!(controller.guidance_plan_release_ready(-4.0, 4.0, 12.0, 7.0, -0.1));
+        assert!(!controller.guidance_plan_release_ready(1.0, 4.0, 12.0, 7.0, -0.1));
+        assert!(!controller.guidance_plan_release_ready(-4.0, 14.0, 12.0, 7.0, -0.1));
+        assert!(!controller.guidance_plan_release_ready(-4.0, 4.0, 12.0, 9.0, -0.1));
+        assert!(!controller.guidance_plan_release_ready(-4.0, 4.0, 12.0, 7.0, 0.1));
+    }
+
+    #[test]
+    fn terminal_guidance_mode_change_does_not_extend_plan() {
+        let mut controller = release_test_controller();
+        let first = controller.maintain_guidance_plan(4.0, 14.0, true, true);
+        controller.last_mode = Some(GuidanceMode::LatestSafe);
+        let mode = controller.select_guidance_mode(0.5, true);
+        controller.last_mode = Some(mode);
+        let second = controller.maintain_guidance_plan(4.5, 22.0, true, true);
+
+        assert_eq!(mode, GuidanceMode::LatestSafe);
+        assert_eq!(first.arrival_time_s, second.arrival_time_s);
+        assert_eq!(controller.guidance_replan_count, 0);
+    }
+
+    #[test]
+    fn terminal_guidance_plan_replaces_materially_infeasible_horizon_once() {
+        let mut controller = TerminalPdgController::default();
+        controller.maintain_guidance_plan(0.0, 14.0, true, true);
+
+        let replacement = controller.maintain_guidance_plan(2.0, 10.0, false, true);
+        let retained = controller.maintain_guidance_plan(2.5, 10.0, true, true);
+
+        assert_eq!(replacement.arrival_time_s, 12.0);
+        assert_eq!(retained.arrival_time_s, replacement.arrival_time_s);
+        assert_eq!(controller.guidance_replan_count, 1);
+    }
+
+    #[test]
+    fn terminal_guidance_plan_holds_when_no_feasible_replacement_exists() {
+        let mut controller = TerminalPdgController::default();
+        let initial = controller.maintain_guidance_plan(0.0, 14.0, true, true);
+
+        let retained = controller.maintain_guidance_plan(2.0, 22.0, false, false);
+
+        assert_eq!(retained.arrival_time_s, initial.arrival_time_s);
+        assert_eq!(controller.guidance_replan_count, 0);
+    }
+
+    #[test]
+    fn terminal_guidance_plan_replaces_expired_horizon() {
+        let mut controller = TerminalPdgController::default();
+        controller.maintain_guidance_plan(0.0, 3.0, true, true);
+
+        let replacement = controller.maintain_guidance_plan(3.0, 6.0, false, false);
+
+        assert_eq!(replacement.arrival_time_s, 9.0);
+        assert_eq!(controller.guidance_replan_count, 1);
     }
 
     #[test]

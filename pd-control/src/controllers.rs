@@ -1004,7 +1004,8 @@ impl Default for TransferPdgController {
 
 impl TransferPdgController {
     pub fn new(config: TransferPdgControllerConfig) -> Self {
-        let terminal = TerminalPdgController::new(config.terminal.clone());
+        let mut terminal = TerminalPdgController::new(config.terminal.clone());
+        terminal.set_guidance_plan_retention_enabled(config.waypoint_guidance_enabled);
         Self {
             config,
             terminal,
@@ -3928,6 +3929,17 @@ mod tests {
             panic!("waypoint alias should use transfer controller");
         };
         assert!(config.waypoint_guidance_enabled);
+    }
+
+    #[test]
+    fn transfer_enables_retained_terminal_plans_only_for_waypoint_guidance() {
+        let direct = TransferPdgController::default();
+        let mut waypoint_config = TransferPdgControllerConfig::default();
+        waypoint_config.waypoint_guidance_enabled = true;
+        let waypoint = TransferPdgController::new(waypoint_config);
+
+        assert!(!direct.terminal.guidance_plan_retention_enabled());
+        assert!(waypoint.terminal.guidance_plan_retention_enabled());
     }
 
     #[test]

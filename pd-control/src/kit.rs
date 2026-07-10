@@ -33,6 +33,10 @@ pub mod metric {
     pub const PROJECTED_TIME_S: &str = "guidance.projected_time_s";
     pub const GUIDANCE_MODE: &str = "guidance.mode";
     pub const GUIDANCE_BURN_TIME_S: &str = "guidance.burn_time_s";
+    pub const GUIDANCE_CANDIDATE_BURN_TIME_S: &str = "guidance.candidate_burn_time_s";
+    pub const GUIDANCE_PLAN_ACTIVE: &str = "guidance.plan_active";
+    pub const GUIDANCE_PLAN_ARRIVAL_TIME_S: &str = "guidance.plan_arrival_time_s";
+    pub const GUIDANCE_PLAN_REPLAN_COUNT: &str = "guidance.plan_replan_count";
     pub const GUIDANCE_REQUIRED_ACCEL_RATIO: &str = "guidance.required_accel_ratio";
     pub const GUIDANCE_MAX_TILT_RAD: &str = "guidance.max_tilt_rad";
     pub const GUIDANCE_LATEST_SAFE_MARGIN_S: &str = "guidance.latest_safe_margin_s";
