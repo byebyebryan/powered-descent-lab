@@ -2,6 +2,51 @@
 
 ## 2026-07-09
 
+### Fixed-endpoint state-target waypoint guidance checkpoint
+
+- Extracted shared state-target acceleration and thrust/tilt allocation
+  primitives so terminal and waypoint guidance use the same control math.
+- Split waypoint geometry into a fixed leg endpoint for acceptance/state
+  targeting and a moving active-leg lookahead used only for bounded path
+  correction. The correction fades near handoff and is capped at 15% of current
+  thrust authority.
+- Active waypoint guidance now chooses an outbound-envelope target velocity and
+  a geometry-derived time to go, then commands the acceleration needed to reach
+  the fixed endpoint in that state. Candidate horizons depend on remaining leg
+  distance and speed, not `sim.max_time_s`.
+- Plans are stable per leg and are replaced only after expiry or dynamic
+  infeasibility. The arrival instant, rather than a pre-expiry grace threshold,
+  controls expiry so the controller does not replan every update near handoff.
+- Rejected the first minimum-effort candidate ordering: favoring low target
+  speed and long horizons improved final landing to `78 / 81` but produced only
+  `18 / 81` contract passes, dominated by long plane-cross spatial misses.
+  Preferring the shortest authority-feasible candidate fixed the actual
+  pass-through objective without route/profile branches.
+- Fresh `8`-worker, `--no-reuse` balanced validation after cleanup:
+  - `transfer_waypoint_turn_contract_smoke`: `81 / 81` passes, `0` failures,
+    `1.98s` wall clock, `20.10s` mean sim time, and `32.13s` max sim time
+  - `transfer_waypoint_turn_smoke`: `75 / 81` landings and `6` crashes,
+    `12.38s` wall clock, `63.56s` mean sim time, and `100.22s` max sim time
+  - route landing totals are `r-30 24 / 27`, `r00 27 / 27`, and
+    `r+30 24 / 27`
+  - every failed landing first passes the waypoint contract; the remaining
+    failures are final direct-transfer/terminal recovery debt
+  - mean controller-update compute on the contract pack is `16.6us`, down from
+    `219.1us` at the `12 / 81` baseline and well below the `1ms` budget
+- Fresh direct-transfer regression remains `297 / 297`, with `50.43s` wall
+  clock, `63.79s` mean sim time, and `86.04s` max sim time.
+- Legacy stress diagnostics are intentionally not acceptance gates:
+  - smooth bend: `27 / 27` handoff contracts and `16 / 27` final landings
+  - dogleg hairpin: `0 / 27` handoff contracts and `21 / 27` final landings
+- Removed the superseded waypoint boost-score tie-breaker, outbound moving-target
+  blend, active-waypoint coast preview, and their telemetry/config/test surface.
+  Active guidance is now one route-frame state-target mechanism rather than a
+  stack of optional local heuristics.
+- Next: diagnose the six post-handoff crashes and improve target energy or
+  final-leg recovery while preserving `81 / 81` handoffs and `297 / 297` direct
+  transfer. Multi-waypoint sequencing follows after that recovery boundary is
+  stable.
+
 ### Balanced waypoint-turn corpus repair and direct-transfer closure
 
 - Added a route-local uphill-corridor brake that opposes targetward lateral

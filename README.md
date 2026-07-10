@@ -433,45 +433,28 @@ Experimental terrain diagnostic snapshot:
 
 Transfer route-angle checkpoint:
 
-- `transfer_route_angle_suite`
-  - `current`: `90 / 99` successes, `9` crashes, `0` invalidations
-  - latest local tuning run used `8` workers and completed the same 99-run pack
-    with `56.24s` mean sim time
-  - all downhill, flat, and moderate uphill routes from `r-80` through `r+60`
-    are solved across `empty`, `half`, and `full`
-  - the only remaining route-shape failures are `r+80` across payload tiers;
-    treat that as near-cliff launch/waypoint debt rather than terminal
-    guidance debt
-  - report triage now keeps that frontier visible while surfacing
-    landed-but-ugly handoff and cutoff cells for the next controller pass
-- `transfer_radius_tier_suite`
-  - `current`: `135 / 135` successes, `0` invalidations across smoke routes and
-    all three radius tiers
 - `transfer_route_angle_radius_suite`
-  - `current`: `270 / 297` successes, `27` crashes, `0` invalidations
-  - all remaining crashes are the known `r+80` near-vertical frontier across
-    payload and radius tiers
-  - the previous non-frontier `full/r-80` short/long radius failures are now
-    covered by source-clearance hold plus transfer-scoped terminal handoff
-    horizon tuning
-- `transfer_route_angle_radius_full_solved`
-  - `current`: `1080 / 1080` successes, `0` invalidations across full seeds,
-    solved route angles, all radius tiers, and all payload tiers
+  - `current`: `297 / 297` successes, `0` crashes, `0` invalidations
+  - the maintained smoke matrix is clean across all route angles, radius tiers,
+    payloads, and seeds
 - `transfer_route_angle_radius_frontier_full`
-  - `current`: `0 / 108` successes, `108` crashes, `0` invalidations
-  - all runs are the intentionally separated `r+80` near-vertical frontier
+  - `current`: `108 / 108` successes and `0` invalidations
+  - the historical frontier name now denotes a focused steep-uphill regression,
+    not a current failure region
+- `transfer_waypoint_turn_contract_smoke`
+  - `current`: `81 / 81` pass-through handoff successes
+  - fixed-endpoint state-target guidance solves every balanced profile, route,
+    payload, and smoke seed without route/profile branches
+- `transfer_waypoint_turn_smoke`
+  - `current`: `75 / 81` final landings
+  - all six failures pass the waypoint contract first, then crash during the
+    final direct-transfer/terminal leg
 
 So the main next bottleneck is no longer basic controller viability on the
-Earth-aligned workbench. Clean `empty` and `half` are solved, clean `full`
-is still the low-thrust/high-energy frontier and its failed cells remain
-scored, trajectory-error `empty` is solved, trajectory-error `half` has sparse
-high-energy scored failures concentrated in `traj_overshoot_large / a60`, and
-trajectory-error `full` is the main frontier-annotated stress tier. Terrain
-avoidance is no longer a terminal guidance blocker; it is parked until the lab
-has an approach-corridor or waypoint-planning layer. Detailed checkpoint history
-lives in `docs/progress.md` and `docs/terminal_suite.md`.
-
-The next useful Phase 3 slice is waypoint-style route shaping. Broad transfer
-controller tuning should stay optional and hypothesis-gated rather than the
-default path; the full-seed solved-region gate is clean, and the only unresolved
-transfer matrix remains the separately tracked `r+80` near-vertical frontier.
+Earth-aligned workbench or balanced waypoint handoff. The next Phase 3 slice is
+the six post-handoff crashes: improve target-state energy or final-leg recovery
+while preserving `81 / 81` waypoint contracts and `297 / 297` direct transfer.
+After that boundary is stable, extend the same terrain-blind guidance to
+multiple preplanned waypoints. General terrain avoidance remains parked at the
+planning/collision-warning layer. Detailed checkpoint history lives in
+`docs/progress.md`, `docs/transfer_suite.md`, and `docs/terminal_suite.md`.

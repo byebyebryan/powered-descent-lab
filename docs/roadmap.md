@@ -45,8 +45,9 @@ Current implementation status:
   - `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
     handoff controller
   - direct transfer is clean across the maintained route-angle/radius matrix
-  - `transfer_waypoint_pdg_v1` and paired landing/handoff packs expose
-    terrain-blind pass-through waypoint guidance as the active gap
+  - `transfer_waypoint_pdg_v1` closes the balanced terrain-blind pass-through
+    handoff corpus; paired landing packs expose final-leg recovery as the active
+    gap
 
 ## 2. What Not To Build First
 
@@ -305,8 +306,8 @@ Status:
   corpus uses one `pass_through_v1` route-relative envelope across every turn
   profile so geometry and contract difficulty are not conflated.
 - `transfer_waypoint_pdg_v1` provides the first terrain-blind waypoint guidance
-  variant: track active leg, spatially capture the waypoint, then resume the
-  final target leg
+  variant: powered state-target guidance reaches the fixed waypoint endpoint
+  with an outbound-envelope velocity, then resumes the final target leg
 - `TransferWaypointSpec::assess_handoff` centralizes handoff semantics across
   core evaluation, controller capture, and reporting; contract probes evaluate
   on controller observation boundaries
@@ -327,37 +328,35 @@ Status:
     remain useful stress labels, but direct transfer is no longer the active
     Phase 3 blocker
 - current legacy waypoint regression checkpoint:
-  - dogleg smoke landing `27 / 27`, dogleg smoke contract `0 / 27`
-  - smooth-bend smoke landing `27 / 27`, smooth-bend smoke contract `15 / 27`
-  - smooth-bend full landing `108 / 108`, smooth-bend full contract `57 / 108`
+  - dogleg smoke landing `21 / 27`, dogleg smoke contract `0 / 27`
+  - smooth-bend smoke landing `16 / 27`, smooth-bend smoke contract `27 / 27`
+  - the legacy `r+80` packs are diagnostic stress routes, not acceptance gates;
+    older full-seed results predate the state-target controller
 - current balanced waypoint-guidance checkpoint:
-  - `transfer_waypoint_turn_smoke`: `50 / 81` final-landing successes; route
-    split is `r+30 27 / 27`, `r00 23 / 27`, and `r-30 0 / 27`
-  - `transfer_waypoint_turn_contract_smoke`: `12 / 81` contract successes,
-    `46` spatial misses, `21` outbound-envelope failures, and `2` incomplete or
-    crash-before-handoff cases
-  - paired landing and contract packs agree on the handoff status of all `81`
-    selector cells
-  - all contract passes are level-route runs, while downhill waypoint routes
-    fail completely
+  - `transfer_waypoint_turn_contract_smoke`: `81 / 81` contract successes with
+    `20.10s` mean and `32.13s` max sim time
+  - `transfer_waypoint_turn_smoke`: `75 / 81` final-landing successes; route
+    split is `r-30 24 / 27`, `r00 27 / 27`, and `r+30 24 / 27`
+  - all six failures pass the configured handoff envelope and then crash on the
+    final leg, separating arrival guidance from recovery debt
+  - the state-target solve uses fixed endpoint geometry, outbound target
+    velocity, geometry-derived time-to-go candidates, and a bounded path
+    correction; it does not use sim timeout or route/profile branches
   - `single_straight_v1` is no longer supported because its capture volume
     intersected the route terrain; resolved corpus tests now enforce terrain
     clearance for maintained waypoint volumes
-  - a staged full-contract coast gate plus active-waypoint corridor suppression
-    was rejected after landing stayed `50 / 81`, contract regressed to `3 / 81`,
-    and no downhill cell improved
-- next transfer slice should improve waypoint route quality before landing-time
-  optimization, without moving waypoint planning into the controller:
+- next transfer slice should improve final-leg recovery without moving waypoint
+  planning into the controller:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - separate fixed leg-end acceptance/prediction geometry from the moving
-    steering/lookahead target, then diagnose signed route-frame handling and
-    spatial-capture timing on the balanced corpus
+  - diagnose the six post-handoff crashes by handoff energy, target-state choice,
+    and direct-transfer/terminal entry quality
   - require a general controller hypothesis that improves multiple profiles and
     route orientations; do not add profile-ID or route-angle branches
   - use the handoff pack as the primary guidance target and the paired landing
     pack as the recovery/reliability regression gate
-  - defer hover/landing-time tightening until waypoint capture and handoff
-    reliability are structurally sound
+  - add multi-waypoint sequencing only after final-leg recovery is stable, then
+    expand route count and radius coverage without adding terrain reaction to
+    guidance
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
@@ -512,13 +511,13 @@ The next useful work is:
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
-   direct-transfer regression gates. Use the paired balanced waypoint-turn
-   packs to diagnose route-frame waypoint guidance before adding waypoint
-   planning, terrain-aware routing, more route radii, or multiple waypoints.
+   direct-transfer regression gates. Keep the balanced waypoint contract at
+   `81 / 81` while improving the paired final-landing pack, then add
+   multi-waypoint sequencing before waypoint planning or terrain-aware routing.
 
 The immediate controller direction should stay conservative. Direct transfer is
-now clean across the maintained wide matrix; the active gap is terrain-blind
-pass-through waypoint guidance. The next controller change should explain the
-balanced corpus's route-orientation failures with one route-frame mechanism,
-starting by separating fixed leg-end acceptance geometry from moving steering
-lookahead, not another broad terminal tune or a profile-specific state machine.
+clean across the maintained wide matrix and balanced pass-through handoff is
+clean across all `81` cells. The next controller change should explain the six
+post-handoff crashes with one target-state or recovery mechanism while
+preserving `81 / 81` handoffs and `297 / 297` direct transfer, not weaken the
+contract or add a profile-specific state machine.

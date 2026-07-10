@@ -272,16 +272,26 @@ Implementation checkpoint:
   spatial triggering and outbound-envelope classification in `pd-core`,
   `pd-control`, and `pd-eval`.
 - `transfer_waypoint_pdg_v1` is the first terrain-blind waypoint controller
-  variant. It tracks the active leg, blocks terminal handoff until the waypoint
-  is captured, and then lets the existing terminal handoff logic solve the
-  final target leg.
-- Active-waypoint coast is guarded by a short coast preview: the controller may
-  reject coast if it would hit terrain before reaching the active waypoint. This
-  is a safety veto against premature ballistic handoff, not terrain avoidance,
-  rerouting, or fixture-specific obstacle logic.
-- The experimental waypoint handoff boost scorer remains default-off. When
-  enabled, waypoint quality is only a small tie-breaker on top of transfer
-  scoring; it must not replace the base transfer safety score.
+  variant. While a waypoint is active, it keeps the leg under powered guidance,
+  blocks direct-transfer coast/terminal handoff, and guides to the fixed
+  waypoint endpoint with a target velocity aligned to the outbound leg. After
+  capture, the existing direct-transfer and terminal logic solve the final leg.
+- Fixed acceptance geometry and moving steering geometry are separate. The
+  state-target solve always uses the configured waypoint endpoint; the active-leg
+  lookahead contributes only a bounded L1-style path correction that fades near
+  the handoff and may use at most 15% of current thrust authority.
+- Candidate target speeds come from the configured outbound envelope, current
+  outbound progress, and transfer cruise speed. Candidate horizons come from
+  remaining leg distance and those speeds, not from the mission timeout. The
+  controller prefers the shortest authority-feasible candidate and retains that
+  per-leg plan until it expires or becomes dynamically infeasible.
+- The waypoint solve reuses the same state-target acceleration and thrust/tilt
+  allocation primitives as terminal guidance. Telemetry exposes endpoint and
+  steering coordinates, target velocity, time to go, required acceleration
+  ratio, feasibility, path-correction magnitude, and replan count.
+- Active waypoint guidance does not query terrain. Source-pad clearance remains
+  a separate launch guard; waypoint placement and terrain-valid arrival
+  envelopes remain planner responsibilities.
 - V1 capture status is deliberately spatial: capture means reaching the
   configured radius or crossing the waypoint plane inside the cross-track band.
   The stricter waypoint contract is reported separately: spatial misses are
@@ -301,12 +311,11 @@ Implementation checkpoint:
   visible.
 - Waypoint turn-feasibility telemetry now reports remaining distance to the
   waypoint plane, estimated time to plane, required turn distance, shaping-start
-  distance, and turn margin. The first tuning pass using those fields confirmed
-  that `single_dogleg_v1` is usually already turn-margin negative before the
-  handoff plane. Local outbound target blending and low-throttle candidate
-  tweaks did not produce contract-passing handoffs; that result motivated the
-  balanced turn corpus. Current work should diagnose route-frame guidance on
-  that corpus rather than adding more dogleg-specific target heuristics.
+  distance, and turn margin. Earlier local target blending, boost-score
+  tie-breakers, and active-waypoint coast previews did not create a corrective
+  arrival objective and have been removed. The retained state-target mechanism
+  is route-frame and envelope driven; it does not branch on profile or route
+  labels.
 - Waypoint-profile report rows now include the profile, resolved handoff
   envelope, turn angle, and outbound cross speed. Multi-profile review trees add
   a profile level before route; single-profile reports retain their compact
@@ -395,8 +404,8 @@ The current staged controller uses the transfer diagnostics directly:
 - uphill coast may enter terminal control just before crossing target height,
   but only when the crossing is imminent, the projected terminal miss is
   centered, and the latest-safe gate is already close
-- waypoint coast is blocked while the active waypoint cannot be reached before
-  terrain contact under passive coast
+- an active waypoint stays under powered state-target guidance; generic
+  boost/coast/terminal staging resumes only after spatial capture
 
 The corridor guard is still route-local, not broad terrain avoidance. It is
 intended to protect near-source uphill climbs from terrain collision without
@@ -418,28 +427,32 @@ and `--no-reuse`:
 
 Current balanced waypoint-turn checkpoint:
 
-- `transfer_waypoint_turn_smoke`: `50 / 81` final-landing successes
-  - by route: `r+30` is `27 / 27`, `r00` is `23 / 27`, and `r-30` is `0 / 27`
-  - by profile: gentle `14 / 27`, medium `18 / 27`, sharp `18 / 27`
-- `transfer_waypoint_turn_contract_smoke`: `12 / 81` handoff successes, `46`
-  spatial misses, `21` outbound-envelope failures, and `2` incomplete/crash
-  cases
-- all `12` contract passes are level-route runs; the final-landing and contract
-  packs agree on handoff status for all `81` paired selector cells
-- the main gap is now route-frame waypoint guidance: downhill waypoint routes
-  fail completely and many successful landings still miss the handoff contract
-- a staged full-contract coast gate plus active-waypoint corridor suppression
-  was rejected: landing stayed `50 / 81`, contract fell to `3 / 81`, and no
-  downhill cell improved
-- next work should separate the fixed active-leg endpoint used for acceptance
-  and prediction from the moving lookahead target used for steering, then retest
-  route orientation and capture timing before more `r+80` tuning
+- `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes, `0`
+  failures, `20.10s` mean sim time, and `32.13s` max sim time
+- `transfer_waypoint_turn_smoke`: `75 / 81` final-landing successes
+  - by route: `r-30` is `24 / 27`, `r00` is `27 / 27`, and `r+30` is `24 / 27`
+  - all six failed runs satisfy the waypoint contract, then crash during the
+    final direct-transfer/terminal leg
+- the state-target controller therefore closes the maintained pass-through
+  guidance contract across all profiles, route orientations, payloads, and
+  smoke seeds; the active gap is final-leg energy/recovery quality, not waypoint
+  capture or outbound alignment
+- the contract pack completes in `1.98s` wall clock with `8` workers. Mean
+  controller-update compute is `16.6us`, versus `219.1us` for the `12 / 81`
+  baseline, so the wider guidance solve remains well below the `1ms` budget
+- direct-transfer regression remains `297 / 297`, confirming that the waypoint
+  mechanism did not alter the non-waypoint controller path
+- next work should diagnose the six post-handoff crashes and improve target
+  state selection or final-leg recovery without weakening the handoff envelope
+  or adding route/profile-specific branches
 
 Legacy waypoint regression checkpoint:
 
-- dogleg smoke landing `27 / 27`; dogleg smoke contract `0 / 27`
-- smooth-bend smoke landing `27 / 27`; smooth-bend smoke contract `15 / 27`
-- smooth-bend full landing `108 / 108`; smooth-bend full contract `57 / 108`
+- dogleg smoke landing `21 / 27`; dogleg smoke contract `0 / 27`
+- smooth-bend smoke landing `16 / 27`; smooth-bend smoke contract `27 / 27`
+- these `r+80` packs remain diagnostic stress routes rather than acceptance
+  gates. Their older full-seed snapshots predate the state-target controller and
+  are not current evidence.
 
 The following checkpoints are retained as historical tuning evidence.
 
