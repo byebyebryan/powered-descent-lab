@@ -938,6 +938,8 @@ fn render_batch_report(
 
     {overview_html}
 
+    {waypoint_sequence_html}
+
     {waypoint_triage_html}
 
     {transfer_handoff_triage_html}
@@ -1176,6 +1178,7 @@ fn render_batch_report(
         ),
         waypoint_triage_html =
             render_waypoint_triage_section(candidate, &output_dir, &candidate_record_links),
+        waypoint_sequence_html = render_waypoint_sequence_section(candidate),
         transfer_shape_triage_html = render_transfer_shape_triage_section(
             candidate,
             baseline.map(|(_, report)| report),
@@ -2505,6 +2508,36 @@ struct WaypointCellSummary<'a> {
     worst_record: Option<&'a crate::BatchRunRecord>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct WaypointSequenceCellKey {
+    condition_set: String,
+    vehicle_variant: String,
+    route_angle: String,
+    radius_tier: String,
+    waypoint_profile: String,
+    waypoint_index: usize,
+}
+
+struct WaypointSequenceCellSummary {
+    key: WaypointSequenceCellKey,
+    waypoint_id: Option<String>,
+    total_runs: usize,
+    route_pass_runs: usize,
+    route_failed_runs: usize,
+    route_incomplete_runs: usize,
+    handoff_runs: usize,
+    contract_pass_runs: usize,
+    spatial_miss_runs: usize,
+    outbound_failure_runs: usize,
+    incomplete_runs: usize,
+    capture_time_s: Option<crate::BatchMetricSummary>,
+    cross_track_m: Option<crate::BatchMetricSummary>,
+    heading_error_deg: Option<crate::BatchMetricSummary>,
+    speed_mps: Option<crate::BatchMetricSummary>,
+    turn_margin_m: Option<crate::BatchMetricSummary>,
+    guidance_replans: Option<crate::BatchMetricSummary>,
+}
+
 struct TransferHandoffCellSummary<'a> {
     key: TransferShapeCellKey,
     total_runs: usize,
@@ -2525,6 +2558,306 @@ struct TransferHandoffCellSummary<'a> {
     post_handoff_time_to_apex_s: Option<crate::BatchMetricSummary>,
     post_handoff_apex_dx_abs_m: Option<crate::BatchMetricSummary>,
     worst_record: Option<&'a crate::BatchRunRecord>,
+}
+
+fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
+    let candidate_records = preferred_current_lane_focus(candidate)
+        .map(|focus| focus.records)
+        .unwrap_or_else(|| candidate.records.iter().collect::<Vec<_>>());
+    let sequence_records = candidate_records
+        .iter()
+        .copied()
+        .filter(|record| {
+            record
+                .review
+                .waypoint_route_total
+                .is_some_and(|total| total > 1)
+        })
+        .collect::<Vec<_>>();
+    if sequence_records.is_empty() {
+        return String::new();
+    }
+
+    let route_pass_runs = sequence_records
+        .iter()
+        .filter(|record| record.review.waypoint_route_status.as_deref() == Some("pass"))
+        .count();
+    let route_failed_runs = sequence_records
+        .iter()
+        .filter(|record| record.review.waypoint_route_status.as_deref() == Some("failed"))
+        .count();
+    let route_incomplete_runs = sequence_records.len() - route_pass_runs - route_failed_runs;
+    let mut rows = waypoint_sequence_cell_summaries(sequence_records.as_slice());
+    rows.sort_by(compare_waypoint_sequence_cells);
+    let row_html = rows
+        .iter()
+        .map(render_waypoint_sequence_row)
+        .collect::<String>();
+
+    format!(
+        r#"<details class="transfer-handoff-section waypoint-sequence-section">
+  <summary class="section-head transfer-triage-summary">
+    <h2>Waypoint Sequence</h2>
+    <div class="section-note">Current-lane ordered route result: {route_pass_runs}/{total_runs} pass · {route_failed_runs} failed · {route_incomplete_runs} incomplete. Expand for each waypoint contract.</div>
+  </summary>
+  <div class="table-wrap">
+    <table class="transfer-handoff-table waypoint-sequence-table">
+      <thead>
+        <tr>
+          <th>Route</th>
+          <th>Vehicle</th>
+          <th>Profile</th>
+          <th>Waypoint</th>
+          <th>Route Result</th>
+          <th>Contract</th>
+          <th>Capture Time</th>
+          <th>Cross Track</th>
+          <th>Heading Error</th>
+          <th>Speed</th>
+          <th>Turn Margin</th>
+          <th>Replans</th>
+        </tr>
+      </thead>
+      <tbody>{row_html}</tbody>
+    </table>
+  </div>
+</details>"#,
+        total_runs = sequence_records.len(),
+    )
+}
+
+fn waypoint_sequence_cell_summaries(
+    records: &[&crate::BatchRunRecord],
+) -> Vec<WaypointSequenceCellSummary> {
+    let mut grouped = BTreeMap::<WaypointSequenceCellKey, Vec<&crate::BatchRunRecord>>::new();
+    for &record in records {
+        let Some(total) = record
+            .review
+            .waypoint_route_total
+            .filter(|total| *total > 1)
+        else {
+            continue;
+        };
+        let selector = &record.resolved.selector;
+        for waypoint_index in 0..total {
+            grouped
+                .entry(WaypointSequenceCellKey {
+                    condition_set: selector.condition_set.clone(),
+                    vehicle_variant: selector.vehicle_variant.clone(),
+                    route_angle: selector_preferred_value(
+                        &selector.route_angle,
+                        &selector.arc_point,
+                    ),
+                    radius_tier: selector_preferred_value(
+                        &selector.radius_tier,
+                        &selector.velocity_band,
+                    ),
+                    waypoint_profile: selector_value_or_unspecified(&selector.waypoint_profile),
+                    waypoint_index,
+                })
+                .or_default()
+                .push(record);
+        }
+    }
+
+    grouped
+        .into_iter()
+        .map(|(key, records)| waypoint_sequence_cell_summary(key, records.as_slice()))
+        .collect()
+}
+
+fn waypoint_sequence_cell_summary(
+    key: WaypointSequenceCellKey,
+    records: &[&crate::BatchRunRecord],
+) -> WaypointSequenceCellSummary {
+    let waypoint_index = key.waypoint_index;
+    let waypoint_id = records.iter().find_map(|record| {
+        waypoint_sequence_handoff(record, waypoint_index)
+            .and_then(|handoff| handoff.waypoint_id.clone())
+    });
+    let route_pass_runs = records
+        .iter()
+        .filter(|record| record.review.waypoint_route_status.as_deref() == Some("pass"))
+        .count();
+    let route_failed_runs = records
+        .iter()
+        .filter(|record| record.review.waypoint_route_status.as_deref() == Some("failed"))
+        .count();
+    let route_incomplete_runs = records.len() - route_pass_runs - route_failed_runs;
+    let handoff_runs = records
+        .iter()
+        .filter(|record| waypoint_sequence_handoff(record, waypoint_index).is_some())
+        .count();
+    let contract_count = |status: &str| {
+        records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.contract_status.as_deref())
+                    == Some(status)
+            })
+            .count()
+    };
+    let outbound_failure_runs = records
+        .iter()
+        .filter(|record| {
+            matches!(
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.contract_status.as_deref()),
+                Some("outbound_out_of_envelope" | "outbound_unviable")
+            )
+        })
+        .count();
+    let metric = |extractor: fn(&crate::BatchWaypointHandoffReviewMetrics) -> Option<f64>| {
+        transfer_shape_record_metric_summary(records, |record| {
+            waypoint_sequence_handoff(record, waypoint_index).and_then(extractor)
+        })
+    };
+
+    WaypointSequenceCellSummary {
+        key,
+        waypoint_id,
+        total_runs: records.len(),
+        route_pass_runs,
+        route_failed_runs,
+        route_incomplete_runs,
+        handoff_runs,
+        contract_pass_runs: contract_count("pass"),
+        spatial_miss_runs: contract_count("spatial_miss"),
+        outbound_failure_runs,
+        incomplete_runs: contract_count("incomplete"),
+        capture_time_s: metric(|handoff| handoff.capture_time_s),
+        cross_track_m: metric(|handoff| handoff.cross_track_m),
+        heading_error_deg: metric(|handoff| {
+            handoff.outbound_heading_error_rad.map(f64::to_degrees)
+        }),
+        speed_mps: metric(|handoff| handoff.speed_mps),
+        turn_margin_m: metric(|handoff| handoff.turn_margin_m),
+        guidance_replans: metric(|handoff| handoff.guidance_replan_count.map(|value| value as f64)),
+    }
+}
+
+fn waypoint_sequence_handoff(
+    record: &crate::BatchRunRecord,
+    waypoint_index: usize,
+) -> Option<&crate::BatchWaypointHandoffReviewMetrics> {
+    record
+        .review
+        .waypoint_handoffs
+        .iter()
+        .find(|handoff| handoff.waypoint_index == waypoint_index)
+}
+
+fn compare_waypoint_sequence_cells(
+    lhs: &WaypointSequenceCellSummary,
+    rhs: &WaypointSequenceCellSummary,
+) -> Ordering {
+    selector_sort_rank(&lhs.key.route_angle)
+        .cmp(&selector_sort_rank(&rhs.key.route_angle))
+        .then(lhs.key.route_angle.cmp(&rhs.key.route_angle))
+        .then(
+            selector_sort_rank(&lhs.key.radius_tier).cmp(&selector_sort_rank(&rhs.key.radius_tier)),
+        )
+        .then(
+            selector_sort_rank(&lhs.key.vehicle_variant)
+                .cmp(&selector_sort_rank(&rhs.key.vehicle_variant)),
+        )
+        .then(
+            selector_sort_rank(&lhs.key.waypoint_profile)
+                .cmp(&selector_sort_rank(&rhs.key.waypoint_profile)),
+        )
+        .then(lhs.key.waypoint_index.cmp(&rhs.key.waypoint_index))
+}
+
+fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String {
+    let route = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
+        escape_html(&summary.key.route_angle),
+        escape_html(&summary.key.condition_set),
+        escape_html(&summary.key.radius_tier),
+    );
+    let waypoint = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>#{}</code> {}</div><div class="overview-sub">{} / {} observed</div></div>"#,
+        summary.key.waypoint_index + 1,
+        escape_html(summary.waypoint_id.as_deref().unwrap_or("waypoint")),
+        summary.handoff_runs,
+        summary.total_runs,
+    );
+    let route_result = format!(
+        r#"<div class="overview-stack"><div class="overview-main">{} / {} pass</div><div class="overview-sub">{} failed · {} incomplete</div></div>"#,
+        summary.route_pass_runs,
+        summary.total_runs,
+        summary.route_failed_runs,
+        summary.route_incomplete_runs,
+    );
+    let missing_runs = summary.total_runs.saturating_sub(summary.handoff_runs);
+    let contract = format!(
+        r#"<div class="overview-stack"><div class="overview-main">{} / {} pass</div><div class="overview-sub">{} spatial · {} outbound · {} incomplete · {} missing</div></div>"#,
+        summary.contract_pass_runs,
+        summary.total_runs,
+        summary.spatial_miss_runs,
+        summary.outbound_failure_runs,
+        summary.incomplete_runs,
+        missing_runs,
+    );
+    let replans = summary
+        .guidance_replans
+        .as_ref()
+        .map(|value| {
+            let spread = value
+                .stddev
+                .map(|stddev| format!("stddev {stddev:.1}"))
+                .unwrap_or_else(|| "single value".to_owned());
+            format!(
+                r#"<div class="overview-stack"><div class="overview-main">{:.1}</div><div class="overview-sub">{}</div></div>"#,
+                value.mean,
+                escape_html(&spread),
+            )
+        })
+        .unwrap_or_else(|| r#"<span class="muted">-</span>"#.to_owned());
+    format!(
+        r#"<tr>
+  <td>{route}</td>
+  <td><code>{vehicle}</code></td>
+  <td><code>{profile}</code></td>
+  <td>{waypoint}</td>
+  <td>{route_result}</td>
+  <td>{contract}</td>
+  <td>{capture_time}</td>
+  <td>{cross_track}</td>
+  <td>{heading_error}</td>
+  <td>{speed}</td>
+  <td>{turn_margin}</td>
+  <td>{replans}</td>
+</tr>"#,
+        vehicle = escape_html(&summary.key.vehicle_variant),
+        profile = escape_html(&summary.key.waypoint_profile),
+        capture_time = render_transfer_handoff_metric_cell(
+            summary.capture_time_s.as_ref(),
+            MetricDisplayKind::Seconds,
+            None,
+        ),
+        cross_track = render_transfer_handoff_metric_cell(
+            summary.cross_track_m.as_ref(),
+            MetricDisplayKind::Meters,
+            None,
+        ),
+        heading_error = render_transfer_handoff_metric_cell(
+            summary.heading_error_deg.as_ref(),
+            MetricDisplayKind::Degrees,
+            None,
+        ),
+        speed = render_transfer_handoff_metric_cell(
+            summary.speed_mps.as_ref(),
+            MetricDisplayKind::Speed,
+            None,
+        ),
+        turn_margin = render_transfer_handoff_metric_cell(
+            summary.turn_margin_m.as_ref(),
+            MetricDisplayKind::Meters,
+            None,
+        ),
+    )
 }
 
 fn render_waypoint_triage_section(
@@ -8465,6 +8798,67 @@ mod report_tests {
         assert!(html.contains("Heading Error"));
         assert!(html.contains("Outbound Progress"));
         assert!(!html.contains(r#"data-kind="waypoint profile""#));
+        assert!(!html.contains("<h2>Waypoint Sequence</h2>"));
+    }
+
+    #[test]
+    fn waypoint_sequence_renders_route_summary_and_each_handoff() {
+        let mut report = synthetic_transfer_shape_report(
+            "waypoint_sequence_unit",
+            &[("r00", "empty", 20.0, 0), ("r00", "empty", 22.0, 1)],
+        );
+        for (index, record) in report.records.iter_mut().enumerate() {
+            let route_pass = index == 0;
+            record.resolved.selector.waypoint_profile = "double_bend_v1".to_owned();
+            record.review.waypoint_route_status =
+                Some(if route_pass { "pass" } else { "failed" }.to_owned());
+            record.review.waypoint_route_passed = Some(if route_pass { 2 } else { 1 });
+            record.review.waypoint_route_total = Some(2);
+            record.review.waypoint_route_first_failure_index = (!route_pass).then_some(1);
+            record.review.waypoint_handoffs = vec![
+                crate::BatchWaypointHandoffReviewMetrics {
+                    waypoint_index: 0,
+                    waypoint_id: Some("wp_0".to_owned()),
+                    capture_status: Some("captured".to_owned()),
+                    contract_status: Some("pass".to_owned()),
+                    capture_time_s: Some(8.0 + index as f64),
+                    cross_track_m: Some(5.0),
+                    outbound_heading_error_rad: Some(0.2),
+                    speed_mps: Some(42.0),
+                    turn_margin_m: Some(30.0),
+                    guidance_replan_count: Some(1),
+                    ..crate::BatchWaypointHandoffReviewMetrics::default()
+                },
+                crate::BatchWaypointHandoffReviewMetrics {
+                    waypoint_index: 1,
+                    waypoint_id: Some("wp_1".to_owned()),
+                    capture_status: Some(if route_pass { "captured" } else { "missed" }.to_owned()),
+                    contract_status: Some(
+                        if route_pass { "pass" } else { "spatial_miss" }.to_owned(),
+                    ),
+                    capture_time_s: Some(14.0 + index as f64),
+                    cross_track_m: Some(if route_pass { 6.0 } else { 55.0 }),
+                    outbound_heading_error_rad: Some(0.3),
+                    speed_mps: Some(38.0),
+                    turn_margin_m: Some(18.0),
+                    guidance_replan_count: Some(2),
+                    ..crate::BatchWaypointHandoffReviewMetrics::default()
+                },
+            ];
+        }
+
+        let html = render_batch_report(
+            Path::new("outputs/eval/waypoint_sequence_unit"),
+            &report,
+            None,
+            None,
+        );
+
+        assert!(html.contains("<h2>Waypoint Sequence</h2>"));
+        assert!(html.contains("1/2 pass"));
+        assert!(html.contains("<code>#1</code> wp_0"));
+        assert!(html.contains("<code>#2</code> wp_1"));
+        assert!(html.contains("1 spatial"));
     }
 
     #[test]

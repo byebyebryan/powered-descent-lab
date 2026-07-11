@@ -966,6 +966,7 @@ fn build_report_markers(
                 ReportMarker {
                     sim_time_s: update.sim_time_s,
                     physics_step: update.physics_step,
+                    id: marker.id.clone(),
                     label: marker.label.clone(),
                     x_m: marker.x_m.or_else(|| sample.map(|sample| sample.x_m)),
                     y_m: marker.y_m.or_else(|| sample.map(|sample| sample.y_m)),
@@ -1453,6 +1454,7 @@ struct ReportEvent {
 struct ReportMarker {
     sim_time_s: f64,
     physics_step: u64,
+    id: String,
     label: String,
     x_m: Option<f64>,
     y_m: Option<f64>,
@@ -3282,19 +3284,41 @@ fn report_template() -> &'static str {
           line: { width: 1.8, color: "#fffaf0" },
         },
       };
+      const waypointMarkerDetail = (marker) => {
+        if (marker.id !== "waypoint/handoff") return "";
+        const metrics = marker.metrics || {};
+        const index = Number(metrics["waypoint.index"]);
+        const speed = Number(metrics["waypoint.speed_mps"]);
+        const heading = Number(metrics["waypoint.outbound_heading_error_rad"]);
+        const turnMargin = Number(metrics["waypoint.turn_margin_m"]);
+        const replans = Number(metrics["waypoint.guidance_replan_count"]);
+        const parts = [
+          `${metrics["waypoint.id"] || `waypoint ${Number.isFinite(index) ? index + 1 : "?"}`} · ${metrics["waypoint.capture_status"] || "handoff"}`,
+        ];
+        if (Number.isFinite(speed)) parts.push(`speed=${speed.toFixed(1)}m/s`);
+        if (Number.isFinite(heading)) parts.push(`heading=${(heading * 180 / Math.PI).toFixed(1)}deg`);
+        if (Number.isFinite(turnMargin)) parts.push(`turn margin=${turnMargin.toFixed(1)}m`);
+        if (Number.isFinite(replans)) parts.push(`replans=${replans.toFixed(0)}`);
+        return parts.join("<br>");
+      };
       const markerTrace = {
         type: "scatter",
         mode: "markers",
         name: "controller markers",
         x: markers.map((marker) => Number(marker.xM)),
         y: markers.map((marker) => Number(marker.yM)),
-        customdata: markers.map((marker) => [marker.label, Number(marker.simTimeS), marker.phase || ""]),
-        hovertemplate: "%{customdata[0]}<br>phase=%{customdata[2]}<br>t=%{customdata[1]:.2f}s<extra></extra>",
+        customdata: markers.map((marker) => [
+          marker.label,
+          Number(marker.simTimeS),
+          marker.phase || "",
+          waypointMarkerDetail(marker),
+        ]),
+        hovertemplate: "%{customdata[0]}<br>%{customdata[3]}<br>phase=%{customdata[2]}<br>t=%{customdata[1]:.2f}s<extra></extra>",
         marker: {
-          size: 5,
-          color: "#4c6ef5",
+          size: markers.map((marker) => marker.id === "waypoint/handoff" ? 9 : 5),
+          color: markers.map((marker) => marker.id === "waypoint/handoff" ? "#b45309" : "#4c6ef5"),
           symbol: "diamond",
-          opacity: 0.42,
+          opacity: markers.map((marker) => marker.id === "waypoint/handoff" ? 0.92 : 0.42),
           line: { width: 0 },
         },
       };
