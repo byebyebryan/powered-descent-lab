@@ -107,6 +107,7 @@ pub mod metric {
 pub mod marker {
     pub const LATERAL_CAPTURE: &str = "gate/lateral_capture";
     pub const TERMINAL_GATE: &str = "gate/terminal_descent";
+    pub const WAYPOINT_HANDOFF: &str = "waypoint/handoff";
 }
 
 pub struct ControllerView<'a> {

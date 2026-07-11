@@ -803,6 +803,7 @@ struct WaypointUpdateContext {
     allow_terminal: bool,
     telemetry: WaypointTelemetry,
     guidance: Option<WaypointGuidanceFrame>,
+    capture: Option<WaypointCaptureSnapshot>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -846,6 +847,7 @@ struct WaypointCaptureSnapshot {
     approach: WaypointApproachState,
     endpoint_m: Vec2,
     steering_target_m: Vec2,
+    guidance_replan_count: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1160,6 +1162,7 @@ impl TransferPdgController {
                 allow_terminal: true,
                 telemetry,
                 guidance: None,
+                capture: None,
             });
         }
 
@@ -1192,6 +1195,7 @@ impl TransferPdgController {
                 approach,
                 endpoint_m: guidance.endpoint_m,
                 steering_target_m: guidance.steering_target_m,
+                guidance_replan_count: self.waypoint_guidance_replan_count,
             };
             self.last_waypoint_capture = Some(capture);
             self.waypoint_active_index += 1;
@@ -1209,6 +1213,7 @@ impl TransferPdgController {
                     allow_terminal: true,
                     telemetry: WaypointTelemetry::from_capture(capture),
                     guidance: None,
+                    capture: Some(capture),
                 });
             }
             let next_geometry = self.waypoint_leg_geometry(ctx)?;
@@ -1221,6 +1226,7 @@ impl TransferPdgController {
                 allow_terminal: false,
                 telemetry: WaypointTelemetry::from_capture(capture),
                 guidance: Some(next_guidance),
+                capture: Some(capture),
             });
         }
 
@@ -1250,6 +1256,7 @@ impl TransferPdgController {
                 steering_target_m: guidance.steering_target_m,
             },
             guidance: Some(guidance),
+            capture: None,
         })
     }
 
@@ -3730,25 +3737,119 @@ impl Controller for TransferPdgController {
 
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame {
         if let Some(waypoint_context) = self.waypoint_update_context(ctx, observation) {
-            if let Some(guidance) = waypoint_context.guidance {
-                self.update_active_waypoint_frame(
-                    ctx,
-                    &waypoint_context.observation,
-                    guidance,
-                    waypoint_context.telemetry,
-                )
+            let WaypointUpdateContext {
+                observation,
+                allow_terminal,
+                telemetry,
+                guidance,
+                capture,
+            } = waypoint_context;
+            let mut frame = if let Some(guidance) = guidance {
+                self.update_active_waypoint_frame(ctx, &observation, guidance, telemetry)
             } else {
-                self.update_transfer_frame(
-                    ctx,
-                    &waypoint_context.observation,
-                    waypoint_context.allow_terminal,
-                    Some(waypoint_context.telemetry),
-                )
+                self.update_transfer_frame(ctx, &observation, allow_terminal, Some(telemetry))
+            };
+            if let Some(capture) = capture {
+                frame
+                    .markers
+                    .push(waypoint_handoff_marker(ctx, &observation, capture));
             }
+            frame
         } else {
             self.update_transfer_frame(ctx, observation, true, None)
         }
     }
+}
+
+fn waypoint_handoff_marker(
+    ctx: &RunContext,
+    observation: &Observation,
+    capture: WaypointCaptureSnapshot,
+) -> crate::ControllerMarker {
+    let waypoint_id = ctx
+        .mission
+        .transfer_route
+        .as_ref()
+        .and_then(|route| route.waypoints.get(capture.index))
+        .map_or("unknown", |waypoint| waypoint.id.as_str());
+    let view = ControllerView::new(ctx, observation);
+    standard_marker(
+        crate::kit::marker::WAYPOINT_HANDOFF,
+        &format!("waypoint handoff: {waypoint_id}"),
+        &view,
+        BTreeMap::from([
+            ("kind".to_owned(), TelemetryValue::from("waypoint_handoff")),
+            ("waypoint.id".to_owned(), TelemetryValue::from(waypoint_id)),
+            (
+                "waypoint.index".to_owned(),
+                TelemetryValue::from(capture.index as i64),
+            ),
+            (
+                metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+                TelemetryValue::from(capture.status),
+            ),
+            (
+                metric::WAYPOINT_CAPTURE_TIME_S.to_owned(),
+                TelemetryValue::from(capture.capture_time_s),
+            ),
+            (
+                "waypoint.position_x_m".to_owned(),
+                TelemetryValue::from(observation.position_m.x),
+            ),
+            (
+                "waypoint.position_y_m".to_owned(),
+                TelemetryValue::from(observation.position_m.y),
+            ),
+            (
+                "waypoint.velocity_x_mps".to_owned(),
+                TelemetryValue::from(observation.velocity_mps.x),
+            ),
+            (
+                "waypoint.velocity_y_mps".to_owned(),
+                TelemetryValue::from(observation.velocity_mps.y),
+            ),
+            (
+                metric::WAYPOINT_DISTANCE_M.to_owned(),
+                TelemetryValue::from(capture.distance_m),
+            ),
+            (
+                metric::WAYPOINT_CROSS_TRACK_M.to_owned(),
+                TelemetryValue::from(capture.cross_track_m),
+            ),
+            (
+                metric::WAYPOINT_PLANE_PROGRESS_M.to_owned(),
+                TelemetryValue::from(capture.plane_progress_m),
+            ),
+            (
+                metric::WAYPOINT_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+                TelemetryValue::from(capture.outbound_heading_error_rad),
+            ),
+            (
+                metric::WAYPOINT_OUTBOUND_PROGRESS_MPS.to_owned(),
+                TelemetryValue::from(capture.outbound_progress_mps),
+            ),
+            (
+                metric::WAYPOINT_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
+                TelemetryValue::from(capture.outbound_cross_speed_mps),
+            ),
+            (
+                metric::WAYPOINT_SPEED_MPS.to_owned(),
+                TelemetryValue::from(capture.speed_mps),
+            ),
+            (
+                metric::WAYPOINT_VERTICAL_SPEED_MPS.to_owned(),
+                TelemetryValue::from(capture.vertical_speed_mps),
+            ),
+            (
+                metric::WAYPOINT_TURN_MARGIN_M.to_owned(),
+                TelemetryValue::from(capture.approach.turn_margin_m),
+            ),
+            (
+                metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
+                TelemetryValue::from(capture.guidance_replan_count as i64),
+            ),
+        ]),
+    )
 }
 
 #[cfg(test)]
@@ -4274,6 +4375,80 @@ mod tests {
             frame.metrics.get(metric::WAYPOINT_ACTIVE_INDEX),
             Some(&TelemetryValue::from(0_i64))
         );
+        let handoff = frame
+            .markers
+            .iter()
+            .find(|marker| marker.id == crate::kit::marker::WAYPOINT_HANDOFF)
+            .expect("handoff marker");
+        assert_eq!(
+            handoff.metadata.get("waypoint.id"),
+            Some(&TelemetryValue::from("wp_0"))
+        );
+        assert_eq!(
+            handoff.metadata.get("waypoint.index"),
+            Some(&TelemetryValue::from(0_i64))
+        );
+        assert!(
+            handoff
+                .metadata
+                .contains_key(metric::WAYPOINT_GUIDANCE_REPLAN_COUNT)
+        );
+    }
+
+    #[test]
+    fn transfer_waypoint_guidance_emits_one_handoff_marker_per_switch() {
+        let mut ctx = context_with_waypoint();
+        let second_waypoint = TransferWaypointSpec {
+            id: "wp_1".to_owned(),
+            position_m: Vec2::new(-100.0, -150.0),
+            ..waypoint_fixture()
+        };
+        ctx.mission
+            .transfer_route
+            .as_mut()
+            .unwrap()
+            .waypoints
+            .push(second_waypoint);
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        let mut controller = TransferPdgController::new(config);
+
+        let first_geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let first_observation = waypoint_transfer_observation(
+            &ctx,
+            first_geometry.target_m + (first_geometry.leg_unit * 5.0),
+            first_geometry.next_leg_unit * 40.0,
+            10.0,
+        );
+        let first_frame = controller.update(&ctx, &first_observation);
+
+        let second_geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let second_observation = waypoint_transfer_observation(
+            &ctx,
+            second_geometry.target_m + (second_geometry.leg_unit * 5.0),
+            second_geometry.next_leg_unit * 40.0,
+            20.0,
+        );
+        let second_frame = controller.update(&ctx, &second_observation);
+        let repeated_frame = controller.update(&ctx, &second_observation);
+
+        let handoff_indices = |frame: &ControllerFrame| {
+            frame
+                .markers
+                .iter()
+                .filter(|marker| marker.id == crate::kit::marker::WAYPOINT_HANDOFF)
+                .map(|marker| marker.metadata.get("waypoint.index").cloned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            handoff_indices(&first_frame),
+            vec![Some(TelemetryValue::from(0_i64))]
+        );
+        assert_eq!(
+            handoff_indices(&second_frame),
+            vec![Some(TelemetryValue::from(1_i64))]
+        );
+        assert!(handoff_indices(&repeated_frame).is_empty());
     }
 
     #[test]
