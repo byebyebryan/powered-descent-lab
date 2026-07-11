@@ -826,8 +826,16 @@ struct WaypointTelemetry {
     required_turn_distance_m: f64,
     shaping_start_distance_m: f64,
     turn_margin_m: f64,
+    center_m: Vec2,
+    nominal_handoff_target_m: Vec2,
+    handoff_target_m: Vec2,
+    handoff_target_mode: &'static str,
+    remaining_to_handoff_m: f64,
+    time_to_handoff_s: f64,
+    handoff_turn_margin_m: f64,
     endpoint_m: Vec2,
     steering_target_m: Vec2,
+    target_state: Option<WaypointGuidanceTargetState>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -845,8 +853,13 @@ struct WaypointCaptureSnapshot {
     speed_mps: f64,
     vertical_speed_mps: f64,
     approach: WaypointApproachState,
+    center_m: Vec2,
+    nominal_handoff_target_m: Vec2,
+    handoff_target_m: Vec2,
+    handoff_target_mode: &'static str,
     endpoint_m: Vec2,
     steering_target_m: Vec2,
+    target_state: Option<WaypointGuidanceTargetState>,
     guidance_replan_count: u32,
 }
 
@@ -877,14 +890,21 @@ struct WaypointLegStats {
 struct WaypointApproachState {
     remaining_to_plane_m: f64,
     time_to_plane_s: f64,
+    remaining_to_handoff_m: f64,
+    time_to_handoff_s: f64,
     required_turn_distance_m: f64,
     shaping_start_distance_m: f64,
     turn_margin_m: f64,
+    handoff_turn_margin_m: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct WaypointGuidanceFrame {
     active_index: usize,
+    center_m: Vec2,
+    nominal_handoff_target_m: Vec2,
+    handoff_target_m: Vec2,
+    handoff_target_mode: &'static str,
     endpoint_m: Vec2,
     steering_target_m: Vec2,
     leg_unit: Vec2,
@@ -929,6 +949,16 @@ struct WaypointGuidanceCommandState {
     required_accel_ratio: f64,
     feasible: bool,
     path_correction_mps2: Vec2,
+    deadline_remaining_s: f64,
+    velocity_error_mps: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointGuidanceTargetState {
+    target_velocity_mps: Vec2,
+    deadline_remaining_s: f64,
+    velocity_error_mps: f64,
+    feasible: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1179,6 +1209,8 @@ impl TransferPdgController {
             } else {
                 "missed"
             };
+            let target_state =
+                self.waypoint_guidance_target_state_for_current_plan(ctx, observation, guidance);
             let capture = WaypointCaptureSnapshot {
                 index: geometry.active_index,
                 capture_time_s: observation.sim_time_s,
@@ -1193,8 +1225,13 @@ impl TransferPdgController {
                 speed_mps: stats.speed_mps,
                 vertical_speed_mps: stats.vertical_speed_mps,
                 approach,
+                center_m: guidance.center_m,
+                nominal_handoff_target_m: guidance.nominal_handoff_target_m,
+                handoff_target_m: guidance.handoff_target_m,
+                handoff_target_mode: guidance.handoff_target_mode,
                 endpoint_m: guidance.endpoint_m,
                 steering_target_m: guidance.steering_target_m,
+                target_state,
                 guidance_replan_count: self.waypoint_guidance_replan_count,
             };
             self.last_waypoint_capture = Some(capture);
@@ -1252,8 +1289,16 @@ impl TransferPdgController {
                 required_turn_distance_m: approach.required_turn_distance_m,
                 shaping_start_distance_m: approach.shaping_start_distance_m,
                 turn_margin_m: approach.turn_margin_m,
+                center_m: guidance.center_m,
+                nominal_handoff_target_m: guidance.nominal_handoff_target_m,
+                handoff_target_m: guidance.handoff_target_m,
+                handoff_target_mode: guidance.handoff_target_mode,
+                remaining_to_handoff_m: approach.remaining_to_handoff_m,
+                time_to_handoff_s: approach.time_to_handoff_s,
+                handoff_turn_margin_m: approach.handoff_turn_margin_m,
                 endpoint_m: guidance.endpoint_m,
                 steering_target_m: guidance.steering_target_m,
+                target_state: None,
             },
             guidance: Some(guidance),
             capture: None,
@@ -1311,8 +1356,16 @@ impl TransferPdgController {
             required_turn_distance_m: -1.0,
             shaping_start_distance_m: -1.0,
             turn_margin_m: -1.0,
+            center_m: Vec2::new(-1.0, -1.0),
+            nominal_handoff_target_m: Vec2::new(-1.0, -1.0),
+            handoff_target_m: Vec2::new(-1.0, -1.0),
+            handoff_target_mode: "complete",
+            remaining_to_handoff_m: -1.0,
+            time_to_handoff_s: -1.0,
+            handoff_turn_margin_m: -1.0,
             endpoint_m: Vec2::new(-1.0, -1.0),
             steering_target_m: Vec2::new(-1.0, -1.0),
+            target_state: None,
         }
     }
 
@@ -1401,6 +1454,46 @@ impl TransferPdgController {
             TelemetryValue::from(telemetry.turn_margin_m),
         );
         frame.metrics.insert(
+            metric::WAYPOINT_CENTER_X_M.to_owned(),
+            TelemetryValue::from(telemetry.center_m.x),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_CENTER_Y_M.to_owned(),
+            TelemetryValue::from(telemetry.center_m.y),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_NOMINAL_HANDOFF_TARGET_X_M.to_owned(),
+            TelemetryValue::from(telemetry.nominal_handoff_target_m.x),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_NOMINAL_HANDOFF_TARGET_Y_M.to_owned(),
+            TelemetryValue::from(telemetry.nominal_handoff_target_m.y),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_HANDOFF_TARGET_X_M.to_owned(),
+            TelemetryValue::from(telemetry.handoff_target_m.x),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_HANDOFF_TARGET_Y_M.to_owned(),
+            TelemetryValue::from(telemetry.handoff_target_m.y),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_HANDOFF_TARGET_MODE.to_owned(),
+            TelemetryValue::from(telemetry.handoff_target_mode),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_REMAINING_TO_HANDOFF_M.to_owned(),
+            TelemetryValue::from(telemetry.remaining_to_handoff_m),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_TIME_TO_HANDOFF_S.to_owned(),
+            TelemetryValue::from(telemetry.time_to_handoff_s),
+        );
+        frame.metrics.insert(
+            metric::WAYPOINT_HANDOFF_TURN_MARGIN_M.to_owned(),
+            TelemetryValue::from(telemetry.handoff_turn_margin_m),
+        );
+        frame.metrics.insert(
             metric::WAYPOINT_ENDPOINT_X_M.to_owned(),
             TelemetryValue::from(telemetry.endpoint_m.x),
         );
@@ -1416,6 +1509,9 @@ impl TransferPdgController {
             metric::WAYPOINT_STEERING_TARGET_Y_M.to_owned(),
             TelemetryValue::from(telemetry.steering_target_m.y),
         );
+        if let Some(target_state) = telemetry.target_state {
+            insert_waypoint_target_state_metrics(&mut frame.metrics, target_state);
+        }
     }
 
     fn waypoint_takeoff_required(
@@ -1665,6 +1761,41 @@ impl TransferPdgController {
         )
     }
 
+    fn waypoint_guidance_target_state_for_current_plan(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+    ) -> Option<WaypointGuidanceTargetState> {
+        let plan = self
+            .waypoint_guidance_plan
+            .filter(|plan| plan.waypoint_index == guidance.active_index)?;
+        let candidate = self.waypoint_guidance_candidate_for_plan(ctx, observation, guidance, plan);
+        let path_correction_mps2 = self.waypoint_path_correction_mps2(
+            ctx,
+            observation,
+            guidance,
+            candidate.required_accel_mps2,
+        );
+        let required_accel_mps2 = candidate.required_accel_mps2 + path_correction_mps2;
+        let max_thrust_accel_mps2 = ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0);
+        let required_accel_ratio = required_accel_mps2.length() / max_thrust_accel_mps2.max(1.0e-6);
+        let max_tilt_rad = self
+            .config
+            .boost_tilt_rad
+            .max(self.config.uphill_boost_tilt_rad);
+        let tilt_feasible = required_accel_mps2.y > 0.0
+            && required_accel_mps2.x.abs() <= max_tilt_rad.tan() * required_accel_mps2.y;
+        Some(WaypointGuidanceTargetState {
+            target_velocity_mps: candidate.target_velocity_mps,
+            deadline_remaining_s: plan.arrival_time_s - observation.sim_time_s,
+            velocity_error_mps: (observation.velocity_mps - candidate.target_velocity_mps).length(),
+            feasible: candidate.target_envelope_feasible
+                && tilt_feasible
+                && required_accel_ratio <= 1.0,
+        })
+    }
+
     fn current_waypoint_guidance_candidate(
         &mut self,
         ctx: &RunContext,
@@ -1773,6 +1904,9 @@ impl TransferPdgController {
             .max(self.config.uphill_boost_tilt_rad);
         let tilt_feasible = required_accel_mps2.y > 0.0
             && required_accel_mps2.x.abs() <= max_tilt_rad.tan() * required_accel_mps2.y;
+        let plan = self
+            .waypoint_guidance_plan
+            .expect("active waypoint guidance always has a plan");
         WaypointGuidanceCommandState {
             command: allocate_accel_command(
                 required_accel_mps2.x,
@@ -1787,6 +1921,8 @@ impl TransferPdgController {
                 && tilt_feasible
                 && required_accel_ratio <= 1.0,
             path_correction_mps2,
+            deadline_remaining_s: plan.arrival_time_s - observation.sim_time_s,
+            velocity_error_mps: (observation.velocity_mps - candidate.target_velocity_mps).length(),
         }
     }
 
@@ -1912,6 +2048,15 @@ impl TransferPdgController {
             frame.metrics.insert(
                 metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
                 TelemetryValue::from(i64::from(self.waypoint_guidance_replan_count)),
+            );
+            insert_waypoint_target_state_metrics(
+                &mut frame.metrics,
+                WaypointGuidanceTargetState {
+                    target_velocity_mps: state.target_velocity_mps,
+                    deadline_remaining_s: state.deadline_remaining_s,
+                    velocity_error_mps: state.velocity_error_mps,
+                    feasible: state.feasible,
+                },
             );
         }
         frame
@@ -3457,10 +3602,48 @@ impl WaypointTelemetry {
             required_turn_distance_m: capture.approach.required_turn_distance_m,
             shaping_start_distance_m: capture.approach.shaping_start_distance_m,
             turn_margin_m: capture.approach.turn_margin_m,
+            center_m: capture.center_m,
+            nominal_handoff_target_m: capture.nominal_handoff_target_m,
+            handoff_target_m: capture.handoff_target_m,
+            handoff_target_mode: capture.handoff_target_mode,
+            remaining_to_handoff_m: capture.approach.remaining_to_handoff_m,
+            time_to_handoff_s: capture.approach.time_to_handoff_s,
+            handoff_turn_margin_m: capture.approach.handoff_turn_margin_m,
             endpoint_m: capture.endpoint_m,
             steering_target_m: capture.steering_target_m,
+            target_state: capture.target_state,
         }
     }
+}
+
+fn insert_waypoint_target_state_metrics(
+    metrics: &mut BTreeMap<String, TelemetryValue>,
+    target_state: WaypointGuidanceTargetState,
+) {
+    metrics.insert(
+        metric::WAYPOINT_TARGET_VX_MPS.to_owned(),
+        TelemetryValue::from(target_state.target_velocity_mps.x),
+    );
+    metrics.insert(
+        metric::WAYPOINT_TARGET_VY_MPS.to_owned(),
+        TelemetryValue::from(target_state.target_velocity_mps.y),
+    );
+    metrics.insert(
+        metric::WAYPOINT_TARGET_SPEED_MPS.to_owned(),
+        TelemetryValue::from(target_state.target_velocity_mps.length()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_TARGET_DEADLINE_REMAINING_S.to_owned(),
+        TelemetryValue::from(target_state.deadline_remaining_s),
+    );
+    metrics.insert(
+        metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS.to_owned(),
+        TelemetryValue::from(target_state.velocity_error_mps),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_FEASIBLE.to_owned(),
+        TelemetryValue::from(target_state.feasible),
+    );
 }
 
 fn waypoint_guidance_frame(
@@ -3468,8 +3651,14 @@ fn waypoint_guidance_frame(
     stats: WaypointLegStats,
     approach: WaypointApproachState,
 ) -> WaypointGuidanceFrame {
+    let capture_radius_m = geometry.waypoint.capture_radius_m;
+    let nominal_handoff_target_m = geometry.target_m - (geometry.leg_unit * capture_radius_m);
     WaypointGuidanceFrame {
         active_index: geometry.active_index,
+        center_m: geometry.target_m,
+        nominal_handoff_target_m,
+        handoff_target_m: geometry.target_m,
+        handoff_target_mode: "waypoint_center",
         endpoint_m: geometry.target_m,
         steering_target_m: waypoint_leg_steering_target_m(geometry, stats),
         leg_unit: geometry.leg_unit,
@@ -3544,11 +3733,19 @@ fn waypoint_approach_state(
 ) -> WaypointApproachState {
     let capture_radius_m = geometry.waypoint.capture_radius_m.max(1.0);
     let remaining_to_plane_m = (-stats.plane_progress_m).max(0.0);
+    let remaining_to_handoff_m = (remaining_to_plane_m - capture_radius_m).max(0.0);
     let closing_speed_mps = vec_dot(observation.velocity_mps, geometry.leg_unit).max(0.0);
     let time_to_plane_s = if remaining_to_plane_m <= 1.0e-6 {
         0.0
     } else if closing_speed_mps > 1.0e-6 {
         remaining_to_plane_m / closing_speed_mps
+    } else {
+        WAYPOINT_APPROACH_TIME_TO_PLANE_MAX_S
+    };
+    let time_to_handoff_s = if remaining_to_handoff_m <= 1.0e-6 {
+        0.0
+    } else if closing_speed_mps > 1.0e-6 {
+        remaining_to_handoff_m / closing_speed_mps
     } else {
         WAYPOINT_APPROACH_TIME_TO_PLANE_MAX_S
     };
@@ -3567,13 +3764,17 @@ fn waypoint_approach_state(
         geometry.leg_length_m.max(capture_radius_m),
     );
     let turn_margin_m = remaining_to_plane_m - required_turn_distance_m;
+    let handoff_turn_margin_m = remaining_to_handoff_m - required_turn_distance_m;
 
     WaypointApproachState {
         remaining_to_plane_m,
         time_to_plane_s,
+        remaining_to_handoff_m,
+        time_to_handoff_s,
         required_turn_distance_m,
         shaping_start_distance_m,
         turn_margin_m,
+        handoff_turn_margin_m,
     }
 }
 
@@ -3773,82 +3974,126 @@ fn waypoint_handoff_marker(
         .and_then(|route| route.waypoints.get(capture.index))
         .map_or("unknown", |waypoint| waypoint.id.as_str());
     let view = ControllerView::new(ctx, observation);
+    let mut metadata = BTreeMap::from([
+        ("kind".to_owned(), TelemetryValue::from("waypoint_handoff")),
+        ("waypoint.id".to_owned(), TelemetryValue::from(waypoint_id)),
+        (
+            "waypoint.index".to_owned(),
+            TelemetryValue::from(capture.index as i64),
+        ),
+        (
+            metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+            TelemetryValue::from(capture.status),
+        ),
+        (
+            metric::WAYPOINT_CAPTURE_TIME_S.to_owned(),
+            TelemetryValue::from(capture.capture_time_s),
+        ),
+        (
+            "waypoint.position_x_m".to_owned(),
+            TelemetryValue::from(observation.position_m.x),
+        ),
+        (
+            "waypoint.position_y_m".to_owned(),
+            TelemetryValue::from(observation.position_m.y),
+        ),
+        (
+            "waypoint.velocity_x_mps".to_owned(),
+            TelemetryValue::from(observation.velocity_mps.x),
+        ),
+        (
+            "waypoint.velocity_y_mps".to_owned(),
+            TelemetryValue::from(observation.velocity_mps.y),
+        ),
+        (
+            metric::WAYPOINT_DISTANCE_M.to_owned(),
+            TelemetryValue::from(capture.distance_m),
+        ),
+        (
+            metric::WAYPOINT_CROSS_TRACK_M.to_owned(),
+            TelemetryValue::from(capture.cross_track_m),
+        ),
+        (
+            metric::WAYPOINT_PLANE_PROGRESS_M.to_owned(),
+            TelemetryValue::from(capture.plane_progress_m),
+        ),
+        (
+            metric::WAYPOINT_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+            TelemetryValue::from(capture.outbound_heading_error_rad),
+        ),
+        (
+            metric::WAYPOINT_OUTBOUND_PROGRESS_MPS.to_owned(),
+            TelemetryValue::from(capture.outbound_progress_mps),
+        ),
+        (
+            metric::WAYPOINT_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
+            TelemetryValue::from(capture.outbound_cross_speed_mps),
+        ),
+        (
+            metric::WAYPOINT_SPEED_MPS.to_owned(),
+            TelemetryValue::from(capture.speed_mps),
+        ),
+        (
+            metric::WAYPOINT_VERTICAL_SPEED_MPS.to_owned(),
+            TelemetryValue::from(capture.vertical_speed_mps),
+        ),
+        (
+            metric::WAYPOINT_TURN_MARGIN_M.to_owned(),
+            TelemetryValue::from(capture.approach.turn_margin_m),
+        ),
+        (
+            metric::WAYPOINT_CENTER_X_M.to_owned(),
+            TelemetryValue::from(capture.center_m.x),
+        ),
+        (
+            metric::WAYPOINT_CENTER_Y_M.to_owned(),
+            TelemetryValue::from(capture.center_m.y),
+        ),
+        (
+            metric::WAYPOINT_NOMINAL_HANDOFF_TARGET_X_M.to_owned(),
+            TelemetryValue::from(capture.nominal_handoff_target_m.x),
+        ),
+        (
+            metric::WAYPOINT_NOMINAL_HANDOFF_TARGET_Y_M.to_owned(),
+            TelemetryValue::from(capture.nominal_handoff_target_m.y),
+        ),
+        (
+            metric::WAYPOINT_HANDOFF_TARGET_X_M.to_owned(),
+            TelemetryValue::from(capture.handoff_target_m.x),
+        ),
+        (
+            metric::WAYPOINT_HANDOFF_TARGET_Y_M.to_owned(),
+            TelemetryValue::from(capture.handoff_target_m.y),
+        ),
+        (
+            metric::WAYPOINT_HANDOFF_TARGET_MODE.to_owned(),
+            TelemetryValue::from(capture.handoff_target_mode),
+        ),
+        (
+            metric::WAYPOINT_REMAINING_TO_HANDOFF_M.to_owned(),
+            TelemetryValue::from(capture.approach.remaining_to_handoff_m),
+        ),
+        (
+            metric::WAYPOINT_TIME_TO_HANDOFF_S.to_owned(),
+            TelemetryValue::from(capture.approach.time_to_handoff_s),
+        ),
+        (
+            metric::WAYPOINT_HANDOFF_TURN_MARGIN_M.to_owned(),
+            TelemetryValue::from(capture.approach.handoff_turn_margin_m),
+        ),
+        (
+            metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
+            TelemetryValue::from(capture.guidance_replan_count as i64),
+        ),
+    ]);
+    if let Some(target_state) = capture.target_state {
+        insert_waypoint_target_state_metrics(&mut metadata, target_state);
+    }
     standard_marker(
         crate::kit::marker::WAYPOINT_HANDOFF,
         &format!("waypoint handoff: {waypoint_id}"),
         &view,
-        BTreeMap::from([
-            ("kind".to_owned(), TelemetryValue::from("waypoint_handoff")),
-            ("waypoint.id".to_owned(), TelemetryValue::from(waypoint_id)),
-            (
-                "waypoint.index".to_owned(),
-                TelemetryValue::from(capture.index as i64),
-            ),
-            (
-                metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
-                TelemetryValue::from(capture.status),
-            ),
-            (
-                metric::WAYPOINT_CAPTURE_TIME_S.to_owned(),
-                TelemetryValue::from(capture.capture_time_s),
-            ),
-            (
-                "waypoint.position_x_m".to_owned(),
-                TelemetryValue::from(observation.position_m.x),
-            ),
-            (
-                "waypoint.position_y_m".to_owned(),
-                TelemetryValue::from(observation.position_m.y),
-            ),
-            (
-                "waypoint.velocity_x_mps".to_owned(),
-                TelemetryValue::from(observation.velocity_mps.x),
-            ),
-            (
-                "waypoint.velocity_y_mps".to_owned(),
-                TelemetryValue::from(observation.velocity_mps.y),
-            ),
-            (
-                metric::WAYPOINT_DISTANCE_M.to_owned(),
-                TelemetryValue::from(capture.distance_m),
-            ),
-            (
-                metric::WAYPOINT_CROSS_TRACK_M.to_owned(),
-                TelemetryValue::from(capture.cross_track_m),
-            ),
-            (
-                metric::WAYPOINT_PLANE_PROGRESS_M.to_owned(),
-                TelemetryValue::from(capture.plane_progress_m),
-            ),
-            (
-                metric::WAYPOINT_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
-                TelemetryValue::from(capture.outbound_heading_error_rad),
-            ),
-            (
-                metric::WAYPOINT_OUTBOUND_PROGRESS_MPS.to_owned(),
-                TelemetryValue::from(capture.outbound_progress_mps),
-            ),
-            (
-                metric::WAYPOINT_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
-                TelemetryValue::from(capture.outbound_cross_speed_mps),
-            ),
-            (
-                metric::WAYPOINT_SPEED_MPS.to_owned(),
-                TelemetryValue::from(capture.speed_mps),
-            ),
-            (
-                metric::WAYPOINT_VERTICAL_SPEED_MPS.to_owned(),
-                TelemetryValue::from(capture.vertical_speed_mps),
-            ),
-            (
-                metric::WAYPOINT_TURN_MARGIN_M.to_owned(),
-                TelemetryValue::from(capture.approach.turn_margin_m),
-            ),
-            (
-                metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
-                TelemetryValue::from(capture.guidance_replan_count as i64),
-            ),
-        ]),
+        metadata,
     )
 }
 
@@ -4076,6 +4321,25 @@ mod tests {
             frame
                 .metrics
                 .contains_key(metric::WAYPOINT_REQUIRED_TURN_DISTANCE_M)
+        );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_HANDOFF_TARGET_MODE),
+            Some(&TelemetryValue::from("waypoint_center"))
+        );
+        assert!(
+            frame
+                .metrics
+                .contains_key(metric::WAYPOINT_NOMINAL_HANDOFF_TARGET_X_M)
+        );
+        assert!(
+            frame
+                .metrics
+                .contains_key(metric::WAYPOINT_TARGET_DEADLINE_REMAINING_S)
+        );
+        assert!(
+            frame
+                .metrics
+                .contains_key(metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS)
         );
     }
 
@@ -4356,6 +4620,9 @@ mod tests {
         let mut config = TransferPdgControllerConfig::default();
         config.waypoint_guidance_enabled = true;
         let mut controller = TransferPdgController::new(config);
+        let tracking_observation =
+            waypoint_transfer_observation(&ctx, source + (leg_unit * 120.0), leg_unit * 30.0, 5.0);
+        controller.update(&ctx, &tracking_observation);
         let mut observation = transfer_observation(205.0, -295.0, final_leg_unit * 40.0, 12.5);
         observation.position_m = waypoint.position_m + (leg_unit * 5.0);
         observation.target_surface_y_m = 0.0;
@@ -4392,6 +4659,20 @@ mod tests {
             handoff
                 .metadata
                 .contains_key(metric::WAYPOINT_GUIDANCE_REPLAN_COUNT)
+        );
+        assert_eq!(
+            handoff.metadata.get(metric::WAYPOINT_HANDOFF_TARGET_MODE),
+            Some(&TelemetryValue::from("waypoint_center"))
+        );
+        assert!(
+            handoff
+                .metadata
+                .contains_key(metric::WAYPOINT_TARGET_DEADLINE_REMAINING_S)
+        );
+        assert!(
+            handoff
+                .metadata
+                .contains_key(metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS)
         );
     }
 

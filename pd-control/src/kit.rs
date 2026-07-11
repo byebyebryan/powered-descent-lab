@@ -88,6 +88,16 @@ pub mod metric {
     pub const WAYPOINT_REQUIRED_TURN_DISTANCE_M: &str = "waypoint.required_turn_distance_m";
     pub const WAYPOINT_SHAPING_START_DISTANCE_M: &str = "waypoint.shaping_start_distance_m";
     pub const WAYPOINT_TURN_MARGIN_M: &str = "waypoint.turn_margin_m";
+    pub const WAYPOINT_CENTER_X_M: &str = "waypoint.center_x_m";
+    pub const WAYPOINT_CENTER_Y_M: &str = "waypoint.center_y_m";
+    pub const WAYPOINT_NOMINAL_HANDOFF_TARGET_X_M: &str = "waypoint.nominal_handoff_target_x_m";
+    pub const WAYPOINT_NOMINAL_HANDOFF_TARGET_Y_M: &str = "waypoint.nominal_handoff_target_y_m";
+    pub const WAYPOINT_HANDOFF_TARGET_X_M: &str = "waypoint.handoff_target_x_m";
+    pub const WAYPOINT_HANDOFF_TARGET_Y_M: &str = "waypoint.handoff_target_y_m";
+    pub const WAYPOINT_HANDOFF_TARGET_MODE: &str = "waypoint.handoff_target_mode";
+    pub const WAYPOINT_REMAINING_TO_HANDOFF_M: &str = "waypoint.remaining_to_handoff_m";
+    pub const WAYPOINT_TIME_TO_HANDOFF_S: &str = "waypoint.time_to_handoff_s";
+    pub const WAYPOINT_HANDOFF_TURN_MARGIN_M: &str = "waypoint.handoff_turn_margin_m";
     pub const WAYPOINT_ENDPOINT_X_M: &str = "waypoint.endpoint_x_m";
     pub const WAYPOINT_ENDPOINT_Y_M: &str = "waypoint.endpoint_y_m";
     pub const WAYPOINT_STEERING_TARGET_X_M: &str = "waypoint.steering_target_x_m";
@@ -100,6 +110,8 @@ pub mod metric {
     pub const WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO: &str =
         "waypoint.guidance_required_accel_ratio";
     pub const WAYPOINT_GUIDANCE_FEASIBLE: &str = "waypoint.guidance_feasible";
+    pub const WAYPOINT_TARGET_DEADLINE_REMAINING_S: &str = "waypoint.target_deadline_remaining_s";
+    pub const WAYPOINT_TARGET_VELOCITY_ERROR_MPS: &str = "waypoint.target_velocity_error_mps";
     pub const WAYPOINT_PATH_CORRECTION_MPS2: &str = "waypoint.path_correction_mps2";
     pub const WAYPOINT_GUIDANCE_REPLAN_COUNT: &str = "waypoint.guidance_replan_count";
 }
