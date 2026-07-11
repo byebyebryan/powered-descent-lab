@@ -2534,7 +2534,11 @@ struct WaypointSequenceCellSummary {
     cross_track_m: Option<crate::BatchMetricSummary>,
     heading_error_deg: Option<crate::BatchMetricSummary>,
     speed_mps: Option<crate::BatchMetricSummary>,
-    turn_margin_m: Option<crate::BatchMetricSummary>,
+    target_velocity_error_mps: Option<crate::BatchMetricSummary>,
+    target_deadline_remaining_s: Option<crate::BatchMetricSummary>,
+    handoff_turn_margin_m: Option<crate::BatchMetricSummary>,
+    guidance_feasible_runs: usize,
+    guidance_feasible_observed: usize,
     guidance_replans: Option<crate::BatchMetricSummary>,
 }
 
@@ -2614,7 +2618,7 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
           <th>Cross Track</th>
           <th>Heading Error</th>
           <th>Speed</th>
-          <th>Turn Margin</th>
+          <th>State Debt</th>
           <th>Replans</th>
         </tr>
       </thead>
@@ -2732,7 +2736,24 @@ fn waypoint_sequence_cell_summary(
             handoff.outbound_heading_error_rad.map(f64::to_degrees)
         }),
         speed_mps: metric(|handoff| handoff.speed_mps),
-        turn_margin_m: metric(|handoff| handoff.turn_margin_m),
+        target_velocity_error_mps: metric(|handoff| handoff.target_velocity_error_mps),
+        target_deadline_remaining_s: metric(|handoff| handoff.target_deadline_remaining_s),
+        handoff_turn_margin_m: metric(|handoff| handoff.handoff_turn_margin_m),
+        guidance_feasible_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.guidance_feasible)
+                    == Some(true)
+            })
+            .count(),
+        guidance_feasible_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.guidance_feasible.is_some())
+            })
+            .count(),
         guidance_replans: metric(|handoff| handoff.guidance_replan_count.map(|value| value as f64)),
     }
 }
@@ -2815,6 +2836,7 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
             )
         })
         .unwrap_or_else(|| r#"<span class="muted">-</span>"#.to_owned());
+    let state_debt = render_waypoint_sequence_state_debt(summary);
     format!(
         r#"<tr>
   <td>{route}</td>
@@ -2827,7 +2849,7 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
   <td>{cross_track}</td>
   <td>{heading_error}</td>
   <td>{speed}</td>
-  <td>{turn_margin}</td>
+  <td>{state_debt}</td>
   <td>{replans}</td>
 </tr>"#,
         vehicle = escape_html(&summary.key.vehicle_variant),
@@ -2852,11 +2874,30 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
             MetricDisplayKind::Speed,
             None,
         ),
-        turn_margin = render_transfer_handoff_metric_cell(
-            summary.turn_margin_m.as_ref(),
-            MetricDisplayKind::Meters,
-            None,
-        ),
+    )
+}
+
+fn render_waypoint_sequence_state_debt(summary: &WaypointSequenceCellSummary) -> String {
+    let Some(velocity_error) = summary.target_velocity_error_mps.as_ref() else {
+        return r#"<span class="muted">-</span>"#.to_owned();
+    };
+    let deadline = summary
+        .target_deadline_remaining_s
+        .as_ref()
+        .map(|value| format!("{:+.2}s", value.mean))
+        .unwrap_or_else(|| "-".to_owned());
+    let margin = summary
+        .handoff_turn_margin_m
+        .as_ref()
+        .map(|value| format!("{:+.1}m", value.mean))
+        .unwrap_or_else(|| "-".to_owned());
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">Δv {:.1}m/s · deadline {}</div><div class="overview-sub">feasible {}/{} · handoff margin {}</div></div>"#,
+        velocity_error.mean,
+        escape_html(&deadline),
+        summary.guidance_feasible_runs,
+        summary.guidance_feasible_observed,
+        escape_html(&margin),
     )
 }
 
@@ -8828,6 +8869,10 @@ mod report_tests {
                     outbound_heading_error_rad: Some(0.2),
                     speed_mps: Some(42.0),
                     turn_margin_m: Some(30.0),
+                    target_velocity_error_mps: Some(8.0 + index as f64),
+                    target_deadline_remaining_s: Some(1.5),
+                    guidance_feasible: Some(true),
+                    handoff_turn_margin_m: Some(-12.0),
                     guidance_replan_count: Some(1),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
                 },
@@ -8843,6 +8888,10 @@ mod report_tests {
                     outbound_heading_error_rad: Some(0.3),
                     speed_mps: Some(38.0),
                     turn_margin_m: Some(18.0),
+                    target_velocity_error_mps: Some(16.0 + index as f64),
+                    target_deadline_remaining_s: Some(0.4),
+                    guidance_feasible: Some(route_pass),
+                    handoff_turn_margin_m: Some(-24.0),
                     guidance_replan_count: Some(2),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
                 },
@@ -8861,6 +8910,9 @@ mod report_tests {
         assert!(html.contains("<code>#1</code> wp_0"));
         assert!(html.contains("<code>#2</code> wp_1"));
         assert!(html.contains("1 spatial"));
+        assert!(html.contains("<th>State Debt</th>"));
+        assert!(html.contains("Δv 8.5m/s"));
+        assert!(html.contains("feasible 2/2"));
     }
 
     #[test]

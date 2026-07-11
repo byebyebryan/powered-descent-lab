@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 26;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 27;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -148,6 +148,40 @@ pub struct BatchWaypointHandoffReviewMetrics {
     pub shaping_start_distance_m: Option<f64>,
     #[serde(default)]
     pub turn_margin_m: Option<f64>,
+    #[serde(default)]
+    pub center_x_m: Option<f64>,
+    #[serde(default)]
+    pub center_y_m: Option<f64>,
+    #[serde(default)]
+    pub nominal_handoff_target_x_m: Option<f64>,
+    #[serde(default)]
+    pub nominal_handoff_target_y_m: Option<f64>,
+    #[serde(default)]
+    pub handoff_target_x_m: Option<f64>,
+    #[serde(default)]
+    pub handoff_target_y_m: Option<f64>,
+    #[serde(default)]
+    pub handoff_target_mode: Option<String>,
+    #[serde(default)]
+    pub remaining_to_handoff_m: Option<f64>,
+    #[serde(default)]
+    pub time_to_handoff_s: Option<f64>,
+    #[serde(default)]
+    pub target_vx_mps: Option<f64>,
+    #[serde(default)]
+    pub target_vy_mps: Option<f64>,
+    #[serde(default)]
+    pub target_deadline_remaining_s: Option<f64>,
+    #[serde(default)]
+    pub target_velocity_error_mps: Option<f64>,
+    #[serde(default)]
+    pub guidance_feasible: Option<bool>,
+    #[serde(default)]
+    pub handoff_turn_margin_m: Option<f64>,
+    #[serde(default)]
+    pub guidance_snapshot_source: Option<String>,
+    #[serde(default)]
+    pub guidance_snapshot_age_s: Option<f64>,
     #[serde(default)]
     pub guidance_replan_count: Option<i64>,
 }
@@ -5642,7 +5676,12 @@ fn derive_run_review_metrics(
             .unwrap_or((None, None));
     let transfer = transfer_review_metrics(&artifacts.controller_updates, &run.samples);
     let mut waypoint_history = waypoint_review_history(&artifacts.controller_updates);
-    let waypoint_goal = waypoint_handoff_goal_review_metrics(scenario, &run.samples, &run.manifest);
+    let waypoint_goal = waypoint_handoff_goal_review_metrics(
+        scenario,
+        &run.samples,
+        &run.manifest,
+        &artifacts.controller_updates,
+    );
     if matches!(
         scenario.mission.goal,
         EvaluationGoal::WaypointHandoff { .. }
@@ -5683,6 +5722,7 @@ fn derive_run_review_metrics(
                 &run.samples,
                 &run.manifest,
                 terminal_index,
+                &artifacts.controller_updates,
             )
         {
             waypoint_history.push(terminal);
@@ -5803,6 +5843,23 @@ struct WaypointReviewMetrics {
     required_turn_distance_m: Option<f64>,
     shaping_start_distance_m: Option<f64>,
     turn_margin_m: Option<f64>,
+    center_x_m: Option<f64>,
+    center_y_m: Option<f64>,
+    nominal_handoff_target_x_m: Option<f64>,
+    nominal_handoff_target_y_m: Option<f64>,
+    handoff_target_x_m: Option<f64>,
+    handoff_target_y_m: Option<f64>,
+    handoff_target_mode: Option<String>,
+    remaining_to_handoff_m: Option<f64>,
+    time_to_handoff_s: Option<f64>,
+    target_vx_mps: Option<f64>,
+    target_vy_mps: Option<f64>,
+    target_deadline_remaining_s: Option<f64>,
+    target_velocity_error_mps: Option<f64>,
+    guidance_feasible: Option<bool>,
+    handoff_turn_margin_m: Option<f64>,
+    guidance_snapshot_source: Option<String>,
+    guidance_snapshot_age_s: Option<f64>,
     guidance_replan_count: Option<i64>,
 }
 
@@ -5876,6 +5933,21 @@ fn waypoint_review_metrics_from_update(
         .markers
         .iter()
         .find(|candidate| candidate.id == marker::WAYPOINT_HANDOFF);
+    let preferred_metrics = handoff_marker
+        .map(|handoff| &handoff.metadata)
+        .unwrap_or(&update.frame.metrics);
+    let preferred_float = |key| {
+        telemetry_float(preferred_metrics, key)
+            .or_else(|| telemetry_float(&update.frame.metrics, key))
+    };
+    let preferred_text = |key| {
+        telemetry_text(preferred_metrics, key)
+            .or_else(|| telemetry_text(&update.frame.metrics, key))
+    };
+    let preferred_bool = |key| {
+        telemetry_bool(preferred_metrics, key)
+            .or_else(|| telemetry_bool(&update.frame.metrics, key))
+    };
     WaypointReviewMetrics {
         capture_status: telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS)
             .map(ToOwned::to_owned),
@@ -5929,6 +6001,34 @@ fn waypoint_review_metrics_from_update(
         )
         .filter(|value| *value >= 0.0),
         turn_margin_m: telemetry_float(&update.frame.metrics, metric::WAYPOINT_TURN_MARGIN_M),
+        center_x_m: preferred_float(metric::WAYPOINT_CENTER_X_M),
+        center_y_m: preferred_float(metric::WAYPOINT_CENTER_Y_M),
+        nominal_handoff_target_x_m: preferred_float(metric::WAYPOINT_NOMINAL_HANDOFF_TARGET_X_M),
+        nominal_handoff_target_y_m: preferred_float(metric::WAYPOINT_NOMINAL_HANDOFF_TARGET_Y_M),
+        handoff_target_x_m: preferred_float(metric::WAYPOINT_HANDOFF_TARGET_X_M),
+        handoff_target_y_m: preferred_float(metric::WAYPOINT_HANDOFF_TARGET_Y_M),
+        handoff_target_mode: preferred_text(metric::WAYPOINT_HANDOFF_TARGET_MODE)
+            .map(ToOwned::to_owned),
+        remaining_to_handoff_m: preferred_float(metric::WAYPOINT_REMAINING_TO_HANDOFF_M)
+            .filter(|value| *value >= 0.0),
+        time_to_handoff_s: preferred_float(metric::WAYPOINT_TIME_TO_HANDOFF_S)
+            .filter(|value| *value >= 0.0 && value.is_finite()),
+        target_vx_mps: preferred_float(metric::WAYPOINT_TARGET_VX_MPS),
+        target_vy_mps: preferred_float(metric::WAYPOINT_TARGET_VY_MPS),
+        target_deadline_remaining_s: preferred_float(metric::WAYPOINT_TARGET_DEADLINE_REMAINING_S),
+        target_velocity_error_mps: preferred_float(metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS)
+            .filter(|value| *value >= 0.0),
+        guidance_feasible: preferred_bool(metric::WAYPOINT_GUIDANCE_FEASIBLE),
+        handoff_turn_margin_m: preferred_float(metric::WAYPOINT_HANDOFF_TURN_MARGIN_M),
+        guidance_snapshot_source: Some(
+            if handoff_marker.is_some() {
+                "capture_update"
+            } else {
+                "controller_update"
+            }
+            .to_owned(),
+        ),
+        guidance_snapshot_age_s: handoff_marker.is_some().then_some(0.0),
         guidance_replan_count: handoff_marker
             .and_then(|handoff| {
                 telemetry_integer(&handoff.metadata, metric::WAYPOINT_GUIDANCE_REPLAN_COUNT)
@@ -5946,11 +6046,18 @@ fn waypoint_handoff_goal_review_metrics(
     scenario: &ScenarioSpec,
     samples: &[SampleRecord],
     manifest: &RunManifest,
+    controller_updates: &[pd_control::ControllerUpdateRecord],
 ) -> Option<WaypointReviewMetrics> {
     let EvaluationGoal::WaypointHandoff { waypoint_index, .. } = &scenario.mission.goal else {
         return None;
     };
-    terminal_waypoint_review_metrics(scenario, samples, manifest, *waypoint_index)
+    terminal_waypoint_review_metrics(
+        scenario,
+        samples,
+        manifest,
+        *waypoint_index,
+        controller_updates,
+    )
 }
 
 fn terminal_waypoint_review_metrics(
@@ -5958,6 +6065,7 @@ fn terminal_waypoint_review_metrics(
     samples: &[SampleRecord],
     manifest: &RunManifest,
     waypoint_index: usize,
+    controller_updates: &[pd_control::ControllerUpdateRecord],
 ) -> Option<WaypointReviewMetrics> {
     let route = scenario.mission.transfer_route.as_ref()?;
     let waypoint = route.waypoints.get(waypoint_index)?;
@@ -5981,10 +6089,41 @@ fn terminal_waypoint_review_metrics(
         .filter_map(|sample| waypoint_sample_stats(scenario, &sample.observation, waypoint_index))
         .map(|stats| stats.distance_m)
         .min_by(|lhs, rhs| lhs.total_cmp(rhs));
+    let active_index = i64::try_from(waypoint_index).ok();
+    let guidance_update = controller_updates.iter().rev().find(|update| {
+        telemetry_bool(&update.frame.metrics, metric::WAYPOINT_GUIDANCE_ENABLED) == Some(true)
+            && telemetry_integer(&update.frame.metrics, metric::WAYPOINT_ACTIVE_INDEX)
+                == active_index
+            && telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS)
+                == Some("tracking")
+    });
+    let guidance = guidance_update
+        .map(waypoint_review_metrics_from_update)
+        .unwrap_or_default();
+    let guidance_snapshot_age_s =
+        guidance_update.map(|update| (last_sample.sim_time_s - update.sim_time_s).max(0.0));
+    let target_deadline_remaining_s = guidance
+        .target_deadline_remaining_s
+        .map(|remaining_s| remaining_s - guidance_snapshot_age_s.unwrap_or(0.0));
+    let target_velocity_error_mps =
+        guidance
+            .target_vx_mps
+            .zip(guidance.target_vy_mps)
+            .map(|(vx_mps, vy_mps)| {
+                (last_sample.observation.velocity_mps - Vec2::new(vx_mps, vy_mps)).length()
+            });
+    let remaining_to_handoff_m = if terminal_handoff {
+        Some(0.0)
+    } else {
+        Some(((-stats.plane_progress_m) - waypoint.capture_radius_m).max(0.0))
+    };
+    let handoff_turn_margin_m = remaining_to_handoff_m
+        .zip(guidance.required_turn_distance_m)
+        .map(|(remaining_m, required_m)| remaining_m - required_m);
 
     Some(WaypointReviewMetrics {
         capture_status: Some(capture_status.to_owned()),
-        active_index: i64::try_from(waypoint_index).ok(),
+        active_index,
         capture_time_s: terminal_handoff.then_some(last_sample.sim_time_s),
         closest_distance_m,
         distance_m: Some(stats.distance_m),
@@ -5995,12 +6134,31 @@ fn terminal_waypoint_review_metrics(
         outbound_cross_speed_mps: Some(stats.outbound_cross_speed_mps),
         speed_mps: Some(stats.speed_mps),
         vertical_speed_mps: Some(stats.vertical_speed_mps),
-        remaining_to_plane_m: None,
-        time_to_plane_s: None,
-        required_turn_distance_m: None,
-        shaping_start_distance_m: None,
-        turn_margin_m: None,
-        guidance_replan_count: None,
+        remaining_to_plane_m: Some((-stats.plane_progress_m).max(0.0)),
+        time_to_plane_s: guidance.time_to_plane_s,
+        required_turn_distance_m: guidance.required_turn_distance_m,
+        shaping_start_distance_m: guidance.shaping_start_distance_m,
+        turn_margin_m: guidance.turn_margin_m,
+        center_x_m: guidance.center_x_m,
+        center_y_m: guidance.center_y_m,
+        nominal_handoff_target_x_m: guidance.nominal_handoff_target_x_m,
+        nominal_handoff_target_y_m: guidance.nominal_handoff_target_y_m,
+        handoff_target_x_m: guidance.handoff_target_x_m,
+        handoff_target_y_m: guidance.handoff_target_y_m,
+        handoff_target_mode: guidance.handoff_target_mode,
+        remaining_to_handoff_m,
+        time_to_handoff_s: terminal_handoff
+            .then_some(0.0)
+            .or(guidance.time_to_handoff_s),
+        target_vx_mps: guidance.target_vx_mps,
+        target_vy_mps: guidance.target_vy_mps,
+        target_deadline_remaining_s,
+        target_velocity_error_mps,
+        guidance_feasible: guidance.guidance_feasible,
+        handoff_turn_margin_m,
+        guidance_snapshot_source: guidance_update.map(|_| "last_pre_capture_update".to_owned()),
+        guidance_snapshot_age_s,
+        guidance_replan_count: guidance.guidance_replan_count,
     })
 }
 
@@ -6107,6 +6265,23 @@ fn batch_waypoint_handoff_metrics(
         required_turn_distance_m: waypoint.required_turn_distance_m,
         shaping_start_distance_m: waypoint.shaping_start_distance_m,
         turn_margin_m: waypoint.turn_margin_m,
+        center_x_m: waypoint.center_x_m,
+        center_y_m: waypoint.center_y_m,
+        nominal_handoff_target_x_m: waypoint.nominal_handoff_target_x_m,
+        nominal_handoff_target_y_m: waypoint.nominal_handoff_target_y_m,
+        handoff_target_x_m: waypoint.handoff_target_x_m,
+        handoff_target_y_m: waypoint.handoff_target_y_m,
+        handoff_target_mode: waypoint.handoff_target_mode.clone(),
+        remaining_to_handoff_m: waypoint.remaining_to_handoff_m,
+        time_to_handoff_s: waypoint.time_to_handoff_s,
+        target_vx_mps: waypoint.target_vx_mps,
+        target_vy_mps: waypoint.target_vy_mps,
+        target_deadline_remaining_s: waypoint.target_deadline_remaining_s,
+        target_velocity_error_mps: waypoint.target_velocity_error_mps,
+        guidance_feasible: waypoint.guidance_feasible,
+        handoff_turn_margin_m: waypoint.handoff_turn_margin_m,
+        guidance_snapshot_source: waypoint.guidance_snapshot_source.clone(),
+        guidance_snapshot_age_s: waypoint.guidance_snapshot_age_s,
         guidance_replan_count: waypoint.guidance_replan_count,
     })
 }
@@ -9996,10 +10171,16 @@ mod tests {
                 label: format!("waypoint {index}"),
                 x_m: None,
                 y_m: None,
-                metadata: BTreeMap::from([(
-                    metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
-                    TelemetryValue::from(replans),
-                )]),
+                metadata: BTreeMap::from([
+                    (
+                        metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
+                        TelemetryValue::from(replans),
+                    ),
+                    (
+                        metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS.to_owned(),
+                        TelemetryValue::from(12.0 + index as f64),
+                    ),
+                ]),
             });
             update
         };
@@ -10011,6 +10192,7 @@ mod tests {
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].active_index, Some(0));
         assert_eq!(history[0].guidance_replan_count, Some(2));
+        assert_eq!(history[0].target_velocity_error_mps, Some(12.0));
         assert_eq!(history[1].active_index, Some(1));
         assert_eq!(history[1].guidance_replan_count, Some(3));
     }
@@ -10099,9 +10281,49 @@ mod tests {
             end_reason: EndReason::CheckpointSatisfied,
             summary: RunSummary::default(),
         };
+        let mut guidance_update = transfer_update(48, 0.4, "boost", 100.0, 20.0, 0.8);
+        guidance_update.frame.metrics.extend(BTreeMap::from([
+            (
+                metric::WAYPOINT_GUIDANCE_ENABLED.to_owned(),
+                TelemetryValue::from(true),
+            ),
+            (
+                metric::WAYPOINT_ACTIVE_INDEX.to_owned(),
+                TelemetryValue::from(0_i64),
+            ),
+            (
+                metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+                TelemetryValue::from("tracking"),
+            ),
+            (
+                metric::WAYPOINT_TARGET_VX_MPS.to_owned(),
+                TelemetryValue::from(30.0),
+            ),
+            (
+                metric::WAYPOINT_TARGET_VY_MPS.to_owned(),
+                TelemetryValue::from(0.0),
+            ),
+            (
+                metric::WAYPOINT_TARGET_DEADLINE_REMAINING_S.to_owned(),
+                TelemetryValue::from(2.5),
+            ),
+            (
+                metric::WAYPOINT_REQUIRED_TURN_DISTANCE_M.to_owned(),
+                TelemetryValue::from(30.0),
+            ),
+            (
+                metric::WAYPOINT_GUIDANCE_FEASIBLE.to_owned(),
+                TelemetryValue::from(false),
+            ),
+        ]));
 
-        let metrics = waypoint_handoff_goal_review_metrics(&scenario, &samples, &manifest)
-            .expect("waypoint handoff review should be available");
+        let metrics = waypoint_handoff_goal_review_metrics(
+            &scenario,
+            &samples,
+            &manifest,
+            &[guidance_update],
+        )
+        .expect("waypoint handoff review should be available");
         let contract = waypoint_contract_review_metrics(&scenario, &metrics);
 
         assert_eq!(metrics.capture_status.as_deref(), Some("captured"));
@@ -10109,6 +10331,14 @@ mod tests {
         assert_eq!(metrics.capture_time_s, Some(0.5));
         assert_eq!(metrics.closest_distance_m, Some(0.0));
         assert_eq!(metrics.distance_m, Some(0.0));
+        assert_eq!(metrics.target_deadline_remaining_s, Some(2.4));
+        assert!((metrics.target_velocity_error_mps.unwrap() - 19.6977156036).abs() < 1.0e-9);
+        assert_eq!(metrics.handoff_turn_margin_m, Some(-30.0));
+        assert_eq!(
+            metrics.guidance_snapshot_source.as_deref(),
+            Some("last_pre_capture_update")
+        );
+        assert!((metrics.guidance_snapshot_age_s.unwrap() - 0.1).abs() < 1.0e-9);
         assert_eq!(contract.status.as_deref(), Some("pass"));
     }
 

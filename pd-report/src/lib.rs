@@ -3291,6 +3291,11 @@ fn report_template() -> &'static str {
         const speed = Number(metrics["waypoint.speed_mps"]);
         const heading = Number(metrics["waypoint.outbound_heading_error_rad"]);
         const turnMargin = Number(metrics["waypoint.turn_margin_m"]);
+        const handoffMargin = Number(metrics["waypoint.handoff_turn_margin_m"]);
+        const velocityError = Number(metrics["waypoint.target_velocity_error_mps"]);
+        const deadlineRemaining = Number(metrics["waypoint.target_deadline_remaining_s"]);
+        const targetMode = metrics["waypoint.handoff_target_mode"];
+        const feasible = metrics["waypoint.guidance_feasible"];
         const replans = Number(metrics["waypoint.guidance_replan_count"]);
         const parts = [
           `${metrics["waypoint.id"] || `waypoint ${Number.isFinite(index) ? index + 1 : "?"}`} · ${metrics["waypoint.capture_status"] || "handoff"}`,
@@ -3298,6 +3303,11 @@ fn report_template() -> &'static str {
         if (Number.isFinite(speed)) parts.push(`speed=${speed.toFixed(1)}m/s`);
         if (Number.isFinite(heading)) parts.push(`heading=${(heading * 180 / Math.PI).toFixed(1)}deg`);
         if (Number.isFinite(turnMargin)) parts.push(`turn margin=${turnMargin.toFixed(1)}m`);
+        if (Number.isFinite(velocityError)) parts.push(`target Δv=${velocityError.toFixed(1)}m/s`);
+        if (Number.isFinite(deadlineRemaining)) parts.push(`deadline=${deadlineRemaining.toFixed(2)}s`);
+        if (Number.isFinite(handoffMargin)) parts.push(`handoff margin=${handoffMargin.toFixed(1)}m`);
+        if (targetMode) parts.push(`target=${targetMode}`);
+        if (typeof feasible === "boolean") parts.push(`feasible=${feasible ? "yes" : "no"}`);
         if (Number.isFinite(replans)) parts.push(`replans=${replans.toFixed(0)}`);
         return parts.join("<br>");
       };
