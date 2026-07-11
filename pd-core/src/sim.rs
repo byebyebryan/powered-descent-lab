@@ -8,6 +8,7 @@ use crate::{
         ActionLogEntry, CheckpointRunSummary, Command, EndReason, EvaluationGoal, EventKind,
         EventRecord, LandingRunSummary, MissionOutcome, Observation, PhysicalOutcome,
         RUN_SCHEMA_VERSION, RunArtifacts, RunContext, RunManifest, RunSummary, SampleRecord,
+        WaypointSequenceRunSummary,
     },
 };
 
@@ -44,6 +45,8 @@ pub struct SimulationState {
     pub max_speed_mps: f64,
     pub max_abs_attitude_rad: f64,
     pub max_abs_angular_rate_radps: f64,
+    pub waypoint_sequence_passed: usize,
+    pub waypoint_sequence_first_failure_index: Option<usize>,
 }
 
 impl SimulationState {
@@ -78,6 +81,8 @@ impl SimulationState {
             max_speed_mps: 0.0,
             max_abs_attitude_rad: 0.0,
             max_abs_angular_rate_radps: 0.0,
+            waypoint_sequence_passed: 0,
+            waypoint_sequence_first_failure_index: None,
         };
         state.update_extrema(ctx);
         Ok(state)
@@ -326,6 +331,7 @@ impl SimulationState {
         let landing_snapshot = self.landing_snapshot(ctx);
         let landing = build_landing_run_summary(ctx, &landing_snapshot);
         let checkpoint = build_checkpoint_run_summary(ctx, self);
+        let waypoint_sequence = build_waypoint_sequence_run_summary(ctx, self);
         let envelope_margin_ratio = checkpoint
             .as_ref()
             .map(|summary| summary.envelope_margin_ratio)
@@ -346,6 +352,7 @@ impl SimulationState {
             envelope_margin_ratio,
             landing,
             checkpoint,
+            waypoint_sequence,
         }
     }
 }
@@ -689,6 +696,25 @@ fn build_checkpoint_run_summary(
         velocity_margin_mps,
         attitude_margin_rad,
         envelope_margin_ratio,
+    })
+}
+
+fn build_waypoint_sequence_run_summary(
+    ctx: &RunContext,
+    state: &SimulationState,
+) -> Option<WaypointSequenceRunSummary> {
+    if !matches!(ctx.mission.goal, EvaluationGoal::WaypointSequence { .. }) {
+        return None;
+    }
+
+    Some(WaypointSequenceRunSummary {
+        passed_handoffs: state.waypoint_sequence_passed,
+        total_handoffs: ctx
+            .mission
+            .transfer_route
+            .as_ref()
+            .map_or(0, |route| route.waypoints.len()),
+        first_failed_index: state.waypoint_sequence_first_failure_index,
     })
 }
 

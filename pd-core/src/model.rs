@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{math::Vec2, terrain::TerrainDefinition};
 
-pub const RUN_SCHEMA_VERSION: u32 = 3;
+pub const RUN_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SimConfig {
@@ -471,6 +471,9 @@ pub enum EvaluationGoal {
         target_pad_id: String,
         waypoint_index: usize,
     },
+    WaypointSequence {
+        target_pad_id: String,
+    },
     TimedCheckpoint {
         target_pad_id: String,
         end_time_s: f64,
@@ -492,7 +495,8 @@ impl EvaluationGoal {
                     Ok(())
                 }
             }
-            Self::WaypointHandoff { target_pad_id, .. } => {
+            Self::WaypointHandoff { target_pad_id, .. }
+            | Self::WaypointSequence { target_pad_id } => {
                 if target_pad_id.trim().is_empty() {
                     Err("target_pad_id must not be empty".to_owned())
                 } else {
@@ -545,6 +549,7 @@ impl EvaluationGoal {
         match self {
             Self::LandingOnPad { target_pad_id } => target_pad_id.as_str(),
             Self::WaypointHandoff { target_pad_id, .. } => target_pad_id.as_str(),
+            Self::WaypointSequence { target_pad_id } => target_pad_id.as_str(),
             Self::TimedCheckpoint { target_pad_id, .. } => target_pad_id.as_str(),
         }
     }
@@ -628,6 +633,16 @@ impl ScenarioSpec {
                     "waypoint_handoff waypoint_index {} is not present in transfer_route.waypoints",
                     waypoint_index
                 ));
+            }
+        }
+        if matches!(&self.mission.goal, EvaluationGoal::WaypointSequence { .. }) {
+            let Some(route) = &self.mission.transfer_route else {
+                return Err("waypoint_sequence goal requires mission.transfer_route".to_owned());
+            };
+            if route.waypoints.is_empty() {
+                return Err(
+                    "waypoint_sequence goal requires at least one transfer waypoint".to_owned(),
+                );
             }
         }
         if let EvaluationGoal::TimedCheckpoint { end_time_s, .. } = &self.mission.goal
@@ -754,6 +769,8 @@ pub enum EndReason {
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
     ControllerUpdated,
+    WaypointHandoffSatisfied,
+    WaypointHandoffFailed,
     CheckpointSatisfied,
     CheckpointFailed,
     TouchdownOnTarget,
@@ -815,6 +832,13 @@ pub struct CheckpointRunSummary {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct WaypointSequenceRunSummary {
+    pub passed_handoffs: usize,
+    pub total_handoffs: usize,
+    pub first_failed_index: Option<usize>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct RunSummary {
     pub fuel_remaining_kg: f64,
     pub fuel_used_kg: f64,
@@ -828,6 +852,8 @@ pub struct RunSummary {
     pub landing: Option<LandingRunSummary>,
     #[serde(default)]
     pub checkpoint: Option<CheckpointRunSummary>,
+    #[serde(default)]
+    pub waypoint_sequence: Option<WaypointSequenceRunSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

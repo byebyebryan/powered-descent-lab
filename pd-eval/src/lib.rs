@@ -443,6 +443,7 @@ pub enum TransferMatrixEvaluationGoal {
     #[default]
     LandingOnPad,
     WaypointHandoff,
+    WaypointSequence,
 }
 
 impl TransferMatrixEvaluationGoal {
@@ -450,6 +451,7 @@ impl TransferMatrixEvaluationGoal {
         match self {
             Self::LandingOnPad => "landing_on_pad",
             Self::WaypointHandoff => "waypoint_handoff",
+            Self::WaypointSequence => "waypoint_sequence",
         }
     }
 }
@@ -1845,12 +1847,16 @@ fn validate_transfer_matrix_entry(entry: &TransferMatrixEntry) -> Result<()> {
             );
         }
     }
-    if entry.evaluation_goal == TransferMatrixEvaluationGoal::WaypointHandoff
-        && entry.waypoint_profile.is_none()
+    if matches!(
+        entry.evaluation_goal,
+        TransferMatrixEvaluationGoal::WaypointHandoff
+            | TransferMatrixEvaluationGoal::WaypointSequence
+    ) && entry.waypoint_profile.is_none()
     {
         bail!(
-            "transfer matrix entry '{}' evaluation_goal 'waypoint_handoff' requires waypoint_profile",
-            entry.id
+            "transfer matrix entry '{}' evaluation_goal '{}' requires waypoint_profile",
+            entry.id,
+            entry.evaluation_goal.as_str()
         );
     }
     if entry.lanes.is_empty() {
@@ -2949,6 +2955,10 @@ fn resolve_transfer_matrix_scenario(
             waypoint_index: 0,
         };
         resolved_parameters.insert("waypoint_handoff_index".to_owned(), 0.0);
+    } else if entry.evaluation_goal == TransferMatrixEvaluationGoal::WaypointSequence {
+        scenario.mission.goal = EvaluationGoal::WaypointSequence {
+            target_pad_id: target_pad.id.clone(),
+        };
     }
     if let Some(route) = scenario.mission.transfer_route.as_ref() {
         if let Some(profile_spec) = entry

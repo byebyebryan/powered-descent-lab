@@ -26,6 +26,7 @@ pub fn apply_contact_classification(
     match &ctx.mission.goal {
         EvaluationGoal::LandingOnPad { .. } => apply_landing_goal(state, contact),
         EvaluationGoal::WaypointHandoff { .. } => apply_timed_checkpoint_contact(state, contact),
+        EvaluationGoal::WaypointSequence { .. } => apply_timed_checkpoint_contact(state, contact),
         EvaluationGoal::TimedCheckpoint { .. } => apply_timed_checkpoint_contact(state, contact),
     }
 }
@@ -39,6 +40,7 @@ pub fn apply_progress_evaluation(
         EvaluationGoal::WaypointHandoff { waypoint_index, .. } => {
             apply_waypoint_handoff_progress(ctx, state, *waypoint_index)
         }
+        EvaluationGoal::WaypointSequence { .. } => apply_waypoint_sequence_progress(ctx, state),
         EvaluationGoal::TimedCheckpoint {
             end_time_s,
             desired_position_offset_m,
@@ -100,6 +102,81 @@ pub fn apply_progress_evaluation(
             ]
         }
     }
+}
+
+fn apply_waypoint_sequence_progress(
+    ctx: &RunContext,
+    state: &mut SimulationState,
+) -> Vec<EventRecord> {
+    if state.physics_step % ctx.sim.control_interval_steps() != 0 {
+        return Vec::new();
+    }
+
+    let waypoint_index = state.waypoint_sequence_passed;
+    let Some(evaluation) = waypoint_handoff_evaluation(ctx, state, waypoint_index) else {
+        return Vec::new();
+    };
+    if !evaluation.triggered {
+        return Vec::new();
+    }
+
+    if !evaluation.contract_pass() {
+        state.waypoint_sequence_first_failure_index = Some(waypoint_index);
+        state.mission_outcome = MissionOutcome::FailedCheckpoint;
+        state.end_reason = EndReason::CheckpointFailed;
+        return vec![
+            EventRecord {
+                sim_time_s: state.sim_time_s,
+                physics_step: state.physics_step,
+                kind: EventKind::WaypointHandoffFailed,
+                message: format!("waypoint_handoff_{waypoint_index}_failed"),
+            },
+            EventRecord {
+                sim_time_s: state.sim_time_s,
+                physics_step: state.physics_step,
+                kind: EventKind::CheckpointFailed,
+                message: "waypoint_sequence_failed".to_owned(),
+            },
+            EventRecord {
+                sim_time_s: state.sim_time_s,
+                physics_step: state.physics_step,
+                kind: EventKind::MissionEnded,
+                message: "waypoint_sequence_failed".to_owned(),
+            },
+        ];
+    }
+
+    state.waypoint_sequence_passed += 1;
+    let mut events = vec![EventRecord {
+        sim_time_s: state.sim_time_s,
+        physics_step: state.physics_step,
+        kind: EventKind::WaypointHandoffSatisfied,
+        message: format!("waypoint_handoff_{waypoint_index}_satisfied"),
+    }];
+    let total_handoffs = ctx
+        .mission
+        .transfer_route
+        .as_ref()
+        .map_or(0, |route| route.waypoints.len());
+    if state.waypoint_sequence_passed == total_handoffs {
+        state.mission_outcome = MissionOutcome::Success;
+        state.end_reason = EndReason::CheckpointSatisfied;
+        events.extend([
+            EventRecord {
+                sim_time_s: state.sim_time_s,
+                physics_step: state.physics_step,
+                kind: EventKind::CheckpointSatisfied,
+                message: "waypoint_sequence_satisfied".to_owned(),
+            },
+            EventRecord {
+                sim_time_s: state.sim_time_s,
+                physics_step: state.physics_step,
+                kind: EventKind::MissionEnded,
+                message: "waypoint_sequence_satisfied".to_owned(),
+            },
+        ]);
+    }
+    events
 }
 
 fn apply_waypoint_handoff_progress(
@@ -634,5 +711,112 @@ mod tests {
         assert!(events.is_empty());
         assert!(matches!(state.mission_outcome, MissionOutcome::InProgress));
         assert!(matches!(state.end_reason, EndReason::Running));
+    }
+
+    #[test]
+    fn waypoint_sequence_advances_in_order_and_ends_after_final_handoff() {
+        let mut scenario = waypoint_handoff_scenario();
+        scenario.mission.goal = EvaluationGoal::WaypointSequence {
+            target_pad_id: "target".to_owned(),
+        };
+        scenario.mission.transfer_route.as_mut().unwrap().waypoints = vec![
+            TransferWaypointSpec {
+                id: "wp_1".to_owned(),
+                position_m: Vec2::new(-25.0, 0.0),
+                capture_radius_m: 10.0,
+                max_cross_track_m: 15.0,
+                max_outbound_heading_error_rad: 0.7,
+                min_outbound_progress_mps: 5.0,
+                max_outbound_cross_speed_mps: None,
+                min_speed_mps: 10.0,
+                max_speed_mps: 90.0,
+                min_vertical_speed_mps: Some(-40.0),
+                max_vertical_speed_mps: Some(40.0),
+            },
+            TransferWaypointSpec {
+                id: "wp_2".to_owned(),
+                position_m: Vec2::new(50.0, 0.0),
+                capture_radius_m: 10.0,
+                max_cross_track_m: 15.0,
+                max_outbound_heading_error_rad: 0.7,
+                min_outbound_progress_mps: 5.0,
+                max_outbound_cross_speed_mps: None,
+                min_speed_mps: 10.0,
+                max_speed_mps: 90.0,
+                min_vertical_speed_mps: Some(-40.0),
+                max_vertical_speed_mps: Some(40.0),
+            },
+        ];
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut state = SimulationState::new(&ctx).unwrap();
+        state.sim_time_s = 1.0;
+        state.physics_step = 120;
+        state.position_m = Vec2::new(-25.0, 0.0);
+        state.velocity_mps = Vec2::new(25.0, 0.0);
+
+        let first_events = apply_progress_evaluation(&ctx, &mut state);
+
+        assert_eq!(state.waypoint_sequence_passed, 1);
+        assert!(matches!(state.mission_outcome, MissionOutcome::InProgress));
+        assert!(matches!(state.end_reason, EndReason::Running));
+        assert_eq!(first_events.len(), 1);
+        assert!(matches!(
+            first_events[0].kind,
+            EventKind::WaypointHandoffSatisfied
+        ));
+
+        state.sim_time_s = 2.0;
+        state.physics_step = 240;
+        state.position_m = Vec2::new(50.0, 0.0);
+        let final_events = apply_progress_evaluation(&ctx, &mut state);
+
+        assert_eq!(state.waypoint_sequence_passed, 2);
+        assert!(matches!(state.mission_outcome, MissionOutcome::Success));
+        assert!(matches!(state.end_reason, EndReason::CheckpointSatisfied));
+        assert_eq!(final_events.len(), 3);
+        assert!(matches!(
+            final_events[0].kind,
+            EventKind::WaypointHandoffSatisfied
+        ));
+        assert!(matches!(
+            final_events[1].kind,
+            EventKind::CheckpointSatisfied
+        ));
+    }
+
+    #[test]
+    fn waypoint_sequence_stops_at_first_failed_handoff() {
+        let mut scenario = waypoint_handoff_scenario();
+        scenario.mission.goal = EvaluationGoal::WaypointSequence {
+            target_pad_id: "target".to_owned(),
+        };
+        let route = scenario.mission.transfer_route.as_mut().unwrap();
+        route.waypoints.push(TransferWaypointSpec {
+            id: "wp_2".to_owned(),
+            position_m: Vec2::new(50.0, 0.0),
+            ..route.waypoints[0].clone()
+        });
+        route.waypoints[0].position_m = Vec2::new(-25.0, 0.0);
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut state = SimulationState::new(&ctx).unwrap();
+        state.sim_time_s = 1.0;
+        state.physics_step = 120;
+        state.position_m = Vec2::new(-25.0, 0.0);
+        state.velocity_mps = Vec2::new(25.0, 0.0);
+        apply_progress_evaluation(&ctx, &mut state);
+
+        state.sim_time_s = 2.0;
+        state.physics_step = 240;
+        state.position_m = Vec2::new(50.0, 0.0);
+        state.velocity_mps = Vec2::new(-25.0, 0.0);
+        let events = apply_progress_evaluation(&ctx, &mut state);
+
+        assert_eq!(state.waypoint_sequence_passed, 1);
+        assert_eq!(state.waypoint_sequence_first_failure_index, Some(1));
+        assert!(matches!(
+            state.mission_outcome,
+            MissionOutcome::FailedCheckpoint
+        ));
+        assert!(matches!(events[0].kind, EventKind::WaypointHandoffFailed));
     }
 }
