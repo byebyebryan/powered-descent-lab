@@ -8,8 +8,8 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use pd_control::{
-    ControlledRunArtifacts, ControllerSpec, TelemetryValue, built_in_controller_spec, metric,
-    run_controller_spec,
+    ControlledRunArtifacts, ControllerSpec, TelemetryValue, built_in_controller_spec, marker,
+    metric, run_controller_spec,
 };
 use pd_core::{
     EndReason, EvaluationGoal, LandingPadSpec, MissionOutcome, Observation, RunContext,
@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 25;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 26;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -105,6 +105,51 @@ pub struct BatchMetricSummary {
     pub mean: f64,
     #[serde(default)]
     pub stddev: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchWaypointHandoffReviewMetrics {
+    pub waypoint_index: usize,
+    #[serde(default)]
+    pub waypoint_id: Option<String>,
+    #[serde(default)]
+    pub capture_status: Option<String>,
+    #[serde(default)]
+    pub contract_status: Option<String>,
+    #[serde(default)]
+    pub contract_reasons: Vec<String>,
+    #[serde(default)]
+    pub capture_time_s: Option<f64>,
+    #[serde(default)]
+    pub closest_distance_m: Option<f64>,
+    #[serde(default)]
+    pub distance_m: Option<f64>,
+    #[serde(default)]
+    pub cross_track_m: Option<f64>,
+    #[serde(default)]
+    pub plane_progress_m: Option<f64>,
+    #[serde(default)]
+    pub outbound_heading_error_rad: Option<f64>,
+    #[serde(default)]
+    pub outbound_progress_mps: Option<f64>,
+    #[serde(default)]
+    pub outbound_cross_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub speed_mps: Option<f64>,
+    #[serde(default)]
+    pub vertical_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub remaining_to_plane_m: Option<f64>,
+    #[serde(default)]
+    pub time_to_plane_s: Option<f64>,
+    #[serde(default)]
+    pub required_turn_distance_m: Option<f64>,
+    #[serde(default)]
+    pub shaping_start_distance_m: Option<f64>,
+    #[serde(default)]
+    pub turn_margin_m: Option<f64>,
+    #[serde(default)]
+    pub guidance_replan_count: Option<i64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -241,6 +286,16 @@ pub struct BatchRunReviewMetrics {
     pub waypoint_shaping_start_distance_m: Option<f64>,
     #[serde(default)]
     pub waypoint_turn_margin_m: Option<f64>,
+    #[serde(default)]
+    pub waypoint_handoffs: Vec<BatchWaypointHandoffReviewMetrics>,
+    #[serde(default)]
+    pub waypoint_route_status: Option<String>,
+    #[serde(default)]
+    pub waypoint_route_passed: Option<usize>,
+    #[serde(default)]
+    pub waypoint_route_total: Option<usize>,
+    #[serde(default)]
+    pub waypoint_route_first_failure_index: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -5376,9 +5431,66 @@ fn derive_run_review_metrics(
             })
             .unwrap_or((None, None));
     let transfer = transfer_review_metrics(&artifacts.controller_updates, &run.samples);
-    let waypoint = waypoint_handoff_goal_review_metrics(scenario, &run.samples, &run.manifest)
+    let mut waypoint_history = waypoint_review_history(&artifacts.controller_updates);
+    let waypoint_goal = waypoint_handoff_goal_review_metrics(scenario, &run.samples, &run.manifest);
+    if matches!(
+        scenario.mission.goal,
+        EvaluationGoal::WaypointHandoff { .. }
+    ) {
+        if let Some(terminal) = waypoint_goal.as_ref().filter(|metrics| {
+            matches!(
+                metrics.capture_status.as_deref(),
+                Some("captured" | "missed")
+            )
+        }) {
+            waypoint_history = vec![terminal.clone()];
+        }
+    } else if matches!(
+        scenario.mission.goal,
+        EvaluationGoal::WaypointSequence { .. }
+    ) && matches!(
+        run.manifest.end_reason,
+        EndReason::CheckpointSatisfied | EndReason::CheckpointFailed
+    ) {
+        let terminal_index = run
+            .manifest
+            .summary
+            .waypoint_sequence
+            .as_ref()
+            .and_then(|summary| {
+                summary.first_failed_index.or_else(|| {
+                    (summary.passed_handoffs == summary.total_handoffs
+                        && summary.total_handoffs > 0)
+                        .then_some(summary.total_handoffs - 1)
+                })
+            });
+        if let Some(terminal_index) = terminal_index
+            && !waypoint_history
+                .iter()
+                .any(|metrics| metrics.active_index == i64::try_from(terminal_index).ok())
+            && let Some(terminal) = terminal_waypoint_review_metrics(
+                scenario,
+                &run.samples,
+                &run.manifest,
+                terminal_index,
+            )
+        {
+            waypoint_history.push(terminal);
+        }
+    }
+    waypoint_history.sort_by_key(|metrics| metrics.active_index);
+    waypoint_history.dedup_by_key(|metrics| metrics.active_index);
+    let waypoint = waypoint_history
+        .first()
+        .cloned()
+        .or(waypoint_goal)
         .unwrap_or_else(|| waypoint_review_metrics(&artifacts.controller_updates));
     let waypoint_contract = waypoint_contract_review_metrics(scenario, &waypoint);
+    let waypoint_handoffs = waypoint_history
+        .iter()
+        .filter_map(|metrics| batch_waypoint_handoff_metrics(scenario, metrics))
+        .collect::<Vec<_>>();
+    let waypoint_route = waypoint_route_review_metrics(scenario, &run.manifest, &waypoint_handoffs);
     let transfer_shape =
         transfer_shape_metrics(scenario, &run.samples, &artifacts.controller_updates);
 
@@ -5454,6 +5566,11 @@ fn derive_run_review_metrics(
         waypoint_required_turn_distance_m: waypoint.required_turn_distance_m,
         waypoint_shaping_start_distance_m: waypoint.shaping_start_distance_m,
         waypoint_turn_margin_m: waypoint.turn_margin_m,
+        waypoint_handoffs,
+        waypoint_route_status: waypoint_route.status,
+        waypoint_route_passed: waypoint_route.passed,
+        waypoint_route_total: waypoint_route.total,
+        waypoint_route_first_failure_index: waypoint_route.first_failure_index,
     }
 }
 
@@ -5476,6 +5593,7 @@ struct WaypointReviewMetrics {
     required_turn_distance_m: Option<f64>,
     shaping_start_distance_m: Option<f64>,
     turn_margin_m: Option<f64>,
+    guidance_replan_count: Option<i64>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -5504,8 +5622,50 @@ fn waypoint_review_metrics(
     let Some(update) = update else {
         return WaypointReviewMetrics::default();
     };
+    waypoint_review_metrics_from_update(update)
+}
+
+fn waypoint_review_history(
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+) -> Vec<WaypointReviewMetrics> {
+    let mut handoffs = controller_updates
+        .iter()
+        .filter(|update| {
+            update
+                .frame
+                .markers
+                .iter()
+                .any(|candidate| candidate.id == marker::WAYPOINT_HANDOFF)
+        })
+        .map(waypoint_review_metrics_from_update)
+        .collect::<Vec<_>>();
+    if handoffs.is_empty() {
+        handoffs = controller_updates
+            .iter()
+            .filter(|update| {
+                matches!(
+                    telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS),
+                    Some("captured" | "missed")
+                )
+            })
+            .map(waypoint_review_metrics_from_update)
+            .collect();
+    }
+    handoffs.sort_by_key(|handoff| handoff.active_index);
+    handoffs.dedup_by_key(|handoff| handoff.active_index);
+    handoffs
+}
+
+fn waypoint_review_metrics_from_update(
+    update: &pd_control::ControllerUpdateRecord,
+) -> WaypointReviewMetrics {
     let capture_time_s = telemetry_float(&update.frame.metrics, metric::WAYPOINT_CAPTURE_TIME_S)
         .filter(|value| *value >= 0.0);
+    let handoff_marker = update
+        .frame
+        .markers
+        .iter()
+        .find(|candidate| candidate.id == marker::WAYPOINT_HANDOFF);
     WaypointReviewMetrics {
         capture_status: telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS)
             .map(ToOwned::to_owned),
@@ -5559,6 +5719,16 @@ fn waypoint_review_metrics(
         )
         .filter(|value| *value >= 0.0),
         turn_margin_m: telemetry_float(&update.frame.metrics, metric::WAYPOINT_TURN_MARGIN_M),
+        guidance_replan_count: handoff_marker
+            .and_then(|handoff| {
+                telemetry_integer(&handoff.metadata, metric::WAYPOINT_GUIDANCE_REPLAN_COUNT)
+            })
+            .or_else(|| {
+                telemetry_integer(
+                    &update.frame.metrics,
+                    metric::WAYPOINT_GUIDANCE_REPLAN_COUNT,
+                )
+            }),
     }
 }
 
@@ -5570,10 +5740,19 @@ fn waypoint_handoff_goal_review_metrics(
     let EvaluationGoal::WaypointHandoff { waypoint_index, .. } = &scenario.mission.goal else {
         return None;
     };
+    terminal_waypoint_review_metrics(scenario, samples, manifest, *waypoint_index)
+}
+
+fn terminal_waypoint_review_metrics(
+    scenario: &ScenarioSpec,
+    samples: &[SampleRecord],
+    manifest: &RunManifest,
+    waypoint_index: usize,
+) -> Option<WaypointReviewMetrics> {
     let route = scenario.mission.transfer_route.as_ref()?;
-    let waypoint = route.waypoints.get(*waypoint_index)?;
+    let waypoint = route.waypoints.get(waypoint_index)?;
     let last_sample = samples.last()?;
-    let stats = waypoint_sample_stats(scenario, &last_sample.observation, *waypoint_index)?;
+    let stats = waypoint_sample_stats(scenario, &last_sample.observation, waypoint_index)?;
     let terminal_handoff = matches!(
         manifest.end_reason,
         EndReason::CheckpointSatisfied | EndReason::CheckpointFailed
@@ -5589,13 +5768,13 @@ fn waypoint_handoff_goal_review_metrics(
     };
     let closest_distance_m = samples
         .iter()
-        .filter_map(|sample| waypoint_sample_stats(scenario, &sample.observation, *waypoint_index))
+        .filter_map(|sample| waypoint_sample_stats(scenario, &sample.observation, waypoint_index))
         .map(|stats| stats.distance_m)
         .min_by(|lhs, rhs| lhs.total_cmp(rhs));
 
     Some(WaypointReviewMetrics {
         capture_status: Some(capture_status.to_owned()),
-        active_index: i64::try_from(*waypoint_index).ok(),
+        active_index: i64::try_from(waypoint_index).ok(),
         capture_time_s: terminal_handoff.then_some(last_sample.sim_time_s),
         closest_distance_m,
         distance_m: Some(stats.distance_m),
@@ -5611,6 +5790,7 @@ fn waypoint_handoff_goal_review_metrics(
         required_turn_distance_m: None,
         shaping_start_distance_m: None,
         turn_margin_m: None,
+        guidance_replan_count: None,
     })
 }
 
@@ -5680,6 +5860,117 @@ fn waypoint_dot(lhs: Vec2, rhs: Vec2) -> f64 {
 
 fn waypoint_cross(lhs: Vec2, rhs: Vec2) -> f64 {
     (lhs.x * rhs.y) - (lhs.y * rhs.x)
+}
+
+fn batch_waypoint_handoff_metrics(
+    scenario: &ScenarioSpec,
+    waypoint: &WaypointReviewMetrics,
+) -> Option<BatchWaypointHandoffReviewMetrics> {
+    let waypoint_index = waypoint
+        .active_index
+        .and_then(|index| usize::try_from(index).ok())?;
+    let contract = waypoint_contract_review_metrics(scenario, waypoint);
+    let waypoint_id = scenario
+        .mission
+        .transfer_route
+        .as_ref()
+        .and_then(|route| route.waypoints.get(waypoint_index))
+        .map(|spec| spec.id.clone());
+    Some(BatchWaypointHandoffReviewMetrics {
+        waypoint_index,
+        waypoint_id,
+        capture_status: waypoint.capture_status.clone(),
+        contract_status: contract.status,
+        contract_reasons: contract.reasons,
+        capture_time_s: waypoint.capture_time_s,
+        closest_distance_m: waypoint.closest_distance_m,
+        distance_m: waypoint.distance_m,
+        cross_track_m: waypoint.cross_track_m,
+        plane_progress_m: waypoint.plane_progress_m,
+        outbound_heading_error_rad: waypoint.outbound_heading_error_rad,
+        outbound_progress_mps: waypoint.outbound_progress_mps,
+        outbound_cross_speed_mps: waypoint.outbound_cross_speed_mps,
+        speed_mps: waypoint.speed_mps,
+        vertical_speed_mps: waypoint.vertical_speed_mps,
+        remaining_to_plane_m: waypoint.remaining_to_plane_m,
+        time_to_plane_s: waypoint.time_to_plane_s,
+        required_turn_distance_m: waypoint.required_turn_distance_m,
+        shaping_start_distance_m: waypoint.shaping_start_distance_m,
+        turn_margin_m: waypoint.turn_margin_m,
+        guidance_replan_count: waypoint.guidance_replan_count,
+    })
+}
+
+#[derive(Clone, Debug, Default)]
+struct WaypointRouteReviewMetrics {
+    status: Option<String>,
+    passed: Option<usize>,
+    total: Option<usize>,
+    first_failure_index: Option<usize>,
+}
+
+fn waypoint_route_review_metrics(
+    scenario: &ScenarioSpec,
+    manifest: &RunManifest,
+    handoffs: &[BatchWaypointHandoffReviewMetrics],
+) -> WaypointRouteReviewMetrics {
+    if !matches!(
+        scenario.mission.goal,
+        EvaluationGoal::LandingOnPad { .. } | EvaluationGoal::WaypointSequence { .. }
+    ) {
+        return WaypointRouteReviewMetrics::default();
+    }
+    let Some(route) = scenario
+        .mission
+        .transfer_route
+        .as_ref()
+        .filter(|route| !route.waypoints.is_empty())
+    else {
+        return WaypointRouteReviewMetrics::default();
+    };
+
+    let total = route.waypoints.len();
+    let sequence_summary = manifest.summary.waypoint_sequence.as_ref();
+    let passed = sequence_summary.map_or_else(
+        || {
+            handoffs
+                .iter()
+                .enumerate()
+                .take_while(|(expected_index, handoff)| {
+                    handoff.waypoint_index == *expected_index
+                        && handoff.contract_status.as_deref() == Some("pass")
+                })
+                .count()
+        },
+        |summary| summary.passed_handoffs,
+    );
+    let first_failure_index = sequence_summary
+        .and_then(|summary| summary.first_failed_index)
+        .or_else(|| {
+            handoffs.iter().find_map(|handoff| {
+                (!matches!(
+                    handoff.contract_status.as_deref(),
+                    Some("pass" | "incomplete") | None
+                ))
+                .then_some(handoff.waypoint_index)
+            })
+        });
+    let status = if passed == total {
+        "pass"
+    } else if first_failure_index.is_some()
+        || !matches!(manifest.mission_outcome, MissionOutcome::InProgress)
+    {
+        "failed"
+    } else {
+        "incomplete"
+    };
+
+    WaypointRouteReviewMetrics {
+        status: Some(status.to_owned()),
+        passed: Some(passed),
+        total: Some(total),
+        first_failure_index,
+    }
 }
 
 fn waypoint_contract_review_metrics(
@@ -9284,6 +9575,102 @@ mod tests {
         assert_eq!(metrics.outbound_progress_mps, Some(24.0));
         assert_eq!(metrics.required_turn_distance_m, Some(72.0));
         assert_eq!(metrics.turn_margin_m, Some(38.0));
+    }
+
+    #[test]
+    fn waypoint_review_history_preserves_ordered_handoff_markers() {
+        let handoff_update = |physics_step: u64, sim_time_s: f64, index: i64, replans: i64| {
+            let mut update = transfer_update(physics_step, sim_time_s, "boost", 100.0, 20.0, 0.8);
+            update.frame.metrics.extend(BTreeMap::from([
+                (
+                    metric::WAYPOINT_GUIDANCE_ENABLED.to_owned(),
+                    TelemetryValue::from(true),
+                ),
+                (
+                    metric::WAYPOINT_ACTIVE_INDEX.to_owned(),
+                    TelemetryValue::from(index),
+                ),
+                (
+                    metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+                    TelemetryValue::from("captured"),
+                ),
+                (
+                    metric::WAYPOINT_CAPTURE_TIME_S.to_owned(),
+                    TelemetryValue::from(sim_time_s),
+                ),
+            ]));
+            update.frame.markers.push(pd_control::ControllerMarker {
+                id: marker::WAYPOINT_HANDOFF.to_owned(),
+                label: format!("waypoint {index}"),
+                x_m: None,
+                y_m: None,
+                metadata: BTreeMap::from([(
+                    metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
+                    TelemetryValue::from(replans),
+                )]),
+            });
+            update
+        };
+        let second = handoff_update(120, 1.0, 1, 3);
+        let first = handoff_update(60, 0.5, 0, 2);
+
+        let history = waypoint_review_history(&[second, first]);
+
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].active_index, Some(0));
+        assert_eq!(history[0].guidance_replan_count, Some(2));
+        assert_eq!(history[1].active_index, Some(1));
+        assert_eq!(history[1].guidance_replan_count, Some(3));
+    }
+
+    #[test]
+    fn waypoint_route_review_uses_authoritative_sequence_progress() {
+        let mut scenario = waypoint_contract_scenario();
+        scenario.mission.goal = EvaluationGoal::WaypointSequence {
+            target_pad_id: "pad_a".to_owned(),
+        };
+        let route = scenario.mission.transfer_route.as_mut().unwrap();
+        route.waypoints.push(TransferWaypointSpec {
+            id: "wp_1".to_owned(),
+            position_m: Vec2::new(-100.0, 120.0),
+            ..route.waypoints[0].clone()
+        });
+        let manifest = RunManifest {
+            schema_version: pd_core::model::RUN_SCHEMA_VERSION,
+            scenario_id: scenario.id.clone(),
+            scenario_name: scenario.name.clone(),
+            scenario_seed: scenario.seed,
+            scenario_tags: scenario.tags.clone(),
+            controller_id: "transfer_waypoint_pdg_v1".to_owned(),
+            physics_hz: scenario.sim.physics_hz,
+            controller_hz: scenario.sim.controller_hz,
+            sim_time_s: 1.0,
+            physics_steps: 120,
+            controller_updates: 2,
+            physical_outcome: pd_core::PhysicalOutcome::Flying,
+            mission_outcome: MissionOutcome::FailedCheckpoint,
+            end_reason: EndReason::CheckpointFailed,
+            summary: RunSummary {
+                waypoint_sequence: Some(pd_core::model::WaypointSequenceRunSummary {
+                    passed_handoffs: 1,
+                    total_handoffs: 2,
+                    first_failed_index: Some(1),
+                }),
+                ..RunSummary::default()
+            },
+        };
+        let handoffs = vec![BatchWaypointHandoffReviewMetrics {
+            waypoint_index: 0,
+            contract_status: Some("pass".to_owned()),
+            ..BatchWaypointHandoffReviewMetrics::default()
+        }];
+
+        let route = waypoint_route_review_metrics(&scenario, &manifest, &handoffs);
+
+        assert_eq!(route.status.as_deref(), Some("failed"));
+        assert_eq!(route.passed, Some(1));
+        assert_eq!(route.total, Some(2));
+        assert_eq!(route.first_failure_index, Some(1));
     }
 
     #[test]
