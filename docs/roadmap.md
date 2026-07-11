@@ -47,9 +47,9 @@ Current implementation status:
   - direct transfer is clean across the maintained route-angle/radius matrix
   - `transfer_waypoint_pdg_v1` closes the balanced terrain-blind pass-through
     handoff and paired landing corpus
-  - ordered two-waypoint evaluation, reporting, and paired smoke corpora now
-    exist; general outbound-state shaping across successive legs is the active
-    gap at a `2 / 54` route-contract baseline
+  - ordered two-waypoint evaluation, target-debt reporting, and paired smoke
+    corpora now exist; general outbound-state shaping across successive legs is
+    the active gap at a `2 / 54` route-contract baseline
 
 ## 2. What Not To Build First
 
@@ -319,8 +319,9 @@ Status:
   on controller observation boundaries
 - `EvaluationGoal::WaypointSequence` evaluates every route waypoint in order,
   stops at the first failed contract, and persists passed/total/first-failure
-  evidence. Batch schema `26` retains ordered handoff histories and route-level
-  status while preserving waypoint-zero compatibility fields.
+  evidence. Batch schema `27` retains ordered handoff histories, route-level
+  status, and completed-leg target/deadline debt while preserving waypoint-zero
+  compatibility fields.
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run, including post-handoff apex gain, time-to-apex, and apex lateral
@@ -371,14 +372,18 @@ Status:
   - the baseline establishes the next Phase 3 bottleneck as general leg-to-leg
     state shaping. It does not establish two-waypoint reliability and is not an
     acceptance gate yet.
+  - fixed centerline capture-surface targeting was tested and removed. It raised
+    complete route passes `2 -> 8 / 54`, but worsened zero-handoff failures
+    `22 -> 26`, late-bend first handoffs `14 -> 9`, and final landing
+    `49 -> 42 / 54`; a capture envelope cannot be reduced to that hard point.
   - `single_straight_v1` is no longer supported because its capture volume
     intersected the route terrain; resolved corpus tests now enforce the planner
     floor and cross-track-plus-vehicle vertical clearance
-- next transfer slice should extend sequencing without moving waypoint planning
-  into the controller:
+- next transfer slice should improve sequence guidance without moving waypoint
+  planning into the controller:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - add multiple waypoint handoffs before final landing, preserving useful
-    outbound state at every intermediate point
+  - shape each active leg toward a feasible capture event and useful outbound
+    state at every intermediate point
   - use the handoff pack as the primary guidance target and the paired landing
     pack as the recovery/reliability regression gate
   - expand route count and radius coverage without adding terrain reaction to
@@ -545,9 +550,11 @@ The immediate controller direction should stay conservative. Direct transfer,
 balanced pass-through handoff, and balanced final landing are all clean across
 their maintained matrices. Multiple preplanned handoffs are now exercised, and
 they expose the next defect: the controller reaches waypoint capture volumes but
-usually fails to align velocity with the next leg. The next implementation
-slice should first analyze that transition across both sequence profiles, then
-try one route-frame state-shaping change. It must preserve both `81 / 81`
-single-waypoint gates and `297 / 297` direct transfer without adding a
-profile-specific state machine. Radius tiers should follow after the nominal
-two-waypoint mechanism is credible.
+usually fails to align velocity with the next leg. Target-debt telemetry now
+shows that the planned velocity deadline often extends beyond the actual capture
+event, but fixed capture-surface targeting failed the broad gates. The next
+implementation slice should evaluate candidate timing at the predicted first
+feasible capture event while keeping center-seeking spatial correction. It must
+preserve both `81 / 81` single-waypoint gates and `297 / 297` direct transfer
+without adding a profile-specific state machine. Radius tiers should follow
+after the nominal two-waypoint mechanism is credible.

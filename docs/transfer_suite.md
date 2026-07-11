@@ -225,10 +225,10 @@ not the intended product behavior.
 
 Waypoint arrival should therefore be an envelope:
 
-- position: pass within a configured capture radius, crossing band, or maximum
-  cross-track miss at the waypoint plane
-- progress: only capture after crossing the waypoint plane along the active leg,
-  not by skimming the radius from the wrong side
+- position: trigger on first inbound entry into the configured capture radius,
+  with the waypoint plane as the fallback when the circle is missed
+- progress: approach from the active leg; the controller and evaluator share the
+  same radius-entry-or-plane trigger instead of inventing separate arrival rules
 - outbound state: velocity should have positive progress along the next leg and
   a bounded outbound heading error
 - energy: total speed and any optional vertical-rate bounds supplied by the
@@ -510,7 +510,7 @@ Current balanced waypoint-turn checkpoint, refreshed on 2026-07-10:
 - direct-transfer regression remains `297 / 297`, confirming that the waypoint
   mechanism did not alter the non-waypoint controller path
 
-Initial ordered waypoint-sequence baseline, refreshed on 2026-07-10 with
+Current ordered waypoint-sequence checkpoint, refreshed on 2026-07-11 with
 `12` workers and `--no-reuse`:
 
 - `transfer_waypoint_sequence_smoke`: `49 / 54` final landings and `5` crashes,
@@ -524,10 +524,17 @@ Initial ordered waypoint-sequence baseline, refreshed on 2026-07-10 with
   dominant violation is outbound heading, sometimes combined with excessive
   outbound cross speed; two late-bend second handoffs also lack outbound
   progress.
-- the baseline does not justify route/profile-specific tuning. Next work should
-  diagnose why fixed-endpoint state targeting reaches the point without shaping
-  velocity far enough toward the next leg, then test a general leg-transition
-  correction while preserving `81 / 81`, `81 / 81`, and `297 / 297` gates.
+- batch schema `27` now records handoff target/deadline/velocity debt and its
+  snapshot provenance. The report confirms many handoffs occur with positive
+  plan deadline and material target-velocity error.
+- moving the hard state target to the fixed inbound capture-radius point was
+  tested once and rejected: ordered success rose `2 -> 8 / 54`, but zero-handoff
+  failures rose `22 -> 26`, late-bend index-zero passes fell `14 -> 9`, and final
+  landing fell `49 -> 42 / 54`. The behavior change was removed.
+- the next general pass should model candidate timing against the predicted
+  first feasible capture event while preserving center-seeking spatial
+  correction. It must avoid route/profile branches and preserve `81 / 81`,
+  `81 / 81`, and `297 / 297` gates.
 - route-radius expansion remains a later evidence axis after the nominal-radius
   two-waypoint mechanism is credible. Generalized terrain avoidance remains out
   of scope; waypoint planning still owns terrain-valid placement.

@@ -1,5 +1,50 @@
 # Progress
 
+## 2026-07-11
+
+### Waypoint handoff target-debt diagnosis
+
+- Batch schema `27` adds completed-leg guidance intent to every ordered handoff:
+  waypoint center, nominal and active handoff targets, target mode, desired
+  velocity, signed target-deadline remainder, velocity error, feasibility,
+  handoff-relative turn margin, and snapshot provenance/age. Exact controller
+  transitions use marker-owned intent; evaluator-terminal handoffs merge final
+  kinematics with the last matching pre-capture controller update.
+- The collapsed `Waypoint Sequence` report now presents velocity error, deadline
+  remainder, feasibility, and handoff margin as one compact `State Debt` cell.
+  Detailed run marker hovers expose the same fields. Single-waypoint triage and
+  aggregate trajectory previews are unchanged.
+- Fresh `12`-worker, `--no-reuse` instrumentation baselines exactly preserve
+  controller behavior:
+  - `transfer_waypoint_sequence_smoke`: `49 / 54`, `6.83s` wall clock,
+    `65.63s` mean sim time, and `114.61s` max sim time
+  - `transfer_waypoint_sequence_contract_smoke`: `2 / 54`, `1.45s` wall clock,
+    `26.04s` mean sim time, and `57.25s` max sim time
+- The new evidence confirms target debt at the actual radius-entry event: many
+  failures arrive with a still-positive plan deadline and substantial desired
+  velocity error. A single semantic experiment moved the state target and
+  candidate horizon from waypoint center/plane to the fixed inbound
+  centerline/capture-radius intersection, with center/plane fallback after a
+  missed entry.
+- That fixed capture-surface hypothesis was rejected and removed:
+  - ordered success improved `2 -> 8 / 54`, and double-bend handoff passes moved
+    `18 -> 19` at index zero and `2 -> 8` at index one
+  - zero-handoff failures worsened `22 -> 26`; late-bend index-zero passes fell
+    `14 -> 9`, while index one remained `0`; only two of four strata improved
+  - final landing regressed `49 -> 42 / 54`, mean sim time rose
+    `65.63s -> 67.34s`, and max sim time rose `114.61s -> 126.24s`
+- The mismatch is therefore real but not the whole controller defect. A fixed
+  centerline surface point is too restrictive for a capture envelope. The next
+  general hypothesis should align desired velocity and candidate timing to the
+  predicted first feasible capture event while retaining center-seeking spatial
+  correction, rather than replacing the envelope with another hard point.
+- Final retained-behavior no-regression gates are clean:
+  - `transfer_waypoint_turn_contract_smoke`: `81 / 81`, `1.92s` wall clock
+  - `transfer_waypoint_turn_smoke`: `81 / 81`, `7.96s` wall clock
+  - `transfer_route_angle_radius_suite`: `297 / 297`, `33.65s` wall clock
+  - sequence landing controller compute: `159.6us` mean, `454us` p95, and
+    `627us` p99 across `215,417` updates; the isolated maximum is `2.39ms`
+
 ## 2026-07-10
 
 ### Ordered waypoint-sequence baseline

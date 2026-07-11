@@ -457,10 +457,15 @@ Transfer route-angle checkpoint:
   - `current`: `2 / 54` ordered sequence successes
   - most failures are outbound heading or cross-speed violations after spatial
     capture, so final landing alone materially overstates route-guidance quality
+  - batch schema `27` now exposes desired-velocity, signed-deadline, feasibility,
+    and handoff-margin debt at each ordered transition
+  - fixed capture-surface targeting improved complete routes to `8 / 54` but
+    regressed zero-handoff and landing gates, so the behavior was removed
 
 So the main next bottleneck is ordered leg-to-leg state shaping, not basic
-controller viability or waypoint setup. The next Phase 3 slice should explain
-and improve outbound alignment across successive preplanned legs while
+controller viability or waypoint setup. The next Phase 3 slice should align
+candidate timing to the predicted first feasible capture event without reducing
+the envelope to a hard point, improving successive preplanned legs while
 preserving both `81 / 81` single-waypoint gates and the `297 / 297`
 direct-transfer result. General terrain avoidance remains parked at the
 planning/collision-warning layer. Detailed checkpoint history lives in
