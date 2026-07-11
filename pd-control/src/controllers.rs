@@ -1201,10 +1201,11 @@ impl TransferPdgController {
         let approach = self.waypoint_approach_state(ctx, observation, &geometry, stats);
         let guidance = waypoint_guidance_frame(&geometry, stats, approach);
         self.waypoint_closest_distance_m = self.waypoint_closest_distance_m.min(stats.distance_m);
-        let should_switch =
-            stats.plane_progress_m >= 0.0 || stats.distance_m <= geometry.waypoint.capture_radius_m;
-        if should_switch {
-            let status = if waypoint_capture_passes(geometry.waypoint, stats) {
+        let handoff = geometry
+            .waypoint
+            .assess_handoff(waypoint_handoff_kinematics(stats));
+        if handoff.triggered {
+            let status = if handoff.spatial_pass {
                 "captured"
             } else {
                 "missed"
@@ -3810,12 +3811,6 @@ fn waypoint_leg_steering_target_m(
     let target_progress_m =
         (progress_m + lookahead_m.max(downrange_lookahead_m)).min(geometry.leg_length_m);
     geometry.anchor_m + (geometry.leg_unit * target_progress_m)
-}
-
-fn waypoint_capture_passes(waypoint: &TransferWaypointSpec, stats: WaypointLegStats) -> bool {
-    waypoint
-        .assess_handoff(waypoint_handoff_kinematics(stats))
-        .spatial_pass
 }
 
 fn waypoint_handoff_kinematics(stats: WaypointLegStats) -> WaypointHandoffKinematics {
