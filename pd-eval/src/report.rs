@@ -6650,6 +6650,8 @@ fn selector_sort_rank(key: &str) -> u8 {
         "single_medium_bend_v1" | "single_bend_v1" => 1,
         "single_sharp_bend_v1" => 2,
         "single_dogleg_v1" => 3,
+        "double_bend_v1" => 4,
+        "late_bend_v1" => 5,
         "low" => 0,
         "mid" => 1,
         "high" => 2,
