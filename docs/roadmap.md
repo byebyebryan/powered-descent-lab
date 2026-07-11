@@ -46,8 +46,10 @@ Current implementation status:
     handoff controller
   - direct transfer is clean across the maintained route-angle/radius matrix
   - `transfer_waypoint_pdg_v1` closes the balanced terrain-blind pass-through
-    handoff and paired landing corpus; multi-waypoint sequencing is the active
-    gap
+    handoff and paired landing corpus
+  - ordered two-waypoint evaluation, reporting, and paired smoke corpora now
+    exist; general outbound-state shaping across successive legs is the active
+    gap at a `2 / 54` route-contract baseline
 
 ## 2. What Not To Build First
 
@@ -302,6 +304,10 @@ Status:
   `transfer_waypoint_turn_contract_smoke` are the paired broad waypoint
   workbench: three `23deg` through `62deg` turn profiles, three representative
   route angles, all payloads, nominal radius, and smoke seeds
+- `transfer_waypoint_sequence_smoke` and
+  `transfer_waypoint_sequence_contract_smoke` are the first paired ordered
+  route workbench: two two-waypoint profiles, `r-30 | r00 | r+30`, all
+  payloads, nominal radius, and smoke seeds
 - waypoint profiles and handoff envelopes are separate selectors. The balanced
   corpus uses one `pass_through_v1` route-relative envelope across every turn
   profile so geometry and contract difficulty are not conflated.
@@ -311,6 +317,10 @@ Status:
 - `TransferWaypointSpec::assess_handoff` centralizes handoff semantics across
   core evaluation, controller capture, and reporting; contract probes evaluate
   on controller observation boundaries
+- `EvaluationGoal::WaypointSequence` evaluates every route waypoint in order,
+  stops at the first failed contract, and persists passed/total/first-failure
+  evidence. Batch schema `26` retains ordered handoff histories and route-level
+  status while preserving waypoint-zero compatibility fields.
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run, including post-handoff apex gain, time-to-apex, and apex lateral
@@ -351,6 +361,16 @@ Status:
   - focused empty `r00/r+30` post-handoff climb improves by `69%` without
     changing candidate generation; residual `r+30` apex height is tracked as
     candidate-density debt
+- initial ordered waypoint-sequence baseline:
+  - final landing succeeds `49 / 54`, but only `2 / 54` runs satisfy both
+    waypoint contracts; the paired sequence probe independently reports the
+    same `2 / 54`
+  - `22` runs pass no handoffs, `30` pass one, and `2` pass both. Failures are
+    outbound-state violations, dominated by heading and then cross speed, not
+    spatial misses.
+  - the baseline establishes the next Phase 3 bottleneck as general leg-to-leg
+    state shaping. It does not establish two-waypoint reliability and is not an
+    acceptance gate yet.
   - `single_straight_v1` is no longer supported because its capture volume
     intersected the route terrain; resolved corpus tests now enforce the planner
     floor and cross-track-plus-vehicle vertical clearance
@@ -517,14 +537,17 @@ The next useful work is:
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
-   direct-transfer regression gates. Preserve both balanced waypoint packs at
-   `81 / 81`, then add multi-waypoint sequencing before waypoint planning or
-   terrain-aware routing.
+   direct-transfer regression gates. Preserve both balanced single-waypoint
+   packs at `81 / 81` while improving ordered sequence handoffs from the current
+   `2 / 54` baseline before waypoint planning or terrain-aware routing.
 
 The immediate controller direction should stay conservative. Direct transfer,
 balanced pass-through handoff, and balanced final landing are all clean across
-their maintained matrices. The next mission slice should exercise multiple
-preplanned waypoint handoffs. A separate candidate-density pass is justified
-only if the residual `r+30` apex height blocks that work; it must preserve both
-`81 / 81` waypoint gates and `297 / 297` direct transfer without adding a
-profile-specific state machine.
+their maintained matrices. Multiple preplanned handoffs are now exercised, and
+they expose the next defect: the controller reaches waypoint capture volumes but
+usually fails to align velocity with the next leg. The next implementation
+slice should first analyze that transition across both sequence profiles, then
+try one route-frame state-shaping change. It must preserve both `81 / 81`
+single-waypoint gates and `297 / 297` direct transfer without adding a
+profile-specific state machine. Radius tiers should follow after the nominal
+two-waypoint mechanism is credible.

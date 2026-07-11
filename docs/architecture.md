@@ -159,11 +159,14 @@ the single authoritative evaluation goal:
 - `target_pad_id`
 - `route_angle_deg`
 - `route_radius_m`
+- ordered `waypoints`, each with a spatial capture and outbound-state envelope
 
 The transfer route describes source-to-target setup and controller context. The
-v1 scored goal remains landing on the target pad. This keeps boost/coast/handoff
-diagnostics available without turning every transfer slice into multiple
-pass/fail objectives.
+maintained reliability goal remains landing on the target pad. Focused
+`waypoint_handoff` and `waypoint_sequence` goals are separate early-stop probes,
+not simultaneous secondary objectives. Each scenario still has one
+authoritative goal, so physical landing and route-contract evidence remain
+explicit rather than being blended into one outcome.
 
 The first transfer matrix uses a signed one-sided route arc with the target at
 `(0, 0)` and the source resolved from route angle and radius. Positive route
@@ -177,19 +180,21 @@ Waypoint planning is the upstream problem: choose terrain-valid waypoint
 positions and arrival envelopes that make each next leg feasible. It may use
 terrain, obstacle, and route-policy information later.
 
-Waypoint guidance is the controller problem for the next slice. It should assume
-the waypoint list is already planned, follow the currently active route leg,
-pass through the waypoint envelope at the end of that leg, then switch to the
-next leg or final landing target. A waypoint is not a stop-and-land objective or
-an isolated point target; it is a switching surface and handoff contract between
-route legs.
+Waypoint guidance assumes the waypoint list is already planned, follows the
+currently active route leg, passes through the waypoint envelope at the end of
+that leg, then switches to the next leg or final landing target. A waypoint is
+not a stop-and-land objective or an isolated point target; it is a switching
+surface and handoff contract between route legs.
 
-The scored mission goal should remain final `landing_on_pad`. Waypoint arrival
-quality should first be telemetry and report diagnostics: closest approach,
-leg progress/crossing state, cross-track miss, outbound direction, speed,
-vertical rate, and whether the next leg remained feasible. This preserves the
-one-primary-goal scenario model while giving waypoint guidance enough structure
-to debug failures.
+Final `landing_on_pad` remains the product-level score. Ordered arrival quality
+is preserved as handoff telemetry and can be scored independently with
+`EvaluationGoal::WaypointSequence`: the core advances through waypoint
+contracts in order, stops at the first failed contract, and succeeds only after
+the final handoff. Run summaries preserve passed/total and first-failure index;
+batch artifacts preserve each handoff's closest approach, crossing state,
+cross-track miss, outbound direction, speed, vertical rate, turn margin, and
+replan count. This keeps one primary goal per scenario while preventing a later
+landing from hiding poor route guidance.
 
 ## 4. Terrain Direction
 

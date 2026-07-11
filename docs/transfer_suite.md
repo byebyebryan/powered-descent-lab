@@ -162,6 +162,13 @@ Current corpus tiers:
   - the same `81` selector cells as `transfer_waypoint_turn_smoke`
   - scores `pass_through_v1` at the first waypoint handoff instead of allowing
     final-landing recovery to hide route-quality errors
+- `transfer_waypoint_sequence_smoke`
+  - 54 final-landing runs over two ordered profiles, three representative route
+    angles, all payload tiers, nominal radius, and smoke seeds
+  - the first multi-waypoint physical-outcome baseline
+- `transfer_waypoint_sequence_contract_smoke`
+  - the same 54 selector cells and geometry as the sequence landing pack
+  - scores every waypoint in order with `evaluation_goal = waypoint_sequence`
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -172,8 +179,11 @@ Resolved transfer runs use transfer-specific selector fields:
 - `resolved_seed = 0` style seed labels
 - `vehicle_variant = empty | half | full`
 - `waypoint_profile` selects `single_gentle_bend_v1`,
-  `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn corpus
+  `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn
+  corpus; the sequence corpus uses `double_bend_v1 | late_bend_v1`
 - `waypoint_handoff_envelope = pass_through_v1` for the balanced turn corpus
+- `waypoint_handoff_envelope = sequence_pass_through_v1` for the ordered
+  sequence corpus
 - `lane = current`
 
 For report compatibility, transfer records also populate the existing matrix
@@ -236,10 +246,13 @@ target pad. Waypoint arrival failures are guidance diagnostics that explain why
 final landing failed or why a route is unsafe. The separate waypoint handoff
 probe packs intentionally score only the selected waypoint contract so
 controller tuning can target pass-through quality before final-landing recovery
-hides the problem. Useful report fields are active waypoint index, active leg
-index, closest waypoint distance, cross-track miss at the waypoint plane,
-waypoint capture time, outbound heading error, outbound speed, vertical rate at
-capture, and final-leg handoff quality.
+hides the problem. Ordered sequence probes extend that rule across the complete
+preplanned route: every intermediate contract must pass in order, and the first
+failure terminates the probe. Useful report fields are active waypoint index,
+active leg index, closest waypoint distance, cross-track miss at the waypoint
+plane, waypoint capture time, outbound heading error, outbound speed, vertical
+rate at capture, route passed/total, first failed index, and final-leg handoff
+quality.
 
 Implementation checkpoint:
 
@@ -270,6 +283,21 @@ Implementation checkpoint:
   outbound cross speed `20m/s`, and total speed from `10m/s` through `130m/s`.
   It intentionally leaves vertical speed unbounded so the first balanced
   corpus does not encode world-frame climb/descent policy into every turn.
+- `double_bend_v1` places two waypoints at nominal route progress
+  `0.33 | 0.67`, each with a `0.20R` source-side offset and terrain-clearance
+  floor. The resulting turns are about `31deg | 31deg`; waypoint speed caps are
+  `55m/s | 65m/s`.
+- `late_bend_v1` uses the same nominal progress with offsets `0.12R | 0.26R`
+  and clearance floors `0.15R | 0.26R`. The first leg stays nearly straight
+  (`0-7deg`) before a `56-60deg` second turn; speed caps are `45m/s | 65m/s`.
+- `sequence_pass_through_v1` uses the same `0.35rad` heading, `8m/s` progress,
+  `20m/s` cross-speed, and `10m/s` minimum-speed bounds as `pass_through_v1`,
+  but preserves each waypoint's profile-specific maximum speed.
+- Sequence corpus resolution requires exactly two increasing waypoints,
+  non-overlapping capture radii, terrain clearance beyond cross-track allowance
+  plus vehicle offset, a terrain-valid sampled centerline outside pad
+  footprints, expected turn ranges and speed caps, and paired landing/contract
+  selector identity.
 - `TransferWaypointSpec::assess_handoff` is the single source of truth for
   spatial triggering and outbound-envelope classification in `pd-core`,
   `pd-control`, and `pd-eval`.
@@ -304,6 +332,15 @@ Implementation checkpoint:
   or waypoint-plane crossing, and scores the selected waypoint's spatial and
   outbound envelope directly. This keeps paired landing/contract status aligned
   with what the controller could actually observe.
+- `evaluation_goal = waypoint_sequence` owns ordered progress in `pd-core`.
+  Intermediate contract passes advance the active evaluation index without
+  ending the run; the first failed contract ends with `failed_checkpoint`; the
+  final pass ends with `checkpoint_satisfied`. Run summaries preserve passed,
+  total, and first-failed index.
+- Controller route transitions emit one `waypoint/handoff` marker. Batch review
+  preserves the ordered marker history and synthesizes the terminal handoff
+  from the authoritative final sample because checkpoint evaluation ends before
+  another controller update can occur.
 - Waypoint-profile transfer runs use a `130s` sim cap. This keeps the first
   pass focused on route feasibility while leaving landing-time tightening as
   follow-up controller work.
@@ -322,6 +359,9 @@ Implementation checkpoint:
   envelope, turn angle, and outbound cross speed. Multi-profile review trees add
   a profile level before route; single-profile reports retain their compact
   route-first hierarchy.
+- Multi-waypoint batch reports add a collapsed route summary and one aggregate
+  row per expected waypoint. Existing scalar waypoint fields remain aliases for
+  waypoint zero, so single-waypoint report behavior is unchanged.
 
 Transfer reports derive handoff review metrics from controller telemetry without
 changing controller behavior:
@@ -469,9 +509,28 @@ Current balanced waypoint-turn checkpoint, refreshed on 2026-07-10:
   plan retention, now limits the remaining gentle/medium `r+30` apex height.
 - direct-transfer regression remains `297 / 297`, confirming that the waypoint
   mechanism did not alter the non-waypoint controller path
-- next work should add multiple preplanned waypoint handoffs and broaden
-  route/radius coverage without weakening the handoff envelope, adding
-  route/profile branches, or reviving generalized terrain avoidance
+
+Initial ordered waypoint-sequence baseline, refreshed on 2026-07-10 with
+`12` workers and `--no-reuse`:
+
+- `transfer_waypoint_sequence_smoke`: `49 / 54` final landings and `5` crashes,
+  but only `2 / 54` runs satisfy both route contracts
+- `transfer_waypoint_sequence_contract_smoke`: `2 / 54` ordered successes and
+  `52` failed checkpoints; passed-handoff distribution is `0:22 | 1:30 | 2:2`
+- the paired packs identify the same two complete routes, both
+  `double_bend_v1/r+30/full` seeds. This confirms final landing is not a proxy
+  for route-following quality.
+- every recorded sequence failure reaches the waypoint spatial envelope. The
+  dominant violation is outbound heading, sometimes combined with excessive
+  outbound cross speed; two late-bend second handoffs also lack outbound
+  progress.
+- the baseline does not justify route/profile-specific tuning. Next work should
+  diagnose why fixed-endpoint state targeting reaches the point without shaping
+  velocity far enough toward the next leg, then test a general leg-transition
+  correction while preserving `81 / 81`, `81 / 81`, and `297 / 297` gates.
+- route-radius expansion remains a later evidence axis after the nominal-radius
+  two-waypoint mechanism is credible. Generalized terrain avoidance remains out
+  of scope; waypoint planning still owns terrain-valid placement.
 
 Legacy waypoint regression checkpoint:
 

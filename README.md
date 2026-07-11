@@ -449,12 +449,19 @@ Transfer route-angle checkpoint:
   - `current`: `81 / 81` final landings
   - balanced waypoint profiles now enforce gravity-aligned terrain-clearance
     floors in the planner fixture; guidance remains terrain-blind
+- `transfer_waypoint_sequence_smoke`
+  - `current`: `49 / 54` final landings, but only `2 / 54` routes satisfy both
+    ordered waypoint contracts
+  - this is the first two-waypoint baseline, not an acceptance gate
+- `transfer_waypoint_sequence_contract_smoke`
+  - `current`: `2 / 54` ordered sequence successes
+  - most failures are outbound heading or cross-speed violations after spatial
+    capture, so final landing alone materially overstates route-guidance quality
 
-So the main next bottleneck is no longer basic controller viability on the
-Earth-aligned workbench or balanced waypoint handoff. The next Phase 3 slice is
-to extend the same terrain-blind guidance to multiple preplanned waypoints and
-broaden route/radius evidence while preserving all `81 / 81` waypoint contracts
-and the `297 / 297` direct-transfer result. General terrain avoidance remains
-parked at the planning/collision-warning layer. Detailed checkpoint history
-lives in `docs/progress.md`, `docs/transfer_suite.md`, and
-`docs/terminal_suite.md`.
+So the main next bottleneck is ordered leg-to-leg state shaping, not basic
+controller viability or waypoint setup. The next Phase 3 slice should explain
+and improve outbound alignment across successive preplanned legs while
+preserving both `81 / 81` single-waypoint gates and the `297 / 297`
+direct-transfer result. General terrain avoidance remains parked at the
+planning/collision-warning layer. Detailed checkpoint history lives in
+`docs/progress.md`, `docs/transfer_suite.md`, and `docs/terminal_suite.md`.

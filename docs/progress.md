@@ -2,6 +2,52 @@
 
 ## 2026-07-10
 
+### Ordered waypoint-sequence baseline
+
+- Added `EvaluationGoal::WaypointSequence`, which evaluates every configured
+  waypoint in route order on controller observation boundaries. Intermediate
+  passes advance the authoritative sequence index; the first failed contract
+  ends the probe; success requires all handoffs. Run schema `4` records passed
+  count, total count, and first failed index.
+- The controller now emits one `waypoint/handoff` marker per actual route-index
+  transition. Marker metadata preserves waypoint identity, capture state,
+  kinematics, turn margin, and the completed leg's replan count without
+  changing controller commands.
+- Batch schema `26` preserves `waypoint_handoffs[]` plus route status, passed,
+  total, and first-failure fields. Existing scalar waypoint fields remain
+  waypoint-zero aliases. Batch reports add a collapsed ordered-sequence table;
+  detailed run plots expose the richer handoff markers.
+- Added paired `54`-run smoke packs over `double_bend_v1 | late_bend_v1`,
+  `r-30 | r00 | r+30`, `empty | half | full`, nominal radius, and all three
+  smoke seeds:
+  - `transfer_waypoint_sequence_smoke` scores final landing
+  - `transfer_waypoint_sequence_contract_smoke` scores the full ordered route
+- Both profiles contain exactly two increasing, non-overlapping waypoints.
+  Resolution checks enforce terrain-valid centerlines and capture volumes,
+  expected turn ranges, profile speed caps, and exact selector/geometry pairing
+  between landing and contract packs. Guidance remains terrain-blind.
+- Fresh `12`-worker, `--no-reuse` baseline, before sequence-specific controller
+  tuning:
+  - landing pack: `49 / 54` landings, `5` crashes, `5.93s` wall clock,
+    `65.63s` mean sim time, and `114.61s` max sim time
+  - ordered contract pack: `2 / 54` route successes, `52` failed checkpoints,
+    `1.50s` wall clock, `26.04s` mean sim time, and `57.25s` max sim time
+  - both packs agree on route quality: `22` runs pass zero handoffs, `30` pass
+    one, and only the first two `double_bend_v1/r+30/full` seeds pass both
+  - failures are not spatial misses. They are dominated by outbound heading;
+    a smaller subset also violates outbound cross speed, and two late-bend
+    second handoffs lack outbound progress.
+- Final landing is therefore not sufficient evidence for waypoint navigation:
+  `49 / 54` vehicles land even though only `2 / 54` preserve the planned route
+  contract through both handoffs. The next controller pass should target
+  general leg-transition state shaping, not profile labels or terrain cases.
+- Fresh no-regression gates remain clean:
+  - `transfer_waypoint_turn_contract_smoke`: `81 / 81`
+  - `transfer_waypoint_turn_smoke`: `81 / 81`
+  - `transfer_route_angle_radius_suite`: `297 / 297`
+- Landing-pack controller compute remains small: `145us` mean, `423us` p95,
+  and `586us` p99 across `215,417` updates. The isolated maximum is `2.32ms`.
+
 ### Retained waypoint terminal-horizon checkpoint
 
 - Added post-handoff apex gain, time-to-apex, and apex lateral-offset review
