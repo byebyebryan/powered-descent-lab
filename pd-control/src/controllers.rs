@@ -57,6 +57,13 @@ const WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S: f64 = 0.5;
 const WAYPOINT_GUIDANCE_MIN_CLOSURE_MPS: f64 = 1.0;
 const WAYPOINT_GUIDANCE_L1_MIN_SPEED_MPS: f64 = 1.0;
 const WAYPOINT_GUIDANCE_UNIQUE_EPS: f64 = 1.0e-6;
+const WAYPOINT_GUIDANCE_TRIGGER_SCAN_STEPS: usize = 64;
+const WAYPOINT_GUIDANCE_TRIGGER_BISECTION_STEPS: usize = 12;
+const WAYPOINT_VIOLATION_HEADING: u8 = 1 << 0;
+const WAYPOINT_VIOLATION_OUTBOUND_PROGRESS: u8 = 1 << 1;
+const WAYPOINT_VIOLATION_OUTBOUND_CROSS_SPEED: u8 = 1 << 2;
+const WAYPOINT_VIOLATION_SPEED: u8 = 1 << 3;
+const WAYPOINT_VIOLATION_VERTICAL_SPEED: u8 = 1 << 4;
 
 fn default_transfer_boost_projected_dx_limit_m() -> f64 {
     55.0
@@ -916,11 +923,98 @@ struct WaypointGuidanceFrame {
 #[derive(Clone, Copy, Debug)]
 struct WaypointGuidanceEnvelope {
     capture_radius_m: f64,
+    max_cross_track_m: f64,
+    max_outbound_heading_error_rad: f64,
     min_outbound_progress_mps: f64,
+    max_outbound_cross_speed_mps: Option<f64>,
     min_speed_mps: f64,
     max_speed_mps: f64,
     min_vertical_speed_mps: Option<f64>,
     max_vertical_speed_mps: Option<f64>,
+}
+
+impl WaypointGuidanceEnvelope {
+    fn assess(self, stats: WaypointLegStats) -> WaypointGuidanceAssessment {
+        let triggered = stats.plane_progress_m >= 0.0 || stats.distance_m <= self.capture_radius_m;
+        let spatial_pass = stats.distance_m <= self.capture_radius_m
+            || (stats.cross_track_m <= self.max_cross_track_m
+                && stats.plane_progress_m >= -self.capture_radius_m);
+        let mut violation_mask = 0;
+        if stats.outbound_heading_error_rad > self.max_outbound_heading_error_rad {
+            violation_mask |= WAYPOINT_VIOLATION_HEADING;
+        }
+        if stats.outbound_progress_mps < self.min_outbound_progress_mps {
+            violation_mask |= WAYPOINT_VIOLATION_OUTBOUND_PROGRESS;
+        }
+        if self
+            .max_outbound_cross_speed_mps
+            .is_some_and(|limit| stats.outbound_cross_speed_mps.abs() > limit)
+        {
+            violation_mask |= WAYPOINT_VIOLATION_OUTBOUND_CROSS_SPEED;
+        }
+        if stats.speed_mps < self.min_speed_mps || stats.speed_mps > self.max_speed_mps {
+            violation_mask |= WAYPOINT_VIOLATION_SPEED;
+        }
+        if self
+            .min_vertical_speed_mps
+            .is_some_and(|limit| stats.vertical_speed_mps < limit)
+            || self
+                .max_vertical_speed_mps
+                .is_some_and(|limit| stats.vertical_speed_mps > limit)
+        {
+            violation_mask |= WAYPOINT_VIOLATION_VERTICAL_SPEED;
+        }
+        WaypointGuidanceAssessment {
+            triggered,
+            spatial_pass,
+            violation_mask,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointGuidanceAssessment {
+    triggered: bool,
+    spatial_pass: bool,
+    violation_mask: u8,
+}
+
+impl WaypointGuidanceAssessment {
+    fn envelope_pass(self) -> bool {
+        self.violation_mask == 0
+    }
+
+    fn contract_pass(self) -> bool {
+        self.triggered && self.spatial_pass && self.envelope_pass()
+    }
+
+    fn reasons(self) -> String {
+        let mut reasons = Vec::new();
+        if self.violation_mask & WAYPOINT_VIOLATION_HEADING != 0 {
+            reasons.push("heading");
+        }
+        if self.violation_mask & WAYPOINT_VIOLATION_OUTBOUND_PROGRESS != 0 {
+            reasons.push("outbound_progress");
+        }
+        if self.violation_mask & WAYPOINT_VIOLATION_OUTBOUND_CROSS_SPEED != 0 {
+            reasons.push("outbound_cross_speed");
+        }
+        if self.violation_mask & WAYPOINT_VIOLATION_SPEED != 0 {
+            reasons.push("speed");
+        }
+        if self.violation_mask & WAYPOINT_VIOLATION_VERTICAL_SPEED != 0 {
+            reasons.push("vertical_speed");
+        }
+        reasons.join(",")
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointGuidancePrediction {
+    time_to_event_s: f64,
+    deadline_lead_s: f64,
+    stats: WaypointLegStats,
+    assessment: WaypointGuidanceAssessment,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -939,6 +1033,7 @@ struct WaypointGuidanceCandidate {
     required_accel_ratio: f64,
     tilt_feasible: bool,
     target_envelope_feasible: bool,
+    prediction: WaypointGuidancePrediction,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -951,6 +1046,7 @@ struct WaypointGuidanceCommandState {
     path_correction_mps2: Vec2,
     deadline_remaining_s: f64,
     velocity_error_mps: f64,
+    prediction: WaypointGuidancePrediction,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -959,6 +1055,7 @@ struct WaypointGuidanceTargetState {
     deadline_remaining_s: f64,
     velocity_error_mps: f64,
     feasible: bool,
+    prediction: WaypointGuidancePrediction,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1606,6 +1703,12 @@ impl TransferPdgController {
             required_accel_ratio: required_accel_mps2.length() / max_thrust_accel_mps2.max(1.0e-6),
             tilt_feasible,
             target_envelope_feasible,
+            prediction: waypoint_guidance_prediction(
+                observation,
+                guidance,
+                target_velocity_mps,
+                time_to_go_s,
+            ),
         }
     }
 
@@ -1794,6 +1897,7 @@ impl TransferPdgController {
             feasible: candidate.target_envelope_feasible
                 && tilt_feasible
                 && required_accel_ratio <= 1.0,
+            prediction: candidate.prediction,
         })
     }
 
@@ -1924,6 +2028,7 @@ impl TransferPdgController {
             path_correction_mps2,
             deadline_remaining_s: plan.arrival_time_s - observation.sim_time_s,
             velocity_error_mps: (observation.velocity_mps - candidate.target_velocity_mps).length(),
+            prediction: candidate.prediction,
         }
     }
 
@@ -2057,6 +2162,7 @@ impl TransferPdgController {
                     deadline_remaining_s: state.deadline_remaining_s,
                     velocity_error_mps: state.velocity_error_mps,
                     feasible: state.feasible,
+                    prediction: state.prediction,
                 },
             );
         }
@@ -3645,6 +3751,67 @@ fn insert_waypoint_target_state_metrics(
         metric::WAYPOINT_GUIDANCE_FEASIBLE.to_owned(),
         TelemetryValue::from(target_state.feasible),
     );
+    let prediction = target_state.prediction;
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S.to_owned(),
+        TelemetryValue::from(prediction.time_to_event_s),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_DEADLINE_LEAD_S.to_owned(),
+        TelemetryValue::from(prediction.deadline_lead_s),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_TRIGGERED.to_owned(),
+        TelemetryValue::from(prediction.assessment.triggered),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_SPATIAL_PASS.to_owned(),
+        TelemetryValue::from(prediction.assessment.spatial_pass),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_ENVELOPE_PASS.to_owned(),
+        TelemetryValue::from(prediction.assessment.envelope_pass()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS.to_owned(),
+        TelemetryValue::from(prediction.assessment.contract_pass()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_REASONS.to_owned(),
+        TelemetryValue::from(prediction.assessment.reasons()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_DISTANCE_M.to_owned(),
+        TelemetryValue::from(prediction.stats.distance_m),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_CROSS_TRACK_M.to_owned(),
+        TelemetryValue::from(prediction.stats.cross_track_m),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_PLANE_PROGRESS_M.to_owned(),
+        TelemetryValue::from(prediction.stats.plane_progress_m),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+        TelemetryValue::from(prediction.stats.outbound_heading_error_rad),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_PROGRESS_MPS.to_owned(),
+        TelemetryValue::from(prediction.stats.outbound_progress_mps),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
+        TelemetryValue::from(prediction.stats.outbound_cross_speed_mps),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_SPEED_MPS.to_owned(),
+        TelemetryValue::from(prediction.stats.speed_mps),
+    );
+    metrics.insert(
+        metric::WAYPOINT_PREDICTED_HANDOFF_VERTICAL_SPEED_MPS.to_owned(),
+        TelemetryValue::from(prediction.stats.vertical_speed_mps),
+    );
 }
 
 fn waypoint_guidance_frame(
@@ -3666,7 +3833,10 @@ fn waypoint_guidance_frame(
         next_leg_unit: geometry.next_leg_unit,
         envelope: WaypointGuidanceEnvelope {
             capture_radius_m: geometry.waypoint.capture_radius_m,
+            max_cross_track_m: geometry.waypoint.max_cross_track_m,
+            max_outbound_heading_error_rad: geometry.waypoint.max_outbound_heading_error_rad,
             min_outbound_progress_mps: geometry.waypoint.min_outbound_progress_mps,
+            max_outbound_cross_speed_mps: geometry.waypoint.max_outbound_cross_speed_mps,
             min_speed_mps: geometry.waypoint.min_speed_mps,
             max_speed_mps: geometry.waypoint.max_speed_mps,
             min_vertical_speed_mps: geometry.waypoint.min_vertical_speed_mps,
@@ -3689,6 +3859,100 @@ fn waypoint_adjusted_observation(
     adjusted
 }
 
+fn waypoint_cubic_reference_state(
+    start_position_m: Vec2,
+    start_velocity_mps: Vec2,
+    end_position_m: Vec2,
+    end_velocity_mps: Vec2,
+    time_to_go_s: f64,
+    elapsed_s: f64,
+) -> (Vec2, Vec2) {
+    let time_to_go_s = time_to_go_s.max(1.0e-3);
+    let u = (elapsed_s / time_to_go_s).clamp(0.0, 1.0);
+    let u2 = u * u;
+    let u3 = u2 * u;
+    let h00 = (2.0 * u3) - (3.0 * u2) + 1.0;
+    let h10 = u3 - (2.0 * u2) + u;
+    let h01 = (-2.0 * u3) + (3.0 * u2);
+    let h11 = u3 - u2;
+    let dh00 = ((6.0 * u2) - (6.0 * u)) / time_to_go_s;
+    let dh10 = (3.0 * u2) - (4.0 * u) + 1.0;
+    let dh01 = ((-6.0 * u2) + (6.0 * u)) / time_to_go_s;
+    let dh11 = (3.0 * u2) - (2.0 * u);
+    let position_m = (start_position_m * h00)
+        + (start_velocity_mps * (h10 * time_to_go_s))
+        + (end_position_m * h01)
+        + (end_velocity_mps * (h11 * time_to_go_s));
+    let velocity_mps = (start_position_m * dh00)
+        + (start_velocity_mps * dh10)
+        + (end_position_m * dh01)
+        + (end_velocity_mps * dh11);
+    (position_m, velocity_mps)
+}
+
+fn waypoint_guidance_prediction(
+    observation: &Observation,
+    guidance: WaypointGuidanceFrame,
+    target_velocity_mps: Vec2,
+    time_to_go_s: f64,
+) -> WaypointGuidancePrediction {
+    let stats_at = |elapsed_s| {
+        let (position_m, velocity_mps) = waypoint_cubic_reference_state(
+            observation.position_m,
+            observation.velocity_mps,
+            guidance.endpoint_m,
+            target_velocity_mps,
+            time_to_go_s,
+            elapsed_s,
+        );
+        waypoint_leg_stats_from_axes(
+            position_m,
+            velocity_mps,
+            guidance.center_m,
+            guidance.leg_unit,
+            guidance.next_leg_unit,
+        )
+    };
+    let prediction_at = |elapsed_s| {
+        let stats = stats_at(elapsed_s);
+        WaypointGuidancePrediction {
+            time_to_event_s: elapsed_s,
+            deadline_lead_s: (time_to_go_s - elapsed_s).max(0.0),
+            stats,
+            assessment: guidance.envelope.assess(stats),
+        }
+    };
+
+    let initial = prediction_at(0.0);
+    if initial.assessment.triggered {
+        return initial;
+    }
+
+    let scan_step_s = time_to_go_s / WAYPOINT_GUIDANCE_TRIGGER_SCAN_STEPS as f64;
+    for step in 1..=WAYPOINT_GUIDANCE_TRIGGER_SCAN_STEPS {
+        let upper_s = scan_step_s * step as f64;
+        let upper = prediction_at(upper_s);
+        if !upper.assessment.triggered {
+            continue;
+        }
+        let mut lower_s = upper_s - scan_step_s;
+        let mut upper_s = upper_s;
+        for _ in 0..WAYPOINT_GUIDANCE_TRIGGER_BISECTION_STEPS {
+            let midpoint_s = (lower_s + upper_s) * 0.5;
+            if prediction_at(midpoint_s).assessment.triggered {
+                upper_s = midpoint_s;
+            } else {
+                lower_s = midpoint_s;
+            }
+        }
+        return prediction_at(upper_s);
+    }
+
+    let endpoint = prediction_at(time_to_go_s);
+    debug_assert!(endpoint.assessment.triggered);
+    endpoint
+}
+
 fn waypoint_leg_stats(
     observation: &Observation,
     geometry: &WaypointLegGeometry<'_>,
@@ -3701,25 +3965,41 @@ fn waypoint_leg_stats_from_kinematics(
     velocity_mps: Vec2,
     geometry: &WaypointLegGeometry<'_>,
 ) -> WaypointLegStats {
-    let to_waypoint_m = position_m - geometry.target_m;
+    waypoint_leg_stats_from_axes(
+        position_m,
+        velocity_mps,
+        geometry.target_m,
+        geometry.leg_unit,
+        geometry.next_leg_unit,
+    )
+}
+
+fn waypoint_leg_stats_from_axes(
+    position_m: Vec2,
+    velocity_mps: Vec2,
+    target_m: Vec2,
+    leg_unit: Vec2,
+    next_leg_unit: Vec2,
+) -> WaypointLegStats {
+    let to_waypoint_m = position_m - target_m;
     let speed_mps = velocity_mps.length();
     let velocity_unit = if speed_mps > 1.0e-9 {
         velocity_mps * (1.0 / speed_mps)
     } else {
         Vec2::new(0.0, 0.0)
     };
-    let heading_cos = vec_dot(velocity_unit, geometry.next_leg_unit).clamp(-1.0, 1.0);
+    let heading_cos = vec_dot(velocity_unit, next_leg_unit).clamp(-1.0, 1.0);
     WaypointLegStats {
         distance_m: to_waypoint_m.length(),
-        cross_track_m: vec_cross(to_waypoint_m, geometry.leg_unit).abs(),
-        plane_progress_m: vec_dot(to_waypoint_m, geometry.leg_unit),
+        cross_track_m: vec_cross(to_waypoint_m, leg_unit).abs(),
+        plane_progress_m: vec_dot(to_waypoint_m, leg_unit),
         outbound_heading_error_rad: if speed_mps > 1.0e-9 {
             heading_cos.acos()
         } else {
             std::f64::consts::PI
         },
-        outbound_progress_mps: vec_dot(velocity_mps, geometry.next_leg_unit),
-        outbound_cross_speed_mps: vec_cross(velocity_mps, geometry.next_leg_unit).abs(),
+        outbound_progress_mps: vec_dot(velocity_mps, next_leg_unit),
+        outbound_cross_speed_mps: vec_cross(velocity_mps, next_leg_unit).abs(),
         speed_mps,
         vertical_speed_mps: velocity_mps.y,
     }
@@ -4336,6 +4616,170 @@ mod tests {
                 .metrics
                 .contains_key(metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS)
         );
+        assert!(
+            frame
+                .metrics
+                .contains_key(metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS)
+        );
+        assert!(
+            frame
+                .metrics
+                .contains_key(metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S)
+        );
+    }
+
+    fn straight_waypoint_guidance() -> WaypointGuidanceFrame {
+        WaypointGuidanceFrame {
+            active_index: 0,
+            center_m: Vec2::new(100.0, 0.0),
+            nominal_handoff_target_m: Vec2::new(80.0, 0.0),
+            handoff_target_m: Vec2::new(100.0, 0.0),
+            handoff_target_mode: "waypoint_center",
+            endpoint_m: Vec2::new(100.0, 0.0),
+            steering_target_m: Vec2::new(100.0, 0.0),
+            leg_unit: Vec2::new(1.0, 0.0),
+            next_leg_unit: Vec2::new(1.0, 0.0),
+            envelope: WaypointGuidanceEnvelope {
+                capture_radius_m: 20.0,
+                max_cross_track_m: 30.0,
+                max_outbound_heading_error_rad: 0.35,
+                min_outbound_progress_mps: 5.0,
+                max_outbound_cross_speed_mps: Some(10.0),
+                min_speed_mps: 5.0,
+                max_speed_mps: 30.0,
+                min_vertical_speed_mps: None,
+                max_vertical_speed_mps: None,
+            },
+            approach: WaypointApproachState {
+                remaining_to_plane_m: 100.0,
+                time_to_plane_s: 10.0,
+                remaining_to_handoff_m: 80.0,
+                time_to_handoff_s: 8.0,
+                required_turn_distance_m: 20.0,
+                shaping_start_distance_m: 100.0,
+                turn_margin_m: 80.0,
+                handoff_turn_margin_m: 60.0,
+            },
+        }
+    }
+
+    #[test]
+    fn waypoint_cubic_reference_preserves_endpoint_state() {
+        let start_position_m = Vec2::new(-20.0, 30.0);
+        let start_velocity_mps = Vec2::new(8.0, -2.0);
+        let end_position_m = Vec2::new(100.0, 0.0);
+        let end_velocity_mps = Vec2::new(12.0, -4.0);
+
+        let start = waypoint_cubic_reference_state(
+            start_position_m,
+            start_velocity_mps,
+            end_position_m,
+            end_velocity_mps,
+            6.0,
+            0.0,
+        );
+        let end = waypoint_cubic_reference_state(
+            start_position_m,
+            start_velocity_mps,
+            end_position_m,
+            end_velocity_mps,
+            6.0,
+            6.0,
+        );
+
+        assert!((start.0 - start_position_m).length() < 1.0e-9);
+        assert!((start.1 - start_velocity_mps).length() < 1.0e-9);
+        assert!((end.0 - end_position_m).length() < 1.0e-9);
+        assert!((end.1 - end_velocity_mps).length() < 1.0e-9);
+    }
+
+    #[test]
+    fn waypoint_prediction_finds_radius_entry_before_center_deadline() {
+        let guidance = straight_waypoint_guidance();
+        let mut observation = transfer_observation(100.0, 0.0, Vec2::new(10.0, 0.0), 0.0);
+        observation.position_m = Vec2::new(0.0, 0.0);
+        let prediction =
+            waypoint_guidance_prediction(&observation, guidance, Vec2::new(10.0, 0.0), 10.0);
+
+        assert!(prediction.assessment.triggered);
+        assert!(prediction.assessment.contract_pass());
+        assert!(prediction.time_to_event_s < 10.0);
+        assert!(prediction.deadline_lead_s > 0.0);
+        assert!(prediction.stats.distance_m <= guidance.envelope.capture_radius_m + 0.01);
+        assert!(prediction.stats.plane_progress_m < 0.0);
+    }
+
+    #[test]
+    fn waypoint_prediction_finds_plane_crossing_before_radius_entry() {
+        let mut guidance = straight_waypoint_guidance();
+        guidance.next_leg_unit = Vec2::new(0.0, -1.0);
+        guidance.envelope.max_cross_track_m = 200.0;
+        guidance.envelope.max_outbound_heading_error_rad = std::f64::consts::PI;
+        guidance.envelope.max_outbound_cross_speed_mps = None;
+        guidance.envelope.max_speed_mps = 200.0;
+        let mut observation = transfer_observation(100.0, 100.0, Vec2::new(150.0, 0.0), 0.0);
+        observation.position_m = Vec2::new(0.0, 100.0);
+        let prediction =
+            waypoint_guidance_prediction(&observation, guidance, Vec2::new(0.0, -20.0), 4.0);
+
+        assert!(prediction.assessment.triggered);
+        assert!(prediction.stats.plane_progress_m >= 0.0);
+        assert!(prediction.stats.distance_m > guidance.envelope.capture_radius_m);
+    }
+
+    #[test]
+    fn waypoint_prediction_reports_already_triggered_state() {
+        let guidance = straight_waypoint_guidance();
+        let mut observation = transfer_observation(10.0, 0.0, Vec2::new(10.0, 0.0), 0.0);
+        observation.position_m = Vec2::new(90.0, 0.0);
+        let prediction =
+            waypoint_guidance_prediction(&observation, guidance, Vec2::new(10.0, 0.0), 2.0);
+
+        assert_eq!(prediction.time_to_event_s, 0.0);
+        assert_eq!(prediction.deadline_lead_s, 2.0);
+        assert!(prediction.assessment.contract_pass());
+    }
+
+    #[test]
+    fn waypoint_prediction_assessment_matches_authoritative_contract() {
+        let mut guidance = straight_waypoint_guidance();
+        guidance.next_leg_unit = Vec2::new(0.0, 1.0);
+        let mut observation = transfer_observation(100.0, 0.0, Vec2::new(10.0, 0.0), 0.0);
+        observation.position_m = Vec2::new(0.0, 0.0);
+        let prediction =
+            waypoint_guidance_prediction(&observation, guidance, Vec2::new(10.0, 0.0), 10.0);
+        let waypoint = TransferWaypointSpec {
+            id: "prediction_contract".to_owned(),
+            position_m: guidance.center_m,
+            capture_radius_m: guidance.envelope.capture_radius_m,
+            max_cross_track_m: guidance.envelope.max_cross_track_m,
+            max_outbound_heading_error_rad: guidance.envelope.max_outbound_heading_error_rad,
+            min_outbound_progress_mps: guidance.envelope.min_outbound_progress_mps,
+            max_outbound_cross_speed_mps: guidance.envelope.max_outbound_cross_speed_mps,
+            min_speed_mps: guidance.envelope.min_speed_mps,
+            max_speed_mps: guidance.envelope.max_speed_mps,
+            min_vertical_speed_mps: guidance.envelope.min_vertical_speed_mps,
+            max_vertical_speed_mps: guidance.envelope.max_vertical_speed_mps,
+        };
+        let authoritative = waypoint.assess_handoff(waypoint_handoff_kinematics(prediction.stats));
+        let authoritative_reasons = authoritative
+            .violations
+            .iter()
+            .map(|violation| violation.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        assert_eq!(prediction.assessment.triggered, authoritative.triggered);
+        assert_eq!(
+            prediction.assessment.spatial_pass,
+            authoritative.spatial_pass
+        );
+        assert_eq!(
+            prediction.assessment.envelope_pass(),
+            authoritative.envelope_pass
+        );
+        assert_eq!(prediction.assessment.reasons(), authoritative_reasons);
+        assert!(!prediction.assessment.contract_pass());
     }
 
     #[test]

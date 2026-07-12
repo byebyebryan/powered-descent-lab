@@ -112,6 +112,33 @@ pub mod metric {
     pub const WAYPOINT_GUIDANCE_FEASIBLE: &str = "waypoint.guidance_feasible";
     pub const WAYPOINT_TARGET_DEADLINE_REMAINING_S: &str = "waypoint.target_deadline_remaining_s";
     pub const WAYPOINT_TARGET_VELOCITY_ERROR_MPS: &str = "waypoint.target_velocity_error_mps";
+    pub const WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S: &str =
+        "waypoint.predicted_handoff_time_to_go_s";
+    pub const WAYPOINT_PREDICTED_HANDOFF_DEADLINE_LEAD_S: &str =
+        "waypoint.predicted_handoff_deadline_lead_s";
+    pub const WAYPOINT_PREDICTED_HANDOFF_TRIGGERED: &str = "waypoint.predicted_handoff_triggered";
+    pub const WAYPOINT_PREDICTED_HANDOFF_SPATIAL_PASS: &str =
+        "waypoint.predicted_handoff_spatial_pass";
+    pub const WAYPOINT_PREDICTED_HANDOFF_ENVELOPE_PASS: &str =
+        "waypoint.predicted_handoff_envelope_pass";
+    pub const WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS: &str =
+        "waypoint.predicted_handoff_contract_pass";
+    pub const WAYPOINT_PREDICTED_HANDOFF_CONTRACT_REASONS: &str =
+        "waypoint.predicted_handoff_contract_reasons";
+    pub const WAYPOINT_PREDICTED_HANDOFF_DISTANCE_M: &str = "waypoint.predicted_handoff_distance_m";
+    pub const WAYPOINT_PREDICTED_HANDOFF_CROSS_TRACK_M: &str =
+        "waypoint.predicted_handoff_cross_track_m";
+    pub const WAYPOINT_PREDICTED_HANDOFF_PLANE_PROGRESS_M: &str =
+        "waypoint.predicted_handoff_plane_progress_m";
+    pub const WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_HEADING_ERROR_RAD: &str =
+        "waypoint.predicted_handoff_outbound_heading_error_rad";
+    pub const WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_PROGRESS_MPS: &str =
+        "waypoint.predicted_handoff_outbound_progress_mps";
+    pub const WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_CROSS_SPEED_MPS: &str =
+        "waypoint.predicted_handoff_outbound_cross_speed_mps";
+    pub const WAYPOINT_PREDICTED_HANDOFF_SPEED_MPS: &str = "waypoint.predicted_handoff_speed_mps";
+    pub const WAYPOINT_PREDICTED_HANDOFF_VERTICAL_SPEED_MPS: &str =
+        "waypoint.predicted_handoff_vertical_speed_mps";
     pub const WAYPOINT_PATH_CORRECTION_MPS2: &str = "waypoint.path_correction_mps2";
     pub const WAYPOINT_GUIDANCE_REPLAN_COUNT: &str = "waypoint.guidance_replan_count";
 }
