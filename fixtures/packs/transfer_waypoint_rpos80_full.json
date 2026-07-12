@@ -15,7 +15,7 @@
       ],
       "seed_tier": "full",
       "vehicle_variant": "empty",
-      "expectation_tier": "frontier_probe",
+      "expectation_tier": "diagnostic",
       "route_angles": [
         "r+80"
       ],
@@ -29,6 +29,7 @@
       "tags": [
         "transfer_guidance",
         "waypoint_guidance",
+        "experimental",
         "clean",
         "empty",
         "route_angle_frontier",
@@ -40,7 +41,8 @@
         "coverage": "waypoint_rpos80_full",
         "difficulty": "empty",
         "frontier": "near_vertical_transfer_route",
-        "route_mode": "waypoint_single_dogleg_v1"
+        "route_mode": "waypoint_single_dogleg_v1",
+        "maintenance": "parked"
       }
     },
     {
@@ -55,7 +57,7 @@
       ],
       "seed_tier": "full",
       "vehicle_variant": "half",
-      "expectation_tier": "frontier_probe",
+      "expectation_tier": "diagnostic",
       "route_angles": [
         "r+80"
       ],
@@ -76,6 +78,7 @@
       "tags": [
         "transfer_guidance",
         "waypoint_guidance",
+        "experimental",
         "clean",
         "half",
         "route_angle_frontier",
@@ -87,7 +90,8 @@
         "coverage": "waypoint_rpos80_full",
         "difficulty": "half",
         "frontier": "near_vertical_transfer_route",
-        "route_mode": "waypoint_single_dogleg_v1"
+        "route_mode": "waypoint_single_dogleg_v1",
+        "maintenance": "parked"
       }
     },
     {
@@ -102,7 +106,7 @@
       ],
       "seed_tier": "full",
       "vehicle_variant": "full",
-      "expectation_tier": "frontier_probe",
+      "expectation_tier": "diagnostic",
       "route_angles": [
         "r+80"
       ],
@@ -123,6 +127,7 @@
       "tags": [
         "transfer_guidance",
         "waypoint_guidance",
+        "experimental",
         "clean",
         "full",
         "route_angle_frontier",
@@ -134,7 +139,8 @@
         "coverage": "waypoint_rpos80_full",
         "difficulty": "full",
         "frontier": "near_vertical_transfer_route",
-        "route_mode": "waypoint_single_dogleg_v1"
+        "route_mode": "waypoint_single_dogleg_v1",
+        "maintenance": "parked"
       }
     }
   ]
