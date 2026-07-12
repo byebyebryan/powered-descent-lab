@@ -125,21 +125,23 @@ Current corpus tiers:
   - 27 runs
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, smoke seeds
   - injects the `single_dogleg_v1` waypoint profile
-  - retained as the fast hairpin/stress probe for waypoint guidance
+  - parked historical hairpin diagnostic; requires
+    `expectation_tier = diagnostic` and is not a maintained gate
 - `transfer_waypoint_rpos80_full`
   - 108 runs
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, all 12 transfer seeds
   - injects the `single_dogleg_v1` waypoint profile
-  - retained as the full-seed hairpin/stress probe
+  - parked with the smoke pack and not regenerated for acceptance evidence
 - `transfer_waypoint_contract_rpos80_smoke`
   - 27 runs
   - same geometry as `transfer_waypoint_rpos80_smoke`
   - uses `evaluation_goal = waypoint_handoff` to score the first waypoint
     contract directly
+  - parked diagnostic history
 - `transfer_waypoint_contract_rpos80_full`
   - 108 runs
   - same geometry as `transfer_waypoint_rpos80_full`
-  - full-seed contract probe for waypoint controller tuning
+  - parked diagnostic history
 - `transfer_waypoint_bend_rpos80_smoke`
   - 27 runs
   - same axes as the dogleg smoke pack
@@ -160,8 +162,8 @@ Current corpus tiers:
   - the maintained broad waypoint-guidance workbench
 - `transfer_waypoint_turn_contract_smoke`
   - the same `81` selector cells as `transfer_waypoint_turn_smoke`
-  - scores `pass_through_v1` at the first waypoint handoff instead of allowing
-    final-landing recovery to hide route-quality errors
+  - scores `continuation_pass_through_v1` at the first waypoint handoff instead
+    of allowing final-landing recovery to hide route-quality errors
 - `transfer_waypoint_sequence_smoke`
   - 54 final-landing runs over two ordered profiles, three representative route
     angles, all payload tiers, nominal radius, and smoke seeds
@@ -181,7 +183,8 @@ Resolved transfer runs use transfer-specific selector fields:
 - `waypoint_profile` selects `single_gentle_bend_v1`,
   `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn
   corpus; the sequence corpus uses `double_bend_v1 | late_bend_v1`
-- `waypoint_handoff_envelope = pass_through_v1` for the balanced turn corpus
+- `waypoint_handoff_envelope = continuation_pass_through_v1` for maintained
+  single-bend and balanced-turn corpora
 - `waypoint_handoff_envelope = sequence_pass_through_v1` for the ordered
   sequence corpus
 - `lane = current`
@@ -254,13 +257,19 @@ plane, waypoint capture time, outbound heading error, outbound speed, vertical
 rate at capture, route passed/total, first failed index, and final-leg handoff
 quality.
 
+The static waypoint triage tables also expose the route plan itself: normalized
+progress, signed source-side offset ratio, signed turn, selected handoff
+envelope, maximum speed, and the worst continuation stopping-distance ratio in
+the aggregated cell. This keeps corpus geometry review separate from observed
+controller behavior.
+
 Implementation checkpoint:
 
 - `TransferRouteSpec` now carries preplanned waypoints.
-- `single_dogleg_v1` is the first matrix waypoint profile. It is intentionally
-  narrow: the profile exists for the `r+80` frontier and inserts one dogleg
-  waypoint before final descent to the target. It is now treated as a stress
-  route, not the primary waypoint-guidance workbench.
+- `single_dogleg_v1` is historical stress geometry, not maintained waypoint
+  evidence. Pack validation permits it only with
+  `expectation_tier = diagnostic`; the old packs remain available for explicit
+  experiments but are parked outside the acceptance scorecard.
 - `single_bend_v1` is the first smoother waypoint profile. It places one
   pass-through waypoint at 55% of the source-to-target route plus a 20%
   route-radius source-side lateral offset, producing a roughly 44 degree
@@ -269,35 +278,43 @@ Implementation checkpoint:
   plane-crossing cross-track band is wider than the dogleg profile because this
   is a pass-through waypoint, not a precision stop.
 - The balanced turn profiles keep progress and spatial tolerance fixed. Their
-  initial route-normal offsets are `10% | 20% | 30%`, then the planner fixture
-  lifts each waypoint vertically as needed to clear local terrain by at least
-  `20% | 25% | 30%` of route radius. At nominal-radius `r00`, this produces
-  `160m | 200m | 240m` terrain clearance and turns of roughly
-  `43.9deg | 53.5deg | 62.3deg`.
+  source-side route-normal offsets are `0.12R | 0.20R | 0.30R`, producing
+  signed turns of `-27.24deg | -43.95deg | -62.30deg`. Geometry is never
+  lifted in world Y after placement; an unsafe fixture fails resolution.
 - `single_straight_v1` was removed because its zero-offset capture volume
   intersected the monotonic route terrain. Pack-resolution tests now require
-  every maintained waypoint to meet its planner floor and leave more vertical
-  clearance than its cross-track allowance plus vehicle touchdown offset.
-- `pass_through_v1` is an explicit route-relative handoff envelope: maximum
-  outbound heading error `0.35rad`, minimum outbound progress `8m/s`, maximum
-  outbound cross speed `20m/s`, and total speed from `10m/s` through `130m/s`.
-  It intentionally leaves vertical speed unbounded so the first balanced
-  corpus does not encode world-frame climb/descent policy into every turn.
+  fixed positive-normal placement, capture-volume clearance, forward ordered
+  legs, and valid explicit multi-waypoint centerlines.
+- `pass_through_v1` remains supported for historical artifacts. Maintained
+  single-bend packs use `continuation_pass_through_v1`: maximum outbound
+  heading error `0.35rad`, minimum outbound progress `8m/s`, maximum outbound
+  cross speed `20m/s`, minimum total speed `10m/s`, and maximum total speed
+  `52.5 | 65 | 75m/s` for short, nominal, and long radius tiers. Vertical
+  speed remains unbounded so the route-relative contract does not encode
+  world-frame climb/descent policy.
 - `double_bend_v1` places two waypoints at nominal route progress
-  `0.33 | 0.67`, each with a `0.20R` source-side offset and terrain-clearance
-  floor. The resulting turns are about `31deg | 31deg`; waypoint speed caps are
+  `0.33 | 0.67`, each with a `0.20R` source-side offset. The resulting signed
+  turns are `-31.22deg | -31.22deg`; waypoint speed caps are
   `55m/s | 65m/s`.
-- `late_bend_v1` uses the same nominal progress with offsets `0.12R | 0.26R`
-  and clearance floors `0.15R | 0.26R`. The first leg stays nearly straight
-  (`0-7deg`) before a `56-60deg` second turn; speed caps are `45m/s | 65m/s`.
+- `late_bend_v1` uses the same nominal progress with offsets
+  `0.13R | 0.26R`. The resulting signed turns are
+  `-0.58deg | -59.16deg`, so the first bend no longer reverses direction;
+  speed caps are `45m/s | 65m/s`.
 - `sequence_pass_through_v1` uses the same `0.35rad` heading, `8m/s` progress,
-  `20m/s` cross-speed, and `10m/s` minimum-speed bounds as `pass_through_v1`,
-  but preserves each waypoint's profile-specific maximum speed.
-- Sequence corpus resolution requires exactly two increasing waypoints,
-  non-overlapping capture radii, terrain clearance beyond cross-track allowance
-  plus vehicle offset, a terrain-valid sampled centerline outside pad
-  footprints, expected turn ranges and speed caps, and paired landing/contract
-  selector identity.
+  `20m/s` cross-speed, and `10m/s` minimum-speed bounds as the maintained
+  continuation envelope, but preserves each waypoint's profile-specific
+  maximum speed.
+- One generic maintained-geometry validator requires exact route-frame
+  progress/offset contracts, positive source-side offsets, strictly forward
+  ordered segments, monotonically decreasing route-relative headings, expected
+  signed turns, non-overlapping capture regions, capture-volume terrain
+  clearance, and terrain-valid sampled inter-waypoint centerlines. Endpoint
+  launch and landing legs remain dynamically shaped controller trajectories,
+  not assumed straight segments.
+- Every maintained waypoint also passes a continuation sanity bound. Available
+  distance is the outbound center distance minus the current capture radius;
+  optimistic stopping distance is `vmax^2 / (2 * max_thrust / initial_mass)`.
+  Resolution rejects a stopping-distance ratio above `0.75`.
 - `TransferWaypointSpec::assess_handoff` is the single source of truth for
   spatial triggering and outbound-envelope classification in `pd-core`,
   `pd-control`, and `pd-eval`.
@@ -476,12 +493,12 @@ turning transfer guidance into a full route planner.
 
 ## Current Checkpoint
 
-Current direct-transfer checkpoint, refreshed on 2026-07-10 with `8` workers
-and `--no-reuse`:
+Current direct-transfer checkpoint, refreshed on 2026-07-12 with `8` workers,
+`--no-reuse`, and no comparison basis:
 
 - `transfer_route_angle_radius_suite`: `297 / 297` successes, `0` crashes, and
   `0` invalidations across every route angle, radius, payload, and smoke seed;
-  wall clock is `45.99s`
+  wall clock is `45.69s`
 - `transfer_route_angle_radius_frontier_full`: `108 / 108` successes and `0`
   invalidations across the full-seed `r+80` partition
 - the focused uphill-corridor brake closes the former direct `r+80` failure
@@ -489,75 +506,36 @@ and `--no-reuse`:
 - `near_vertical_transfer_route` remains useful as a stress annotation, but it
   no longer describes a failing direct-transfer region
 
-Current balanced waypoint-turn checkpoint, refreshed on 2026-07-10:
+Current normalized waypoint checkpoint, refreshed on 2026-07-12 without
+controller changes:
 
-- `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes, `0`
-  failures, `21.43s` mean sim time, and `32.13s` max sim time
-- `transfer_waypoint_turn_smoke`: `81 / 81` final-landing successes; `r-30`,
-  `r00`, and `r+30` each land `27 / 27`; mean sim time is `52.65s` and max sim
-  time is `70.87s`
-- the state-target controller therefore closes the maintained pass-through
-  guidance contract across all profiles, route orientations, payloads, and
-  smoke seeds; planner-side terrain-clearance floors keep those routes valid
-  without terrain queries or fixture branches in guidance
-- the contract and landing packs complete in `2.07s` and `10.35s` wall clock
-  with `8` workers. Mean landing-pack controller-update compute is `161.5us`,
-  versus `156.7us` before horizon retention, and remains well below the `1ms`
-  budget
-- across empty-payload `r00/r+30`, mean post-handoff climb improves by `69%`,
-  mean sim time by `32%`, and mean fuel use by `29%`. Candidate density, not
-  plan retention, now limits the remaining gentle/medium `r+30` apex height.
-- direct-transfer regression remains `297 / 297`, confirming that the waypoint
-  mechanism did not alter the non-waypoint controller path
-
-Current ordered waypoint-sequence checkpoint, refreshed on 2026-07-11 with
-`6` workers per pack and `--no-reuse`:
-
-- `transfer_waypoint_sequence_smoke`: the retained controller preserves the
-  baseline `49 / 54` final landings and all per-run landing outcomes; wall clock
-  is `12.29s`
-- `transfer_waypoint_sequence_contract_smoke`: ordered success improves
-  `2 -> 21 / 54`; passed-handoff distribution improves from
-  `0:22 | 1:30 | 2:2` to `0:6 | 1:27 | 2:21`; wall clock is `2.99s`
-- handoff strata move from double `18 / 27` then `2 / 18` and late `14 / 27`
-  then `0 / 14`, to double `27 / 27` then `18 / 27` and late `21 / 27` then
-  `3 / 21`. Spatial misses remain zero.
-- waypoint envelope checks allow `1e-6 m/s` of numerical roundoff at speed,
-  outbound-progress, and vertical-speed boundaries. This keeps normalized
-  max-speed candidates on the boundary instead of conditionally discarding
-  them based on route-vector rounding.
-- batch schema `28` records the existing target/deadline debt plus predicted
-  first-trigger timing, contract status/reasons, and full predicted kinematics.
-  Last-update prediction matches all `86 / 86` instrumented baseline handoff
-  classifications.
-- retained guidance keeps the waypoint center as its endpoint and preserves
-  legacy initial-plan ordering. Contract-aware replacement starts only inside
-  a local `12s` event horizon, after two failed predictions, and requires a
-  dynamically feasible predicted pass plus `10%` plan materiality.
-- sequence-contract handoff replan count is `1.74` mean, `7` p95, and `14`
-  max across the newly expanded set of reached handoffs.
-- moving the hard state target to the fixed inbound capture-radius point was
-  tested once and rejected: ordered success rose `2 -> 8 / 54`, but zero-handoff
-  failures rose `22 -> 26`, late-bend index-zero passes fell `14 -> 9`, and final
-  landing fell `49 -> 42 / 54`. The behavior change was removed.
-- unrestricted long-horizon event selection was also rejected despite reaching
-  `26 / 54`: it reduced landing to `44 / 54`. Cruise-first and
-  contract-interior tie-breaks also traded away landing or route coverage and
-  were removed.
-- the next general pass should address upstream/two-leg feasibility for the
-  remaining late-bend debt. It must avoid route/profile branches and preserve
-  `21 / 54`, `49 / 54`, both `81 / 81` gates, and `297 / 297` direct transfer.
-- route-radius expansion remains a later evidence axis after the nominal-radius
-  two-waypoint mechanism is credible. Generalized terrain avoidance remains out
-  of scope; waypoint planning still owns terrain-valid placement.
-
-Legacy waypoint regression checkpoint:
-
-- dogleg smoke landing `21 / 27`; dogleg smoke contract `0 / 27`
-- smooth-bend smoke landing `16 / 27`; smooth-bend smoke contract `27 / 27`
-- these `r+80` packs remain diagnostic stress routes rather than acceptance
-  gates. Their older full-seed snapshots predate the state-target controller and
-  are not current evidence.
+- `transfer_waypoint_bend_rpos80_smoke`: `15 / 27` landings
+- `transfer_waypoint_bend_contract_rpos80_smoke`: `21 / 27` handoffs
+- `transfer_waypoint_bend_rpos80_full`: `54 / 108` landings
+- `transfer_waypoint_bend_contract_rpos80_full`: `89 / 108` handoffs; worst
+  continuation ratio `0.742`
+- `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes; worst
+  continuation ratio `0.529`
+- `transfer_waypoint_turn_smoke`: `75 / 81` landings. The six failures are
+  sharp `r+30` half/full post-handoff crashes; `r-30` and `r00` remain
+  `27 / 27`, and every failed landing first passes its waypoint contract.
+- `transfer_waypoint_sequence_smoke`: `46 / 54` landings and `24 / 54`
+  complete ordered routes
+- `transfer_waypoint_sequence_contract_smoke`: `24 / 54` complete routes with
+  passed-handoff distribution `0:3 | 1:27 | 2:24`; worst continuation ratio
+  `0.668`
+- every maintained scenario resolves with `0` invalidations. The fixed
+  route-frame geometry is therefore a valid corpus baseline; these outcome
+  changes are controller evidence, not hidden waypoint movement.
+- `single_dogleg_v1` and its four packs are parked diagnostic history. They were
+  not rerun and are not acceptance gates.
+- the next controller pass should target post-handoff sharp-uphill recovery and
+  late-bend second-leg feasibility while preserving `81 / 81` balanced
+  contracts, `75 / 81` balanced landing, `24 / 54` ordered routes,
+  `46 / 54` sequence landing, and `297 / 297` direct transfer.
+- route/radius expansion remains a later evidence axis. Generalized terrain
+  avoidance remains out of scope; waypoint planning still owns terrain-valid
+  placement.
 
 The following checkpoints are retained as historical tuning evidence.
 

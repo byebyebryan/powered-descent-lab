@@ -443,36 +443,36 @@ Transfer route-angle checkpoint:
     not a current failure region
 - `transfer_waypoint_turn_contract_smoke`
   - `current`: `81 / 81` pass-through handoff successes
-  - fixed-endpoint state-target guidance solves every balanced profile, route,
-    payload, and smoke seed without route/profile branches
+  - every normalized gentle, medium, and sharp waypoint contract passes without
+    route/profile controller branches
 - `transfer_waypoint_turn_smoke`
-  - `current`: `81 / 81` final landings
-  - balanced waypoint profiles now enforce gravity-aligned terrain-clearance
-    floors in the planner fixture; guidance remains terrain-blind
+  - `current`: `75 / 81` final landings
+  - all six failures are post-handoff sharp `r+30` half/full-payload crashes;
+    waypoint contract quality remains `81 / 81`
 - `transfer_waypoint_sequence_smoke`
-  - `current`: `49 / 54` final landings and `21 / 54` routes satisfying both
+  - `current`: `46 / 54` final landings and `24 / 54` routes satisfying both
     ordered waypoint contracts
-  - event-aware guidance and roundoff-safe envelope checks preserve every
-    baseline landing outcome
 - `transfer_waypoint_sequence_contract_smoke`
-  - `current`: `21 / 54` ordered sequence successes, up from `2 / 54`
-  - passed-handoff distribution improves from `0:22 | 1:30 | 2:2` to
-    `0:6 | 1:27 | 2:21`, with no spatial misses
-  - batch schema `28` exposes predicted first-trigger timing and kinematics
-    alongside desired-velocity, signed-deadline, feasibility, and handoff debt
-  - initial plan ordering remains unchanged; contract-aware replacement is
-    limited to a local `12s` prediction horizon and requires a material,
-    dynamically feasible improvement
-  - target-envelope comparisons tolerate only `1e-6 m/s` of numerical
-    roundoff, preventing normalized max-speed candidates from being rejected
-  - fixed capture-surface targeting improved complete routes to `8 / 54` but
-    regressed zero-handoff and landing gates, so the behavior was removed
+  - `current`: `24 / 54` ordered sequence successes
+  - passed-handoff distribution is `0:3 | 1:27 | 2:24`
+- smoother `r+80` bend reset:
+  - landing: `15 / 27` smoke and `54 / 108` full
+  - handoff contract: `21 / 27` smoke and `89 / 108` full
 
-So the main next bottleneck is upstream/two-leg feasibility for the remaining
-late-bend handoffs, not basic controller viability, waypoint setup, or trigger
-timing. Future work should preserve the `21 / 54` ordered baseline, both
-`81 / 81` single-waypoint gates, `49 / 54` sequence landing, and `297 / 297`
-direct transfer without adding route/profile branches. General terrain
-avoidance remains parked at the planning/collision-warning layer. Detailed
-checkpoint history lives in `docs/progress.md`, `docs/transfer_suite.md`, and
+The waypoint corpus now uses fixed route-frame geometry rather than silently
+lifting waypoints in world Y. Gentle, medium, and sharp offsets are
+`0.12R | 0.20R | 0.30R`; double and late bends use fixed ordered route-frame
+nodes. Maintained handoff envelopes also cap energy and reject any fixture whose
+optimistic stopping-distance ratio exceeds `0.75`; the observed maximum is
+`0.742`. Reports expose planned progress, signed offset, signed turn, speed cap,
+and continuation ratio directly. The old `single_dogleg_v1` packs remain only
+as parked diagnostic history and were not regenerated.
+
+The next bottleneck is controller handling after valid pass-through handoff,
+especially sharp uphill recovery and the late-bend second leg. Future work
+should preserve `81 / 81` balanced contracts, `75 / 81` balanced landing,
+`24 / 54` ordered routes, `46 / 54` sequence landing, and `297 / 297` direct
+transfer without route/profile branches. General terrain avoidance remains
+parked at the planning/collision-warning layer. Detailed checkpoint history
+lives in `docs/progress.md`, `docs/transfer_suite.md`, and
 `docs/terminal_suite.md`.

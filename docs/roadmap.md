@@ -45,11 +45,12 @@ Current implementation status:
   - `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
     handoff controller
   - direct transfer is clean across the maintained route-angle/radius matrix
-  - `transfer_waypoint_pdg_v1` closes the balanced terrain-blind pass-through
-    handoff and paired landing corpus
+  - `transfer_waypoint_pdg_v1` closes the normalized balanced terrain-blind
+    pass-through handoff corpus; post-handoff sharp-uphill recovery remains
+    open in the paired landing pack
   - ordered two-waypoint evaluation, first-trigger prediction, and paired smoke
-    corpora now exist; bounded-horizon event-aware replanning establishes a
-    `21 / 54` route-contract baseline without reducing final landing
+    corpora now exist; normalized route-frame fixtures establish a
+    `24 / 54` route-contract and `46 / 54` final-landing baseline
 
 ## 2. What Not To Build First
 
@@ -339,61 +340,45 @@ Status:
   - the historical `near_vertical_transfer_route` annotation and frontier pack
     remain useful stress labels, but direct transfer is no longer the active
     Phase 3 blocker
-- current legacy waypoint regression checkpoint:
-  - dogleg smoke landing `21 / 27`, dogleg smoke contract `0 / 27`
-  - smooth-bend smoke landing `16 / 27`, smooth-bend smoke contract `27 / 27`
-  - the legacy `r+80` packs are diagnostic stress routes, not acceptance gates;
-    older full-seed results predate the state-target controller
+- current waypoint corpus policy:
+  - maintained fixtures are exact route-frame contracts, not world-Y-adjusted
+    hints. Resolution validates signed turns, forward ordering, capture/terrain
+    clearance, and an optimistic continuation stopping ratio at or below
+    `0.75`.
+  - report Plan cells expose progress, signed offset, signed turn, envelope,
+    speed cap, and worst continuation ratio before controller behavior is judged
+  - `single_dogleg_v1` and its four packs are parked diagnostic history;
+    validation permits them only under `expectation_tier = diagnostic`
+- current smooth-bend `r+80` checkpoint:
+  - landing is `15 / 27` smoke and `54 / 108` full
+  - handoff contract is `21 / 27` smoke and `89 / 108` full
+  - worst continuation ratio is `0.742`, so failures are controller outcomes,
+    not analytically over-energetic plans
 - current balanced waypoint-guidance checkpoint:
-  - `transfer_waypoint_turn_contract_smoke`: `81 / 81` contract successes with
-    `21.43s` mean and `32.13s` max sim time
-  - `transfer_waypoint_turn_smoke`: `81 / 81` final-landing successes; every
-    route orientation lands `27 / 27`, with `52.65s` mean and `70.87s` max sim
-    time after retained terminal-horizon guidance
-  - balanced planner fixtures enforce gravity-aligned `20% | 25% | 30%`
-    terrain-clearance floors for gentle through sharp profiles; the controller
-    remains terrain-blind
-  - the state-target solve uses fixed endpoint geometry, outbound target
-    velocity, geometry-derived time-to-go candidates, and a bounded path
-    correction; it does not use sim timeout or route/profile branches
-  - waypoint terminal recovery retains long-capture arrival time until the
-    projected touchdown is captured at the latest-safe braking boundary;
-    direct and standalone terminal controllers remain receding-horizon
-  - focused empty `r00/r+30` post-handoff climb improves by `69%` without
-    changing candidate generation; residual `r+30` apex height is tracked as
-    candidate-density debt
+  - `transfer_waypoint_turn_contract_smoke`: `81 / 81` contract successes
+  - `transfer_waypoint_turn_smoke`: `75 / 81` final landings
+  - all six failures are sharp `r+30` half/full post-handoff crashes; `r-30`
+    and `r00` remain `27 / 27`
+  - fixed endpoint geometry, outbound target velocity, geometry-derived
+    time-to-go candidates, and bounded path correction remain free of sim-time,
+    route-angle, and profile branches
 - current ordered waypoint-sequence checkpoint:
-  - final landing remains `49 / 54`; ordered route success improves
-    `2 -> 21 / 54` with no per-run landing outcome changes
-  - passed-handoff distribution improves from `0:22 | 1:30 | 2:2` to
-    `0:6 | 1:27 | 2:21`. Spatial misses remain zero.
-  - the controller projects the current center-target cubic reference to its
-    first evaluator trigger. Legacy initial-plan ordering is retained because
-    long-horizon prediction omits future closed-loop path correction.
-  - waypoint envelope checks tolerate `1e-6 m/s` of numerical roundoff so
-    normalized boundary candidates are not route-vector dependent.
-  - contract-aware replacement is limited to a local `12s` prediction horizon,
-    requires two failed ticks and `10%` plan materiality, and preserves immediate
-    expiry/authority recovery. Replan count remains bounded at `7` p95.
-  - unrestricted event selection reached `26 / 54` but reduced landing to
-    `44 / 54`; global cruise, effort, and contract-interior preferences were
-    tested and removed rather than retained as route-specific policy.
-  - fixed centerline capture-surface targeting was tested and removed. It raised
-    complete route passes `2 -> 8 / 54`, but worsened zero-handoff failures
-    `22 -> 26`, late-bend first handoffs `14 -> 9`, and final landing
-    `49 -> 42 / 54`; a capture envelope cannot be reduced to that hard point.
-  - `single_straight_v1` is no longer supported because its capture volume
-    intersected the route terrain; resolved corpus tests now enforce the planner
-    floor and cross-track-plus-vehicle vertical clearance
-- next transfer slice should improve sequence guidance without moving waypoint
-  planning into the controller:
+  - final landing is `46 / 54`; ordered route success is `24 / 54`
+  - passed-handoff distribution is `0:3 | 1:27 | 2:24`
+  - `double_bend_v1` lands `27 / 27`; remaining landing debt is concentrated in
+    late-bend half/full payloads
+  - first-trigger projection, roundoff-safe envelope validation, and bounded
+    local replacement remain the current controller mechanism
+- next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
+  - fix general post-handoff recovery for sharp uphill routes before widening
+    the single-waypoint matrix
   - address upstream/two-leg feasibility where the next active leg has no
     dynamically feasible trigger-pass candidate, especially late-bend index one
-  - use the handoff pack as the primary guidance target and the paired landing
-    pack as the recovery/reliability regression gate
-  - expand route count and radius coverage without adding terrain reaction to
-    guidance or route/profile-specific controller branches
+  - use handoff packs as guidance targets and paired landing packs as
+    recovery/reliability regression gates
+  - expand route count and radius coverage only after these nominal mechanisms
+    improve without terrain reaction or route/profile-specific branches
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
@@ -548,18 +533,16 @@ The next useful work is:
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
-   direct-transfer regression gates. Preserve both balanced single-waypoint
-   packs at `81 / 81`, sequence landing at `49 / 54`, and ordered sequence
-   handoffs at or above `21 / 54` before waypoint planning or terrain-aware
-   routing.
+   direct-transfer regression gates. Preserve balanced handoffs at `81 / 81`,
+   balanced landing at or above `75 / 81`, sequence landing at or above
+   `46 / 54`, and ordered sequence handoffs at or above `24 / 54` before
+   waypoint planning or terrain-aware routing.
 
-The immediate controller direction should stay conservative. Direct transfer,
-balanced pass-through handoff, and balanced final landing are clean. Local
-first-trigger prediction plus roundoff-safe envelope validation now improves
-ordered routes to `21 / 54` while
-preserving every landing and maintained gate. Remaining failures are
-concentrated where the active waypoint has no feasible trigger-pass candidate,
-especially the second late-bend handoff. The next hypothesis should propagate
-next-leg feasibility upstream or add a general two-leg lookahead, not widen the
+The immediate controller direction should stay conservative. Direct transfer
+and balanced pass-through handoff are clean, but the normalized corpus exposes
+post-handoff recovery debt: sharp `r+30` half/full cases pass the waypoint and
+then crash. Ordered route success is `24 / 54`; sequence landing is `46 / 54`,
+with late-bend continuation still dominant. The next hypotheses should improve
+general recovery and propagate next-leg feasibility upstream, not widen the
 prediction horizon or add route/profile policy. Radius tiers should follow once
-that nominal two-waypoint mechanism is credible.
+those nominal mechanisms are credible.

@@ -1,5 +1,62 @@
 # Progress
 
+## 2026-07-12
+
+### Maintained waypoint corpus reset
+
+- Re-audited every maintained waypoint fixture in the source-to-target route
+  frame before more controller tuning. Removed world-Y terrain lifting, which
+  had changed progress and turn geometry by route angle and had even introduced
+  a small first-turn reversal in `late_bend_v1`.
+- Maintained geometry is now invariant across route orientation and seed:
+  - single gentle, medium, and sharp bends use `p = 0.55` with
+    `n = 0.12R | 0.20R | 0.30R`, producing signed turns
+    `-27.24deg | -43.95deg | -62.30deg`
+  - `double_bend_v1` uses `(0.33, 0.20R) | (0.67, 0.20R)` and two
+    `-31.22deg` turns
+  - `late_bend_v1` uses `(0.33, 0.13R) | (0.67, 0.26R)`, producing
+    `-0.58deg | -59.16deg` without a route-heading reversal
+- Added one generic geometry validator for strict route ordering, positive
+  source-side offsets, route-forward segments, monotonically decreasing
+  route-relative headings, expected signed turns, non-overlapping capture
+  regions, capture-volume terrain clearance, and sampled explicit
+  multi-waypoint centerlines. Unsafe fixed geometry now fails resolution rather
+  than being silently redesigned.
+- Parked `single_dogleg_v1` as historical diagnostic geometry. Its four packs
+  now require `expectation_tier = diagnostic`, carry `experimental` and
+  `maintenance = parked` metadata, and are excluded from maintained reruns.
+- Added `continuation_pass_through_v1`: heading, progress, cross-speed, and
+  minimum-speed bounds remain `0.35rad`, `8m/s`, `20m/s`, and `10m/s`, while
+  maximum speed is `52.5 | 65 | 75m/s` for short, nominal, and long routes.
+  The planned `55m/s` short cap was tightened after the full-payload `-9%`
+  radius seed exceeded the new continuation gate.
+- Every maintained waypoint now records available outbound distance,
+  optimistic stopping distance at maximum thrust and initial mass, and their
+  ratio. Resolution rejects ratios above `0.75`; refreshed evidence ranges up
+  to `0.742` for the full smooth-bend pack, `0.529` for balanced turns, and
+  `0.668` for sequences.
+- Waypoint Handoff Triage and Waypoint Sequence reports now show the planned
+  progress, signed normal offset, signed turn, envelope, maximum speed, and
+  worst continuation ratio. Existing unsigned resolved keys remain available
+  for cached-report compatibility.
+- Fresh `--no-reuse --compare-ref none` baseline, with no controller changes:
+  - smooth bend landing: `15 / 27` smoke and `54 / 108` full
+  - smooth bend contract: `21 / 27` smoke and `89 / 108` full
+  - balanced turn landing: `75 / 81`; the six failures are sharp `r+30`
+    half/full post-handoff crashes
+  - balanced turn contract: `81 / 81`
+  - sequence landing: `46 / 54`; ordered route status is `24 / 54`
+  - sequence contract: `24 / 54`, with passed-handoff distribution
+    `0:3 | 1:27 | 2:24`
+  - direct route-angle/radius regression: `297 / 297`, `0` invalidations,
+    `45.69s` wall clock
+  - `cargo test --workspace`, `cargo fmt --all --check`, and `git diff --check`
+    pass
+- This intentionally resets the acceptance baseline around valid, inspectable
+  waypoint plans. The next controller work should address sharp-uphill terminal
+  recovery and late-bend continuation without moving planning into guidance or
+  adding route/profile branches.
+
 ## 2026-07-11
 
 ### Waypoint envelope boundary tolerance
