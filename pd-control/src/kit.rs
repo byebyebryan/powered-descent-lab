@@ -112,6 +112,21 @@ pub mod metric {
     pub const WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO: &str =
         "waypoint.guidance_required_accel_ratio";
     pub const WAYPOINT_GUIDANCE_FEASIBLE: &str = "waypoint.guidance_feasible";
+    pub const WAYPOINT_GUIDANCE_PLAN_INDEX: &str = "waypoint.guidance_plan_index";
+    pub const WAYPOINT_GUIDANCE_PLAN_REVISION: &str = "waypoint.guidance_plan_revision";
+    pub const WAYPOINT_GUIDANCE_PLAN_REASON: &str = "waypoint.guidance_plan_reason";
+    pub const WAYPOINT_GUIDANCE_PLAN_AGE_S: &str = "waypoint.guidance_plan_age_s";
+    pub const WAYPOINT_GUIDANCE_REFERENCE_POSITION_ERROR_M: &str =
+        "waypoint.guidance_reference_position_error_m";
+    pub const WAYPOINT_GUIDANCE_REFERENCE_CROSS_ERROR_M: &str =
+        "waypoint.guidance_reference_cross_error_m";
+    pub const WAYPOINT_GUIDANCE_REFERENCE_VELOCITY_ERROR_MPS: &str =
+        "waypoint.guidance_reference_velocity_error_mps";
+    pub const WAYPOINT_GUIDANCE_REFERENCE_CROSS_SPEED_ERROR_MPS: &str =
+        "waypoint.guidance_reference_cross_speed_error_mps";
+    pub const WAYPOINT_GUIDANCE_AUTHORITY_MARGIN: &str = "waypoint.guidance_authority_margin";
+    pub const WAYPOINT_GUIDANCE_THRUST_SATURATED: &str = "waypoint.guidance_thrust_saturated";
+    pub const WAYPOINT_GUIDANCE_TILT_SATURATED: &str = "waypoint.guidance_tilt_saturated";
     pub const WAYPOINT_TARGET_DEADLINE_REMAINING_S: &str = "waypoint.target_deadline_remaining_s";
     pub const WAYPOINT_TARGET_VELOCITY_ERROR_MPS: &str = "waypoint.target_velocity_error_mps";
     pub const WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S: &str =

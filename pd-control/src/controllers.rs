@@ -1024,9 +1024,46 @@ struct WaypointGuidancePrediction {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointGuidancePlan {
     waypoint_index: usize,
+    revision: u32,
+    reason: WaypointGuidancePlanReason,
+    created_time_s: f64,
+    start_position_m: Vec2,
+    start_velocity_mps: Vec2,
+    endpoint_m: Vec2,
     target_velocity_mps: Vec2,
     arrival_time_s: f64,
     target_envelope_feasible: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WaypointGuidancePlanReason {
+    Initial,
+    Expired,
+    AuthorityRecovery,
+    ContractRecovery,
+}
+
+impl WaypointGuidancePlanReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Initial => "initial",
+            Self::Expired => "expired",
+            Self::AuthorityRecovery => "authority_recovery",
+            Self::ContractRecovery => "contract_recovery",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointGuidanceTrackability {
+    plan_index: usize,
+    plan_revision: u32,
+    plan_reason: WaypointGuidancePlanReason,
+    plan_age_s: f64,
+    reference_position_error_m: f64,
+    reference_cross_error_m: f64,
+    reference_velocity_error_mps: f64,
+    reference_cross_speed_error_mps: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1050,6 +1087,10 @@ struct WaypointGuidanceCommandState {
     path_correction_mps2: Vec2,
     deadline_remaining_s: f64,
     velocity_error_mps: f64,
+    authority_margin: f64,
+    thrust_saturated: bool,
+    tilt_saturated: bool,
+    trackability: WaypointGuidanceTrackability,
     prediction: WaypointGuidancePrediction,
 }
 
@@ -1059,6 +1100,10 @@ struct WaypointGuidanceTargetState {
     deadline_remaining_s: f64,
     velocity_error_mps: f64,
     feasible: bool,
+    authority_margin: f64,
+    thrust_saturated: bool,
+    tilt_saturated: bool,
+    trackability: WaypointGuidanceTrackability,
     prediction: WaypointGuidancePrediction,
 }
 
@@ -1818,6 +1863,23 @@ impl TransferPdgController {
             && Self::waypoint_guidance_replacement_is_material(current, replacement)
     }
 
+    fn waypoint_guidance_plan_reason(
+        current: Option<WaypointGuidanceCandidate>,
+        expired: bool,
+    ) -> WaypointGuidancePlanReason {
+        if current.is_none() {
+            WaypointGuidancePlanReason::Initial
+        } else if expired {
+            WaypointGuidancePlanReason::Expired
+        } else if current.is_some_and(|candidate| {
+            !Self::waypoint_guidance_candidate_has_control_authority(candidate)
+        }) {
+            WaypointGuidancePlanReason::AuthorityRecovery
+        } else {
+            WaypointGuidancePlanReason::ContractRecovery
+        }
+    }
+
     fn select_waypoint_guidance_candidate(
         &self,
         ctx: &RunContext,
@@ -1946,6 +2008,35 @@ impl TransferPdgController {
         )
     }
 
+    fn waypoint_guidance_trackability(
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+        plan: WaypointGuidancePlan,
+    ) -> WaypointGuidanceTrackability {
+        let duration_s = (plan.arrival_time_s - plan.created_time_s).max(1.0e-6);
+        let elapsed_s = (observation.sim_time_s - plan.created_time_s).clamp(0.0, duration_s);
+        let (reference_position_m, reference_velocity_mps) = waypoint_cubic_reference_state(
+            plan.start_position_m,
+            plan.start_velocity_mps,
+            plan.endpoint_m,
+            plan.target_velocity_mps,
+            duration_s,
+            elapsed_s,
+        );
+        let position_error_m = observation.position_m - reference_position_m;
+        let velocity_error_mps = observation.velocity_mps - reference_velocity_mps;
+        WaypointGuidanceTrackability {
+            plan_index: plan.waypoint_index,
+            plan_revision: plan.revision,
+            plan_reason: plan.reason,
+            plan_age_s: (observation.sim_time_s - plan.created_time_s).max(0.0),
+            reference_position_error_m: position_error_m.length(),
+            reference_cross_error_m: vec_cross(position_error_m, guidance.leg_unit),
+            reference_velocity_error_mps: velocity_error_mps.length(),
+            reference_cross_speed_error_mps: vec_cross(velocity_error_mps, guidance.leg_unit),
+        }
+    }
+
     fn waypoint_guidance_target_state_for_current_plan(
         &self,
         ctx: &RunContext,
@@ -1978,6 +2069,10 @@ impl TransferPdgController {
             feasible: candidate.target_envelope_feasible
                 && tilt_feasible
                 && required_accel_ratio <= 1.0,
+            authority_margin: 1.0 - required_accel_ratio,
+            thrust_saturated: required_accel_ratio > 1.0,
+            tilt_saturated: !tilt_feasible,
+            trackability: Self::waypoint_guidance_trackability(observation, guidance, plan),
             prediction: candidate.prediction,
         })
     }
@@ -2034,12 +2129,19 @@ impl TransferPdgController {
                 )
             });
             if should_replace {
+                let reason = Self::waypoint_guidance_plan_reason(current, expired);
                 if self.waypoint_guidance_plan.is_some() {
                     self.waypoint_guidance_replan_count =
                         self.waypoint_guidance_replan_count.saturating_add(1);
                 }
                 self.waypoint_guidance_plan = Some(WaypointGuidancePlan {
                     waypoint_index: guidance.active_index,
+                    revision: self.waypoint_guidance_replan_count,
+                    reason,
+                    created_time_s: observation.sim_time_s,
+                    start_position_m: observation.position_m,
+                    start_velocity_mps: observation.velocity_mps,
+                    endpoint_m: guidance.endpoint_m,
                     target_velocity_mps: replacement.target_velocity_mps,
                     arrival_time_s: observation.sim_time_s + replacement.time_to_go_s,
                     target_envelope_feasible: replacement.target_envelope_feasible,
@@ -2136,6 +2238,10 @@ impl TransferPdgController {
             path_correction_mps2,
             deadline_remaining_s: plan.arrival_time_s - observation.sim_time_s,
             velocity_error_mps: (observation.velocity_mps - candidate.target_velocity_mps).length(),
+            authority_margin: 1.0 - required_accel_ratio,
+            thrust_saturated: required_accel_ratio > 1.0,
+            tilt_saturated: !tilt_feasible,
+            trackability: Self::waypoint_guidance_trackability(observation, guidance, plan),
             prediction: candidate.prediction,
         }
     }
@@ -2270,6 +2376,10 @@ impl TransferPdgController {
                     deadline_remaining_s: state.deadline_remaining_s,
                     velocity_error_mps: state.velocity_error_mps,
                     feasible: state.feasible,
+                    authority_margin: state.authority_margin,
+                    thrust_saturated: state.thrust_saturated,
+                    tilt_saturated: state.tilt_saturated,
+                    trackability: state.trackability,
                     prediction: state.prediction,
                 },
             );
@@ -3859,6 +3969,50 @@ fn insert_waypoint_target_state_metrics(
         metric::WAYPOINT_GUIDANCE_FEASIBLE.to_owned(),
         TelemetryValue::from(target_state.feasible),
     );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_PLAN_INDEX.to_owned(),
+        TelemetryValue::from(target_state.trackability.plan_index as i64),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_PLAN_REVISION.to_owned(),
+        TelemetryValue::from(target_state.trackability.plan_revision as i64),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_PLAN_REASON.to_owned(),
+        TelemetryValue::from(target_state.trackability.plan_reason.as_str()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_PLAN_AGE_S.to_owned(),
+        TelemetryValue::from(target_state.trackability.plan_age_s),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_REFERENCE_POSITION_ERROR_M.to_owned(),
+        TelemetryValue::from(target_state.trackability.reference_position_error_m),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_ERROR_M.to_owned(),
+        TelemetryValue::from(target_state.trackability.reference_cross_error_m),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_REFERENCE_VELOCITY_ERROR_MPS.to_owned(),
+        TelemetryValue::from(target_state.trackability.reference_velocity_error_mps),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_SPEED_ERROR_MPS.to_owned(),
+        TelemetryValue::from(target_state.trackability.reference_cross_speed_error_mps),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_AUTHORITY_MARGIN.to_owned(),
+        TelemetryValue::from(target_state.authority_margin),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_THRUST_SATURATED.to_owned(),
+        TelemetryValue::from(target_state.thrust_saturated),
+    );
+    metrics.insert(
+        metric::WAYPOINT_GUIDANCE_TILT_SATURATED.to_owned(),
+        TelemetryValue::from(target_state.tilt_saturated),
+    );
     let prediction = target_state.prediction;
     metrics.insert(
         metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S.to_owned(),
@@ -4895,6 +5049,30 @@ mod tests {
     }
 
     #[test]
+    fn waypoint_plan_reason_reports_replacement_trigger() {
+        let feasible = waypoint_candidate_fixture(true, 0.8, 5.0);
+        let mut over_authority = waypoint_candidate_fixture(false, 1.2, 5.0);
+        over_authority.tilt_feasible = false;
+
+        assert_eq!(
+            TransferPdgController::waypoint_guidance_plan_reason(None, false),
+            WaypointGuidancePlanReason::Initial
+        );
+        assert_eq!(
+            TransferPdgController::waypoint_guidance_plan_reason(Some(feasible), true),
+            WaypointGuidancePlanReason::Expired
+        );
+        assert_eq!(
+            TransferPdgController::waypoint_guidance_plan_reason(Some(over_authority), false),
+            WaypointGuidancePlanReason::AuthorityRecovery
+        );
+        assert_eq!(
+            TransferPdgController::waypoint_guidance_plan_reason(Some(feasible), false),
+            WaypointGuidancePlanReason::ContractRecovery
+        );
+    }
+
+    #[test]
     fn waypoint_contract_failure_waits_for_local_prediction_horizon() {
         let mut candidate = waypoint_candidate_fixture(false, 0.8, 20.0);
         candidate.prediction.time_to_event_s = WAYPOINT_GUIDANCE_PREDICTION_HORIZON_S + 0.1;
@@ -4934,6 +5112,51 @@ mod tests {
         assert!((start.1 - start_velocity_mps).length() < 1.0e-9);
         assert!((end.0 - end_position_m).length() < 1.0e-9);
         assert!((end.1 - end_velocity_mps).length() < 1.0e-9);
+    }
+
+    #[test]
+    fn waypoint_plan_trackability_uses_immutable_creation_reference() {
+        let guidance = straight_waypoint_guidance();
+        let start_position_m = Vec2::new(0.0, 0.0);
+        let start_velocity_mps = Vec2::new(8.0, -2.0);
+        let plan = WaypointGuidancePlan {
+            waypoint_index: 0,
+            revision: 0,
+            reason: WaypointGuidancePlanReason::Initial,
+            created_time_s: 2.0,
+            start_position_m,
+            start_velocity_mps,
+            endpoint_m: guidance.endpoint_m,
+            target_velocity_mps: Vec2::new(12.0, -4.0),
+            arrival_time_s: 8.0,
+            target_envelope_feasible: true,
+        };
+        let mut observation = transfer_observation(0.0, 0.0, start_velocity_mps, 5.0);
+        let (position_m, velocity_mps) = waypoint_cubic_reference_state(
+            start_position_m,
+            start_velocity_mps,
+            plan.endpoint_m,
+            plan.target_velocity_mps,
+            6.0,
+            3.0,
+        );
+        observation.position_m = position_m;
+        observation.velocity_mps = velocity_mps;
+
+        let trackability =
+            TransferPdgController::waypoint_guidance_trackability(&observation, guidance, plan);
+
+        assert_eq!(trackability.plan_index, 0);
+        assert_eq!(trackability.plan_revision, 0);
+        assert_eq!(
+            trackability.plan_reason,
+            WaypointGuidancePlanReason::Initial
+        );
+        assert_eq!(trackability.plan_age_s, 3.0);
+        assert!(trackability.reference_position_error_m < 1.0e-9);
+        assert!(trackability.reference_cross_error_m.abs() < 1.0e-9);
+        assert!(trackability.reference_velocity_error_mps < 1.0e-9);
+        assert!(trackability.reference_cross_speed_error_mps.abs() < 1.0e-9);
     }
 
     #[test]
@@ -5314,6 +5537,26 @@ mod tests {
                 .metrics
                 .contains_key(metric::WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO)
         );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_GUIDANCE_PLAN_INDEX),
+            Some(&TelemetryValue::from(0_i64))
+        );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_GUIDANCE_PLAN_REASON),
+            Some(&TelemetryValue::from("initial"))
+        );
+        for key in [
+            metric::WAYPOINT_GUIDANCE_PLAN_AGE_S,
+            metric::WAYPOINT_GUIDANCE_REFERENCE_POSITION_ERROR_M,
+            metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_ERROR_M,
+            metric::WAYPOINT_GUIDANCE_REFERENCE_VELOCITY_ERROR_MPS,
+            metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_SPEED_ERROR_MPS,
+            metric::WAYPOINT_GUIDANCE_AUTHORITY_MARGIN,
+            metric::WAYPOINT_GUIDANCE_THRUST_SATURATED,
+            metric::WAYPOINT_GUIDANCE_TILT_SATURATED,
+        ] {
+            assert!(frame.metrics.contains_key(key), "missing {key}");
+        }
     }
 
     #[test]
@@ -5401,6 +5644,13 @@ mod tests {
         let mut controller = TransferPdgController::new(config);
 
         let first_geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let tracking_observation = waypoint_transfer_observation(
+            &ctx,
+            first_geometry.anchor_m + (first_geometry.leg_unit * 120.0),
+            first_geometry.leg_unit * 30.0,
+            5.0,
+        );
+        controller.update(&ctx, &tracking_observation);
         let first_observation = waypoint_transfer_observation(
             &ctx,
             first_geometry.target_m + (first_geometry.leg_unit * 5.0),
@@ -5430,6 +5680,23 @@ mod tests {
         assert_eq!(
             handoff_indices(&first_frame),
             vec![Some(TelemetryValue::from(0_i64))]
+        );
+        assert_eq!(
+            first_frame
+                .metrics
+                .get(metric::WAYPOINT_GUIDANCE_PLAN_INDEX),
+            Some(&TelemetryValue::from(1_i64))
+        );
+        let first_handoff = first_frame
+            .markers
+            .iter()
+            .find(|marker| marker.id == crate::kit::marker::WAYPOINT_HANDOFF)
+            .unwrap();
+        assert_eq!(
+            first_handoff
+                .metadata
+                .get(metric::WAYPOINT_GUIDANCE_PLAN_INDEX),
+            Some(&TelemetryValue::from(0_i64))
         );
         assert_eq!(
             handoff_indices(&second_frame),
