@@ -46,11 +46,10 @@ Current implementation status:
     handoff controller
   - direct transfer is clean across the maintained route-angle/radius matrix
   - `transfer_waypoint_pdg_v1` closes the normalized balanced terrain-blind
-    pass-through handoff corpus; post-handoff sharp-uphill recovery remains
-    open in the paired landing pack
+    pass-through handoff and paired landing corpora
   - ordered two-waypoint evaluation, first-trigger prediction, and paired smoke
     corpora now exist; normalized route-frame fixtures establish a
-    `24 / 54` route-contract and `46 / 54` final-landing baseline
+    `24 / 54` route-contract and `54 / 54` final-landing checkpoint
 
 ## 2. What Not To Build First
 
@@ -356,23 +355,21 @@ Status:
     not analytically over-energetic plans
 - current balanced waypoint-guidance checkpoint:
   - `transfer_waypoint_turn_contract_smoke`: `81 / 81` contract successes
-  - `transfer_waypoint_turn_smoke`: `75 / 81` final landings
-  - all six failures are sharp `r+30` half/full post-handoff crashes; `r-30`
-    and `r00` remain `27 / 27`
+  - `transfer_waypoint_turn_smoke`: `81 / 81` final landings
+  - retained terminal horizons release to receding recovery when their
+    attitude-aware vertical braking margin reaches zero
   - fixed endpoint geometry, outbound target velocity, geometry-derived
     time-to-go candidates, and bounded path correction remain free of sim-time,
     route-angle, and profile branches
 - current ordered waypoint-sequence checkpoint:
-  - final landing is `46 / 54`; ordered route success is `24 / 54`
+  - final landing is `54 / 54`; ordered route success is `24 / 54`
   - passed-handoff distribution is `0:3 | 1:27 | 2:24`
-  - `double_bend_v1` lands `27 / 27`; remaining landing debt is concentrated in
-    late-bend half/full payloads
+  - both sequence profiles now land `27 / 27`; route-contract debt remains
+    concentrated in handoff shaping rather than touchdown recovery
   - first-trigger projection, roundoff-safe envelope validation, and bounded
     local replacement remain the current controller mechanism
 - next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - fix general post-handoff recovery for sharp uphill routes before widening
-    the single-waypoint matrix
   - address upstream/two-leg feasibility where the next active leg has no
     dynamically feasible trigger-pass candidate, especially late-bend index one
   - use handoff packs as guidance targets and paired landing packs as
@@ -534,15 +531,14 @@ The next useful work is:
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
    direct-transfer regression gates. Preserve balanced handoffs at `81 / 81`,
-   balanced landing at or above `75 / 81`, sequence landing at or above
-   `46 / 54`, and ordered sequence handoffs at or above `24 / 54` before
+   balanced landing at `81 / 81`, sequence landing at `54 / 54`, and ordered
+   sequence handoffs at or above `24 / 54` before
    waypoint planning or terrain-aware routing.
 
-The immediate controller direction should stay conservative. Direct transfer
-and balanced pass-through handoff are clean, but the normalized corpus exposes
-post-handoff recovery debt: sharp `r+30` half/full cases pass the waypoint and
-then crash. Ordered route success is `24 / 54`; sequence landing is `46 / 54`,
-with late-bend continuation still dominant. The next hypotheses should improve
-general recovery and propagate next-leg feasibility upstream, not widen the
-prediction horizon or add route/profile policy. Radius tiers should follow once
-those nominal mechanisms are credible.
+The immediate controller direction should stay conservative. Direct transfer,
+balanced pass-through handoff, and paired final landing are clean. Ordered
+route success remains `24 / 54` despite `54 / 54` sequence landings, with
+late-bend continuation still dominant. The next hypotheses should propagate
+next-leg feasibility upstream, not retune terminal recovery, widen the
+prediction horizon, or add route/profile policy. Radius tiers should follow
+once that nominal mechanism is credible.

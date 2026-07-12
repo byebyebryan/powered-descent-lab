@@ -446,11 +446,11 @@ Transfer route-angle checkpoint:
   - every normalized gentle, medium, and sharp waypoint contract passes without
     route/profile controller branches
 - `transfer_waypoint_turn_smoke`
-  - `current`: `75 / 81` final landings
-  - all six failures are post-handoff sharp `r+30` half/full-payload crashes;
-    waypoint contract quality remains `81 / 81`
+  - `current`: `81 / 81` final landings
+  - retained terminal horizons now release when their attitude-aware vertical
+    braking margin is exhausted; waypoint contract quality remains `81 / 81`
 - `transfer_waypoint_sequence_smoke`
-  - `current`: `46 / 54` final landings and `24 / 54` routes satisfying both
+  - `current`: `54 / 54` final landings and `24 / 54` routes satisfying both
     ordered waypoint contracts
 - `transfer_waypoint_sequence_contract_smoke`
   - `current`: `24 / 54` ordered sequence successes
@@ -468,11 +468,10 @@ optimistic stopping-distance ratio exceeds `0.75`; the observed maximum is
 and continuation ratio directly. The old `single_dogleg_v1` packs remain only
 as parked diagnostic history and were not regenerated.
 
-The next bottleneck is controller handling after valid pass-through handoff,
-especially sharp uphill recovery and the late-bend second leg. Future work
-should preserve `81 / 81` balanced contracts, `75 / 81` balanced landing,
-`24 / 54` ordered routes, `46 / 54` sequence landing, and `297 / 297` direct
-transfer without route/profile branches. General terrain avoidance remains
-parked at the planning/collision-warning layer. Detailed checkpoint history
-lives in `docs/progress.md`, `docs/transfer_suite.md`, and
+The next bottleneck is ordered route quality, especially late-bend second-leg
+feasibility. Future work should preserve `81 / 81` balanced contracts and
+landings, `24 / 54` ordered routes, `54 / 54` sequence landing, and `297 / 297`
+direct transfer without route/profile branches. General terrain avoidance
+remains parked at the planning/collision-warning layer. Detailed checkpoint
+history lives in `docs/progress.md`, `docs/transfer_suite.md`, and
 `docs/terminal_suite.md`.

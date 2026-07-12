@@ -430,7 +430,10 @@ against a parabolic reference, and keep final touchdown as the scored goal.
 
 Terminal guidance telemetry separates the fresh selector result from an active
 retained plan with `guidance.candidate_burn_time_s`, `guidance.plan_active`,
-`guidance.plan_arrival_time_s`, and `guidance.plan_replan_count`.
+`guidance.plan_arrival_time_s`, and `guidance.plan_replan_count`. It also emits
+`guidance.vertical_braking_margin_m` continuously and records one
+`guidance/plan_release` marker with `guidance.plan_release_reason` when a
+retained plan ends.
 
 Batch reports render transfer-specific triage sections before the Review Tree:
 
@@ -480,9 +483,10 @@ The current staged controller uses the transfer diagnostics directly:
   retained plan if it reaches the long-capture ceiling before apex.
 - the retained horizon counts down against simulation time, targets the upright
   touchdown-center height, and releases permanently to the existing terminal
-  recovery once projected touchdown is inside the safe footprint, lateral
-  speed is out of the high-energy regime, and the latest-safe braking boundary
-  has been reached
+  recovery either at the captured latest-safe braking boundary or when its
+  attitude-aware vertical braking margin reaches zero. The safety release uses
+  clearance, sink rate, current attitude, current thrust-to-weight, and gravity;
+  it does not use route/profile labels or the scenario timeout.
 - retained terminal plans are enabled only for waypoint transfer. Standalone
   terminal and direct-transfer entries preserve their existing receding-horizon
   behavior.
@@ -516,10 +520,10 @@ controller changes:
   continuation ratio `0.742`
 - `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes; worst
   continuation ratio `0.529`
-- `transfer_waypoint_turn_smoke`: `75 / 81` landings. The six failures are
-  sharp `r+30` half/full post-handoff crashes; `r-30` and `r00` remain
-  `27 / 27`, and every failed landing first passes its waypoint contract.
-- `transfer_waypoint_sequence_smoke`: `46 / 54` landings and `24 / 54`
+- `transfer_waypoint_turn_smoke`: `81 / 81` landings. The braking-reserve
+  release closes all six former sharp `r+30` half/full post-handoff crashes
+  without changing waypoint contracts or transfer-shape metrics.
+- `transfer_waypoint_sequence_smoke`: `54 / 54` landings and `24 / 54`
   complete ordered routes
 - `transfer_waypoint_sequence_contract_smoke`: `24 / 54` complete routes with
   passed-handoff distribution `0:3 | 1:27 | 2:24`; worst continuation ratio
@@ -529,10 +533,9 @@ controller changes:
   changes are controller evidence, not hidden waypoint movement.
 - `single_dogleg_v1` and its four packs are parked diagnostic history. They were
   not rerun and are not acceptance gates.
-- the next controller pass should target post-handoff sharp-uphill recovery and
-  late-bend second-leg feasibility while preserving `81 / 81` balanced
-  contracts, `75 / 81` balanced landing, `24 / 54` ordered routes,
-  `46 / 54` sequence landing, and `297 / 297` direct transfer.
+- the next controller pass should target late-bend second-leg feasibility while
+  preserving `81 / 81` balanced contracts and landing, `24 / 54` ordered
+  routes, `54 / 54` sequence landing, and `297 / 297` direct transfer.
 - route/radius expansion remains a later evidence axis. Generalized terrain
   avoidance remains out of scope; waypoint planning still owns terrain-valid
   placement.

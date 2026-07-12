@@ -2,6 +2,40 @@
 
 ## 2026-07-12
 
+### Retained terminal braking-reserve recovery
+
+- Confirmed the paired landing failures were terminal recovery debt rather
+  than waypoint-contract failures: retained absolute arrival horizons kept
+  prioritizing lateral cleanup after the remaining vertical braking reserve
+  was nearly exhausted.
+- Retained waypoint terminal plans now release permanently to the existing
+  receding-horizon recovery when an attitude-aware vertical braking margin
+  reaches zero. The margin uses remaining touchdown clearance, sink rate,
+  current attitude, current thrust-to-weight, gravity, and the existing braking
+  altitude/safety settings; it has no route/profile or simulation-time branch.
+- Added `guidance.vertical_braking_margin_m`,
+  `guidance.plan_release_reason`, and one `guidance/plan_release` marker per
+  release. The balanced landing pack records `19` captured-boundary releases
+  and `8` braking-margin releases, with no duplicate release events.
+- Fresh `8`-worker, `--no-reuse` validation:
+  - balanced turn landing and contract: `81 / 81` each, `11.68s | 2.88s` wall
+    clock
+  - sequence landing: `54 / 54`; ordered route status remains `24 / 54` with
+    passed-handoff distribution `0:3 | 1:27 | 2:24`
+  - sequence contract: unchanged `24 / 54`, `2.32s` wall clock
+  - smooth `r+80` bend landing and contract: unchanged `15 / 27 | 21 / 27`
+  - direct route-angle/radius regression: unchanged `297 / 297`, `46.38s`
+    wall clock
+  - standalone terminal smoke: unchanged `228` successes, `132` scored
+    failures, and `18` invalidations
+- Balanced mean simulation time rises by `0.18s` and mean fuel use by `0.10`
+  percentage points. Transfer shape RMSE and post-handoff apex metrics are
+  unchanged. Controller compute remains below budget at `178us` mean, `436us`
+  p95, and `561us` p99 across `232,143` updates.
+- The terminal recovery gap is closed for the maintained balanced and sequence
+  packs. The next waypoint controller slice is second-leg route-contract
+  shaping; final landing must remain a separate regression gate.
+
 ### Maintained waypoint corpus reset
 
 - Re-audited every maintained waypoint fixture in the source-to-target route
