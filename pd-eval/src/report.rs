@@ -2557,6 +2557,13 @@ struct WaypointSequenceCellSummary {
     candidate_last_pass_time_s: Option<crate::BatchMetricSummary>,
     candidate_best_heading_margin_deg: Option<crate::BatchMetricSummary>,
     candidate_best_cross_speed_margin_mps: Option<crate::BatchMetricSummary>,
+    reachable_candidate_contract_pass_ever_runs: usize,
+    reachable_candidate_observed: usize,
+    reachable_candidate_pass_lost_runs: usize,
+    reachable_reference_disagreement_runs: usize,
+    reachable_required_accel_ratio_max: Option<crate::BatchMetricSummary>,
+    reachable_thrust_saturated_time_max_s: Option<crate::BatchMetricSummary>,
+    reachable_tilt_saturated_time_max_s: Option<crate::BatchMetricSummary>,
     plan_reference_position_error_max_m: Option<crate::BatchMetricSummary>,
     plan_reference_cross_error_max_abs_m: Option<crate::BatchMetricSummary>,
     plan_reference_velocity_error_max_mps: Option<crate::BatchMetricSummary>,
@@ -2642,11 +2649,11 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
                 r#"<details class="transfer-handoff-section waypoint-trackability-section">
   <summary class="section-head transfer-triage-summary">
     <h2>Waypoint Plan Trackability</h2>
-    <div class="section-note">Fixed-plan reference drift, control saturation, and state at the last passing prediction.</div>
+    <div class="section-note">Hermite reference drift, actuated reachable forecast, control saturation, and state at the last reference-pass prediction.</div>
   </summary>
   <div class="table-wrap">
     <table class="transfer-handoff-table waypoint-trackability-table">
-      <thead><tr><th>Route</th><th>Vehicle</th><th>Waypoint</th><th>Reference Max</th><th>Authority</th><th>Last Pass</th><th>Plans</th></tr></thead>
+      <thead><tr><th>Route</th><th>Vehicle</th><th>Waypoint</th><th>Reference Max</th><th>Reachable Forecast</th><th>Authority</th><th>Last Pass</th><th>Plans</th></tr></thead>
       <tbody>{trackability_row_html}</tbody>
     </table>
   </div>
@@ -2876,6 +2883,49 @@ fn waypoint_sequence_cell_summary(
         }),
         candidate_best_cross_speed_margin_mps: metric(|handoff| {
             handoff.candidate_best_cross_speed_margin_mps
+        }),
+        reachable_candidate_contract_pass_ever_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.reachable_candidate_contract_pass_ever)
+                    == Some(true)
+            })
+            .count(),
+        reachable_candidate_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.reachable_candidate_contract_pass_ever.is_some())
+            })
+            .count(),
+        reachable_candidate_pass_lost_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.reachable_candidate_pass_lost_before_capture)
+                    == Some(true)
+            })
+            .count(),
+        reachable_reference_disagreement_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index).is_some_and(|handoff| {
+                    handoff.candidate_contract_pass_ever.is_some()
+                        && handoff.reachable_candidate_contract_pass_ever.is_some()
+                        && handoff.candidate_contract_pass_ever
+                            != handoff.reachable_candidate_contract_pass_ever
+                })
+            })
+            .count(),
+        reachable_required_accel_ratio_max: metric(|handoff| {
+            handoff.reachable_required_accel_ratio_max
+        }),
+        reachable_thrust_saturated_time_max_s: metric(|handoff| {
+            handoff.reachable_thrust_saturated_time_max_s
+        }),
+        reachable_tilt_saturated_time_max_s: metric(|handoff| {
+            handoff.reachable_tilt_saturated_time_max_s
         }),
         plan_reference_position_error_max_m: metric(|handoff| {
             handoff.plan_reference_position_error_max_m
@@ -3118,6 +3168,23 @@ fn render_waypoint_trackability_row(summary: &WaypointSequenceCellSummary) -> St
         mean(&summary.plan_reference_cross_error_max_abs_m, "m"),
         mean(&summary.plan_reference_cross_speed_error_max_abs_mps, "m/s"),
     );
+    let reachable = if summary.reachable_candidate_observed == 0 {
+        r#"<span class="muted">legacy reference only</span>"#.to_owned()
+    } else {
+        format!(
+            r#"<div class="overview-stack"><div class="overview-main">pass {}/{} · lost {}</div><div class="overview-sub">disagree {} · peak {:.2}x</div><div class="overview-sub">thrust {} · tilt {}</div></div>"#,
+            summary.reachable_candidate_contract_pass_ever_runs,
+            summary.reachable_candidate_observed,
+            summary.reachable_candidate_pass_lost_runs,
+            summary.reachable_reference_disagreement_runs,
+            summary
+                .reachable_required_accel_ratio_max
+                .as_ref()
+                .map_or(0.0, |value| value.mean),
+            mean(&summary.reachable_thrust_saturated_time_max_s, "s"),
+            mean(&summary.reachable_tilt_saturated_time_max_s, "s"),
+        )
+    };
     let authority = format!(
         r#"<div class="overview-stack"><div class="overview-main">peak {:.2}x</div><div class="overview-sub">thrust {} · tilt {}</div><div class="overview-sub">first lead {}</div></div>"#,
         summary
@@ -3150,7 +3217,7 @@ fn render_waypoint_trackability_row(summary: &WaypointSequenceCellSummary) -> St
         escape_html(&summary.guidance_plan_reasons.join(", ")),
     );
     format!(
-        r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{waypoint}</td><td>{reference}</td><td>{authority}</td><td>{last_pass}</td><td>{plans}</td></tr>"#,
+        r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{waypoint}</td><td>{reference}</td><td>{reachable}</td><td>{authority}</td><td>{last_pass}</td><td>{plans}</td></tr>"#,
         escape_html(&summary.key.route_angle),
         escape_html(&summary.key.vehicle_variant),
     )
@@ -9345,6 +9412,11 @@ mod report_tests {
                     } else {
                         -4.0
                     }),
+                    reachable_candidate_contract_pass_ever: Some(false),
+                    reachable_candidate_pass_lost_before_capture: Some(false),
+                    reachable_required_accel_ratio_max: Some(1.6),
+                    reachable_thrust_saturated_time_max_s: Some(0.6),
+                    reachable_tilt_saturated_time_max_s: Some(0.2),
                     plan_reference_position_error_max_m: Some(30.0 + index as f64),
                     plan_reference_cross_error_max_abs_m: Some(12.0),
                     plan_reference_velocity_error_max_mps: Some(8.0),
@@ -9394,7 +9466,9 @@ mod report_tests {
         assert!(html.contains("history 1/2 ever pass"));
         assert!(html.contains("best margins heading"));
         assert!(html.contains("<h2>Waypoint Plan Trackability</h2>"));
-        assert!(html.contains("Fixed-plan reference drift"));
+        assert!(html.contains("actuated reachable forecast"));
+        assert!(html.contains("pass 0/2"));
+        assert!(html.contains("disagree 1"));
         assert!(html.contains("peak 1.20x"));
         assert!(html.contains("authority_recovery"));
     }

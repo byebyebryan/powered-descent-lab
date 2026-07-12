@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 28;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 29;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -212,6 +212,20 @@ pub struct BatchWaypointHandoffReviewMetrics {
     pub candidate_best_heading_margin_rad: Option<f64>,
     #[serde(default)]
     pub candidate_best_cross_speed_margin_mps: Option<f64>,
+    #[serde(default)]
+    pub reachable_candidate_contract_pass_ever: Option<bool>,
+    #[serde(default)]
+    pub reachable_candidate_first_pass_time_s: Option<f64>,
+    #[serde(default)]
+    pub reachable_candidate_last_pass_time_s: Option<f64>,
+    #[serde(default)]
+    pub reachable_candidate_pass_lost_before_capture: Option<bool>,
+    #[serde(default)]
+    pub reachable_required_accel_ratio_max: Option<f64>,
+    #[serde(default)]
+    pub reachable_thrust_saturated_time_max_s: Option<f64>,
+    #[serde(default)]
+    pub reachable_tilt_saturated_time_max_s: Option<f64>,
     #[serde(default)]
     pub plan_reference_position_error_max_m: Option<f64>,
     #[serde(default)]
@@ -6134,6 +6148,13 @@ struct WaypointReviewMetrics {
     candidate_pass_lost_before_capture: Option<bool>,
     candidate_best_heading_margin_rad: Option<f64>,
     candidate_best_cross_speed_margin_mps: Option<f64>,
+    reachable_candidate_contract_pass_ever: Option<bool>,
+    reachable_candidate_first_pass_time_s: Option<f64>,
+    reachable_candidate_last_pass_time_s: Option<f64>,
+    reachable_candidate_pass_lost_before_capture: Option<bool>,
+    reachable_required_accel_ratio_max: Option<f64>,
+    reachable_thrust_saturated_time_max_s: Option<f64>,
+    reachable_tilt_saturated_time_max_s: Option<f64>,
     plan_reference_position_error_max_m: Option<f64>,
     plan_reference_cross_error_max_abs_m: Option<f64>,
     plan_reference_velocity_error_max_mps: Option<f64>,
@@ -6269,6 +6290,14 @@ fn enrich_waypoint_candidate_history(
         let mut last_pass_reference_position_error_m = None;
         let mut last_pass_reference_velocity_error_mps = None;
         let mut last_pass_required_accel_ratio = None;
+        let mut reachable_observed = false;
+        let mut reachable_pass_ever = false;
+        let mut reachable_first_pass_time_s = None;
+        let mut reachable_last_pass_time_s = None;
+        let mut reachable_last_observed_pass = false;
+        let mut reachable_required_accel_ratio_max: Option<f64> = None;
+        let mut reachable_thrust_saturated_time_max_s: Option<f64> = None;
+        let mut reachable_tilt_saturated_time_max_s: Option<f64> = None;
 
         for (update_index, update) in updates.iter().enumerate() {
             let metrics = &update.frame.metrics;
@@ -6309,6 +6338,35 @@ fn enrich_waypoint_candidate_history(
             }
             if let Some(reason) = telemetry_text(metrics, metric::WAYPOINT_GUIDANCE_PLAN_REASON) {
                 plan_reasons.insert(reason.to_owned());
+            }
+            if let Some(value) = telemetry_float(
+                metrics,
+                metric::WAYPOINT_REACHABLE_HANDOFF_REQUIRED_ACCEL_RATIO_MAX,
+            ) {
+                update_optional_max(&mut reachable_required_accel_ratio_max, value);
+            }
+            if let Some(value) = telemetry_float(
+                metrics,
+                metric::WAYPOINT_REACHABLE_HANDOFF_THRUST_SATURATED_TIME_S,
+            ) {
+                update_optional_max(&mut reachable_thrust_saturated_time_max_s, value);
+            }
+            if let Some(value) = telemetry_float(
+                metrics,
+                metric::WAYPOINT_REACHABLE_HANDOFF_TILT_SATURATED_TIME_S,
+            ) {
+                update_optional_max(&mut reachable_tilt_saturated_time_max_s, value);
+            }
+            if let Some(passed) =
+                telemetry_bool(metrics, metric::WAYPOINT_REACHABLE_HANDOFF_CONTRACT_PASS)
+            {
+                reachable_observed = true;
+                reachable_last_observed_pass = passed;
+                if passed {
+                    reachable_pass_ever = true;
+                    reachable_first_pass_time_s.get_or_insert(update.sim_time_s);
+                    reachable_last_pass_time_s = Some(update.sim_time_s);
+                }
             }
 
             let thrust_saturated =
@@ -6380,6 +6438,16 @@ fn enrich_waypoint_candidate_history(
             handoff.candidate_pass_lost_before_capture = Some(pass_ever && !last_observed_pass);
             handoff.candidate_best_heading_margin_rad = best_heading_margin_rad;
             handoff.candidate_best_cross_speed_margin_mps = best_cross_speed_margin_mps;
+        }
+        if reachable_observed {
+            handoff.reachable_candidate_contract_pass_ever = Some(reachable_pass_ever);
+            handoff.reachable_candidate_first_pass_time_s = reachable_first_pass_time_s;
+            handoff.reachable_candidate_last_pass_time_s = reachable_last_pass_time_s;
+            handoff.reachable_candidate_pass_lost_before_capture =
+                Some(reachable_pass_ever && !reachable_last_observed_pass);
+            handoff.reachable_required_accel_ratio_max = reachable_required_accel_ratio_max;
+            handoff.reachable_thrust_saturated_time_max_s = reachable_thrust_saturated_time_max_s;
+            handoff.reachable_tilt_saturated_time_max_s = reachable_tilt_saturated_time_max_s;
         }
         if trackability_observed {
             handoff.plan_reference_position_error_max_m = reference_position_error_max_m;
@@ -6558,6 +6626,13 @@ fn waypoint_review_metrics_from_update(
         candidate_pass_lost_before_capture: None,
         candidate_best_heading_margin_rad: None,
         candidate_best_cross_speed_margin_mps: None,
+        reachable_candidate_contract_pass_ever: None,
+        reachable_candidate_first_pass_time_s: None,
+        reachable_candidate_last_pass_time_s: None,
+        reachable_candidate_pass_lost_before_capture: None,
+        reachable_required_accel_ratio_max: None,
+        reachable_thrust_saturated_time_max_s: None,
+        reachable_tilt_saturated_time_max_s: None,
         plan_reference_position_error_max_m: None,
         plan_reference_cross_error_max_abs_m: None,
         plan_reference_velocity_error_max_mps: None,
@@ -6730,6 +6805,13 @@ fn terminal_waypoint_review_metrics(
         candidate_pass_lost_before_capture: None,
         candidate_best_heading_margin_rad: None,
         candidate_best_cross_speed_margin_mps: None,
+        reachable_candidate_contract_pass_ever: None,
+        reachable_candidate_first_pass_time_s: None,
+        reachable_candidate_last_pass_time_s: None,
+        reachable_candidate_pass_lost_before_capture: None,
+        reachable_required_accel_ratio_max: None,
+        reachable_thrust_saturated_time_max_s: None,
+        reachable_tilt_saturated_time_max_s: None,
         plan_reference_position_error_max_m: None,
         plan_reference_cross_error_max_abs_m: None,
         plan_reference_velocity_error_max_mps: None,
@@ -6887,6 +6969,14 @@ fn batch_waypoint_handoff_metrics(
         candidate_pass_lost_before_capture: waypoint.candidate_pass_lost_before_capture,
         candidate_best_heading_margin_rad: waypoint.candidate_best_heading_margin_rad,
         candidate_best_cross_speed_margin_mps: waypoint.candidate_best_cross_speed_margin_mps,
+        reachable_candidate_contract_pass_ever: waypoint.reachable_candidate_contract_pass_ever,
+        reachable_candidate_first_pass_time_s: waypoint.reachable_candidate_first_pass_time_s,
+        reachable_candidate_last_pass_time_s: waypoint.reachable_candidate_last_pass_time_s,
+        reachable_candidate_pass_lost_before_capture: waypoint
+            .reachable_candidate_pass_lost_before_capture,
+        reachable_required_accel_ratio_max: waypoint.reachable_required_accel_ratio_max,
+        reachable_thrust_saturated_time_max_s: waypoint.reachable_thrust_saturated_time_max_s,
+        reachable_tilt_saturated_time_max_s: waypoint.reachable_tilt_saturated_time_max_s,
         plan_reference_position_error_max_m: waypoint.plan_reference_position_error_max_m,
         plan_reference_cross_error_max_abs_m: waypoint.plan_reference_cross_error_max_abs_m,
         plan_reference_velocity_error_max_mps: waypoint.plan_reference_velocity_error_max_mps,
@@ -11043,6 +11133,22 @@ mod tests {
                     metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
                     TelemetryValue::from(cross_speed_mps),
                 ),
+                (
+                    metric::WAYPOINT_REACHABLE_HANDOFF_CONTRACT_PASS.to_owned(),
+                    TelemetryValue::from(false),
+                ),
+                (
+                    metric::WAYPOINT_REACHABLE_HANDOFF_REQUIRED_ACCEL_RATIO_MAX.to_owned(),
+                    TelemetryValue::from(if passed { 1.4 } else { 1.1 }),
+                ),
+                (
+                    metric::WAYPOINT_REACHABLE_HANDOFF_THRUST_SATURATED_TIME_S.to_owned(),
+                    TelemetryValue::from(if passed { 0.2 } else { 0.1 }),
+                ),
+                (
+                    metric::WAYPOINT_REACHABLE_HANDOFF_TILT_SATURATED_TIME_S.to_owned(),
+                    TelemetryValue::from(if passed { 0.3 } else { 0.0 }),
+                ),
             ]));
             update
         };
@@ -11081,6 +11187,17 @@ mod tests {
         assert_eq!(history[0].candidate_pass_lost_before_capture, Some(false));
         assert!((history[0].candidate_best_heading_margin_rad.unwrap() - 0.15).abs() < 1.0e-9);
         assert_eq!(history[0].candidate_best_cross_speed_margin_mps, Some(2.0));
+        assert_eq!(
+            history[0].reachable_candidate_contract_pass_ever,
+            Some(false)
+        );
+        assert_eq!(
+            history[0].reachable_candidate_pass_lost_before_capture,
+            Some(false)
+        );
+        assert_eq!(history[0].reachable_required_accel_ratio_max, Some(1.4));
+        assert_eq!(history[0].reachable_thrust_saturated_time_max_s, Some(0.2));
+        assert_eq!(history[0].reachable_tilt_saturated_time_max_s, Some(0.3));
         assert_eq!(history[0].plan_reference_position_error_max_m, Some(20.0));
         assert_eq!(history[0].plan_reference_cross_error_max_abs_m, Some(8.0));
         assert_eq!(history[0].plan_reference_velocity_error_max_mps, Some(4.0));
