@@ -2118,6 +2118,7 @@ fn validate_transfer_waypoint_envelope(entry_id: &str, envelope: &str) -> Result
         envelope,
         TRANSFER_WAYPOINT_ENVELOPE_LEGACY_V1
             | TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1
+            | TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1
             | TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1
     ) {
         bail!(
@@ -2660,12 +2661,15 @@ const TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1: &str = "double_bend_v1";
 const TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1: &str = "late_bend_v1";
 const TRANSFER_WAYPOINT_ENVELOPE_LEGACY_V1: &str = "legacy_v1";
 const TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1: &str = "pass_through_v1";
+const TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1: &str =
+    "continuation_pass_through_v1";
 const TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1: &str = "sequence_pass_through_v1";
 const TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC: &str = "diagnostic";
 const TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC: f64 = 0.55;
 const TRANSFER_WAYPOINT_SINGLE_BEND_LATERAL_OFFSET_RATIO: f64 = 0.20;
 const TRANSFER_WAYPOINT_GEOMETRY_TOLERANCE: f64 = 1.0e-6;
 const TRANSFER_WAYPOINT_TURN_TOLERANCE_DEG: f64 = 1.0e-3;
+const TRANSFER_WAYPOINT_CONTINUATION_MAX_STOP_RATIO: f64 = 0.75;
 
 #[derive(Clone, Copy)]
 struct TransferWaypointBendProfileSpec {
@@ -3156,7 +3160,8 @@ fn resolve_transfer_matrix_scenario(
             &scenario.world.terrain,
             &route.waypoints,
             route.route_radius_m,
-        );
+            &scenario.vehicle,
+        )?;
         for (index, waypoint) in route.waypoints.iter().enumerate() {
             let prefix = format!("waypoint_{index}");
             resolved_parameters.insert(format!("{prefix}_x_m"), waypoint.position_m.x);
@@ -3283,7 +3288,7 @@ fn configure_transfer_route_geometry(
         route_angle,
         radius_tier,
     )?;
-    apply_transfer_waypoint_envelope(&mut waypoints, waypoint_handoff_envelope);
+    apply_transfer_waypoint_envelope(&mut waypoints, waypoint_handoff_envelope, radius_tier.id)?;
     if let Some(profile) =
         waypoint_profile.filter(|profile| *profile != TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1)
     {
@@ -3295,6 +3300,12 @@ fn configure_transfer_route_geometry(
             &waypoints,
             radius_tier.radius_m,
             scenario.vehicle.geometry.touchdown_base_offset_m,
+        )?;
+        validate_transfer_waypoint_continuation(
+            profile,
+            &target_pad,
+            &waypoints,
+            &scenario.vehicle,
         )?;
     }
     scenario.mission.transfer_route = Some(TransferRouteSpec {
@@ -3685,16 +3696,30 @@ fn transfer_waypoint_bend_profile_spec(profile: &str) -> Option<TransferWaypoint
 fn apply_transfer_waypoint_envelope(
     waypoints: &mut [TransferWaypointSpec],
     envelope: Option<&str>,
-) {
+    radius_tier: &str,
+) -> Result<()> {
     if !matches!(
         envelope,
         Some(
             TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1
+                | TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1
                 | TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1
         )
     ) {
-        return;
+        return Ok(());
     }
+    let continuation_speed_cap_mps =
+        if envelope == Some(TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1) {
+            Some(match radius_tier {
+                // Covers the full pack's -9% radius seed at full initial mass.
+                "short" => 52.5,
+                "nominal" => 65.0,
+                "long" => 75.0,
+                _ => bail!("unsupported continuation waypoint radius tier '{radius_tier}'"),
+            })
+        } else {
+            None
+        };
     for waypoint in waypoints {
         waypoint.max_outbound_heading_error_rad = 0.35;
         waypoint.min_outbound_progress_mps = 8.0;
@@ -3702,10 +3727,73 @@ fn apply_transfer_waypoint_envelope(
         waypoint.min_speed_mps = 10.0;
         if envelope == Some(TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1) {
             waypoint.max_speed_mps = 130.0;
+        } else if let Some(max_speed_mps) = continuation_speed_cap_mps {
+            waypoint.max_speed_mps = max_speed_mps;
         }
         waypoint.min_vertical_speed_mps = None;
         waypoint.max_vertical_speed_mps = None;
     }
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct TransferWaypointContinuationMetrics {
+    available_distance_m: f64,
+    optimistic_stop_distance_m: f64,
+    stop_ratio: f64,
+    max_acceleration_mps2: f64,
+}
+
+fn transfer_waypoint_continuation_metrics(
+    waypoint: &TransferWaypointSpec,
+    outbound_target_m: Vec2,
+    vehicle: &VehicleSpec,
+) -> Result<TransferWaypointContinuationMetrics> {
+    let available_distance_m =
+        (outbound_target_m - waypoint.position_m).length() - waypoint.capture_radius_m;
+    if available_distance_m <= 0.0 {
+        bail!(
+            "waypoint '{}' has no continuation distance beyond its capture region",
+            waypoint.id
+        );
+    }
+    let initial_mass_kg = vehicle.dry_mass_kg + vehicle.initial_fuel_kg;
+    if initial_mass_kg <= 0.0 || vehicle.max_thrust_n <= 0.0 {
+        bail!("waypoint continuation requires positive initial mass and maximum thrust");
+    }
+    let max_acceleration_mps2 = vehicle.max_thrust_n / initial_mass_kg;
+    let optimistic_stop_distance_m = waypoint.max_speed_mps.powi(2) / (2.0 * max_acceleration_mps2);
+    Ok(TransferWaypointContinuationMetrics {
+        available_distance_m,
+        optimistic_stop_distance_m,
+        stop_ratio: optimistic_stop_distance_m / available_distance_m,
+        max_acceleration_mps2,
+    })
+}
+
+fn validate_transfer_waypoint_continuation(
+    profile: &str,
+    target_pad: &LandingPadSpec,
+    waypoints: &[TransferWaypointSpec],
+    vehicle: &VehicleSpec,
+) -> Result<()> {
+    let target_m = Vec2::new(target_pad.center_x_m, target_pad.surface_y_m);
+    for (index, waypoint) in waypoints.iter().enumerate() {
+        let outbound_target_m = waypoints
+            .get(index + 1)
+            .map(|next| next.position_m)
+            .unwrap_or(target_m);
+        let metrics = transfer_waypoint_continuation_metrics(waypoint, outbound_target_m, vehicle)?;
+        if metrics.stop_ratio
+            > TRANSFER_WAYPOINT_CONTINUATION_MAX_STOP_RATIO + REGRESSION_POLICY_EPSILON
+        {
+            bail!(
+                "waypoint profile '{profile}' waypoint {index} continuation stop ratio {:.6} exceeds 0.750000",
+                metrics.stop_ratio
+            );
+        }
+    }
+    Ok(())
 }
 
 fn insert_waypoint_geometry_resolved_parameters(
@@ -3715,14 +3803,15 @@ fn insert_waypoint_geometry_resolved_parameters(
     terrain: &TerrainDefinition,
     waypoints: &[TransferWaypointSpec],
     route_radius_m: f64,
-) {
+    vehicle: &VehicleSpec,
+) -> Result<()> {
     let route_m = target_m - source_m;
     let Some(route_unit_m) = waypoint_normalized(route_m) else {
-        return;
+        return Ok(());
     };
     let route_length_m = route_m.length();
     if route_length_m <= 1.0e-9 {
-        return;
+        return Ok(());
     }
 
     for (index, waypoint) in waypoints.iter().enumerate() {
@@ -3748,6 +3837,23 @@ fn insert_waypoint_geometry_resolved_parameters(
         let outbound_length_m = outbound_m.length();
         resolved_parameters.insert(format!("{prefix}_inbound_leg_length_m"), inbound_length_m);
         resolved_parameters.insert(format!("{prefix}_outbound_leg_length_m"), outbound_length_m);
+        let metrics = transfer_waypoint_continuation_metrics(waypoint, next_target_m, vehicle)?;
+        resolved_parameters.insert(
+            format!("{prefix}_continuation_available_distance_m"),
+            metrics.available_distance_m,
+        );
+        resolved_parameters.insert(
+            format!("{prefix}_continuation_optimistic_stop_distance_m"),
+            metrics.optimistic_stop_distance_m,
+        );
+        resolved_parameters.insert(
+            format!("{prefix}_continuation_stop_ratio"),
+            metrics.stop_ratio,
+        );
+        resolved_parameters.insert(
+            format!("{prefix}_continuation_max_acceleration_mps2"),
+            metrics.max_acceleration_mps2,
+        );
         if inbound_length_m > 1.0e-9 && outbound_length_m > 1.0e-9 {
             let turn_angle_cos =
                 waypoint_dot(inbound_m, outbound_m) / (inbound_length_m * outbound_length_m);
@@ -3775,6 +3881,7 @@ fn insert_waypoint_geometry_resolved_parameters(
             );
         }
     }
+    Ok(())
 }
 
 fn transfer_route_terrain_points(
@@ -9567,7 +9674,7 @@ mod tests {
                 radius_tiers: vec!["short".to_owned()],
                 waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1.to_owned()),
                 waypoint_handoff_envelope: Some(
-                    TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1.to_owned(),
+                    TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1.to_owned(),
                 ),
                 evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
                 adjustments: Vec::new(),
@@ -9602,7 +9709,7 @@ mod tests {
         );
         assert_eq!(
             run.descriptor.selector.waypoint_handoff_envelope,
-            TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1
+            TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1
         );
         assert_eq!(
             run.descriptor
@@ -9618,6 +9725,7 @@ mod tests {
         );
         assert_eq!(waypoint.max_outbound_heading_error_rad, 0.35);
         assert_eq!(waypoint.max_outbound_cross_speed_mps, Some(20.0));
+        assert_eq!(waypoint.max_speed_mps, 52.5);
         assert_eq!(waypoint.min_vertical_speed_mps, None);
         assert_eq!(waypoint.max_vertical_speed_mps, None);
         let params = &run.descriptor.resolved_parameters;
@@ -9633,6 +9741,49 @@ mod tests {
         assert!((*progress_frac - 0.55).abs() < 1.0e-9);
         assert!((*offset_ratio - 0.20).abs() < 1.0e-9);
         assert!(*turn_angle_deg > 40.0 && *turn_angle_deg < 48.0);
+        assert!(
+            params["waypoint_0_continuation_stop_ratio"]
+                <= TRANSFER_WAYPOINT_CONTINUATION_MAX_STOP_RATIO
+        );
+    }
+
+    #[test]
+    fn transfer_waypoint_bend_packs_use_continuation_envelopes() {
+        let packs_dir = fixtures_root().join("packs");
+        for (filename, expected_runs) in [
+            ("transfer_waypoint_bend_rpos80_smoke.json", 27),
+            ("transfer_waypoint_bend_contract_rpos80_smoke.json", 27),
+            ("transfer_waypoint_bend_rpos80_full.json", 108),
+            ("transfer_waypoint_bend_contract_rpos80_full.json", 108),
+        ] {
+            let pack = load_pack(&packs_dir.join(filename)).unwrap();
+            let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
+            assert_eq!(runs.len(), expected_runs);
+            for run in runs {
+                assert_eq!(
+                    run.descriptor.selector.waypoint_handoff_envelope,
+                    TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1
+                );
+                let waypoint = &run
+                    .scenario
+                    .mission
+                    .transfer_route
+                    .as_ref()
+                    .unwrap()
+                    .waypoints[0];
+                let expected_speed_cap_mps = match run.descriptor.selector.radius_tier.as_str() {
+                    "short" => 52.5,
+                    "nominal" => 65.0,
+                    "long" => 75.0,
+                    radius_tier => panic!("unexpected radius tier {radius_tier}"),
+                };
+                assert_eq!(waypoint.max_speed_mps, expected_speed_cap_mps);
+                assert!(
+                    run.descriptor.resolved_parameters["waypoint_0_continuation_stop_ratio"]
+                        <= TRANSFER_WAYPOINT_CONTINUATION_MAX_STOP_RATIO
+                );
+            }
+        }
     }
 
     #[test]
@@ -9655,7 +9806,7 @@ mod tests {
             assert_eq!(run_ids.len(), 81);
             assert!(runs.iter().all(|run| {
                 run.descriptor.selector.waypoint_handoff_envelope
-                    == TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1
+                    == TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1
             }));
             for profile in [
                 TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1,

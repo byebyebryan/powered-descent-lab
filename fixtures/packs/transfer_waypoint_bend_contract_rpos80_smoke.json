@@ -25,6 +25,7 @@
         "long"
       ],
       "waypoint_profile": "single_bend_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [],
       "tags": [
@@ -68,6 +69,7 @@
         "long"
       ],
       "waypoint_profile": "single_bend_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [
         {
@@ -118,6 +120,7 @@
         "long"
       ],
       "waypoint_profile": "single_bend_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [
         {

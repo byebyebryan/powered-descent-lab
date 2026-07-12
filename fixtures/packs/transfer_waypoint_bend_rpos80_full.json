@@ -25,6 +25,7 @@
         "long"
       ],
       "waypoint_profile": "single_bend_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "adjustments": [],
       "tags": [
         "transfer_guidance",
@@ -66,6 +67,7 @@
         "long"
       ],
       "waypoint_profile": "single_bend_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "adjustments": [
         {
           "id": "payload_half_mass_kg",
@@ -114,6 +116,7 @@
         "long"
       ],
       "waypoint_profile": "single_bend_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "adjustments": [
         {
           "id": "payload_full_mass_kg",

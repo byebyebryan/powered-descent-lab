@@ -14,7 +14,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_gentle_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "empty", "smoke_seed"]
     },
@@ -29,7 +29,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_gentle_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [{"id": "payload_half_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 2250.0}],
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "half", "smoke_seed"]
@@ -45,7 +45,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_gentle_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [{"id": "payload_full_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 4500.0}],
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "full", "smoke_seed"]
@@ -61,7 +61,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_medium_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "empty", "smoke_seed"]
     },
@@ -76,7 +76,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_medium_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [{"id": "payload_half_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 2250.0}],
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "half", "smoke_seed"]
@@ -92,7 +92,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_medium_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [{"id": "payload_full_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 4500.0}],
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "full", "smoke_seed"]
@@ -108,7 +108,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_sharp_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "empty", "smoke_seed"]
     },
@@ -123,7 +123,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_sharp_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [{"id": "payload_half_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 2250.0}],
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "half", "smoke_seed"]
@@ -139,7 +139,7 @@
       "route_angles": ["r-30", "r00", "r+30"],
       "radius_tiers": ["nominal"],
       "waypoint_profile": "single_sharp_bend_v1",
-      "waypoint_handoff_envelope": "pass_through_v1",
+      "waypoint_handoff_envelope": "continuation_pass_through_v1",
       "evaluation_goal": "waypoint_handoff",
       "adjustments": [{"id": "payload_full_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 4500.0}],
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_contract", "waypoint_turn_matrix", "clean", "full", "smoke_seed"]
