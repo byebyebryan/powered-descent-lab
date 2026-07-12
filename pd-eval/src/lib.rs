@@ -213,6 +213,32 @@ pub struct BatchWaypointHandoffReviewMetrics {
     #[serde(default)]
     pub candidate_best_cross_speed_margin_mps: Option<f64>,
     #[serde(default)]
+    pub plan_reference_position_error_max_m: Option<f64>,
+    #[serde(default)]
+    pub plan_reference_cross_error_max_abs_m: Option<f64>,
+    #[serde(default)]
+    pub plan_reference_velocity_error_max_mps: Option<f64>,
+    #[serde(default)]
+    pub plan_reference_cross_speed_error_max_abs_mps: Option<f64>,
+    #[serde(default)]
+    pub guidance_required_accel_ratio_max: Option<f64>,
+    #[serde(default)]
+    pub guidance_thrust_saturated_time_s: Option<f64>,
+    #[serde(default)]
+    pub guidance_tilt_saturated_time_s: Option<f64>,
+    #[serde(default)]
+    pub guidance_first_saturation_lead_s: Option<f64>,
+    #[serde(default)]
+    pub last_pass_reference_position_error_m: Option<f64>,
+    #[serde(default)]
+    pub last_pass_reference_velocity_error_mps: Option<f64>,
+    #[serde(default)]
+    pub last_pass_required_accel_ratio: Option<f64>,
+    #[serde(default)]
+    pub guidance_plan_revision_max: Option<i64>,
+    #[serde(default)]
+    pub guidance_plan_reasons: Vec<String>,
+    #[serde(default)]
     pub handoff_turn_margin_m: Option<f64>,
     #[serde(default)]
     pub guidance_snapshot_source: Option<String>,
@@ -6108,6 +6134,19 @@ struct WaypointReviewMetrics {
     candidate_pass_lost_before_capture: Option<bool>,
     candidate_best_heading_margin_rad: Option<f64>,
     candidate_best_cross_speed_margin_mps: Option<f64>,
+    plan_reference_position_error_max_m: Option<f64>,
+    plan_reference_cross_error_max_abs_m: Option<f64>,
+    plan_reference_velocity_error_max_mps: Option<f64>,
+    plan_reference_cross_speed_error_max_abs_mps: Option<f64>,
+    guidance_required_accel_ratio_max: Option<f64>,
+    guidance_thrust_saturated_time_s: Option<f64>,
+    guidance_tilt_saturated_time_s: Option<f64>,
+    guidance_first_saturation_lead_s: Option<f64>,
+    last_pass_reference_position_error_m: Option<f64>,
+    last_pass_reference_velocity_error_mps: Option<f64>,
+    last_pass_required_accel_ratio: Option<f64>,
+    guidance_plan_revision_max: Option<i64>,
+    guidance_plan_reasons: Vec<String>,
     handoff_turn_margin_m: Option<f64>,
     guidance_snapshot_source: Option<String>,
     guidance_snapshot_age_s: Option<f64>,
@@ -6193,6 +6232,21 @@ fn enrich_waypoint_candidate_history(
         let Some(waypoint) = route.waypoints.get(index) else {
             continue;
         };
+        let expected_index = i64::try_from(index).ok();
+        let updates = controller_updates
+            .iter()
+            .filter(|update| {
+                telemetry_bool(&update.frame.metrics, metric::WAYPOINT_GUIDANCE_ENABLED)
+                    == Some(true)
+                    && telemetry_integer(
+                        &update.frame.metrics,
+                        metric::WAYPOINT_GUIDANCE_PLAN_INDEX,
+                    )
+                    .or_else(|| {
+                        telemetry_integer(&update.frame.metrics, metric::WAYPOINT_ACTIVE_INDEX)
+                    }) == expected_index
+            })
+            .collect::<Vec<_>>();
 
         let mut observed = false;
         let mut pass_ever = false;
@@ -6201,12 +6255,80 @@ fn enrich_waypoint_candidate_history(
         let mut last_observed_pass = false;
         let mut best_heading_margin_rad: Option<f64> = None;
         let mut best_cross_speed_margin_mps: Option<f64> = None;
+        let mut reference_position_error_max_m: Option<f64> = None;
+        let mut reference_cross_error_max_abs_m: Option<f64> = None;
+        let mut reference_velocity_error_max_mps: Option<f64> = None;
+        let mut reference_cross_speed_error_max_abs_mps: Option<f64> = None;
+        let mut required_accel_ratio_max: Option<f64> = None;
+        let mut thrust_saturated_time_s = 0.0;
+        let mut tilt_saturated_time_s = 0.0;
+        let mut first_saturation_time_s: Option<f64> = None;
+        let mut trackability_observed = false;
+        let mut plan_revision_max: Option<i64> = None;
+        let mut plan_reasons = BTreeSet::new();
+        let mut last_pass_reference_position_error_m = None;
+        let mut last_pass_reference_velocity_error_mps = None;
+        let mut last_pass_required_accel_ratio = None;
 
-        for update in controller_updates.iter().filter(|update| {
-            telemetry_bool(&update.frame.metrics, metric::WAYPOINT_GUIDANCE_ENABLED) == Some(true)
-                && telemetry_integer(&update.frame.metrics, metric::WAYPOINT_ACTIVE_INDEX)
-                    == i64::try_from(index).ok()
-        }) {
+        for (update_index, update) in updates.iter().enumerate() {
+            let metrics = &update.frame.metrics;
+            if let Some(value) = telemetry_float(
+                metrics,
+                metric::WAYPOINT_GUIDANCE_REFERENCE_POSITION_ERROR_M,
+            ) {
+                trackability_observed = true;
+                update_optional_max(&mut reference_position_error_max_m, value);
+            }
+            if let Some(value) =
+                telemetry_float(metrics, metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_ERROR_M)
+            {
+                update_optional_max(&mut reference_cross_error_max_abs_m, value.abs());
+            }
+            if let Some(value) = telemetry_float(
+                metrics,
+                metric::WAYPOINT_GUIDANCE_REFERENCE_VELOCITY_ERROR_MPS,
+            ) {
+                update_optional_max(&mut reference_velocity_error_max_mps, value);
+            }
+            if let Some(value) = telemetry_float(
+                metrics,
+                metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_SPEED_ERROR_MPS,
+            ) {
+                update_optional_max(&mut reference_cross_speed_error_max_abs_mps, value.abs());
+            }
+            if let Some(value) =
+                telemetry_float(metrics, metric::WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO)
+            {
+                update_optional_max(&mut required_accel_ratio_max, value);
+            }
+            if let Some(revision) =
+                telemetry_integer(metrics, metric::WAYPOINT_GUIDANCE_PLAN_REVISION)
+            {
+                plan_revision_max =
+                    Some(plan_revision_max.map_or(revision, |max| max.max(revision)));
+            }
+            if let Some(reason) = telemetry_text(metrics, metric::WAYPOINT_GUIDANCE_PLAN_REASON) {
+                plan_reasons.insert(reason.to_owned());
+            }
+
+            let thrust_saturated =
+                telemetry_bool(metrics, metric::WAYPOINT_GUIDANCE_THRUST_SATURATED) == Some(true);
+            let tilt_saturated =
+                telemetry_bool(metrics, metric::WAYPOINT_GUIDANCE_TILT_SATURATED) == Some(true);
+            if thrust_saturated || tilt_saturated {
+                first_saturation_time_s.get_or_insert(update.sim_time_s);
+            }
+            let interval_s = updates
+                .get(update_index + 1)
+                .map(|next| (next.sim_time_s - update.sim_time_s).max(0.0))
+                .unwrap_or(0.0);
+            if thrust_saturated {
+                thrust_saturated_time_s += interval_s;
+            }
+            if tilt_saturated {
+                tilt_saturated_time_s += interval_s;
+            }
+
             let Some(passed) = telemetry_bool(
                 &update.frame.metrics,
                 metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS,
@@ -6219,6 +6341,16 @@ fn enrich_waypoint_candidate_history(
                 pass_ever = true;
                 first_pass_time_s.get_or_insert(update.sim_time_s);
                 last_pass_time_s = Some(update.sim_time_s);
+                last_pass_reference_position_error_m = telemetry_float(
+                    metrics,
+                    metric::WAYPOINT_GUIDANCE_REFERENCE_POSITION_ERROR_M,
+                );
+                last_pass_reference_velocity_error_mps = telemetry_float(
+                    metrics,
+                    metric::WAYPOINT_GUIDANCE_REFERENCE_VELOCITY_ERROR_MPS,
+                );
+                last_pass_required_accel_ratio =
+                    telemetry_float(metrics, metric::WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO);
             }
 
             if let Some(error_rad) = telemetry_float(
@@ -6249,7 +6381,29 @@ fn enrich_waypoint_candidate_history(
             handoff.candidate_best_heading_margin_rad = best_heading_margin_rad;
             handoff.candidate_best_cross_speed_margin_mps = best_cross_speed_margin_mps;
         }
+        if trackability_observed {
+            handoff.plan_reference_position_error_max_m = reference_position_error_max_m;
+            handoff.plan_reference_cross_error_max_abs_m = reference_cross_error_max_abs_m;
+            handoff.plan_reference_velocity_error_max_mps = reference_velocity_error_max_mps;
+            handoff.plan_reference_cross_speed_error_max_abs_mps =
+                reference_cross_speed_error_max_abs_mps;
+            handoff.guidance_required_accel_ratio_max = required_accel_ratio_max;
+            handoff.guidance_thrust_saturated_time_s = Some(thrust_saturated_time_s);
+            handoff.guidance_tilt_saturated_time_s = Some(tilt_saturated_time_s);
+            handoff.guidance_first_saturation_lead_s = first_saturation_time_s
+                .zip(handoff.capture_time_s)
+                .map(|(first_saturation, capture)| (capture - first_saturation).max(0.0));
+            handoff.last_pass_reference_position_error_m = last_pass_reference_position_error_m;
+            handoff.last_pass_reference_velocity_error_mps = last_pass_reference_velocity_error_mps;
+            handoff.last_pass_required_accel_ratio = last_pass_required_accel_ratio;
+            handoff.guidance_plan_revision_max = plan_revision_max;
+            handoff.guidance_plan_reasons = plan_reasons.into_iter().collect();
+        }
     }
+}
+
+fn update_optional_max(current: &mut Option<f64>, value: f64) {
+    *current = Some(current.map_or(value, |maximum| maximum.max(value)));
 }
 
 fn waypoint_review_metrics_from_update(
@@ -6404,6 +6558,19 @@ fn waypoint_review_metrics_from_update(
         candidate_pass_lost_before_capture: None,
         candidate_best_heading_margin_rad: None,
         candidate_best_cross_speed_margin_mps: None,
+        plan_reference_position_error_max_m: None,
+        plan_reference_cross_error_max_abs_m: None,
+        plan_reference_velocity_error_max_mps: None,
+        plan_reference_cross_speed_error_max_abs_mps: None,
+        guidance_required_accel_ratio_max: None,
+        guidance_thrust_saturated_time_s: None,
+        guidance_tilt_saturated_time_s: None,
+        guidance_first_saturation_lead_s: None,
+        last_pass_reference_position_error_m: None,
+        last_pass_reference_velocity_error_mps: None,
+        last_pass_required_accel_ratio: None,
+        guidance_plan_revision_max: None,
+        guidance_plan_reasons: Vec::new(),
         handoff_turn_margin_m: preferred_float(metric::WAYPOINT_HANDOFF_TURN_MARGIN_M),
         guidance_snapshot_source: Some(
             if handoff_marker.is_some() {
@@ -6563,6 +6730,19 @@ fn terminal_waypoint_review_metrics(
         candidate_pass_lost_before_capture: None,
         candidate_best_heading_margin_rad: None,
         candidate_best_cross_speed_margin_mps: None,
+        plan_reference_position_error_max_m: None,
+        plan_reference_cross_error_max_abs_m: None,
+        plan_reference_velocity_error_max_mps: None,
+        plan_reference_cross_speed_error_max_abs_mps: None,
+        guidance_required_accel_ratio_max: None,
+        guidance_thrust_saturated_time_s: None,
+        guidance_tilt_saturated_time_s: None,
+        guidance_first_saturation_lead_s: None,
+        last_pass_reference_position_error_m: None,
+        last_pass_reference_velocity_error_mps: None,
+        last_pass_required_accel_ratio: None,
+        guidance_plan_revision_max: None,
+        guidance_plan_reasons: Vec::new(),
         handoff_turn_margin_m,
         guidance_snapshot_source: guidance_update.map(|_| "last_pre_capture_update".to_owned()),
         guidance_snapshot_age_s,
@@ -6707,6 +6887,20 @@ fn batch_waypoint_handoff_metrics(
         candidate_pass_lost_before_capture: waypoint.candidate_pass_lost_before_capture,
         candidate_best_heading_margin_rad: waypoint.candidate_best_heading_margin_rad,
         candidate_best_cross_speed_margin_mps: waypoint.candidate_best_cross_speed_margin_mps,
+        plan_reference_position_error_max_m: waypoint.plan_reference_position_error_max_m,
+        plan_reference_cross_error_max_abs_m: waypoint.plan_reference_cross_error_max_abs_m,
+        plan_reference_velocity_error_max_mps: waypoint.plan_reference_velocity_error_max_mps,
+        plan_reference_cross_speed_error_max_abs_mps: waypoint
+            .plan_reference_cross_speed_error_max_abs_mps,
+        guidance_required_accel_ratio_max: waypoint.guidance_required_accel_ratio_max,
+        guidance_thrust_saturated_time_s: waypoint.guidance_thrust_saturated_time_s,
+        guidance_tilt_saturated_time_s: waypoint.guidance_tilt_saturated_time_s,
+        guidance_first_saturation_lead_s: waypoint.guidance_first_saturation_lead_s,
+        last_pass_reference_position_error_m: waypoint.last_pass_reference_position_error_m,
+        last_pass_reference_velocity_error_mps: waypoint.last_pass_reference_velocity_error_mps,
+        last_pass_required_accel_ratio: waypoint.last_pass_required_accel_ratio,
+        guidance_plan_revision_max: waypoint.guidance_plan_revision_max,
+        guidance_plan_reasons: waypoint.guidance_plan_reasons.clone(),
         handoff_turn_margin_m: waypoint.handoff_turn_margin_m,
         guidance_snapshot_source: waypoint.guidance_snapshot_source.clone(),
         guidance_snapshot_age_s: waypoint.guidance_snapshot_age_s,
@@ -10731,6 +10925,50 @@ mod tests {
                     TelemetryValue::from(0_i64),
                 ),
                 (
+                    metric::WAYPOINT_GUIDANCE_PLAN_INDEX.to_owned(),
+                    TelemetryValue::from(0_i64),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_PLAN_REVISION.to_owned(),
+                    TelemetryValue::from(if passed { 1_i64 } else { 0_i64 }),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_PLAN_REASON.to_owned(),
+                    TelemetryValue::from(if passed {
+                        "authority_recovery"
+                    } else {
+                        "initial"
+                    }),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_REFERENCE_POSITION_ERROR_M.to_owned(),
+                    TelemetryValue::from(if passed { 20.0 } else { 10.0 }),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_ERROR_M.to_owned(),
+                    TelemetryValue::from(if passed { -8.0 } else { -3.0 }),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_REFERENCE_VELOCITY_ERROR_MPS.to_owned(),
+                    TelemetryValue::from(if passed { 4.0 } else { 2.0 }),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_REFERENCE_CROSS_SPEED_ERROR_MPS.to_owned(),
+                    TelemetryValue::from(if passed { -2.0 } else { -1.0 }),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO.to_owned(),
+                    TelemetryValue::from(if passed { 0.8 } else { 1.2 }),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_THRUST_SATURATED.to_owned(),
+                    TelemetryValue::from(!passed),
+                ),
+                (
+                    metric::WAYPOINT_GUIDANCE_TILT_SATURATED.to_owned(),
+                    TelemetryValue::from(false),
+                ),
+                (
                     metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS.to_owned(),
                     TelemetryValue::from(passed),
                 ),
@@ -10749,6 +10987,14 @@ mod tests {
         handoff.frame.metrics.insert(
             metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
             TelemetryValue::from("captured"),
+        );
+        handoff.frame.metrics.insert(
+            metric::WAYPOINT_CAPTURE_TIME_S.to_owned(),
+            TelemetryValue::from(1.5),
+        );
+        handoff.frame.metrics.insert(
+            metric::WAYPOINT_GUIDANCE_PLAN_INDEX.to_owned(),
+            TelemetryValue::from(1_i64),
         );
         handoff.frame.markers.push(pd_control::ControllerMarker {
             id: marker::WAYPOINT_HANDOFF.to_owned(),
@@ -10769,9 +11015,24 @@ mod tests {
         assert_eq!(history[0].candidate_contract_pass_ever, Some(true));
         assert_eq!(history[0].candidate_first_pass_time_s, Some(1.0));
         assert_eq!(history[0].candidate_last_pass_time_s, Some(1.0));
-        assert_eq!(history[0].candidate_pass_lost_before_capture, Some(true));
+        assert_eq!(history[0].candidate_pass_lost_before_capture, Some(false));
         assert!((history[0].candidate_best_heading_margin_rad.unwrap() - 0.15).abs() < 1.0e-9);
         assert_eq!(history[0].candidate_best_cross_speed_margin_mps, Some(2.0));
+        assert_eq!(history[0].plan_reference_position_error_max_m, Some(20.0));
+        assert_eq!(history[0].plan_reference_cross_error_max_abs_m, Some(8.0));
+        assert_eq!(history[0].plan_reference_velocity_error_max_mps, Some(4.0));
+        assert_eq!(history[0].guidance_required_accel_ratio_max, Some(1.2));
+        assert_eq!(history[0].guidance_thrust_saturated_time_s, Some(0.5));
+        assert_eq!(history[0].guidance_tilt_saturated_time_s, Some(0.0));
+        assert_eq!(history[0].guidance_first_saturation_lead_s, Some(1.0));
+        assert_eq!(history[0].last_pass_reference_position_error_m, Some(20.0));
+        assert_eq!(history[0].last_pass_reference_velocity_error_mps, Some(4.0));
+        assert_eq!(history[0].last_pass_required_accel_ratio, Some(0.8));
+        assert_eq!(history[0].guidance_plan_revision_max, Some(1));
+        assert_eq!(
+            history[0].guidance_plan_reasons,
+            vec!["authority_recovery", "initial"]
+        );
     }
 
     #[test]

@@ -2557,6 +2557,19 @@ struct WaypointSequenceCellSummary {
     candidate_last_pass_time_s: Option<crate::BatchMetricSummary>,
     candidate_best_heading_margin_deg: Option<crate::BatchMetricSummary>,
     candidate_best_cross_speed_margin_mps: Option<crate::BatchMetricSummary>,
+    plan_reference_position_error_max_m: Option<crate::BatchMetricSummary>,
+    plan_reference_cross_error_max_abs_m: Option<crate::BatchMetricSummary>,
+    plan_reference_velocity_error_max_mps: Option<crate::BatchMetricSummary>,
+    plan_reference_cross_speed_error_max_abs_mps: Option<crate::BatchMetricSummary>,
+    guidance_required_accel_ratio_max: Option<crate::BatchMetricSummary>,
+    guidance_thrust_saturated_time_s: Option<crate::BatchMetricSummary>,
+    guidance_tilt_saturated_time_s: Option<crate::BatchMetricSummary>,
+    guidance_first_saturation_lead_s: Option<crate::BatchMetricSummary>,
+    last_pass_reference_position_error_m: Option<crate::BatchMetricSummary>,
+    last_pass_reference_velocity_error_mps: Option<crate::BatchMetricSummary>,
+    last_pass_required_accel_ratio: Option<crate::BatchMetricSummary>,
+    guidance_plan_revision_max: Option<crate::BatchMetricSummary>,
+    guidance_plan_reasons: Vec<String>,
     handoff_turn_margin_m: Option<crate::BatchMetricSummary>,
     guidance_feasible_runs: usize,
     guidance_feasible_observed: usize,
@@ -2618,6 +2631,29 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
         .iter()
         .map(render_waypoint_sequence_row)
         .collect::<String>();
+    let trackability_row_html = rows
+        .iter()
+        .filter(|summary| summary.plan_reference_position_error_max_m.is_some())
+        .map(render_waypoint_trackability_row)
+        .collect::<String>();
+    let trackability_html = (!trackability_row_html.is_empty())
+        .then(|| {
+            format!(
+                r#"<details class="transfer-handoff-section waypoint-trackability-section">
+  <summary class="section-head transfer-triage-summary">
+    <h2>Waypoint Plan Trackability</h2>
+    <div class="section-note">Fixed-plan reference drift, control saturation, and state at the last passing prediction.</div>
+  </summary>
+  <div class="table-wrap">
+    <table class="transfer-handoff-table waypoint-trackability-table">
+      <thead><tr><th>Route</th><th>Vehicle</th><th>Waypoint</th><th>Reference Max</th><th>Authority</th><th>Last Pass</th><th>Plans</th></tr></thead>
+      <tbody>{trackability_row_html}</tbody>
+    </table>
+  </div>
+</details>"#,
+            )
+        })
+        .unwrap_or_default();
 
     format!(
         r#"<details class="transfer-handoff-section waypoint-sequence-section">
@@ -2647,7 +2683,8 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
       <tbody>{row_html}</tbody>
     </table>
   </div>
-</details>"#,
+</details>
+{trackability_html}"#,
         total_runs = sequence_records.len(),
     )
 }
@@ -2840,6 +2877,45 @@ fn waypoint_sequence_cell_summary(
         candidate_best_cross_speed_margin_mps: metric(|handoff| {
             handoff.candidate_best_cross_speed_margin_mps
         }),
+        plan_reference_position_error_max_m: metric(|handoff| {
+            handoff.plan_reference_position_error_max_m
+        }),
+        plan_reference_cross_error_max_abs_m: metric(|handoff| {
+            handoff.plan_reference_cross_error_max_abs_m
+        }),
+        plan_reference_velocity_error_max_mps: metric(|handoff| {
+            handoff.plan_reference_velocity_error_max_mps
+        }),
+        plan_reference_cross_speed_error_max_abs_mps: metric(|handoff| {
+            handoff.plan_reference_cross_speed_error_max_abs_mps
+        }),
+        guidance_required_accel_ratio_max: metric(|handoff| {
+            handoff.guidance_required_accel_ratio_max
+        }),
+        guidance_thrust_saturated_time_s: metric(|handoff| {
+            handoff.guidance_thrust_saturated_time_s
+        }),
+        guidance_tilt_saturated_time_s: metric(|handoff| handoff.guidance_tilt_saturated_time_s),
+        guidance_first_saturation_lead_s: metric(|handoff| {
+            handoff.guidance_first_saturation_lead_s
+        }),
+        last_pass_reference_position_error_m: metric(|handoff| {
+            handoff.last_pass_reference_position_error_m
+        }),
+        last_pass_reference_velocity_error_mps: metric(|handoff| {
+            handoff.last_pass_reference_velocity_error_mps
+        }),
+        last_pass_required_accel_ratio: metric(|handoff| handoff.last_pass_required_accel_ratio),
+        guidance_plan_revision_max: metric(|handoff| {
+            handoff.guidance_plan_revision_max.map(|value| value as f64)
+        }),
+        guidance_plan_reasons: records
+            .iter()
+            .filter_map(|record| waypoint_sequence_handoff(record, waypoint_index))
+            .flat_map(|handoff| handoff.guidance_plan_reasons.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
         handoff_turn_margin_m: metric(|handoff| handoff.handoff_turn_margin_m),
         guidance_feasible_runs: records
             .iter()
@@ -3019,6 +3095,64 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
             MetricDisplayKind::Speed,
             None,
         ),
+    )
+}
+
+fn render_waypoint_trackability_row(summary: &WaypointSequenceCellSummary) -> String {
+    let mean = |value: &Option<crate::BatchMetricSummary>, suffix: &str| {
+        value
+            .as_ref()
+            .map(|value| format!("{:.2}{suffix}", value.mean))
+            .unwrap_or_else(|| "-".to_owned())
+    };
+    let waypoint = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>#{}</code> {}</div><div class="overview-sub"><code>{}</code></div></div>"#,
+        summary.key.waypoint_index + 1,
+        escape_html(summary.waypoint_id.as_deref().unwrap_or("waypoint")),
+        escape_html(&summary.key.waypoint_profile),
+    );
+    let reference = format!(
+        r#"<div class="overview-stack"><div class="overview-main">pos {} · vel {}</div><div class="overview-sub">cross {} · cross vel {}</div></div>"#,
+        mean(&summary.plan_reference_position_error_max_m, "m"),
+        mean(&summary.plan_reference_velocity_error_max_mps, "m/s"),
+        mean(&summary.plan_reference_cross_error_max_abs_m, "m"),
+        mean(&summary.plan_reference_cross_speed_error_max_abs_mps, "m/s"),
+    );
+    let authority = format!(
+        r#"<div class="overview-stack"><div class="overview-main">peak {:.2}x</div><div class="overview-sub">thrust {} · tilt {}</div><div class="overview-sub">first lead {}</div></div>"#,
+        summary
+            .guidance_required_accel_ratio_max
+            .as_ref()
+            .map_or(0.0, |value| value.mean),
+        mean(&summary.guidance_thrust_saturated_time_s, "s"),
+        mean(&summary.guidance_tilt_saturated_time_s, "s"),
+        mean(&summary.guidance_first_saturation_lead_s, "s"),
+    );
+    let last_pass = if summary.last_pass_reference_position_error_m.is_none() {
+        r#"<span class="muted">never passing</span>"#.to_owned()
+    } else {
+        format!(
+            r#"<div class="overview-stack"><div class="overview-main">pos {} · vel {}</div><div class="overview-sub">required {:.2}x</div></div>"#,
+            mean(&summary.last_pass_reference_position_error_m, "m"),
+            mean(&summary.last_pass_reference_velocity_error_mps, "m/s"),
+            summary
+                .last_pass_required_accel_ratio
+                .as_ref()
+                .map_or(0.0, |value| value.mean),
+        )
+    };
+    let plans = format!(
+        r#"<div class="overview-stack"><div class="overview-main">revision max {:.1}</div><div class="overview-sub">{}</div></div>"#,
+        summary
+            .guidance_plan_revision_max
+            .as_ref()
+            .map_or(0.0, |value| value.mean),
+        escape_html(&summary.guidance_plan_reasons.join(", ")),
+    );
+    format!(
+        r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{waypoint}</td><td>{reference}</td><td>{authority}</td><td>{last_pass}</td><td>{plans}</td></tr>"#,
+        escape_html(&summary.key.route_angle),
+        escape_html(&summary.key.vehicle_variant),
     )
 }
 
@@ -9164,6 +9298,19 @@ mod report_tests {
                     candidate_pass_lost_before_capture: Some(false),
                     candidate_best_heading_margin_rad: Some(0.1),
                     candidate_best_cross_speed_margin_mps: Some(3.0),
+                    plan_reference_position_error_max_m: Some(18.0 + index as f64),
+                    plan_reference_cross_error_max_abs_m: Some(7.0),
+                    plan_reference_velocity_error_max_mps: Some(5.0),
+                    plan_reference_cross_speed_error_max_abs_mps: Some(2.0),
+                    guidance_required_accel_ratio_max: Some(1.2),
+                    guidance_thrust_saturated_time_s: Some(0.5),
+                    guidance_tilt_saturated_time_s: Some(0.1),
+                    guidance_first_saturation_lead_s: Some(1.0),
+                    last_pass_reference_position_error_m: Some(12.0),
+                    last_pass_reference_velocity_error_mps: Some(3.0),
+                    last_pass_required_accel_ratio: Some(0.9),
+                    guidance_plan_revision_max: Some(1),
+                    guidance_plan_reasons: vec!["initial".to_owned()],
                     handoff_turn_margin_m: Some(-12.0),
                     guidance_replan_count: Some(1),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
@@ -9198,6 +9345,22 @@ mod report_tests {
                     } else {
                         -4.0
                     }),
+                    plan_reference_position_error_max_m: Some(30.0 + index as f64),
+                    plan_reference_cross_error_max_abs_m: Some(12.0),
+                    plan_reference_velocity_error_max_mps: Some(8.0),
+                    plan_reference_cross_speed_error_max_abs_mps: Some(4.0),
+                    guidance_required_accel_ratio_max: Some(1.8),
+                    guidance_thrust_saturated_time_s: Some(1.5),
+                    guidance_tilt_saturated_time_s: Some(0.4),
+                    guidance_first_saturation_lead_s: Some(2.0),
+                    last_pass_reference_position_error_m: route_pass.then_some(20.0),
+                    last_pass_reference_velocity_error_mps: route_pass.then_some(6.0),
+                    last_pass_required_accel_ratio: route_pass.then_some(1.1),
+                    guidance_plan_revision_max: Some(2),
+                    guidance_plan_reasons: vec![
+                        "initial".to_owned(),
+                        "authority_recovery".to_owned(),
+                    ],
                     handoff_turn_margin_m: Some(-24.0),
                     guidance_replan_count: Some(2),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
@@ -9230,6 +9393,10 @@ mod report_tests {
         assert!(html.contains("history 2/2 ever pass"));
         assert!(html.contains("history 1/2 ever pass"));
         assert!(html.contains("best margins heading"));
+        assert!(html.contains("<h2>Waypoint Plan Trackability</h2>"));
+        assert!(html.contains("Fixed-plan reference drift"));
+        assert!(html.contains("peak 1.20x"));
+        assert!(html.contains("authority_recovery"));
     }
 
     #[test]
