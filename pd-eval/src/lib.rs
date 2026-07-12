@@ -10471,6 +10471,69 @@ mod tests {
     }
 
     #[test]
+    fn transfer_waypoint_trackability_focus_expands_selected_cells() {
+        let packs_dir = fixtures_root().join("packs");
+        let pack = load_pack(&packs_dir.join("transfer_waypoint_sequence_trackability_focus.json"))
+            .unwrap();
+        let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
+
+        assert_eq!(runs.len(), 18);
+        assert!(runs.iter().all(|run| {
+            run.descriptor.selector.expectation_tier.as_deref() == Some("diagnostic")
+                && run.descriptor.selector.radius_tier == "nominal"
+                && run.descriptor.selector.waypoint_handoff_envelope
+                    == TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1
+                && matches!(
+                    run.scenario.mission.goal,
+                    EvaluationGoal::WaypointSequence { .. }
+                )
+                && run
+                    .scenario
+                    .mission
+                    .transfer_route
+                    .as_ref()
+                    .is_some_and(|route| route.waypoints.len() == 2)
+        }));
+        let cells = runs
+            .iter()
+            .map(|run| {
+                format!(
+                    "{}|{}|{}",
+                    run.descriptor.selector.waypoint_profile,
+                    run.descriptor.selector.vehicle_variant,
+                    run.descriptor.selector.route_angle,
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            cells,
+            BTreeSet::from([
+                "double_bend_v1|empty|r+30".to_owned(),
+                "double_bend_v1|half|r-30".to_owned(),
+                "late_bend_v1|empty|r+30".to_owned(),
+                "late_bend_v1|empty|r-30".to_owned(),
+                "late_bend_v1|full|r00".to_owned(),
+                "late_bend_v1|half|r00".to_owned(),
+            ])
+        );
+        for cell in cells {
+            assert_eq!(
+                runs.iter()
+                    .filter(|run| {
+                        format!(
+                            "{}|{}|{}",
+                            run.descriptor.selector.waypoint_profile,
+                            run.descriptor.selector.vehicle_variant,
+                            run.descriptor.selector.route_angle,
+                        ) == cell
+                    })
+                    .count(),
+                3
+            );
+        }
+    }
+
+    #[test]
     fn transfer_matrix_waypoint_handoff_goal_resolves_probe_goal() {
         let base_dir = fixtures_root();
         let pack = ScenarioPackSpec {
