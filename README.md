@@ -457,6 +457,12 @@ Transfer route-angle checkpoint:
   - passed-handoff distribution is `0:3 | 1:27 | 2:24`
   - full-leg candidate history splits the `30` failed handoffs into `26` that
     never predict a pass and `4` that lose a previously passing prediction
+- `transfer_waypoint_sequence_trackability_focus`
+  - `current`: `3 / 18` complete ordered routes across the six representative
+    failure cells
+  - explicit plan ownership and reference-tracking telemetry distinguish
+    authority-infeasible retained plans from trackable plans whose requested
+    outbound state never satisfies the handoff contract
 - smoother `r+80` bend reset:
   - landing: `15 / 27` smoke and `54 / 108` full
   - handoff contract: `21 / 27` smoke and `89 / 108` full
@@ -470,14 +476,15 @@ optimistic stopping-distance ratio exceeds `0.75`; the observed maximum is
 and continuation ratio directly. The old `single_dogleg_v1` packs remain only
 as parked diagnostic history and were not regenerated.
 
-The next bottleneck is ordered route quality, especially late-bend second-leg
-feasibility and retained-plan trackability. Hard continuation speed caps,
-envelope-margin ordering, pathwise cubic rejection, and fixed replan authority
-reserves were measured and rejected; the next design should use a genuinely
-reachable receding state rather than another global tie-break. Future work
-should preserve `81 / 81` balanced contracts and landings, `24 / 54` ordered
-routes, `54 / 54` sequence landing, and `297 / 297` direct transfer without
-route/profile branches. General terrain avoidance remains parked at the
-planning/collision-warning layer. Detailed checkpoint
+The next bottleneck is ordered route quality, but it is not one mechanism.
+Pass-lost double-bend cases retain plans that demand up to `3.45x` available
+acceleration, while most never-passing second legs track their plans without
+thrust saturation but target an outbound state that cannot satisfy the handoff
+contract. The next design should combine authority-aware reachable prediction
+with a broader reachable outbound-state solve rather than another global
+threshold or route branch. Future work should preserve `81 / 81` balanced
+contracts and landings, `24 / 54` ordered routes, `54 / 54` sequence landing,
+and `297 / 297` direct transfer. General terrain avoidance remains parked at
+the planning/collision-warning layer. Detailed checkpoint
 history lives in `docs/progress.md`, `docs/transfer_suite.md`, and
 `docs/terminal_suite.md`.

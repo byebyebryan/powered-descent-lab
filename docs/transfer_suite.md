@@ -171,6 +171,11 @@ Current corpus tiers:
 - `transfer_waypoint_sequence_contract_smoke`
   - the same 54 selector cells and geometry as the sequence landing pack
   - scores every waypoint in order with `evaluation_goal = waypoint_sequence`
+- `transfer_waypoint_sequence_trackability_focus`
+  - 18 diagnostic runs across six representative ordered-sequence cells and
+    three smoke seeds
+  - preserves the sequence contract goal while concentrating plan ownership,
+    reference error, authority demand, and saturation evidence
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -532,6 +537,14 @@ controller changes:
   never predict a contract pass and `4` that predict a pass but lose it before
   capture. This evidence is rendered in `State Debt`; it is not inferred from
   the final capture snapshot.
+- `transfer_waypoint_sequence_trackability_focus`: `3 / 18` complete routes.
+  Pass-lost double-bend second legs demand up to `3.45x` available acceleration;
+  representative never-passing second legs stay at or below available thrust
+  authority and fail in target-state/candidate selection instead.
+- New artifacts carry explicit plan index/revision/reason ownership plus
+  reference position/velocity errors, required acceleration ratio, saturation
+  duration, and last-passing-state diagnostics. Peak error alone is not a
+  failure gate because successful controls can show comparable maxima.
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
@@ -539,10 +552,10 @@ controller changes:
   not rerun and are not acceptance gates.
 - hard next-turn speed caps, envelope-margin ordering, pathwise cubic authority
   rejection, and a fixed replan authority reserve were measured and rejected.
-  The next controller pass should address reachable-state tracking and retained
-  plan durability while preserving `81 / 81` balanced contracts and landing,
-  `24 / 54` ordered routes, `54 / 54` sequence landing, and `297 / 297` direct
-  transfer.
+  The next controller pass should make retained-plan prediction authority-aware
+  and separately broaden reachable outbound-state generation while preserving
+  `81 / 81` balanced contracts and landing, `24 / 54` ordered routes,
+  `54 / 54` sequence landing, and `297 / 297` direct transfer.
 - route/radius expansion remains a later evidence axis. Generalized terrain
   avoidance remains out of scope; waypoint planning still owns terrain-valid
   placement.

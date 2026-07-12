@@ -2,6 +2,41 @@
 
 ## 2026-07-12
 
+### Waypoint plan-trackability checkpoint
+
+- Added explicit guidance-plan ownership and reference tracking to controller
+  telemetry: plan index, revision, reason, age, reference position/velocity
+  error, required acceleration ratio, and thrust/tilt saturation. Capture and
+  transition markers now preserve the plan that actually owned the handoff.
+- Batch summaries aggregate those values per handoff and render a collapsed
+  `Waypoint Plan Trackability` table. Older artifacts remain readable through
+  active-index fallback, but new reports no longer infer plan ownership from
+  the current route index.
+- Added `transfer_waypoint_sequence_trackability_focus`, an `18`-run,
+  six-cell diagnostic pack covering representative never-passing and pass-lost
+  sequence failures. Its fresh result is `3 / 18` complete routes.
+- The focused evidence separates two controller problems:
+  - pass-lost `double_bend_v1`, empty, `r+30` second legs require up to `3.45x`
+    available acceleration and spend about `0.45-0.55s` thrust-saturated; their
+    retained plans are not physically trackable even while prediction reports
+    a passing state
+  - representative never-passing half/full second legs remain near or below
+    `1.0x` required acceleration with no thrust saturation and small reference
+    errors; their failure is outbound target-state/candidate feasibility, not
+    plan tracking
+- Peak reference error alone is not a useful gate: successful controls can
+  replan and accumulate comparable maxima. Last-passing state, required
+  authority, and saturation history provide the actionable distinction.
+- This batch intentionally changes no guidance decisions. Fresh sequential
+  gates remain `81 / 81` balanced contracts and landings, `24 / 54` ordered
+  routes, `54 / 54` sequence landings, `21 / 27 | 15 / 27` smooth-bend
+  contract/landing, and `297 / 297` direct transfer. Sequence-controller cost
+  is `224us` mean, `545us` p95, and `638us` p99 across `185,503` updates.
+- Next design work should have two generalized parts: authority-aware reachable
+  prediction/release for untrackable retained plans, and a broader reachable
+  outbound-state solve for trackable legs that never produce a passing
+  candidate. Neither should depend on route/profile labels.
+
 ### Sequence candidate-history checkpoint
 
 - Batch review now aggregates guidance evidence across every controller update

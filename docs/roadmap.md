@@ -370,13 +370,19 @@ Status:
     concentrated in handoff shaping rather than touchdown recovery
   - first-trigger projection, roundoff-safe envelope validation, and bounded
     local replacement remain the current controller mechanism
+  - the `18`-run sequence trackability focus pack completes `3 / 18`; explicit
+    plan ownership shows that pass-lost retained plans can require up to `3.45x`
+    available acceleration, while representative never-passing second legs are
+    trackable but have no contract-passing outbound target state
 - next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - address upstream/two-leg feasibility where the next active leg has no
-    dynamically feasible trigger-pass candidate, especially late-bend index one
-  - treat retained-plan trackability as a first-class solve concern; hard speed
-    caps, margin-only ordering, pathwise rejection, and fixed replan reserves
-    have all regressed or merely redistributed the current failures
+  - make retained-plan prediction authority-aware so an analytically passing
+    state is not accepted when its reference is physically untrackable
+  - broaden the reachable outbound-state solve for legs that track their plans
+    but never produce a contract-passing candidate
+  - keep those mechanisms independent of route/profile labels; hard speed caps,
+    margin-only ordering, pathwise rejection, and fixed replan reserves have all
+    regressed or merely redistributed the current failures
   - use handoff packs as guidance targets and paired landing packs as
     recovery/reliability regression gates
   - expand route count and radius coverage only after these nominal mechanisms
@@ -542,8 +548,9 @@ The next useful work is:
 
 The immediate controller direction should stay conservative. Direct transfer,
 balanced pass-through handoff, and paired final landing are clean. Ordered
-route success remains `24 / 54` despite `54 / 54` sequence landings, with
-late-bend continuation still dominant. The next hypotheses should propagate
-next-leg feasibility upstream, not retune terminal recovery, widen the
-prediction horizon, or add route/profile policy. Radius tiers should follow
-once that nominal mechanism is credible.
+route success remains `24 / 54` despite `54 / 54` sequence landings. New plan
+ownership evidence shows two separate debts: authority-infeasible retained
+plans and trackable plans with no passing outbound target state. Address those
+with reachable prediction and reachable-state generation, not terminal
+recovery retuning, a wider prediction horizon, or route/profile policy. Radius
+tiers should follow once those nominal mechanisms are credible.
