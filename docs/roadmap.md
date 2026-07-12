@@ -364,6 +364,8 @@ Status:
 - current ordered waypoint-sequence checkpoint:
   - final landing is `54 / 54`; ordered route success is `24 / 54`
   - passed-handoff distribution is `0:3 | 1:27 | 2:24`
+  - full-leg candidate history classifies the `30` failed handoffs as `26`
+    never-passing and `4` pass-lost-before-capture cases
   - both sequence profiles now land `27 / 27`; route-contract debt remains
     concentrated in handoff shaping rather than touchdown recovery
   - first-trigger projection, roundoff-safe envelope validation, and bounded
@@ -372,6 +374,9 @@ Status:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
   - address upstream/two-leg feasibility where the next active leg has no
     dynamically feasible trigger-pass candidate, especially late-bend index one
+  - treat retained-plan trackability as a first-class solve concern; hard speed
+    caps, margin-only ordering, pathwise rejection, and fixed replan reserves
+    have all regressed or merely redistributed the current failures
   - use handoff packs as guidance targets and paired landing packs as
     recovery/reliability regression gates
   - expand route count and radius coverage only after these nominal mechanisms

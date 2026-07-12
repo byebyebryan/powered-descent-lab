@@ -2,6 +2,32 @@
 
 ## 2026-07-12
 
+### Sequence candidate-history checkpoint
+
+- Batch review now aggregates guidance evidence across every controller update
+  for each active waypoint, rather than preserving only the capture snapshot.
+  JSON and the sequence `State Debt` cell expose whether any predicted
+  handoff passed, the first/last passing time, whether that pass was lost before
+  capture, and the best heading/cross-speed margins.
+- The unchanged `24 / 54` ordered-route baseline has `30` failed handoffs:
+  `26` never produce a trigger-pass candidate and `4` produce one but lose it
+  before capture. All `30` fail outbound heading; `11` also fail outbound
+  cross speed. Sequence landing remains `54 / 54`.
+- Rejected four generic controller experiments after fresh `--no-reuse` runs:
+  - a next-turn authority speed cap regressed route success to `21 / 54`
+  - minimum normalized envelope-margin ordering reached `27 / 54`, but shifted
+    the failure set to `12` never-passing and `15` pass-lost handoffs
+  - pathwise cubic authority rejection regressed route success to `18 / 54`
+  - a fixed `20%` replan authority reserve caused repeated horizon extension
+    and collapsed route success to `2 / 54`
+- None of those controller experiments are retained. The fixed fixture-level
+  continuation bound already covers analytic energy sanity; another hard cap
+  is redundant. The next controller design needs tracking-aware plan
+  durability or a genuinely receding reachable-state solve, not a global
+  candidate tie-break, fixed reserve, or route/profile branch.
+- Restored sequential gates are `81 / 81` balanced contracts and landings,
+  `24 / 54` ordered routes, and `54 / 54` sequence landings.
+
 ### Retained terminal braking-reserve recovery
 
 - Confirmed the paired landing failures were terminal recovery debt rather

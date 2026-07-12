@@ -528,14 +528,21 @@ controller changes:
 - `transfer_waypoint_sequence_contract_smoke`: `24 / 54` complete routes with
   passed-handoff distribution `0:3 | 1:27 | 2:24`; worst continuation ratio
   `0.668`
+- full-leg candidate history splits the `30` failed handoffs into `26` that
+  never predict a contract pass and `4` that predict a pass but lose it before
+  capture. This evidence is rendered in `State Debt`; it is not inferred from
+  the final capture snapshot.
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
 - `single_dogleg_v1` and its four packs are parked diagnostic history. They were
   not rerun and are not acceptance gates.
-- the next controller pass should target late-bend second-leg feasibility while
-  preserving `81 / 81` balanced contracts and landing, `24 / 54` ordered
-  routes, `54 / 54` sequence landing, and `297 / 297` direct transfer.
+- hard next-turn speed caps, envelope-margin ordering, pathwise cubic authority
+  rejection, and a fixed replan authority reserve were measured and rejected.
+  The next controller pass should address reachable-state tracking and retained
+  plan durability while preserving `81 / 81` balanced contracts and landing,
+  `24 / 54` ordered routes, `54 / 54` sequence landing, and `297 / 297` direct
+  transfer.
 - route/radius expansion remains a later evidence axis. Generalized terrain
   avoidance remains out of scope; waypoint planning still owns terrain-valid
   placement.
