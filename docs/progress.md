@@ -2,6 +2,48 @@
 
 ## 2026-07-11
 
+### Event-aware waypoint handoff selection
+
+- The controller now projects the existing center-target state plan as a cubic
+  Hermite reference and finds its first authoritative handoff trigger: capture
+  radius entry or waypoint-plane crossing. The endpoint, path correction,
+  candidate grid, and terrain-blind contract remain unchanged.
+- Batch schema `28` records predicted event timing, center-deadline lead,
+  contract status/reasons, and full predicted handoff kinematics. The collapsed
+  sequence report adds the prediction to `State Debt`; detailed handoff markers
+  retain the same snapshot-owned values.
+- The behavior-neutral instrumentation baseline exactly preserved `2 / 54`
+  ordered routes and `49 / 54` final landings. At the last pre-trigger update,
+  projection agreed with all `86 / 86` observed handoff classifications; p95
+  errors were `0.16deg` heading, `0.09m/s` cross speed, and `0.08m/s` speed.
+- Long-horizon projection is not reliable enough to replace initial plans: it
+  omits future closed-loop path correction. Unrestricted event-aware selection
+  reached `26 / 54` routes but reduced landing to `44 / 54`; cruise-first
+  passing-candidate ordering recovered only `47 / 54`. Contract-interior and
+  global speed/effort preferences were therefore removed.
+- The retained controller preserves legacy initial-plan ordering and only
+  enables contract-aware replacement inside a local `12s` predicted-event
+  horizon. A replacement requires two consecutive predicted failures, a
+  dynamically feasible predicted pass, and at least `10%` time-to-go or target
+  velocity change. Expiry and authority recovery remain immediate.
+- Fresh `12`-worker, `--no-reuse` retained results:
+  - `transfer_waypoint_sequence_contract_smoke`: `15 / 54`, passed-handoff
+    distribution `0:21 | 1:18 | 2:15`, `2.21s` wall clock
+  - handoff strata: double `18 / 27` then `14 / 18`; late `15 / 27` then
+    `1 / 15`; three strata improve and double index zero is unchanged
+  - `transfer_waypoint_sequence_smoke`: unchanged `49 / 54`, with no per-run
+    landing outcome changes, `8.33s` wall clock
+  - regression gates: `81 / 81` single-waypoint contract, `81 / 81`
+    single-waypoint landing, and `297 / 297` direct transfer
+- Spatial misses remain zero. Sequence-contract replan count is `1.17` mean,
+  `4` p95, and `12` max. Controller compute remains below budget: contract p99
+  is `159us`; landing p99 is `551us`.
+- Remaining debt is concentrated after the first failed late-bend handoff and
+  at late-bend index one, where the existing candidate set often has no
+  feasible trigger-pass state. The next controller hypothesis should be
+  upstream/two-leg feasibility, not another global candidate tie-break or a
+  route/profile branch.
+
 ### Waypoint handoff target-debt diagnosis
 
 - Batch schema `27` adds completed-leg guidance intent to every ordered handoff:
@@ -36,9 +78,9 @@
 - The mismatch is therefore real but not the whole controller defect. A fixed
   centerline surface point is too restrictive for a capture envelope. The next
   general hypothesis should align desired velocity and candidate timing to the
-  predicted first feasible capture event while retaining center-seeking spatial
+  predicted first authoritative trigger while retaining center-seeking spatial
   correction, rather than replacing the envelope with another hard point.
-- Final retained-behavior no-regression gates are clean:
+- Pre-event-aware retained-behavior no-regression gates were clean:
   - `transfer_waypoint_turn_contract_smoke`: `81 / 81`, `1.92s` wall clock
   - `transfer_waypoint_turn_smoke`: `81 / 81`, `7.96s` wall clock
   - `transfer_route_angle_radius_suite`: `297 / 297`, `33.65s` wall clock

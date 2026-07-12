@@ -450,23 +450,26 @@ Transfer route-angle checkpoint:
   - balanced waypoint profiles now enforce gravity-aligned terrain-clearance
     floors in the planner fixture; guidance remains terrain-blind
 - `transfer_waypoint_sequence_smoke`
-  - `current`: `49 / 54` final landings, but only `2 / 54` routes satisfy both
+  - `current`: `49 / 54` final landings and `15 / 54` routes satisfying both
     ordered waypoint contracts
-  - this is the first two-waypoint baseline, not an acceptance gate
+  - event-aware guidance preserves every baseline landing outcome
 - `transfer_waypoint_sequence_contract_smoke`
-  - `current`: `2 / 54` ordered sequence successes
-  - most failures are outbound heading or cross-speed violations after spatial
-    capture, so final landing alone materially overstates route-guidance quality
-  - batch schema `27` now exposes desired-velocity, signed-deadline, feasibility,
-    and handoff-margin debt at each ordered transition
+  - `current`: `15 / 54` ordered sequence successes, up from `2 / 54`
+  - passed-handoff distribution improves from `0:22 | 1:30 | 2:2` to
+    `0:21 | 1:18 | 2:15`, with no spatial misses
+  - batch schema `28` exposes predicted first-trigger timing and kinematics
+    alongside desired-velocity, signed-deadline, feasibility, and handoff debt
+  - initial plan ordering remains unchanged; contract-aware replacement is
+    limited to a local `12s` prediction horizon and requires a material,
+    dynamically feasible improvement
   - fixed capture-surface targeting improved complete routes to `8 / 54` but
     regressed zero-handoff and landing gates, so the behavior was removed
 
-So the main next bottleneck is ordered leg-to-leg state shaping, not basic
-controller viability or waypoint setup. The next Phase 3 slice should align
-candidate timing to the predicted first feasible capture event without reducing
-the envelope to a hard point, improving successive preplanned legs while
-preserving both `81 / 81` single-waypoint gates and the `297 / 297`
-direct-transfer result. General terrain avoidance remains parked at the
-planning/collision-warning layer. Detailed checkpoint history lives in
-`docs/progress.md`, `docs/transfer_suite.md`, and `docs/terminal_suite.md`.
+So the main next bottleneck is upstream/two-leg feasibility for the remaining
+late-bend handoffs, not basic controller viability, waypoint setup, or trigger
+timing. Future work should preserve the `15 / 54` ordered baseline, both
+`81 / 81` single-waypoint gates, `49 / 54` sequence landing, and `297 / 297`
+direct transfer without adding route/profile branches. General terrain
+avoidance remains parked at the planning/collision-warning layer. Detailed
+checkpoint history lives in `docs/progress.md`, `docs/transfer_suite.md`, and
+`docs/terminal_suite.md`.

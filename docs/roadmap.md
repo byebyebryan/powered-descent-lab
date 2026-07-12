@@ -47,9 +47,9 @@ Current implementation status:
   - direct transfer is clean across the maintained route-angle/radius matrix
   - `transfer_waypoint_pdg_v1` closes the balanced terrain-blind pass-through
     handoff and paired landing corpus
-  - ordered two-waypoint evaluation, target-debt reporting, and paired smoke
-    corpora now exist; general outbound-state shaping across successive legs is
-    the active gap at a `2 / 54` route-contract baseline
+  - ordered two-waypoint evaluation, first-trigger prediction, and paired smoke
+    corpora now exist; bounded-horizon event-aware replanning establishes a
+    `15 / 54` route-contract baseline without reducing final landing
 
 ## 2. What Not To Build First
 
@@ -319,9 +319,9 @@ Status:
   on controller observation boundaries
 - `EvaluationGoal::WaypointSequence` evaluates every route waypoint in order,
   stops at the first failed contract, and persists passed/total/first-failure
-  evidence. Batch schema `27` retains ordered handoff histories, route-level
-  status, and completed-leg target/deadline debt while preserving waypoint-zero
-  compatibility fields.
+  evidence. Batch schema `28` retains ordered handoff histories, route-level
+  status, completed-leg target/deadline debt, and predicted first-trigger state
+  while preserving waypoint-zero compatibility fields.
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run, including post-handoff apex gain, time-to-apex, and apex lateral
@@ -362,16 +362,20 @@ Status:
   - focused empty `r00/r+30` post-handoff climb improves by `69%` without
     changing candidate generation; residual `r+30` apex height is tracked as
     candidate-density debt
-- initial ordered waypoint-sequence baseline:
-  - final landing succeeds `49 / 54`, but only `2 / 54` runs satisfy both
-    waypoint contracts; the paired sequence probe independently reports the
-    same `2 / 54`
-  - `22` runs pass no handoffs, `30` pass one, and `2` pass both. Failures are
-    outbound-state violations, dominated by heading and then cross speed, not
-    spatial misses.
-  - the baseline establishes the next Phase 3 bottleneck as general leg-to-leg
-    state shaping. It does not establish two-waypoint reliability and is not an
-    acceptance gate yet.
+- current ordered waypoint-sequence checkpoint:
+  - final landing remains `49 / 54`; ordered route success improves
+    `2 -> 15 / 54` with no per-run landing outcome changes
+  - passed-handoff distribution improves from `0:22 | 1:30 | 2:2` to
+    `0:21 | 1:18 | 2:15`. Spatial misses remain zero.
+  - the controller projects the current center-target cubic reference to its
+    first evaluator trigger. Legacy initial-plan ordering is retained because
+    long-horizon prediction omits future closed-loop path correction.
+  - contract-aware replacement is limited to a local `12s` prediction horizon,
+    requires two failed ticks and `10%` plan materiality, and preserves immediate
+    expiry/authority recovery. Replan count remains bounded at `4` p95.
+  - unrestricted event selection reached `26 / 54` but reduced landing to
+    `44 / 54`; global cruise, effort, and contract-interior preferences were
+    tested and removed rather than retained as route-specific policy.
   - fixed centerline capture-surface targeting was tested and removed. It raised
     complete route passes `2 -> 8 / 54`, but worsened zero-handoff failures
     `22 -> 26`, late-bend first handoffs `14 -> 9`, and final landing
@@ -382,8 +386,8 @@ Status:
 - next transfer slice should improve sequence guidance without moving waypoint
   planning into the controller:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - shape each active leg toward a feasible capture event and useful outbound
-    state at every intermediate point
+  - address upstream/two-leg feasibility where the next active leg has no
+    dynamically feasible trigger-pass candidate, especially late-bend index one
   - use the handoff pack as the primary guidance target and the paired landing
     pack as the recovery/reliability regression gate
   - expand route count and radius coverage without adding terrain reaction to
@@ -543,18 +547,16 @@ The next useful work is:
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
    direct-transfer regression gates. Preserve both balanced single-waypoint
-   packs at `81 / 81` while improving ordered sequence handoffs from the current
-   `2 / 54` baseline before waypoint planning or terrain-aware routing.
+   packs at `81 / 81`, sequence landing at `49 / 54`, and ordered sequence
+   handoffs at or above `15 / 54` before waypoint planning or terrain-aware
+   routing.
 
 The immediate controller direction should stay conservative. Direct transfer,
-balanced pass-through handoff, and balanced final landing are all clean across
-their maintained matrices. Multiple preplanned handoffs are now exercised, and
-they expose the next defect: the controller reaches waypoint capture volumes but
-usually fails to align velocity with the next leg. Target-debt telemetry now
-shows that the planned velocity deadline often extends beyond the actual capture
-event, but fixed capture-surface targeting failed the broad gates. The next
-implementation slice should evaluate candidate timing at the predicted first
-feasible capture event while keeping center-seeking spatial correction. It must
-preserve both `81 / 81` single-waypoint gates and `297 / 297` direct transfer
-without adding a profile-specific state machine. Radius tiers should follow
-after the nominal two-waypoint mechanism is credible.
+balanced pass-through handoff, and balanced final landing are clean. Local
+first-trigger prediction now improves ordered routes to `15 / 54` while
+preserving every landing and maintained gate. Remaining failures are
+concentrated where the active waypoint has no feasible trigger-pass candidate,
+especially the second late-bend handoff. The next hypothesis should propagate
+next-leg feasibility upstream or add a general two-leg lookahead, not widen the
+prediction horizon or add route/profile policy. Radius tiers should follow once
+that nominal two-waypoint mechanism is credible.
