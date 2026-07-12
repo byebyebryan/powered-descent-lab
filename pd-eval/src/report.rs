@@ -2499,7 +2499,11 @@ struct WaypointCellSummary<'a> {
     captured_runs: usize,
     missed_runs: usize,
     tracking_runs: usize,
-    turn_angle_deg: Option<crate::BatchMetricSummary>,
+    planned_progress_frac: Option<crate::BatchMetricSummary>,
+    planned_signed_offset_ratio: Option<crate::BatchMetricSummary>,
+    planned_signed_turn_deg: Option<crate::BatchMetricSummary>,
+    planned_max_speed_mps: Option<crate::BatchMetricSummary>,
+    continuation_stop_ratio_max: Option<f64>,
     closest_distance_m: Option<crate::BatchMetricSummary>,
     cross_track_m: Option<crate::BatchMetricSummary>,
     heading_error_deg: Option<crate::BatchMetricSummary>,
@@ -2515,6 +2519,7 @@ struct WaypointSequenceCellKey {
     route_angle: String,
     radius_tier: String,
     waypoint_profile: String,
+    waypoint_handoff_envelope: String,
     waypoint_index: usize,
 }
 
@@ -2530,6 +2535,11 @@ struct WaypointSequenceCellSummary {
     spatial_miss_runs: usize,
     outbound_failure_runs: usize,
     incomplete_runs: usize,
+    planned_progress_frac: Option<crate::BatchMetricSummary>,
+    planned_signed_offset_ratio: Option<crate::BatchMetricSummary>,
+    planned_signed_turn_deg: Option<crate::BatchMetricSummary>,
+    planned_max_speed_mps: Option<crate::BatchMetricSummary>,
+    continuation_stop_ratio_max: Option<f64>,
     capture_time_s: Option<crate::BatchMetricSummary>,
     cross_track_m: Option<crate::BatchMetricSummary>,
     heading_error_deg: Option<crate::BatchMetricSummary>,
@@ -2616,6 +2626,7 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
           <th>Vehicle</th>
           <th>Profile</th>
           <th>Waypoint</th>
+          <th>Plan</th>
           <th>Route Result</th>
           <th>Contract</th>
           <th>Capture Time</th>
@@ -2661,6 +2672,9 @@ fn waypoint_sequence_cell_summaries(
                         &selector.velocity_band,
                     ),
                     waypoint_profile: selector_value_or_unspecified(&selector.waypoint_profile),
+                    waypoint_handoff_envelope: selector_value_or_unspecified(
+                        &selector.waypoint_handoff_envelope,
+                    ),
                     waypoint_index,
                 })
                 .or_default()
@@ -2734,6 +2748,31 @@ fn waypoint_sequence_cell_summary(
         spatial_miss_runs: contract_count("spatial_miss"),
         outbound_failure_runs,
         incomplete_runs: contract_count("incomplete"),
+        planned_progress_frac: waypoint_resolved_metric_summary(
+            records,
+            waypoint_index,
+            "profile_progress_frac",
+        ),
+        planned_signed_offset_ratio: waypoint_resolved_metric_summary(
+            records,
+            waypoint_index,
+            "route_signed_offset_ratio",
+        ),
+        planned_signed_turn_deg: waypoint_resolved_metric_summary(
+            records,
+            waypoint_index,
+            "signed_turn_angle_deg",
+        ),
+        planned_max_speed_mps: waypoint_resolved_metric_summary(
+            records,
+            waypoint_index,
+            "max_speed_mps",
+        ),
+        continuation_stop_ratio_max: waypoint_resolved_metric_max(
+            records,
+            waypoint_index,
+            "continuation_stop_ratio",
+        ),
         capture_time_s: metric(|handoff| handoff.capture_time_s),
         cross_track_m: metric(|handoff| handoff.cross_track_m),
         heading_error_deg: metric(|handoff| {
@@ -2792,6 +2831,30 @@ fn waypoint_sequence_handoff(
         .find(|handoff| handoff.waypoint_index == waypoint_index)
 }
 
+fn waypoint_resolved_metric_summary(
+    records: &[&crate::BatchRunRecord],
+    waypoint_index: usize,
+    metric: &str,
+) -> Option<crate::BatchMetricSummary> {
+    let key = format!("waypoint_{waypoint_index}_{metric}");
+    transfer_shape_record_metric_summary(records, |record| {
+        record.resolved.resolved_parameters.get(&key).copied()
+    })
+}
+
+fn waypoint_resolved_metric_max(
+    records: &[&crate::BatchRunRecord],
+    waypoint_index: usize,
+    metric: &str,
+) -> Option<f64> {
+    let key = format!("waypoint_{waypoint_index}_{metric}");
+    records
+        .iter()
+        .filter_map(|record| record.resolved.resolved_parameters.get(&key).copied())
+        .filter(|value| value.is_finite())
+        .max_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap_or(Ordering::Equal))
+}
+
 fn compare_waypoint_sequence_cells(
     lhs: &WaypointSequenceCellSummary,
     rhs: &WaypointSequenceCellSummary,
@@ -2809,6 +2872,11 @@ fn compare_waypoint_sequence_cells(
         .then(
             selector_sort_rank(&lhs.key.waypoint_profile)
                 .cmp(&selector_sort_rank(&rhs.key.waypoint_profile)),
+        )
+        .then(
+            lhs.key
+                .waypoint_handoff_envelope
+                .cmp(&rhs.key.waypoint_handoff_envelope),
         )
         .then(lhs.key.waypoint_index.cmp(&rhs.key.waypoint_index))
 }
@@ -2860,12 +2928,25 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
         })
         .unwrap_or_else(|| r#"<span class="muted">-</span>"#.to_owned());
     let state_debt = render_waypoint_sequence_state_debt(summary);
+    let plan = render_waypoint_plan_cell(
+        summary.planned_progress_frac.as_ref(),
+        summary.planned_signed_offset_ratio.as_ref(),
+        summary.planned_signed_turn_deg.as_ref(),
+        summary.planned_max_speed_mps.as_ref(),
+        summary.continuation_stop_ratio_max,
+    );
+    let profile = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&summary.key.waypoint_profile),
+        escape_html(&summary.key.waypoint_handoff_envelope),
+    );
     format!(
         r#"<tr>
   <td>{route}</td>
   <td><code>{vehicle}</code></td>
-  <td><code>{profile}</code></td>
+  <td>{profile}</td>
   <td>{waypoint}</td>
+  <td>{plan}</td>
   <td>{route_result}</td>
   <td>{contract}</td>
   <td>{capture_time}</td>
@@ -2876,7 +2957,8 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
   <td>{replans}</td>
 </tr>"#,
         vehicle = escape_html(&summary.key.vehicle_variant),
-        profile = escape_html(&summary.key.waypoint_profile),
+        profile = profile,
+        plan = plan,
         capture_time = render_transfer_handoff_metric_cell(
             summary.capture_time_s.as_ref(),
             MetricDisplayKind::Seconds,
@@ -2989,7 +3071,7 @@ fn render_waypoint_triage_section(
           <th>Success</th>
           <th>Contract</th>
           <th>Waypoint</th>
-          <th>Turn Angle</th>
+          <th>Plan</th>
           <th>Closest</th>
           <th>Cross Track</th>
           <th>Heading Error</th>
@@ -3024,10 +3106,12 @@ fn render_waypoint_triage_row(
     let success_html = render_waypoint_success_cell(summary);
     let contract_html = render_waypoint_contract_cell(summary);
     let waypoint_html = render_waypoint_capture_cell(summary);
-    let turn_angle_html = render_transfer_handoff_metric_cell(
-        summary.turn_angle_deg.as_ref(),
-        MetricDisplayKind::Degrees,
-        None,
+    let plan_html = render_waypoint_plan_cell(
+        summary.planned_progress_frac.as_ref(),
+        summary.planned_signed_offset_ratio.as_ref(),
+        summary.planned_signed_turn_deg.as_ref(),
+        summary.planned_max_speed_mps.as_ref(),
+        summary.continuation_stop_ratio_max,
     );
     let closest_html = render_transfer_handoff_metric_cell(
         summary.closest_distance_m.as_ref(),
@@ -3063,7 +3147,7 @@ fn render_waypoint_triage_row(
   <td>{success}</td>
   <td>{contract}</td>
   <td>{waypoint}</td>
-  <td>{turn_angle}</td>
+  <td>{plan}</td>
   <td>{closest}</td>
   <td>{cross_track}</td>
   <td>{heading_error}</td>
@@ -3077,7 +3161,7 @@ fn render_waypoint_triage_row(
         success = success_html,
         contract = contract_html,
         waypoint = waypoint_html,
-        turn_angle = turn_angle_html,
+        plan = plan_html,
         closest = closest_html,
         cross_track = cross_track_html,
         heading_error = heading_error_html,
@@ -3193,13 +3277,27 @@ fn waypoint_cell_summary<'a>(
         captured_runs,
         missed_runs,
         tracking_runs,
-        turn_angle_deg: transfer_shape_record_metric_summary(records, |record| {
-            record
-                .resolved
-                .resolved_parameters
-                .get("waypoint_0_turn_angle_deg")
-                .copied()
-        }),
+        planned_progress_frac: waypoint_resolved_metric_summary(
+            records,
+            0,
+            "profile_progress_frac",
+        ),
+        planned_signed_offset_ratio: waypoint_resolved_metric_summary(
+            records,
+            0,
+            "route_signed_offset_ratio",
+        ),
+        planned_signed_turn_deg: waypoint_resolved_metric_summary(
+            records,
+            0,
+            "signed_turn_angle_deg",
+        ),
+        planned_max_speed_mps: waypoint_resolved_metric_summary(records, 0, "max_speed_mps"),
+        continuation_stop_ratio_max: waypoint_resolved_metric_max(
+            records,
+            0,
+            "continuation_stop_ratio",
+        ),
         closest_distance_m: transfer_shape_metric_summary(records, |review| {
             review.waypoint_closest_distance_m
         }),
@@ -3270,6 +3368,38 @@ fn waypoint_record_score(record: &crate::BatchRunRecord) -> f64 {
     score += record.review.waypoint_cross_track_m.unwrap_or(0.0);
     score += record.review.waypoint_closest_distance_m.unwrap_or(0.0) * 0.2;
     score
+}
+
+fn render_waypoint_plan_cell(
+    progress_frac: Option<&crate::BatchMetricSummary>,
+    signed_offset_ratio: Option<&crate::BatchMetricSummary>,
+    signed_turn_deg: Option<&crate::BatchMetricSummary>,
+    max_speed_mps: Option<&crate::BatchMetricSummary>,
+    continuation_stop_ratio_max: Option<f64>,
+) -> String {
+    let primary = [
+        progress_frac.map(|value| format!("p {:.2}", value.mean)),
+        signed_offset_ratio.map(|value| format!("n {:+.2}R", value.mean)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    let detail = [
+        signed_turn_deg.map(|value| format!("turn {:+.1}deg", value.mean)),
+        max_speed_mps.map(|value| format!("vmax {:.1}m/s", value.mean)),
+        continuation_stop_ratio_max.map(|value| format!("stop max {value:.2}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    if primary.is_empty() && detail.is_empty() {
+        return r#"<span class="muted">-</span>"#.to_owned();
+    }
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
+        escape_html(&primary.join(" · ")),
+        escape_html(&detail.join(" · ")),
+    )
 }
 
 fn render_waypoint_profile_cell(summary: &WaypointCellSummary<'_>) -> String {
@@ -8810,7 +8940,8 @@ mod report_tests {
         record.resolved.selector.route_angle = route_angle.to_owned();
         record.resolved.selector.radius_tier = "nominal".to_owned();
         record.resolved.selector.waypoint_profile = "single_bend_v1".to_owned();
-        record.resolved.selector.waypoint_handoff_envelope = "legacy_v1".to_owned();
+        record.resolved.selector.waypoint_handoff_envelope =
+            "continuation_pass_through_v1".to_owned();
         record.resolved.selector.expectation_tier = Some("core".to_owned());
         record.resolved.lane_id = "current".to_owned();
         record.resolved.resolved_seed = seed;
@@ -8818,6 +8949,18 @@ mod report_tests {
             .resolved
             .resolved_parameters
             .insert("waypoint_0_turn_angle_deg".to_owned(), 44.0);
+        for (key, value) in [
+            ("waypoint_0_profile_progress_frac", 0.55),
+            ("waypoint_0_route_signed_offset_ratio", 0.20),
+            ("waypoint_0_signed_turn_angle_deg", -43.9456),
+            ("waypoint_0_max_speed_mps", 65.0),
+            ("waypoint_0_continuation_stop_ratio", 0.52),
+        ] {
+            record
+                .resolved
+                .resolved_parameters
+                .insert(key.to_owned(), value);
+        }
         record.resolved.controller_id = "transfer_pdg_v1".to_owned();
         record.manifest.scenario_seed = seed;
         record.manifest.sim_time_s = 20.0 + seed as f64;
@@ -8881,8 +9024,14 @@ mod report_tests {
         assert!(html.contains("1 spatial"));
         assert!(html.contains("landed with waypoint warning"));
         assert!(html.contains("<th>Profile</th>"));
-        assert!(html.contains("<th>Turn Angle</th>"));
+        assert!(html.contains("<th>Plan</th>"));
         assert!(html.contains("single_bend_v1"));
+        assert!(html.contains("continuation_pass_through_v1"));
+        assert!(html.contains("p 0.55"));
+        assert!(html.contains("n +0.20R"));
+        assert!(html.contains("turn -43.9deg"));
+        assert!(html.contains("vmax 65.0m/s"));
+        assert!(html.contains("stop max 0.52"));
         assert!(html.contains("Heading Error"));
         assert!(html.contains("Outbound Progress"));
         assert!(!html.contains(r#"data-kind="waypoint profile""#));
@@ -8898,6 +9047,24 @@ mod report_tests {
         for (index, record) in report.records.iter_mut().enumerate() {
             let route_pass = index == 0;
             record.resolved.selector.waypoint_profile = "double_bend_v1".to_owned();
+            record.resolved.selector.waypoint_handoff_envelope =
+                "sequence_pass_through_v1".to_owned();
+            for (waypoint_index, progress_frac, max_speed_mps, stop_ratio) in
+                [(0, 0.33, 55.0, 0.55), (1, 0.67, 65.0, 0.65)]
+            {
+                for (metric, value) in [
+                    ("profile_progress_frac", progress_frac),
+                    ("route_signed_offset_ratio", 0.20),
+                    ("signed_turn_angle_deg", -31.2184),
+                    ("max_speed_mps", max_speed_mps),
+                    ("continuation_stop_ratio", stop_ratio),
+                ] {
+                    record
+                        .resolved
+                        .resolved_parameters
+                        .insert(format!("waypoint_{waypoint_index}_{metric}"), value);
+                }
+            }
             record.review.waypoint_route_status =
                 Some(if route_pass { "pass" } else { "failed" }.to_owned());
             record.review.waypoint_route_passed = Some(if route_pass { 2 } else { 1 });
@@ -8962,6 +9129,11 @@ mod report_tests {
         assert!(html.contains("1/2 pass"));
         assert!(html.contains("<code>#1</code> wp_0"));
         assert!(html.contains("<code>#2</code> wp_1"));
+        assert!(html.contains("sequence_pass_through_v1"));
+        assert!(html.contains("p 0.33"));
+        assert!(html.contains("p 0.67"));
+        assert!(html.contains("turn -31.2deg"));
+        assert!(html.contains("stop max 0.65"));
         assert!(html.contains("1 spatial"));
         assert!(html.contains("<th>State Debt</th>"));
         assert!(html.contains("Δv 8.5m/s"));

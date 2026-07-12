@@ -3813,6 +3813,8 @@ fn insert_waypoint_geometry_resolved_parameters(
     if route_length_m <= 1.0e-9 {
         return Ok(());
     }
+    let direction = if route_m.x >= 0.0 { 1.0 } else { -1.0 };
+    let source_side_normal_m = Vec2::new(-route_unit_m.y * direction, route_unit_m.x * direction);
 
     for (index, waypoint) in waypoints.iter().enumerate() {
         let prefix = format!("waypoint_{index}");
@@ -3861,11 +3863,18 @@ fn insert_waypoint_geometry_resolved_parameters(
                 format!("{prefix}_turn_angle_deg"),
                 turn_angle_cos.clamp(-1.0, 1.0).acos().to_degrees(),
             );
+            resolved_parameters.insert(
+                format!("{prefix}_signed_turn_angle_deg"),
+                waypoint_cross(inbound_m, outbound_m)
+                    .atan2(waypoint_dot(inbound_m, outbound_m))
+                    .to_degrees(),
+            );
         }
 
         let from_source_m = waypoint.position_m - source_m;
         let profile_progress_frac = waypoint_dot(from_source_m, route_unit_m) / route_length_m;
         let profile_lateral_offset_m = waypoint_cross(from_source_m, route_unit_m).abs();
+        let route_signed_offset_m = waypoint_dot(from_source_m, source_side_normal_m);
         resolved_parameters.insert(
             format!("{prefix}_profile_progress_frac"),
             profile_progress_frac,
@@ -3874,10 +3883,18 @@ fn insert_waypoint_geometry_resolved_parameters(
             format!("{prefix}_profile_lateral_offset_m"),
             profile_lateral_offset_m,
         );
+        resolved_parameters.insert(
+            format!("{prefix}_route_signed_offset_m"),
+            route_signed_offset_m,
+        );
         if route_radius_m > 1.0e-9 {
             resolved_parameters.insert(
                 format!("{prefix}_profile_lateral_offset_ratio"),
                 profile_lateral_offset_m / route_radius_m,
+            );
+            resolved_parameters.insert(
+                format!("{prefix}_route_signed_offset_ratio"),
+                route_signed_offset_m / route_radius_m,
             );
         }
     }
@@ -9738,9 +9755,14 @@ mod tests {
         let turn_angle_deg = params
             .get("waypoint_0_turn_angle_deg")
             .expect("bend profile should expose turn angle");
+        let signed_turn_angle_deg = params
+            .get("waypoint_0_signed_turn_angle_deg")
+            .expect("bend profile should expose signed turn angle");
         assert!((*progress_frac - 0.55).abs() < 1.0e-9);
         assert!((*offset_ratio - 0.20).abs() < 1.0e-9);
         assert!(*turn_angle_deg > 40.0 && *turn_angle_deg < 48.0);
+        assert!((*signed_turn_angle_deg + 43.9456).abs() < 1.0e-3);
+        assert!((params["waypoint_0_route_signed_offset_ratio"] - *offset_ratio).abs() < 1.0e-9);
         assert!(
             params["waypoint_0_continuation_stop_ratio"]
                 <= TRANSFER_WAYPOINT_CONTINUATION_MAX_STOP_RATIO
@@ -9928,9 +9950,14 @@ mod tests {
                 .expect("balanced waypoint profile cell should resolve");
             let params = &run.descriptor.resolved_parameters;
             let turn_angle_deg = params["waypoint_0_turn_angle_deg"];
+            let signed_turn_angle_deg = params["waypoint_0_signed_turn_angle_deg"];
             assert!(
                 (turn_angle_deg - expected_turn_angle_deg).abs() < 1.0,
                 "profile {profile} resolved turn angle {turn_angle_deg:.3}"
+            );
+            assert!(
+                (signed_turn_angle_deg + expected_turn_angle_deg).abs() < 1.0,
+                "profile {profile} resolved signed turn angle {signed_turn_angle_deg:.3}"
             );
             assert_eq!(params["waypoint_0_profile_progress_frac"], 0.55);
             assert!(
@@ -10116,6 +10143,12 @@ mod tests {
                     assert!(
                         (params[&format!("waypoint_{index}_turn_angle_deg")]
                             - expected_turn_angle_deg)
+                            .abs()
+                            < 1.0e-3
+                    );
+                    assert!(
+                        (params[&format!("waypoint_{index}_signed_turn_angle_deg")]
+                            + expected_turn_angle_deg)
                             .abs()
                             < 1.0e-3
                     );
