@@ -216,6 +216,21 @@ struct TerminalGuidancePlan {
     arrival_time_s: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GuidancePlanReleaseReason {
+    CapturedBrakingBoundary,
+    VerticalBrakingMargin,
+}
+
+impl GuidancePlanReleaseReason {
+    fn label(self) -> &'static str {
+        match self {
+            Self::CapturedBrakingBoundary => "captured_braking_boundary",
+            Self::VerticalBrakingMargin => "vertical_braking_margin",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct TerminalCommandState {
     mode: GuidanceMode,
@@ -231,6 +246,8 @@ struct TerminalCommandState {
     candidate_burn_time_s: f64,
     plan_arrival_time_s: Option<f64>,
     plan_replan_count: u32,
+    plan_release_reason: Option<GuidancePlanReleaseReason>,
+    vertical_braking_margin_m: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -514,17 +531,29 @@ impl TerminalPdgController {
         );
         let candidate_burn_time_s = selected_candidate.burn_time_s;
         self.update_guidance_plan_admission(candidate_burn_time_s, vy_up_mps);
-        if self.guidance_plan_retention_enabled
+        let vertical_braking_margin_m = self.vertical_braking_margin_m(
+            touchdown_clearance_m,
+            vy_up_mps,
+            view.observation.attitude_rad,
+            max_thrust_accel_mps2,
+            gravity_mps2,
+        );
+        let plan_release_reason = if self.guidance_plan_retention_enabled
             && self.guidance_plan_admitted
             && !self.guidance_plan_completed
-            && self.guidance_plan_release_ready(
+        {
+            self.guidance_plan_release_reason(
                 vy_up_mps,
                 lateral_dx_m,
                 touchdown_center_limit_m,
                 vx_mps,
                 latest_safe.latest_safe_margin_s,
+                vertical_braking_margin_m,
             )
-        {
+        } else {
+            None
+        };
+        if plan_release_reason.is_some() {
             self.guidance_plan_completed = true;
             self.guidance_plan = None;
         }
@@ -629,6 +658,8 @@ impl TerminalPdgController {
             candidate_burn_time_s,
             plan_arrival_time_s,
             plan_replan_count: self.guidance_replan_count,
+            plan_release_reason,
+            vertical_braking_margin_m,
         }
     }
 
@@ -675,7 +706,7 @@ impl TerminalPdgController {
         }
     }
 
-    fn guidance_plan_release_ready(
+    fn captured_guidance_plan_release_ready(
         &self,
         vy_up_mps: f64,
         lateral_dx_m: f64,
@@ -687,6 +718,52 @@ impl TerminalPdgController {
             && lateral_dx_m.abs() <= touchdown_center_limit_m
             && vx_mps.abs() <= self.config.terminal_overshoot_tilt_vx_min_mps
             && latest_safe_margin_s <= 0.0
+    }
+
+    fn guidance_plan_release_reason(
+        &self,
+        vy_up_mps: f64,
+        lateral_dx_m: f64,
+        touchdown_center_limit_m: f64,
+        vx_mps: f64,
+        latest_safe_margin_s: f64,
+        vertical_braking_margin_m: f64,
+    ) -> Option<GuidancePlanReleaseReason> {
+        if self.captured_guidance_plan_release_ready(
+            vy_up_mps,
+            lateral_dx_m,
+            touchdown_center_limit_m,
+            vx_mps,
+            latest_safe_margin_s,
+        ) {
+            Some(GuidancePlanReleaseReason::CapturedBrakingBoundary)
+        } else if vy_up_mps < 0.0 && vertical_braking_margin_m <= 0.0 {
+            Some(GuidancePlanReleaseReason::VerticalBrakingMargin)
+        } else {
+            None
+        }
+    }
+
+    fn vertical_braking_margin_m(
+        &self,
+        touchdown_clearance_m: f64,
+        vy_up_mps: f64,
+        attitude_rad: f64,
+        max_thrust_accel_mps2: f64,
+        gravity_mps2: f64,
+    ) -> f64 {
+        let available_height_m =
+            (touchdown_clearance_m - self.config.braking_alt_margin_m).max(0.0);
+        let down_speed_mps = (-vy_up_mps).max(0.0);
+        let excess_speed_sq_m2ps2 = ((down_speed_mps * down_speed_mps)
+            - (self.config.vy_touch_cap_mps * self.config.vy_touch_cap_mps))
+            .max(0.0);
+        let net_braking_accel_mps2 = (self.config.braking_accel_safety
+            * ((max_thrust_accel_mps2 * attitude_rad.cos()) - gravity_mps2))
+            .max(0.7);
+        let required_height_m = excess_speed_sq_m2ps2 / (2.0 * net_braking_accel_mps2);
+
+        available_height_m - required_height_m
     }
 
     fn select_guidance_mode(
@@ -1940,6 +2017,17 @@ impl Controller for TerminalPdgController {
                 i64::from(command_state.plan_replan_count),
             )
             .metric(
+                metric::GUIDANCE_PLAN_RELEASE_REASON,
+                command_state
+                    .plan_release_reason
+                    .map(GuidancePlanReleaseReason::label)
+                    .unwrap_or("none"),
+            )
+            .metric(
+                metric::GUIDANCE_VERTICAL_BRAKING_MARGIN_M,
+                command_state.vertical_braking_margin_m,
+            )
+            .metric(
                 metric::GUIDANCE_REQUIRED_ACCEL_RATIO,
                 command_state.candidate.required_accel_ratio,
             )
@@ -1992,6 +2080,32 @@ impl Controller for TerminalPdgController {
                     (
                         metric::GUIDANCE_TERRAIN_MIN_CLEARANCE_M.to_owned(),
                         TelemetryValue::from(command_state.candidate.terrain_min_clearance_m),
+                    ),
+                ]),
+            ));
+        }
+
+        if let Some(reason) = command_state.plan_release_reason {
+            builder = builder.marker(standard_marker(
+                crate::kit::marker::GUIDANCE_PLAN_RELEASE,
+                &format!("terminal plan release: {}", reason.label()),
+                &view,
+                BTreeMap::from([
+                    (
+                        "kind".to_owned(),
+                        TelemetryValue::from("guidance_plan_release"),
+                    ),
+                    (
+                        metric::GUIDANCE_PLAN_RELEASE_REASON.to_owned(),
+                        TelemetryValue::from(reason.label()),
+                    ),
+                    (
+                        metric::GUIDANCE_VERTICAL_BRAKING_MARGIN_M.to_owned(),
+                        TelemetryValue::from(command_state.vertical_braking_margin_m),
+                    ),
+                    (
+                        metric::VERTICAL_SPEED_MPS.to_owned(),
+                        TelemetryValue::from(view.vertical_speed_mps()),
                     ),
                 ]),
             ));
@@ -2352,14 +2466,37 @@ mod tests {
     }
 
     #[test]
-    fn terminal_guidance_plan_releases_only_at_captured_braking_boundary() {
+    fn terminal_guidance_plan_release_reason_prioritizes_captured_boundary() {
         let controller = TerminalPdgController::default();
 
-        assert!(controller.guidance_plan_release_ready(-4.0, 4.0, 12.0, 7.0, -0.1));
-        assert!(!controller.guidance_plan_release_ready(1.0, 4.0, 12.0, 7.0, -0.1));
-        assert!(!controller.guidance_plan_release_ready(-4.0, 14.0, 12.0, 7.0, -0.1));
-        assert!(!controller.guidance_plan_release_ready(-4.0, 4.0, 12.0, 9.0, -0.1));
-        assert!(!controller.guidance_plan_release_ready(-4.0, 4.0, 12.0, 7.0, 0.1));
+        assert_eq!(
+            controller.guidance_plan_release_reason(-4.0, 4.0, 12.0, 7.0, -0.1, -1.0),
+            Some(GuidancePlanReleaseReason::CapturedBrakingBoundary)
+        );
+        assert_eq!(
+            controller.guidance_plan_release_reason(-15.0, 40.0, 12.0, 10.0, -0.1, -0.1),
+            Some(GuidancePlanReleaseReason::VerticalBrakingMargin)
+        );
+        assert_eq!(
+            controller.guidance_plan_release_reason(1.0, 40.0, 12.0, 10.0, -0.1, -0.1),
+            None
+        );
+        assert_eq!(
+            controller.guidance_plan_release_reason(-4.0, 40.0, 12.0, 10.0, -0.1, 0.1),
+            None
+        );
+    }
+
+    #[test]
+    fn vertical_braking_margin_accounts_for_attitude_and_sink_rate() {
+        let controller = TerminalPdgController::default();
+        let upright_margin = controller.vertical_braking_margin_m(40.0, -10.0, 0.0, 16.0, 9.81);
+        let tilted_margin = controller.vertical_braking_margin_m(40.0, -10.0, 0.5, 16.0, 9.81);
+        let exhausted_margin = controller.vertical_braking_margin_m(20.0, -16.0, 0.0, 16.0, 9.81);
+
+        assert!(upright_margin > 0.0);
+        assert!(tilted_margin < upright_margin);
+        assert!(exhausted_margin < 0.0);
     }
 
     #[test]

@@ -37,6 +37,8 @@ pub mod metric {
     pub const GUIDANCE_PLAN_ACTIVE: &str = "guidance.plan_active";
     pub const GUIDANCE_PLAN_ARRIVAL_TIME_S: &str = "guidance.plan_arrival_time_s";
     pub const GUIDANCE_PLAN_REPLAN_COUNT: &str = "guidance.plan_replan_count";
+    pub const GUIDANCE_PLAN_RELEASE_REASON: &str = "guidance.plan_release_reason";
+    pub const GUIDANCE_VERTICAL_BRAKING_MARGIN_M: &str = "guidance.vertical_braking_margin_m";
     pub const GUIDANCE_REQUIRED_ACCEL_RATIO: &str = "guidance.required_accel_ratio";
     pub const GUIDANCE_MAX_TILT_RAD: &str = "guidance.max_tilt_rad";
     pub const GUIDANCE_LATEST_SAFE_MARGIN_S: &str = "guidance.latest_safe_margin_s";
@@ -144,6 +146,7 @@ pub mod metric {
 }
 
 pub mod marker {
+    pub const GUIDANCE_PLAN_RELEASE: &str = "guidance/plan_release";
     pub const LATERAL_CAPTURE: &str = "gate/lateral_capture";
     pub const TERMINAL_GATE: &str = "gate/terminal_descent";
     pub const WAYPOINT_HANDOFF: &str = "waypoint/handoff";

@@ -870,6 +870,11 @@ mod tests {
             Some(&TelemetryValue::from(0_i64))
         );
         assert_eq!(
+            frame.metrics.get(metric::GUIDANCE_PLAN_RELEASE_REASON),
+            Some(&TelemetryValue::from("none"))
+        );
+        assert!(frame_metric_f64(&frame, metric::GUIDANCE_VERTICAL_BRAKING_MARGIN_M).is_finite());
+        assert_eq!(
             frame_metric_f64(&frame, metric::GUIDANCE_CANDIDATE_BURN_TIME_S),
             frame_metric_f64(&frame, metric::GUIDANCE_BURN_TIME_S)
         );
