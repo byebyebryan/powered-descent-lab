@@ -201,6 +201,18 @@ pub struct BatchWaypointHandoffReviewMetrics {
     #[serde(default)]
     pub predicted_handoff_vertical_speed_mps: Option<f64>,
     #[serde(default)]
+    pub candidate_contract_pass_ever: Option<bool>,
+    #[serde(default)]
+    pub candidate_first_pass_time_s: Option<f64>,
+    #[serde(default)]
+    pub candidate_last_pass_time_s: Option<f64>,
+    #[serde(default)]
+    pub candidate_pass_lost_before_capture: Option<bool>,
+    #[serde(default)]
+    pub candidate_best_heading_margin_rad: Option<f64>,
+    #[serde(default)]
+    pub candidate_best_cross_speed_margin_mps: Option<f64>,
+    #[serde(default)]
     pub handoff_turn_margin_m: Option<f64>,
     #[serde(default)]
     pub guidance_snapshot_source: Option<String>,
@@ -5946,6 +5958,11 @@ fn derive_run_review_metrics(
     }
     waypoint_history.sort_by_key(|metrics| metrics.active_index);
     waypoint_history.dedup_by_key(|metrics| metrics.active_index);
+    enrich_waypoint_candidate_history(
+        scenario,
+        &artifacts.controller_updates,
+        &mut waypoint_history,
+    );
     let waypoint = waypoint_history
         .first()
         .cloned()
@@ -6085,6 +6102,12 @@ struct WaypointReviewMetrics {
     predicted_handoff_outbound_cross_speed_mps: Option<f64>,
     predicted_handoff_speed_mps: Option<f64>,
     predicted_handoff_vertical_speed_mps: Option<f64>,
+    candidate_contract_pass_ever: Option<bool>,
+    candidate_first_pass_time_s: Option<f64>,
+    candidate_last_pass_time_s: Option<f64>,
+    candidate_pass_lost_before_capture: Option<bool>,
+    candidate_best_heading_margin_rad: Option<f64>,
+    candidate_best_cross_speed_margin_mps: Option<f64>,
     handoff_turn_margin_m: Option<f64>,
     guidance_snapshot_source: Option<String>,
     guidance_snapshot_age_s: Option<f64>,
@@ -6149,6 +6172,84 @@ fn waypoint_review_history(
     handoffs.sort_by_key(|handoff| handoff.active_index);
     handoffs.dedup_by_key(|handoff| handoff.active_index);
     handoffs
+}
+
+fn enrich_waypoint_candidate_history(
+    scenario: &ScenarioSpec,
+    controller_updates: &[pd_control::ControllerUpdateRecord],
+    handoffs: &mut [WaypointReviewMetrics],
+) {
+    let Some(route) = scenario.mission.transfer_route.as_ref() else {
+        return;
+    };
+
+    for handoff in handoffs {
+        let Some(index) = handoff
+            .active_index
+            .and_then(|index| usize::try_from(index).ok())
+        else {
+            continue;
+        };
+        let Some(waypoint) = route.waypoints.get(index) else {
+            continue;
+        };
+
+        let mut observed = false;
+        let mut pass_ever = false;
+        let mut first_pass_time_s = None;
+        let mut last_pass_time_s = None;
+        let mut last_observed_pass = false;
+        let mut best_heading_margin_rad: Option<f64> = None;
+        let mut best_cross_speed_margin_mps: Option<f64> = None;
+
+        for update in controller_updates.iter().filter(|update| {
+            telemetry_bool(&update.frame.metrics, metric::WAYPOINT_GUIDANCE_ENABLED) == Some(true)
+                && telemetry_integer(&update.frame.metrics, metric::WAYPOINT_ACTIVE_INDEX)
+                    == i64::try_from(index).ok()
+        }) {
+            let Some(passed) = telemetry_bool(
+                &update.frame.metrics,
+                metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS,
+            ) else {
+                continue;
+            };
+            observed = true;
+            last_observed_pass = passed;
+            if passed {
+                pass_ever = true;
+                first_pass_time_s.get_or_insert(update.sim_time_s);
+                last_pass_time_s = Some(update.sim_time_s);
+            }
+
+            if let Some(error_rad) = telemetry_float(
+                &update.frame.metrics,
+                metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_HEADING_ERROR_RAD,
+            ) {
+                let margin = waypoint.max_outbound_heading_error_rad - error_rad;
+                best_heading_margin_rad =
+                    Some(best_heading_margin_rad.map_or(margin, |best| best.max(margin)));
+            }
+            if let Some(max_cross_speed_mps) = waypoint.max_outbound_cross_speed_mps
+                && let Some(cross_speed_mps) = telemetry_float(
+                    &update.frame.metrics,
+                    metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_CROSS_SPEED_MPS,
+                )
+            {
+                let margin = max_cross_speed_mps - cross_speed_mps;
+                best_cross_speed_margin_mps =
+                    Some(best_cross_speed_margin_mps.map_or(margin, |best| best.max(margin)));
+            }
+        }
+
+        if observed {
+            handoff.candidate_contract_pass_ever = Some(pass_ever);
+            handoff.candidate_first_pass_time_s = first_pass_time_s;
+            handoff.candidate_last_pass_time_s = last_pass_time_s;
+            handoff.candidate_pass_lost_before_capture = Some(pass_ever && !last_observed_pass);
+            handoff.candidate_best_heading_margin_rad = best_heading_margin_rad;
+            handoff.candidate_best_cross_speed_margin_mps = best_cross_speed_margin_mps;
+        }
+    }
 }
 
 fn waypoint_review_metrics_from_update(
@@ -6297,6 +6398,12 @@ fn waypoint_review_metrics_from_update(
         predicted_handoff_vertical_speed_mps: preferred_float(
             metric::WAYPOINT_PREDICTED_HANDOFF_VERTICAL_SPEED_MPS,
         ),
+        candidate_contract_pass_ever: None,
+        candidate_first_pass_time_s: None,
+        candidate_last_pass_time_s: None,
+        candidate_pass_lost_before_capture: None,
+        candidate_best_heading_margin_rad: None,
+        candidate_best_cross_speed_margin_mps: None,
         handoff_turn_margin_m: preferred_float(metric::WAYPOINT_HANDOFF_TURN_MARGIN_M),
         guidance_snapshot_source: Some(
             if handoff_marker.is_some() {
@@ -6450,6 +6557,12 @@ fn terminal_waypoint_review_metrics(
             .predicted_handoff_outbound_cross_speed_mps,
         predicted_handoff_speed_mps: guidance.predicted_handoff_speed_mps,
         predicted_handoff_vertical_speed_mps: guidance.predicted_handoff_vertical_speed_mps,
+        candidate_contract_pass_ever: None,
+        candidate_first_pass_time_s: None,
+        candidate_last_pass_time_s: None,
+        candidate_pass_lost_before_capture: None,
+        candidate_best_heading_margin_rad: None,
+        candidate_best_cross_speed_margin_mps: None,
         handoff_turn_margin_m,
         guidance_snapshot_source: guidance_update.map(|_| "last_pre_capture_update".to_owned()),
         guidance_snapshot_age_s,
@@ -6588,6 +6701,12 @@ fn batch_waypoint_handoff_metrics(
             .predicted_handoff_outbound_cross_speed_mps,
         predicted_handoff_speed_mps: waypoint.predicted_handoff_speed_mps,
         predicted_handoff_vertical_speed_mps: waypoint.predicted_handoff_vertical_speed_mps,
+        candidate_contract_pass_ever: waypoint.candidate_contract_pass_ever,
+        candidate_first_pass_time_s: waypoint.candidate_first_pass_time_s,
+        candidate_last_pass_time_s: waypoint.candidate_last_pass_time_s,
+        candidate_pass_lost_before_capture: waypoint.candidate_pass_lost_before_capture,
+        candidate_best_heading_margin_rad: waypoint.candidate_best_heading_margin_rad,
+        candidate_best_cross_speed_margin_mps: waypoint.candidate_best_cross_speed_margin_mps,
         handoff_turn_margin_m: waypoint.handoff_turn_margin_m,
         guidance_snapshot_source: waypoint.guidance_snapshot_source.clone(),
         guidance_snapshot_age_s: waypoint.guidance_snapshot_age_s,
@@ -10586,6 +10705,73 @@ mod tests {
         assert_eq!(history[0].target_velocity_error_mps, Some(12.0));
         assert_eq!(history[1].active_index, Some(1));
         assert_eq!(history[1].guidance_replan_count, Some(3));
+    }
+
+    #[test]
+    fn waypoint_candidate_history_distinguishes_lost_and_never_passing_plans() {
+        let mut scenario = waypoint_contract_scenario();
+        let waypoint = &mut scenario.mission.transfer_route.as_mut().unwrap().waypoints[0];
+        waypoint.max_outbound_heading_error_rad = 0.35;
+        waypoint.max_outbound_cross_speed_mps = Some(20.0);
+
+        let guidance_update = |physics_step: u64,
+                               sim_time_s: f64,
+                               passed: bool,
+                               heading_error_rad: f64,
+                               cross_speed_mps: f64| {
+            let mut update =
+                transfer_update(physics_step, sim_time_s, "waypoint", 100.0, 20.0, 0.8);
+            update.frame.metrics.extend(BTreeMap::from([
+                (
+                    metric::WAYPOINT_GUIDANCE_ENABLED.to_owned(),
+                    TelemetryValue::from(true),
+                ),
+                (
+                    metric::WAYPOINT_ACTIVE_INDEX.to_owned(),
+                    TelemetryValue::from(0_i64),
+                ),
+                (
+                    metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS.to_owned(),
+                    TelemetryValue::from(passed),
+                ),
+                (
+                    metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+                    TelemetryValue::from(heading_error_rad),
+                ),
+                (
+                    metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
+                    TelemetryValue::from(cross_speed_mps),
+                ),
+            ]));
+            update
+        };
+        let mut handoff = guidance_update(180, 1.5, false, 0.4, 21.0);
+        handoff.frame.metrics.insert(
+            metric::WAYPOINT_CAPTURE_STATUS.to_owned(),
+            TelemetryValue::from("captured"),
+        );
+        handoff.frame.markers.push(pd_control::ControllerMarker {
+            id: marker::WAYPOINT_HANDOFF.to_owned(),
+            label: "waypoint 0".to_owned(),
+            x_m: None,
+            y_m: None,
+            metadata: BTreeMap::new(),
+        });
+        let updates = vec![
+            guidance_update(60, 0.5, false, 0.5, 24.0),
+            guidance_update(120, 1.0, true, 0.2, 18.0),
+            handoff,
+        ];
+        let mut history = waypoint_review_history(&updates);
+
+        enrich_waypoint_candidate_history(&scenario, &updates, &mut history);
+
+        assert_eq!(history[0].candidate_contract_pass_ever, Some(true));
+        assert_eq!(history[0].candidate_first_pass_time_s, Some(1.0));
+        assert_eq!(history[0].candidate_last_pass_time_s, Some(1.0));
+        assert_eq!(history[0].candidate_pass_lost_before_capture, Some(true));
+        assert!((history[0].candidate_best_heading_margin_rad.unwrap() - 0.15).abs() < 1.0e-9);
+        assert_eq!(history[0].candidate_best_cross_speed_margin_mps, Some(2.0));
     }
 
     #[test]

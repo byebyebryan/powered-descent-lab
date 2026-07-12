@@ -2550,6 +2550,13 @@ struct WaypointSequenceCellSummary {
     predicted_handoff_deadline_lead_s: Option<crate::BatchMetricSummary>,
     predicted_contract_pass_runs: usize,
     predicted_contract_observed: usize,
+    candidate_contract_pass_ever_runs: usize,
+    candidate_contract_observed: usize,
+    candidate_pass_lost_runs: usize,
+    candidate_first_pass_time_s: Option<crate::BatchMetricSummary>,
+    candidate_last_pass_time_s: Option<crate::BatchMetricSummary>,
+    candidate_best_heading_margin_deg: Option<crate::BatchMetricSummary>,
+    candidate_best_cross_speed_margin_mps: Option<crate::BatchMetricSummary>,
     handoff_turn_margin_m: Option<crate::BatchMetricSummary>,
     guidance_feasible_runs: usize,
     guidance_feasible_observed: usize,
@@ -2800,6 +2807,39 @@ fn waypoint_sequence_cell_summary(
                     .is_some_and(|handoff| handoff.predicted_handoff_contract_status.is_some())
             })
             .count(),
+        candidate_contract_pass_ever_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.candidate_contract_pass_ever)
+                    == Some(true)
+            })
+            .count(),
+        candidate_contract_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.candidate_contract_pass_ever.is_some())
+            })
+            .count(),
+        candidate_pass_lost_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.candidate_pass_lost_before_capture)
+                    == Some(true)
+            })
+            .count(),
+        candidate_first_pass_time_s: metric(|handoff| handoff.candidate_first_pass_time_s),
+        candidate_last_pass_time_s: metric(|handoff| handoff.candidate_last_pass_time_s),
+        candidate_best_heading_margin_deg: metric(|handoff| {
+            handoff
+                .candidate_best_heading_margin_rad
+                .map(f64::to_degrees)
+        }),
+        candidate_best_cross_speed_margin_mps: metric(|handoff| {
+            handoff.candidate_best_cross_speed_margin_mps
+        }),
         handoff_turn_margin_m: metric(|handoff| handoff.handoff_turn_margin_m),
         guidance_feasible_runs: records
             .iter()
@@ -3017,14 +3057,45 @@ fn render_waypoint_sequence_state_debt(summary: &WaypointSequenceCellSummary) ->
             predicted_lead,
         )
     };
+    let candidate_history = if summary.candidate_contract_observed == 0 {
+        "candidate history unavailable".to_owned()
+    } else {
+        let pass_window = summary
+            .candidate_first_pass_time_s
+            .as_ref()
+            .zip(summary.candidate_last_pass_time_s.as_ref())
+            .map(|(first, last)| format!(" · pass window {:.1}-{:.1}s", first.mean, last.mean))
+            .unwrap_or_default();
+        format!(
+            "history {}/{} ever pass · lost {}{}",
+            summary.candidate_contract_pass_ever_runs,
+            summary.candidate_contract_observed,
+            summary.candidate_pass_lost_runs,
+            pass_window,
+        )
+    };
+    let best_margins = match (
+        summary.candidate_best_heading_margin_deg.as_ref(),
+        summary.candidate_best_cross_speed_margin_mps.as_ref(),
+    ) {
+        (Some(heading), Some(cross)) => format!(
+            "best margins heading {:+.1}deg · cross {:+.1}m/s",
+            heading.mean, cross.mean
+        ),
+        (Some(heading), None) => format!("best heading margin {:+.1}deg", heading.mean),
+        (None, Some(cross)) => format!("best cross margin {:+.1}m/s", cross.mean),
+        (None, None) => "best margins unavailable".to_owned(),
+    };
     format!(
-        r#"<div class="overview-stack"><div class="overview-main">Δv {:.1}m/s · deadline {}</div><div class="overview-sub">feasible {}/{} · handoff margin {}</div><div class="overview-sub">{}</div></div>"#,
+        r#"<div class="overview-stack"><div class="overview-main">Δv {:.1}m/s · deadline {}</div><div class="overview-sub">feasible {}/{} · handoff margin {}</div><div class="overview-sub">{}</div><div class="overview-sub">{}</div><div class="overview-sub">{}</div></div>"#,
         velocity_error.mean,
         escape_html(&deadline),
         summary.guidance_feasible_runs,
         summary.guidance_feasible_observed,
         escape_html(&margin),
         escape_html(&prediction),
+        escape_html(&candidate_history),
+        escape_html(&best_margins),
     )
 }
 
@@ -9087,6 +9158,12 @@ mod report_tests {
                     predicted_handoff_time_to_go_s: Some(0.02),
                     predicted_handoff_deadline_lead_s: Some(1.48),
                     predicted_handoff_contract_status: Some("pass".to_owned()),
+                    candidate_contract_pass_ever: Some(true),
+                    candidate_first_pass_time_s: Some(6.0 + index as f64),
+                    candidate_last_pass_time_s: Some(7.5 + index as f64),
+                    candidate_pass_lost_before_capture: Some(false),
+                    candidate_best_heading_margin_rad: Some(0.1),
+                    candidate_best_cross_speed_margin_mps: Some(3.0),
                     handoff_turn_margin_m: Some(-12.0),
                     guidance_replan_count: Some(1),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
@@ -9111,6 +9188,16 @@ mod report_tests {
                     predicted_handoff_contract_status: Some(
                         if route_pass { "pass" } else { "fail" }.to_owned(),
                     ),
+                    candidate_contract_pass_ever: Some(route_pass),
+                    candidate_first_pass_time_s: route_pass.then_some(12.0),
+                    candidate_last_pass_time_s: route_pass.then_some(13.0),
+                    candidate_pass_lost_before_capture: Some(false),
+                    candidate_best_heading_margin_rad: Some(if route_pass { 0.05 } else { -0.1 }),
+                    candidate_best_cross_speed_margin_mps: Some(if route_pass {
+                        2.0
+                    } else {
+                        -4.0
+                    }),
                     handoff_turn_margin_m: Some(-24.0),
                     guidance_replan_count: Some(2),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
@@ -9140,6 +9227,9 @@ mod report_tests {
         assert!(html.contains("feasible 2/2"));
         assert!(html.contains("predict 2/2 pass"));
         assert!(html.contains("predict 1/2 pass"));
+        assert!(html.contains("history 2/2 ever pass"));
+        assert!(html.contains("history 1/2 ever pass"));
+        assert!(html.contains("best margins heading"));
     }
 
     #[test]
