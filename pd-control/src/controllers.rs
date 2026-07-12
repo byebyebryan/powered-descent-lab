@@ -57,6 +57,7 @@ const WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S: f64 = 0.5;
 const WAYPOINT_GUIDANCE_MIN_CLOSURE_MPS: f64 = 1.0;
 const WAYPOINT_GUIDANCE_L1_MIN_SPEED_MPS: f64 = 1.0;
 const WAYPOINT_GUIDANCE_UNIQUE_EPS: f64 = 1.0e-6;
+const WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS: f64 = 1.0e-6;
 const WAYPOINT_GUIDANCE_TRIGGER_SCAN_STEPS: usize = 64;
 const WAYPOINT_GUIDANCE_TRIGGER_BISECTION_STEPS: usize = 12;
 const WAYPOINT_GUIDANCE_CONTRACT_FAILURE_HYSTERESIS_TICKS: u32 = 2;
@@ -1656,20 +1657,25 @@ impl TransferPdgController {
     ) -> bool {
         let speed_mps = target_velocity_mps.length();
         let outbound_progress_mps = vec_dot(target_velocity_mps, guidance.next_leg_unit);
-        if speed_mps < guidance.envelope.min_speed_mps
-            || speed_mps > guidance.envelope.max_speed_mps
-            || outbound_progress_mps < guidance.envelope.min_outbound_progress_mps
+        if speed_mps + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS < guidance.envelope.min_speed_mps
+            || speed_mps > guidance.envelope.max_speed_mps + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS
+            || outbound_progress_mps + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS
+                < guidance.envelope.min_outbound_progress_mps
         {
             return false;
         }
         if guidance
             .envelope
             .min_vertical_speed_mps
-            .is_some_and(|minimum| target_velocity_mps.y < minimum)
+            .is_some_and(|minimum| {
+                target_velocity_mps.y + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS < minimum
+            })
             || guidance
                 .envelope
                 .max_vertical_speed_mps
-                .is_some_and(|maximum| target_velocity_mps.y > maximum)
+                .is_some_and(|maximum| {
+                    target_velocity_mps.y > maximum + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS
+                })
         {
             return false;
         }
@@ -5156,6 +5162,24 @@ mod tests {
                 >= geometry.waypoint.min_outbound_progress_mps
         );
         assert!(candidate.time_to_go_s >= WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S);
+    }
+
+    #[test]
+    fn transfer_waypoint_target_velocity_accepts_max_speed_roundoff() {
+        let controller = TransferPdgController::default();
+        let mut guidance = straight_waypoint_guidance();
+        guidance.next_leg_unit = Vec2::new(0.866_025_403_784_438_7, -0.5);
+        guidance.envelope.min_speed_mps = 10.0;
+        guidance.envelope.max_speed_mps = 55.0;
+        guidance.envelope.min_outbound_progress_mps = 8.0;
+        let target_velocity_mps = guidance.next_leg_unit * guidance.envelope.max_speed_mps;
+
+        assert!(target_velocity_mps.length() > guidance.envelope.max_speed_mps);
+        assert!(controller.waypoint_target_velocity_is_valid(guidance, target_velocity_mps));
+
+        let over_limit_velocity_mps =
+            guidance.next_leg_unit * (guidance.envelope.max_speed_mps + 0.01);
+        assert!(!controller.waypoint_target_velocity_is_valid(guidance, over_limit_velocity_mps));
     }
 
     #[test]

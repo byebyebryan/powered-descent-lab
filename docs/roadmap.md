@@ -49,7 +49,7 @@ Current implementation status:
     handoff and paired landing corpus
   - ordered two-waypoint evaluation, first-trigger prediction, and paired smoke
     corpora now exist; bounded-horizon event-aware replanning establishes a
-    `15 / 54` route-contract baseline without reducing final landing
+    `21 / 54` route-contract baseline without reducing final landing
 
 ## 2. What Not To Build First
 
@@ -364,15 +364,17 @@ Status:
     candidate-density debt
 - current ordered waypoint-sequence checkpoint:
   - final landing remains `49 / 54`; ordered route success improves
-    `2 -> 15 / 54` with no per-run landing outcome changes
+    `2 -> 21 / 54` with no per-run landing outcome changes
   - passed-handoff distribution improves from `0:22 | 1:30 | 2:2` to
-    `0:21 | 1:18 | 2:15`. Spatial misses remain zero.
+    `0:6 | 1:27 | 2:21`. Spatial misses remain zero.
   - the controller projects the current center-target cubic reference to its
     first evaluator trigger. Legacy initial-plan ordering is retained because
     long-horizon prediction omits future closed-loop path correction.
+  - waypoint envelope checks tolerate `1e-6 m/s` of numerical roundoff so
+    normalized boundary candidates are not route-vector dependent.
   - contract-aware replacement is limited to a local `12s` prediction horizon,
     requires two failed ticks and `10%` plan materiality, and preserves immediate
-    expiry/authority recovery. Replan count remains bounded at `4` p95.
+    expiry/authority recovery. Replan count remains bounded at `7` p95.
   - unrestricted event selection reached `26 / 54` but reduced landing to
     `44 / 54`; global cruise, effort, and contract-interior preferences were
     tested and removed rather than retained as route-specific policy.
@@ -548,12 +550,13 @@ The next useful work is:
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
    direct-transfer regression gates. Preserve both balanced single-waypoint
    packs at `81 / 81`, sequence landing at `49 / 54`, and ordered sequence
-   handoffs at or above `15 / 54` before waypoint planning or terrain-aware
+   handoffs at or above `21 / 54` before waypoint planning or terrain-aware
    routing.
 
 The immediate controller direction should stay conservative. Direct transfer,
 balanced pass-through handoff, and balanced final landing are clean. Local
-first-trigger prediction now improves ordered routes to `15 / 54` while
+first-trigger prediction plus roundoff-safe envelope validation now improves
+ordered routes to `21 / 54` while
 preserving every landing and maintained gate. Remaining failures are
 concentrated where the active waypoint has no feasible trigger-pass candidate,
 especially the second late-bend handoff. The next hypothesis should propagate

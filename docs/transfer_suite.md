@@ -511,17 +511,21 @@ Current balanced waypoint-turn checkpoint, refreshed on 2026-07-10:
   mechanism did not alter the non-waypoint controller path
 
 Current ordered waypoint-sequence checkpoint, refreshed on 2026-07-11 with
-`12` workers and `--no-reuse`:
+`6` workers per pack and `--no-reuse`:
 
 - `transfer_waypoint_sequence_smoke`: the retained controller preserves the
   baseline `49 / 54` final landings and all per-run landing outcomes; wall clock
-  is `8.33s`
+  is `12.29s`
 - `transfer_waypoint_sequence_contract_smoke`: ordered success improves
-  `2 -> 15 / 54`; passed-handoff distribution improves from
-  `0:22 | 1:30 | 2:2` to `0:21 | 1:18 | 2:15`; wall clock is `2.21s`
+  `2 -> 21 / 54`; passed-handoff distribution improves from
+  `0:22 | 1:30 | 2:2` to `0:6 | 1:27 | 2:21`; wall clock is `2.99s`
 - handoff strata move from double `18 / 27` then `2 / 18` and late `14 / 27`
-  then `0 / 14`, to double `18 / 27` then `14 / 18` and late `15 / 27` then
-  `1 / 15`. Spatial misses remain zero.
+  then `0 / 14`, to double `27 / 27` then `18 / 27` and late `21 / 27` then
+  `3 / 21`. Spatial misses remain zero.
+- waypoint envelope checks allow `1e-6 m/s` of numerical roundoff at speed,
+  outbound-progress, and vertical-speed boundaries. This keeps normalized
+  max-speed candidates on the boundary instead of conditionally discarding
+  them based on route-vector rounding.
 - batch schema `28` records the existing target/deadline debt plus predicted
   first-trigger timing, contract status/reasons, and full predicted kinematics.
   Last-update prediction matches all `86 / 86` instrumented baseline handoff
@@ -530,8 +534,8 @@ Current ordered waypoint-sequence checkpoint, refreshed on 2026-07-11 with
   legacy initial-plan ordering. Contract-aware replacement starts only inside
   a local `12s` event horizon, after two failed predictions, and requires a
   dynamically feasible predicted pass plus `10%` plan materiality.
-- sequence-contract replan count is `1.17` mean and `4` p95. Controller p99 is
-  `159us` in the contract pack and `551us` in the landing pack.
+- sequence-contract handoff replan count is `1.74` mean, `7` p95, and `14`
+  max across the newly expanded set of reached handoffs.
 - moving the hard state target to the fixed inbound capture-radius point was
   tested once and rejected: ordered success rose `2 -> 8 / 54`, but zero-handoff
   failures rose `22 -> 26`, late-bend index-zero passes fell `14 -> 9`, and final
@@ -542,7 +546,7 @@ Current ordered waypoint-sequence checkpoint, refreshed on 2026-07-11 with
   were removed.
 - the next general pass should address upstream/two-leg feasibility for the
   remaining late-bend debt. It must avoid route/profile branches and preserve
-  `15 / 54`, `49 / 54`, both `81 / 81` gates, and `297 / 297` direct transfer.
+  `21 / 54`, `49 / 54`, both `81 / 81` gates, and `297 / 297` direct transfer.
 - route-radius expansion remains a later evidence axis after the nominal-radius
   two-waypoint mechanism is credible. Generalized terrain avoidance remains out
   of scope; waypoint planning still owns terrain-valid placement.

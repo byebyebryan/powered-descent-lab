@@ -2,6 +2,34 @@
 
 ## 2026-07-11
 
+### Waypoint envelope boundary tolerance
+
+- Fixed an exact floating-point comparison in waypoint target-envelope
+  validation. A candidate constructed at the configured `55 m/s` maximum could
+  measure as `55.00000000000001 m/s` after scaling a normalized oblique route
+  vector, causing otherwise identical seeds to select different plan classes.
+- Speed, outbound-progress, and optional vertical-speed limits now allow only
+  `1e-6 m/s` of numerical roundoff. A regression test reproduces the oblique
+  max-speed case and confirms a meaningful `0.01 m/s` violation remains
+  rejected.
+- In `double_bend_v1/empty/r-30/seed 1`, initial guidance changes from the
+  accidental `10 m/s`, `53.29 s` plan to the intended `55 m/s`, `12.59 s`
+  plan. First-leg apex falls from `881.47 m` to `490.88 m`; the first handoff
+  now passes at `0.078 rad` heading error and `3.62 m/s` outbound cross speed,
+  and the run completes both waypoint contracts.
+- Fresh `6`-worker-per-pack, `--no-reuse` results:
+  - `transfer_waypoint_sequence_contract_smoke`: `21 / 54`, passed-handoff
+    distribution `0:6 | 1:27 | 2:21`, `2.99s` wall clock
+  - handoff strata: double `27 / 27` then `18 / 27`; late `21 / 27` then
+    `3 / 21`
+  - `transfer_waypoint_sequence_smoke`: unchanged `49 / 54`, `12.29s` wall
+    clock
+  - `transfer_waypoint_turn_contract_smoke` and
+    `transfer_waypoint_turn_smoke`: unchanged `81 / 81`
+- The remaining route failures are now more clearly second-leg feasibility
+  debt rather than seed-dependent first-plan selection. Future controller work
+  should preserve `21 / 54` ordered routes and `49 / 54` final landings.
+
 ### Event-aware waypoint handoff selection
 
 - The controller now projects the existing center-target state plan as a cubic
