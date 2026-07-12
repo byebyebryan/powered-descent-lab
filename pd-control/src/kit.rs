@@ -127,6 +127,24 @@ pub mod metric {
     pub const WAYPOINT_GUIDANCE_AUTHORITY_MARGIN: &str = "waypoint.guidance_authority_margin";
     pub const WAYPOINT_GUIDANCE_THRUST_SATURATED: &str = "waypoint.guidance_thrust_saturated";
     pub const WAYPOINT_GUIDANCE_TILT_SATURATED: &str = "waypoint.guidance_tilt_saturated";
+    pub const WAYPOINT_REACHABLE_HANDOFF_MODEL: &str = "waypoint.reachable_handoff_model";
+    pub const WAYPOINT_REACHABLE_HANDOFF_TIME_TO_GO_S: &str =
+        "waypoint.reachable_handoff_time_to_go_s";
+    pub const WAYPOINT_REACHABLE_HANDOFF_TRIGGERED: &str = "waypoint.reachable_handoff_triggered";
+    pub const WAYPOINT_REACHABLE_HANDOFF_CONTRACT_PASS: &str =
+        "waypoint.reachable_handoff_contract_pass";
+    pub const WAYPOINT_REACHABLE_HANDOFF_CONTRACT_REASONS: &str =
+        "waypoint.reachable_handoff_contract_reasons";
+    pub const WAYPOINT_REACHABLE_HANDOFF_OUTBOUND_HEADING_ERROR_RAD: &str =
+        "waypoint.reachable_handoff_outbound_heading_error_rad";
+    pub const WAYPOINT_REACHABLE_HANDOFF_OUTBOUND_CROSS_SPEED_MPS: &str =
+        "waypoint.reachable_handoff_outbound_cross_speed_mps";
+    pub const WAYPOINT_REACHABLE_HANDOFF_REQUIRED_ACCEL_RATIO_MAX: &str =
+        "waypoint.reachable_handoff_required_accel_ratio_max";
+    pub const WAYPOINT_REACHABLE_HANDOFF_THRUST_SATURATED_TIME_S: &str =
+        "waypoint.reachable_handoff_thrust_saturated_time_s";
+    pub const WAYPOINT_REACHABLE_HANDOFF_TILT_SATURATED_TIME_S: &str =
+        "waypoint.reachable_handoff_tilt_saturated_time_s";
     pub const WAYPOINT_TARGET_DEADLINE_REMAINING_S: &str = "waypoint.target_deadline_remaining_s";
     pub const WAYPOINT_TARGET_VELOCITY_ERROR_MPS: &str = "waypoint.target_velocity_error_mps";
     pub const WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S: &str =

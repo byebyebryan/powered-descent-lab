@@ -1022,6 +1022,14 @@ struct WaypointGuidancePrediction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointReachablePrediction {
+    prediction: WaypointGuidancePrediction,
+    required_accel_ratio_max: f64,
+    thrust_saturated_time_s: f64,
+    tilt_saturated_time_s: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointGuidancePlan {
     waypoint_index: usize,
     revision: u32,
@@ -1092,6 +1100,7 @@ struct WaypointGuidanceCommandState {
     tilt_saturated: bool,
     trackability: WaypointGuidanceTrackability,
     prediction: WaypointGuidancePrediction,
+    reachable_prediction: WaypointReachablePrediction,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1105,6 +1114,7 @@ struct WaypointGuidanceTargetState {
     tilt_saturated: bool,
     trackability: WaypointGuidanceTrackability,
     prediction: WaypointGuidancePrediction,
+    reachable_prediction: WaypointReachablePrediction,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2037,6 +2047,146 @@ impl TransferPdgController {
         }
     }
 
+    fn waypoint_reachable_prediction(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+        endpoint_m: Vec2,
+        target_velocity_mps: Vec2,
+        time_to_go_s: f64,
+    ) -> WaypointReachablePrediction {
+        let initial_stats = waypoint_leg_stats_from_axes(
+            observation.position_m,
+            observation.velocity_mps,
+            guidance.center_m,
+            guidance.leg_unit,
+            guidance.next_leg_unit,
+        );
+        let initial_assessment = guidance.envelope.assess(initial_stats);
+        if initial_assessment.triggered {
+            return WaypointReachablePrediction {
+                prediction: WaypointGuidancePrediction {
+                    time_to_event_s: 0.0,
+                    deadline_lead_s: time_to_go_s.max(0.0),
+                    stats: initial_stats,
+                    assessment: initial_assessment,
+                },
+                required_accel_ratio_max: 0.0,
+                thrust_saturated_time_s: 0.0,
+                tilt_saturated_time_s: 0.0,
+            };
+        }
+
+        let max_tilt_rad = self
+            .config
+            .boost_tilt_rad
+            .max(self.config.uphill_boost_tilt_rad);
+        let dt_s = 1.0 / f64::from(ctx.sim.controller_hz.max(1));
+        let horizon_s = time_to_go_s
+            .max(0.0)
+            .min(WAYPOINT_GUIDANCE_PREDICTION_HORIZON_S);
+        let mut state = self.initial_transfer_sim_state(observation);
+        let mut elapsed_s = 0.0;
+        let mut required_accel_ratio_max: f64 = 0.0;
+        let mut thrust_saturated_time_s = 0.0;
+        let mut tilt_saturated_time_s = 0.0;
+        let mut last_stats = initial_stats;
+        let mut last_assessment = initial_assessment;
+
+        while elapsed_s + 1.0e-9 < horizon_s {
+            let step_s = (horizon_s - elapsed_s).min(dt_s);
+            let remaining_s = (time_to_go_s - elapsed_s).max(WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S);
+            let (ax, ay) = required_control_accel(
+                endpoint_m.x - state.position_m.x,
+                endpoint_m.y - state.position_m.y,
+                state.velocity_mps.x,
+                state.velocity_mps.y,
+                target_velocity_mps.x,
+                target_velocity_mps.y,
+                remaining_s,
+                observation.gravity_mps2,
+            );
+            let state_target_accel_mps2 = Vec2::new(ax, ay);
+            let mut simulated_observation = observation.clone();
+            simulated_observation.position_m = state.position_m;
+            simulated_observation.velocity_mps = state.velocity_mps;
+            simulated_observation.attitude_rad = state.attitude_rad;
+            simulated_observation.mass_kg = state.mass_kg();
+            simulated_observation.fuel_kg = state.fuel_kg;
+            simulated_observation.sim_time_s = observation.sim_time_s + elapsed_s;
+            let path_correction_mps2 = self.waypoint_path_correction_mps2(
+                ctx,
+                &simulated_observation,
+                guidance,
+                state_target_accel_mps2,
+            );
+            let required_accel_mps2 = state_target_accel_mps2 + path_correction_mps2;
+            let max_thrust_accel_mps2 = ctx.vehicle.max_thrust_n / state.mass_kg();
+            let required_accel_ratio =
+                required_accel_mps2.length() / max_thrust_accel_mps2.max(1.0e-6);
+            let tilt_feasible = required_accel_mps2.y > 0.0
+                && required_accel_mps2.x.abs() <= max_tilt_rad.tan() * required_accel_mps2.y;
+            required_accel_ratio_max = required_accel_ratio_max.max(required_accel_ratio);
+            if required_accel_ratio > 1.0 {
+                thrust_saturated_time_s += step_s;
+            }
+            if !tilt_feasible {
+                tilt_saturated_time_s += step_s;
+            }
+
+            let command = allocate_accel_command(
+                required_accel_mps2.x,
+                required_accel_mps2.y,
+                max_thrust_accel_mps2,
+                max_tilt_rad,
+            );
+            let max_delta = ctx.vehicle.max_rotation_rate_radps.max(0.0) * step_s;
+            let delta = shortest_angle_delta(state.attitude_rad, command.target_attitude_rad);
+            state.attitude_rad += delta.clamp(-max_delta, max_delta);
+            let throttle_frac = applied_throttle_frac(ctx, command.throttle_frac, state.fuel_kg);
+            let fuel_used_kg = (ctx.vehicle.max_fuel_burn_kgps.max(0.0) * throttle_frac * step_s)
+                .min(state.fuel_kg);
+            state.fuel_kg -= fuel_used_kg;
+            let thrust_n = ctx.vehicle.max_thrust_n.max(0.0) * throttle_frac;
+            let (sin_a, cos_a) = state.attitude_rad.sin_cos();
+            let thrust_accel_mps2 = Vec2::new(
+                (thrust_n / state.mass_kg()) * sin_a,
+                (thrust_n / state.mass_kg()) * cos_a,
+            );
+            state.velocity_mps += Vec2::new(
+                thrust_accel_mps2.x,
+                thrust_accel_mps2.y - observation.gravity_mps2,
+            ) * step_s;
+            state.position_m += state.velocity_mps * step_s;
+            elapsed_s += step_s;
+
+            last_stats = waypoint_leg_stats_from_axes(
+                state.position_m,
+                state.velocity_mps,
+                guidance.center_m,
+                guidance.leg_unit,
+                guidance.next_leg_unit,
+            );
+            last_assessment = guidance.envelope.assess(last_stats);
+            if last_assessment.triggered {
+                break;
+            }
+        }
+
+        WaypointReachablePrediction {
+            prediction: WaypointGuidancePrediction {
+                time_to_event_s: elapsed_s,
+                deadline_lead_s: (time_to_go_s - elapsed_s).max(0.0),
+                stats: last_stats,
+                assessment: last_assessment,
+            },
+            required_accel_ratio_max,
+            thrust_saturated_time_s,
+            tilt_saturated_time_s,
+        }
+    }
+
     fn waypoint_guidance_target_state_for_current_plan(
         &self,
         ctx: &RunContext,
@@ -2062,6 +2212,14 @@ impl TransferPdgController {
             .max(self.config.uphill_boost_tilt_rad);
         let tilt_feasible = required_accel_mps2.y > 0.0
             && required_accel_mps2.x.abs() <= max_tilt_rad.tan() * required_accel_mps2.y;
+        let reachable_prediction = self.waypoint_reachable_prediction(
+            ctx,
+            observation,
+            guidance,
+            plan.endpoint_m,
+            candidate.target_velocity_mps,
+            candidate.time_to_go_s,
+        );
         Some(WaypointGuidanceTargetState {
             target_velocity_mps: candidate.target_velocity_mps,
             deadline_remaining_s: plan.arrival_time_s - observation.sim_time_s,
@@ -2074,6 +2232,7 @@ impl TransferPdgController {
             tilt_saturated: !tilt_feasible,
             trackability: Self::waypoint_guidance_trackability(observation, guidance, plan),
             prediction: candidate.prediction,
+            reachable_prediction,
         })
     }
 
@@ -2222,6 +2381,14 @@ impl TransferPdgController {
         let plan = self
             .waypoint_guidance_plan
             .expect("active waypoint guidance always has a plan");
+        let reachable_prediction = self.waypoint_reachable_prediction(
+            ctx,
+            observation,
+            guidance,
+            plan.endpoint_m,
+            candidate.target_velocity_mps,
+            candidate.time_to_go_s,
+        );
         WaypointGuidanceCommandState {
             command: allocate_accel_command(
                 required_accel_mps2.x,
@@ -2243,6 +2410,7 @@ impl TransferPdgController {
             tilt_saturated: !tilt_feasible,
             trackability: Self::waypoint_guidance_trackability(observation, guidance, plan),
             prediction: candidate.prediction,
+            reachable_prediction,
         }
     }
 
@@ -2381,6 +2549,7 @@ impl TransferPdgController {
                     tilt_saturated: state.tilt_saturated,
                     trackability: state.trackability,
                     prediction: state.prediction,
+                    reachable_prediction: state.reachable_prediction,
                 },
             );
         }
@@ -4013,6 +4182,47 @@ fn insert_waypoint_target_state_metrics(
         metric::WAYPOINT_GUIDANCE_TILT_SATURATED.to_owned(),
         TelemetryValue::from(target_state.tilt_saturated),
     );
+    let reachable = target_state.reachable_prediction;
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_MODEL.to_owned(),
+        TelemetryValue::from("actuated_rollout"),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_TIME_TO_GO_S.to_owned(),
+        TelemetryValue::from(reachable.prediction.time_to_event_s),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_TRIGGERED.to_owned(),
+        TelemetryValue::from(reachable.prediction.assessment.triggered),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_CONTRACT_PASS.to_owned(),
+        TelemetryValue::from(reachable.prediction.assessment.contract_pass()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_CONTRACT_REASONS.to_owned(),
+        TelemetryValue::from(reachable.prediction.assessment.reasons()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+        TelemetryValue::from(reachable.prediction.stats.outbound_heading_error_rad),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
+        TelemetryValue::from(reachable.prediction.stats.outbound_cross_speed_mps),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_REQUIRED_ACCEL_RATIO_MAX.to_owned(),
+        TelemetryValue::from(reachable.required_accel_ratio_max),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_THRUST_SATURATED_TIME_S.to_owned(),
+        TelemetryValue::from(reachable.thrust_saturated_time_s),
+    );
+    metrics.insert(
+        metric::WAYPOINT_REACHABLE_HANDOFF_TILT_SATURATED_TIME_S.to_owned(),
+        TelemetryValue::from(reachable.tilt_saturated_time_s),
+    );
     let prediction = target_state.prediction;
     metrics.insert(
         metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S.to_owned(),
@@ -4889,6 +5099,15 @@ mod tests {
                 .metrics
                 .contains_key(metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S)
         );
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_REACHABLE_HANDOFF_MODEL),
+            Some(&TelemetryValue::from("actuated_rollout"))
+        );
+        assert!(
+            frame
+                .metrics
+                .contains_key(metric::WAYPOINT_REACHABLE_HANDOFF_CONTRACT_PASS)
+        );
     }
 
     fn straight_waypoint_guidance() -> WaypointGuidanceFrame {
@@ -4962,6 +5181,55 @@ mod tests {
                 },
             },
         }
+    }
+
+    #[test]
+    fn waypoint_reachable_prediction_tracks_an_actuated_straight_plan() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::default();
+        let guidance = straight_waypoint_guidance();
+        let observation =
+            waypoint_transfer_observation(&ctx, Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0), 0.0);
+
+        let reachable = controller.waypoint_reachable_prediction(
+            &ctx,
+            &observation,
+            guidance,
+            guidance.endpoint_m,
+            Vec2::new(10.0, 0.0),
+            10.0,
+        );
+
+        assert!(reachable.prediction.assessment.triggered);
+        assert!(reachable.prediction.assessment.contract_pass());
+        assert!(reachable.required_accel_ratio_max <= 1.0);
+        assert_eq!(reachable.thrust_saturated_time_s, 0.0);
+    }
+
+    #[test]
+    fn waypoint_reachable_prediction_exposes_attitude_limited_reference_failure() {
+        let mut ctx = context_with_waypoint();
+        ctx.vehicle.max_rotation_rate_radps = 0.0;
+        let controller = TransferPdgController::default();
+        let guidance = straight_waypoint_guidance();
+        let mut observation =
+            waypoint_transfer_observation(&ctx, Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0), 0.0);
+        observation.attitude_rad = 0.72;
+        let reference =
+            waypoint_guidance_prediction(&observation, guidance, Vec2::new(10.0, 0.0), 10.0);
+
+        let reachable = controller.waypoint_reachable_prediction(
+            &ctx,
+            &observation,
+            guidance,
+            guidance.endpoint_m,
+            Vec2::new(10.0, 0.0),
+            10.0,
+        );
+
+        assert!(reference.assessment.contract_pass());
+        assert!(!reachable.prediction.assessment.contract_pass());
+        assert!(reachable.tilt_saturated_time_s > 0.0);
     }
 
     #[test]
