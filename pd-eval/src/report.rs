@@ -2536,6 +2536,10 @@ struct WaypointSequenceCellSummary {
     speed_mps: Option<crate::BatchMetricSummary>,
     target_velocity_error_mps: Option<crate::BatchMetricSummary>,
     target_deadline_remaining_s: Option<crate::BatchMetricSummary>,
+    predicted_handoff_time_to_go_s: Option<crate::BatchMetricSummary>,
+    predicted_handoff_deadline_lead_s: Option<crate::BatchMetricSummary>,
+    predicted_contract_pass_runs: usize,
+    predicted_contract_observed: usize,
     handoff_turn_margin_m: Option<crate::BatchMetricSummary>,
     guidance_feasible_runs: usize,
     guidance_feasible_observed: usize,
@@ -2738,6 +2742,25 @@ fn waypoint_sequence_cell_summary(
         speed_mps: metric(|handoff| handoff.speed_mps),
         target_velocity_error_mps: metric(|handoff| handoff.target_velocity_error_mps),
         target_deadline_remaining_s: metric(|handoff| handoff.target_deadline_remaining_s),
+        predicted_handoff_time_to_go_s: metric(|handoff| handoff.predicted_handoff_time_to_go_s),
+        predicted_handoff_deadline_lead_s: metric(|handoff| {
+            handoff.predicted_handoff_deadline_lead_s
+        }),
+        predicted_contract_pass_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.predicted_handoff_contract_status.as_deref())
+                    == Some("pass")
+            })
+            .count(),
+        predicted_contract_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.predicted_handoff_contract_status.is_some())
+            })
+            .count(),
         handoff_turn_margin_m: metric(|handoff| handoff.handoff_turn_margin_m),
         guidance_feasible_runs: records
             .iter()
@@ -2891,13 +2914,35 @@ fn render_waypoint_sequence_state_debt(summary: &WaypointSequenceCellSummary) ->
         .as_ref()
         .map(|value| format!("{:+.1}m", value.mean))
         .unwrap_or_else(|| "-".to_owned());
+    let predicted_event = summary
+        .predicted_handoff_time_to_go_s
+        .as_ref()
+        .map(|value| format!("{:.2}s", value.mean))
+        .unwrap_or_else(|| "-".to_owned());
+    let predicted_lead = summary
+        .predicted_handoff_deadline_lead_s
+        .as_ref()
+        .map(|value| format!("{:+.2}s", value.mean))
+        .unwrap_or_else(|| "-".to_owned());
+    let prediction = if summary.predicted_contract_observed == 0 {
+        "prediction unavailable".to_owned()
+    } else {
+        format!(
+            "predict {}/{} pass · event {} · center lead {}",
+            summary.predicted_contract_pass_runs,
+            summary.predicted_contract_observed,
+            predicted_event,
+            predicted_lead,
+        )
+    };
     format!(
-        r#"<div class="overview-stack"><div class="overview-main">Δv {:.1}m/s · deadline {}</div><div class="overview-sub">feasible {}/{} · handoff margin {}</div></div>"#,
+        r#"<div class="overview-stack"><div class="overview-main">Δv {:.1}m/s · deadline {}</div><div class="overview-sub">feasible {}/{} · handoff margin {}</div><div class="overview-sub">{}</div></div>"#,
         velocity_error.mean,
         escape_html(&deadline),
         summary.guidance_feasible_runs,
         summary.guidance_feasible_observed,
         escape_html(&margin),
+        escape_html(&prediction),
     )
 }
 
@@ -8872,6 +8917,9 @@ mod report_tests {
                     target_velocity_error_mps: Some(8.0 + index as f64),
                     target_deadline_remaining_s: Some(1.5),
                     guidance_feasible: Some(true),
+                    predicted_handoff_time_to_go_s: Some(0.02),
+                    predicted_handoff_deadline_lead_s: Some(1.48),
+                    predicted_handoff_contract_status: Some("pass".to_owned()),
                     handoff_turn_margin_m: Some(-12.0),
                     guidance_replan_count: Some(1),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
@@ -8891,6 +8939,11 @@ mod report_tests {
                     target_velocity_error_mps: Some(16.0 + index as f64),
                     target_deadline_remaining_s: Some(0.4),
                     guidance_feasible: Some(route_pass),
+                    predicted_handoff_time_to_go_s: Some(0.02),
+                    predicted_handoff_deadline_lead_s: Some(0.38),
+                    predicted_handoff_contract_status: Some(
+                        if route_pass { "pass" } else { "fail" }.to_owned(),
+                    ),
                     handoff_turn_margin_m: Some(-24.0),
                     guidance_replan_count: Some(2),
                     ..crate::BatchWaypointHandoffReviewMetrics::default()
@@ -8913,6 +8966,8 @@ mod report_tests {
         assert!(html.contains("<th>State Debt</th>"));
         assert!(html.contains("Δv 8.5m/s"));
         assert!(html.contains("feasible 2/2"));
+        assert!(html.contains("predict 2/2 pass"));
+        assert!(html.contains("predict 1/2 pass"));
     }
 
     #[test]

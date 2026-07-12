@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 27;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 28;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -176,6 +176,30 @@ pub struct BatchWaypointHandoffReviewMetrics {
     pub target_velocity_error_mps: Option<f64>,
     #[serde(default)]
     pub guidance_feasible: Option<bool>,
+    #[serde(default)]
+    pub predicted_handoff_time_to_go_s: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_deadline_lead_s: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_contract_status: Option<String>,
+    #[serde(default)]
+    pub predicted_handoff_contract_reasons: Vec<String>,
+    #[serde(default)]
+    pub predicted_handoff_distance_m: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_cross_track_m: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_plane_progress_m: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_outbound_heading_error_rad: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_outbound_progress_mps: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_outbound_cross_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub predicted_handoff_vertical_speed_mps: Option<f64>,
     #[serde(default)]
     pub handoff_turn_margin_m: Option<f64>,
     #[serde(default)]
@@ -5857,6 +5881,18 @@ struct WaypointReviewMetrics {
     target_deadline_remaining_s: Option<f64>,
     target_velocity_error_mps: Option<f64>,
     guidance_feasible: Option<bool>,
+    predicted_handoff_time_to_go_s: Option<f64>,
+    predicted_handoff_deadline_lead_s: Option<f64>,
+    predicted_handoff_contract_status: Option<String>,
+    predicted_handoff_contract_reasons: Vec<String>,
+    predicted_handoff_distance_m: Option<f64>,
+    predicted_handoff_cross_track_m: Option<f64>,
+    predicted_handoff_plane_progress_m: Option<f64>,
+    predicted_handoff_outbound_heading_error_rad: Option<f64>,
+    predicted_handoff_outbound_progress_mps: Option<f64>,
+    predicted_handoff_outbound_cross_speed_mps: Option<f64>,
+    predicted_handoff_speed_mps: Option<f64>,
+    predicted_handoff_vertical_speed_mps: Option<f64>,
     handoff_turn_margin_m: Option<f64>,
     guidance_snapshot_source: Option<String>,
     guidance_snapshot_age_s: Option<f64>,
@@ -5948,6 +5984,16 @@ fn waypoint_review_metrics_from_update(
         telemetry_bool(preferred_metrics, key)
             .or_else(|| telemetry_bool(&update.frame.metrics, key))
     };
+    let predicted_handoff_contract_reasons =
+        preferred_text(metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_REASONS)
+            .map(|reasons| {
+                reasons
+                    .split(',')
+                    .filter(|reason| !reason.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
     WaypointReviewMetrics {
         capture_status: telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS)
             .map(ToOwned::to_owned),
@@ -6019,6 +6065,46 @@ fn waypoint_review_metrics_from_update(
         target_velocity_error_mps: preferred_float(metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS)
             .filter(|value| *value >= 0.0),
         guidance_feasible: preferred_bool(metric::WAYPOINT_GUIDANCE_FEASIBLE),
+        predicted_handoff_time_to_go_s: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S,
+        )
+        .filter(|value| *value >= 0.0),
+        predicted_handoff_deadline_lead_s: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_DEADLINE_LEAD_S,
+        )
+        .filter(|value| *value >= 0.0),
+        predicted_handoff_contract_status: preferred_bool(
+            metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS,
+        )
+        .map(|passed| if passed { "pass" } else { "fail" }.to_owned()),
+        predicted_handoff_contract_reasons,
+        predicted_handoff_distance_m: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_DISTANCE_M,
+        )
+        .filter(|value| *value >= 0.0),
+        predicted_handoff_cross_track_m: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_CROSS_TRACK_M,
+        )
+        .filter(|value| *value >= 0.0),
+        predicted_handoff_plane_progress_m: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_PLANE_PROGRESS_M,
+        ),
+        predicted_handoff_outbound_heading_error_rad: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_HEADING_ERROR_RAD,
+        )
+        .filter(|value| *value >= 0.0),
+        predicted_handoff_outbound_progress_mps: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_PROGRESS_MPS,
+        ),
+        predicted_handoff_outbound_cross_speed_mps: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_CROSS_SPEED_MPS,
+        )
+        .filter(|value| *value >= 0.0),
+        predicted_handoff_speed_mps: preferred_float(metric::WAYPOINT_PREDICTED_HANDOFF_SPEED_MPS)
+            .filter(|value| *value >= 0.0),
+        predicted_handoff_vertical_speed_mps: preferred_float(
+            metric::WAYPOINT_PREDICTED_HANDOFF_VERTICAL_SPEED_MPS,
+        ),
         handoff_turn_margin_m: preferred_float(metric::WAYPOINT_HANDOFF_TURN_MARGIN_M),
         guidance_snapshot_source: Some(
             if handoff_marker.is_some() {
@@ -6112,6 +6198,9 @@ fn terminal_waypoint_review_metrics(
             .map(|(vx_mps, vy_mps)| {
                 (last_sample.observation.velocity_mps - Vec2::new(vx_mps, vy_mps)).length()
             });
+    let predicted_handoff_time_to_go_s = guidance
+        .predicted_handoff_time_to_go_s
+        .map(|remaining_s| (remaining_s - guidance_snapshot_age_s.unwrap_or(0.0)).max(0.0));
     let remaining_to_handoff_m = if terminal_handoff {
         Some(0.0)
     } else {
@@ -6155,6 +6244,20 @@ fn terminal_waypoint_review_metrics(
         target_deadline_remaining_s,
         target_velocity_error_mps,
         guidance_feasible: guidance.guidance_feasible,
+        predicted_handoff_time_to_go_s,
+        predicted_handoff_deadline_lead_s: guidance.predicted_handoff_deadline_lead_s,
+        predicted_handoff_contract_status: guidance.predicted_handoff_contract_status,
+        predicted_handoff_contract_reasons: guidance.predicted_handoff_contract_reasons,
+        predicted_handoff_distance_m: guidance.predicted_handoff_distance_m,
+        predicted_handoff_cross_track_m: guidance.predicted_handoff_cross_track_m,
+        predicted_handoff_plane_progress_m: guidance.predicted_handoff_plane_progress_m,
+        predicted_handoff_outbound_heading_error_rad: guidance
+            .predicted_handoff_outbound_heading_error_rad,
+        predicted_handoff_outbound_progress_mps: guidance.predicted_handoff_outbound_progress_mps,
+        predicted_handoff_outbound_cross_speed_mps: guidance
+            .predicted_handoff_outbound_cross_speed_mps,
+        predicted_handoff_speed_mps: guidance.predicted_handoff_speed_mps,
+        predicted_handoff_vertical_speed_mps: guidance.predicted_handoff_vertical_speed_mps,
         handoff_turn_margin_m,
         guidance_snapshot_source: guidance_update.map(|_| "last_pre_capture_update".to_owned()),
         guidance_snapshot_age_s,
@@ -6279,6 +6382,20 @@ fn batch_waypoint_handoff_metrics(
         target_deadline_remaining_s: waypoint.target_deadline_remaining_s,
         target_velocity_error_mps: waypoint.target_velocity_error_mps,
         guidance_feasible: waypoint.guidance_feasible,
+        predicted_handoff_time_to_go_s: waypoint.predicted_handoff_time_to_go_s,
+        predicted_handoff_deadline_lead_s: waypoint.predicted_handoff_deadline_lead_s,
+        predicted_handoff_contract_status: waypoint.predicted_handoff_contract_status.clone(),
+        predicted_handoff_contract_reasons: waypoint.predicted_handoff_contract_reasons.clone(),
+        predicted_handoff_distance_m: waypoint.predicted_handoff_distance_m,
+        predicted_handoff_cross_track_m: waypoint.predicted_handoff_cross_track_m,
+        predicted_handoff_plane_progress_m: waypoint.predicted_handoff_plane_progress_m,
+        predicted_handoff_outbound_heading_error_rad: waypoint
+            .predicted_handoff_outbound_heading_error_rad,
+        predicted_handoff_outbound_progress_mps: waypoint.predicted_handoff_outbound_progress_mps,
+        predicted_handoff_outbound_cross_speed_mps: waypoint
+            .predicted_handoff_outbound_cross_speed_mps,
+        predicted_handoff_speed_mps: waypoint.predicted_handoff_speed_mps,
+        predicted_handoff_vertical_speed_mps: waypoint.predicted_handoff_vertical_speed_mps,
         handoff_turn_margin_m: waypoint.handoff_turn_margin_m,
         guidance_snapshot_source: waypoint.guidance_snapshot_source.clone(),
         guidance_snapshot_age_s: waypoint.guidance_snapshot_age_s,
@@ -10315,6 +10432,26 @@ mod tests {
                 metric::WAYPOINT_GUIDANCE_FEASIBLE.to_owned(),
                 TelemetryValue::from(false),
             ),
+            (
+                metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S.to_owned(),
+                TelemetryValue::from(0.2),
+            ),
+            (
+                metric::WAYPOINT_PREDICTED_HANDOFF_DEADLINE_LEAD_S.to_owned(),
+                TelemetryValue::from(2.3),
+            ),
+            (
+                metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_PASS.to_owned(),
+                TelemetryValue::from(false),
+            ),
+            (
+                metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_REASONS.to_owned(),
+                TelemetryValue::from("heading,outbound_cross_speed"),
+            ),
+            (
+                metric::WAYPOINT_PREDICTED_HANDOFF_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+                TelemetryValue::from(0.5),
+            ),
         ]));
 
         let metrics = waypoint_handoff_goal_review_metrics(
@@ -10332,6 +10469,20 @@ mod tests {
         assert_eq!(metrics.closest_distance_m, Some(0.0));
         assert_eq!(metrics.distance_m, Some(0.0));
         assert_eq!(metrics.target_deadline_remaining_s, Some(2.4));
+        assert!((metrics.predicted_handoff_time_to_go_s.unwrap() - 0.1).abs() < 1.0e-9);
+        assert_eq!(metrics.predicted_handoff_deadline_lead_s, Some(2.3));
+        assert_eq!(
+            metrics.predicted_handoff_contract_status.as_deref(),
+            Some("fail")
+        );
+        assert_eq!(
+            metrics.predicted_handoff_contract_reasons,
+            vec!["heading", "outbound_cross_speed"]
+        );
+        assert_eq!(
+            metrics.predicted_handoff_outbound_heading_error_rad,
+            Some(0.5)
+        );
         assert!((metrics.target_velocity_error_mps.unwrap() - 19.6977156036).abs() < 1.0e-9);
         assert_eq!(metrics.handoff_turn_margin_m, Some(-30.0));
         assert_eq!(
