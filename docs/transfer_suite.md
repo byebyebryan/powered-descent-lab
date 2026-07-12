@@ -515,8 +515,7 @@ Current direct-transfer checkpoint, refreshed on 2026-07-12 with `8` workers,
 - `near_vertical_transfer_route` remains useful as a stress annotation, but it
   no longer describes a failing direct-transfer region
 
-Current normalized waypoint checkpoint, refreshed on 2026-07-12 without
-controller changes:
+Current normalized waypoint checkpoint, refreshed on 2026-07-12:
 
 - `transfer_waypoint_bend_rpos80_smoke`: `15 / 27` landings
 - `transfer_waypoint_bend_contract_rpos80_smoke`: `21 / 27` handoffs
@@ -528,16 +527,16 @@ controller changes:
 - `transfer_waypoint_turn_smoke`: `81 / 81` landings. The braking-reserve
   release closes all six former sharp `r+30` half/full post-handoff crashes
   without changing waypoint contracts or transfer-shape metrics.
-- `transfer_waypoint_sequence_smoke`: `54 / 54` landings and `24 / 54`
+- `transfer_waypoint_sequence_smoke`: `54 / 54` landings and `27 / 54`
   complete ordered routes
-- `transfer_waypoint_sequence_contract_smoke`: `24 / 54` complete routes with
-  passed-handoff distribution `0:3 | 1:27 | 2:24`; worst continuation ratio
+- `transfer_waypoint_sequence_contract_smoke`: `27 / 54` complete routes with
+  passed-handoff distribution `0:3 | 1:24 | 2:27`; worst continuation ratio
   `0.668`
-- full-leg candidate history splits the `30` failed handoffs into `26` that
-  never predict a contract pass and `4` that predict a pass but lose it before
-  capture. This evidence is rendered in `State Debt`; it is not inferred from
-  the final capture snapshot.
-- `transfer_waypoint_sequence_trackability_focus`: `3 / 18` complete routes.
+- full-leg reference history splits the `27` failed handoffs into `9` that
+  never predict a contract pass and `18` that lose one before capture. The
+  actuated forecast splits them `12 | 15`; both histories are rendered rather
+  than inferred from the final capture snapshot.
+- `transfer_waypoint_sequence_trackability_focus`: `6 / 18` complete routes.
   Pass-lost double-bend second legs demand up to `3.45x` available acceleration;
   representative never-passing second legs stay at or below available thrust
   authority and fail in target-state/candidate selection instead.
@@ -545,6 +544,10 @@ controller changes:
   reference position/velocity errors, required acceleration ratio, saturation
   duration, and last-passing-state diagnostics. Peak error alone is not a
   failure gate because successful controls can show comparable maxima.
+- Batch schema `29` adds an actuated forecast beside the Hermite reference.
+  Confirmed never-passing legs may search at most `18` geometry-derived
+  capture-envelope states once per plan revision; any leg that has already
+  predicted a reference pass keeps center-plan ownership.
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
@@ -552,10 +555,9 @@ controller changes:
   not rerun and are not acceptance gates.
 - hard next-turn speed caps, envelope-margin ordering, pathwise cubic authority
   rejection, and a fixed replan authority reserve were measured and rejected.
-  The next controller pass should make retained-plan prediction authority-aware
-  and separately broaden reachable outbound-state generation while preserving
-  `81 / 81` balanced contracts and landing, `24 / 54` ordered routes,
-  `54 / 54` sequence landing, and `297 / 297` direct transfer.
+  The next controller pass should address pass-lost retained-plan durability
+  while preserving `81 / 81` balanced contracts and landing, `27 / 54` ordered
+  routes, `54 / 54` sequence landing, and `297 / 297` direct transfer.
 - route/radius expansion remains a later evidence axis. Generalized terrain
   avoidance remains out of scope; waypoint planning still owns terrain-valid
   placement.

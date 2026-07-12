@@ -49,7 +49,7 @@ Current implementation status:
     pass-through handoff and paired landing corpora
   - ordered two-waypoint evaluation, first-trigger prediction, and paired smoke
     corpora now exist; normalized route-frame fixtures establish a
-    `24 / 54` route-contract and `54 / 54` final-landing checkpoint
+    `27 / 54` route-contract and `54 / 54` final-landing checkpoint
 
 ## 2. What Not To Build First
 
@@ -362,24 +362,21 @@ Status:
     time-to-go candidates, and bounded path correction remain free of sim-time,
     route-angle, and profile branches
 - current ordered waypoint-sequence checkpoint:
-  - final landing is `54 / 54`; ordered route success is `24 / 54`
-  - passed-handoff distribution is `0:3 | 1:27 | 2:24`
-  - full-leg candidate history classifies the `30` failed handoffs as `26`
-    never-passing and `4` pass-lost-before-capture cases
+  - final landing is `54 / 54`; ordered route success is `27 / 54`
+  - passed-handoff distribution is `0:3 | 1:24 | 2:27`
   - both sequence profiles now land `27 / 27`; route-contract debt remains
     concentrated in handoff shaping rather than touchdown recovery
   - first-trigger projection, roundoff-safe envelope validation, and bounded
     local replacement remain the current controller mechanism
-  - the `18`-run sequence trackability focus pack completes `3 / 18`; explicit
-    plan ownership shows that pass-lost retained plans can require up to `3.45x`
-    available acceleration, while representative never-passing second legs are
-    trackable but have no contract-passing outbound target state
+  - the `18`-run sequence trackability focus pack completes `6 / 18`
+  - actuation-aware forecasts and a bounded capture-envelope state search close
+    one complete never-passing three-seed cell without route/profile branches
 - next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
   - make retained-plan prediction authority-aware so an analytically passing
     state is not accepted when its reference is physically untrackable
-  - broaden the reachable outbound-state solve for legs that track their plans
-    but never produce a contract-passing candidate
+  - preserve the event-state search boundary: confirmed never-passing legs only;
+    actuated-forecast vetoes on already reference-passing plans are regressive
   - keep those mechanisms independent of route/profile labels; hard speed caps,
     margin-only ordering, pathwise rejection, and fixed replan reserves have all
     regressed or merely redistributed the current failures
@@ -543,14 +540,14 @@ The next useful work is:
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
    direct-transfer regression gates. Preserve balanced handoffs at `81 / 81`,
    balanced landing at `81 / 81`, sequence landing at `54 / 54`, and ordered
-   sequence handoffs at or above `24 / 54` before
+   sequence handoffs at or above `27 / 54` before
    waypoint planning or terrain-aware routing.
 
 The immediate controller direction should stay conservative. Direct transfer,
 balanced pass-through handoff, and paired final landing are clean. Ordered
-route success remains `24 / 54` despite `54 / 54` sequence landings. New plan
-ownership evidence shows two separate debts: authority-infeasible retained
-plans and trackable plans with no passing outbound target state. Address those
-with reachable prediction and reachable-state generation, not terminal
-recovery retuning, a wider prediction horizon, or route/profile policy. Radius
-tiers should follow once those nominal mechanisms are credible.
+route success is now `27 / 54` with `54 / 54` sequence landings. The bounded
+event-state search has improved confirmed never-passing legs; the next distinct
+debt is pass-lost retained-plan durability, not a wider search or global
+actuated-forecast veto. Do not retune terminal recovery, widen the prediction
+horizon, or add route/profile policy. Radius tiers should follow once that
+durability mechanism is credible.

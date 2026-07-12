@@ -2,6 +2,41 @@
 
 ## 2026-07-12
 
+### Reachable waypoint event-state checkpoint
+
+- Added an actuation-aware fixed-plan forecast that advances the existing
+  state-target controller at scenario control rate with gravity, fuel/mass
+  change, minimum throttle, thrust and tilt allocation, and attitude-rate
+  limits. The Hermite path remains the immutable reference; batch schema `29`
+  reports both models and their disagreements.
+- `Waypoint Plan Trackability` now summarizes whether the actuated forecast
+  ever reaches a passing event plus its peak authority demand and projected
+  saturation. The behavior-neutral instrumentation checkpoint preserved every
+  focused and sequence action stream byte-for-byte.
+- Added a bounded capture-envelope state search for confirmed never-passing
+  legs. It samples inbound, turn-bisector, and outbound-aligned points just
+  inside the capture circle, combines contract-valid heading/speed states, and
+  physically rolls out at most `18` analytically feasible candidates. Existing
+  center plans remain the fallback.
+- The search runs once per plan revision only after two confirmed reference
+  failures and only if the leg has never predicted a passing reference state.
+  This boundary is required: allowing the actuated forecast to replace already
+  reference-passing plans improved selected focus cells but regressed ordered
+  route success to `17 / 54`, so that variant was removed.
+- Fresh strict-gate results:
+  - focused trackability: `6 / 18`, up from `3 / 18`
+  - ordered sequence: `27 / 54`, up from `24 / 54`, with distribution
+    `0:3 | 1:24 | 2:27`
+  - sequence landing: `54 / 54`
+  - balanced contract and landing: `81 / 81` each
+  - smooth-bend contract and landing: unchanged `21 / 27 | 15 / 27`
+  - direct route-angle/radius: `297 / 297`
+- Sequence-controller compute remains below budget across `185,395` updates:
+  `243us` mean, `437us` p95, `518us` p99, and `2.94ms` isolated maximum.
+- The retained gain is the full `double_bend_v1`, half-payload, `r-30`
+  three-seed cell. Pass-lost plans are deliberately not routed through this
+  state search; their retained-plan durability remains the next distinct debt.
+
 ### Waypoint plan-trackability checkpoint
 
 - Added explicit guidance-plan ownership and reference tracking to controller
