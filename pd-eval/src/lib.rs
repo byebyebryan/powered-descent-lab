@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 30;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 31;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -238,6 +238,56 @@ pub struct BatchWaypointHandoffReviewMetrics {
     pub continuation_required_accel_ratio_max: Option<f64>,
     #[serde(default)]
     pub continuation_passing_candidate_count: Option<usize>,
+    #[serde(default)]
+    pub transition_next_waypoint_index: Option<usize>,
+    #[serde(default)]
+    pub transition_position_error_m: Option<f64>,
+    #[serde(default)]
+    pub transition_velocity_error_mps: Option<f64>,
+    #[serde(default)]
+    pub transition_attitude_error_rad: Option<f64>,
+    #[serde(default)]
+    pub transition_mass_error_kg: Option<f64>,
+    #[serde(default)]
+    pub transition_fuel_error_kg: Option<f64>,
+    #[serde(default)]
+    pub transition_event_time_error_s: Option<f64>,
+    #[serde(default)]
+    pub transition_continuation_contract_pass: Option<bool>,
+    #[serde(default)]
+    pub transition_continuation_contract_reasons: Vec<String>,
+    #[serde(default)]
+    pub transition_continuation_outbound_heading_error_rad: Option<f64>,
+    #[serde(default)]
+    pub transition_continuation_required_accel_ratio_max: Option<f64>,
+    #[serde(default)]
+    pub transition_continuation_passing_candidate_count: Option<usize>,
+    #[serde(default)]
+    pub joint_next_waypoint_index: Option<usize>,
+    #[serde(default)]
+    pub joint_evaluated_candidate_count: Option<usize>,
+    #[serde(default)]
+    pub joint_passing_candidate_count: Option<usize>,
+    #[serde(default)]
+    pub joint_contract_pass: Option<bool>,
+    #[serde(default)]
+    pub joint_endpoint_x_m: Option<f64>,
+    #[serde(default)]
+    pub joint_endpoint_y_m: Option<f64>,
+    #[serde(default)]
+    pub joint_target_vx_mps: Option<f64>,
+    #[serde(default)]
+    pub joint_target_vy_mps: Option<f64>,
+    #[serde(default)]
+    pub joint_time_to_go_s: Option<f64>,
+    #[serde(default)]
+    pub joint_continuation_outbound_heading_error_rad: Option<f64>,
+    #[serde(default)]
+    pub joint_required_accel_ratio_max: Option<f64>,
+    #[serde(default)]
+    pub joint_total_saturated_time_s: Option<f64>,
+    #[serde(default)]
+    pub joint_continuation_passing_candidate_count: Option<usize>,
     #[serde(default)]
     pub plan_reference_position_error_max_m: Option<f64>,
     #[serde(default)]
@@ -6173,6 +6223,31 @@ struct WaypointReviewMetrics {
     continuation_outbound_heading_error_rad: Option<f64>,
     continuation_required_accel_ratio_max: Option<f64>,
     continuation_passing_candidate_count: Option<usize>,
+    transition_next_waypoint_index: Option<usize>,
+    transition_position_error_m: Option<f64>,
+    transition_velocity_error_mps: Option<f64>,
+    transition_attitude_error_rad: Option<f64>,
+    transition_mass_error_kg: Option<f64>,
+    transition_fuel_error_kg: Option<f64>,
+    transition_event_time_error_s: Option<f64>,
+    transition_continuation_contract_pass: Option<bool>,
+    transition_continuation_contract_reasons: Vec<String>,
+    transition_continuation_outbound_heading_error_rad: Option<f64>,
+    transition_continuation_required_accel_ratio_max: Option<f64>,
+    transition_continuation_passing_candidate_count: Option<usize>,
+    joint_next_waypoint_index: Option<usize>,
+    joint_evaluated_candidate_count: Option<usize>,
+    joint_passing_candidate_count: Option<usize>,
+    joint_contract_pass: Option<bool>,
+    joint_endpoint_x_m: Option<f64>,
+    joint_endpoint_y_m: Option<f64>,
+    joint_target_vx_mps: Option<f64>,
+    joint_target_vy_mps: Option<f64>,
+    joint_time_to_go_s: Option<f64>,
+    joint_continuation_outbound_heading_error_rad: Option<f64>,
+    joint_required_accel_ratio_max: Option<f64>,
+    joint_total_saturated_time_s: Option<f64>,
+    joint_continuation_passing_candidate_count: Option<usize>,
     plan_reference_position_error_max_m: Option<f64>,
     plan_reference_cross_error_max_abs_m: Option<f64>,
     plan_reference_velocity_error_max_mps: Option<f64>,
@@ -6589,6 +6664,16 @@ fn waypoint_review_metrics_from_update(
                     .collect()
             })
             .unwrap_or_default();
+    let transition_continuation_contract_reasons =
+        preferred_text(metric::WAYPOINT_TRANSITION_CONTINUATION_CONTRACT_REASONS)
+            .map(|reasons| {
+                reasons
+                    .split(',')
+                    .filter(|reason| !reason.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
     WaypointReviewMetrics {
         capture_status: telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS)
             .map(ToOwned::to_owned),
@@ -6727,6 +6812,63 @@ fn waypoint_review_metrics_from_update(
         ),
         continuation_passing_candidate_count: preferred_integer(
             metric::WAYPOINT_CONTINUATION_PASSING_CANDIDATE_COUNT,
+        )
+        .and_then(|count| usize::try_from(count).ok()),
+        transition_next_waypoint_index: preferred_integer(metric::WAYPOINT_TRANSITION_NEXT_INDEX)
+            .and_then(|index| usize::try_from(index).ok()),
+        transition_position_error_m: preferred_float(metric::WAYPOINT_TRANSITION_POSITION_ERROR_M),
+        transition_velocity_error_mps: preferred_float(
+            metric::WAYPOINT_TRANSITION_VELOCITY_ERROR_MPS,
+        ),
+        transition_attitude_error_rad: preferred_float(
+            metric::WAYPOINT_TRANSITION_ATTITUDE_ERROR_RAD,
+        ),
+        transition_mass_error_kg: preferred_float(metric::WAYPOINT_TRANSITION_MASS_ERROR_KG),
+        transition_fuel_error_kg: preferred_float(metric::WAYPOINT_TRANSITION_FUEL_ERROR_KG),
+        transition_event_time_error_s: preferred_float(
+            metric::WAYPOINT_TRANSITION_EVENT_TIME_ERROR_S,
+        ),
+        transition_continuation_contract_pass: preferred_bool(
+            metric::WAYPOINT_TRANSITION_CONTINUATION_CONTRACT_PASS,
+        ),
+        transition_continuation_contract_reasons,
+        transition_continuation_outbound_heading_error_rad: preferred_float(
+            metric::WAYPOINT_TRANSITION_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD,
+        ),
+        transition_continuation_required_accel_ratio_max: preferred_float(
+            metric::WAYPOINT_TRANSITION_CONTINUATION_REQUIRED_ACCEL_RATIO_MAX,
+        ),
+        transition_continuation_passing_candidate_count: preferred_integer(
+            metric::WAYPOINT_TRANSITION_CONTINUATION_PASSING_CANDIDATE_COUNT,
+        )
+        .and_then(|count| usize::try_from(count).ok()),
+        joint_next_waypoint_index: preferred_integer(metric::WAYPOINT_JOINT_NEXT_INDEX)
+            .and_then(|index| usize::try_from(index).ok()),
+        joint_evaluated_candidate_count: preferred_integer(
+            metric::WAYPOINT_JOINT_EVALUATED_CANDIDATE_COUNT,
+        )
+        .and_then(|count| usize::try_from(count).ok()),
+        joint_passing_candidate_count: preferred_integer(
+            metric::WAYPOINT_JOINT_PASSING_CANDIDATE_COUNT,
+        )
+        .and_then(|count| usize::try_from(count).ok()),
+        joint_contract_pass: preferred_bool(metric::WAYPOINT_JOINT_CONTRACT_PASS),
+        joint_endpoint_x_m: preferred_float(metric::WAYPOINT_JOINT_ENDPOINT_X_M),
+        joint_endpoint_y_m: preferred_float(metric::WAYPOINT_JOINT_ENDPOINT_Y_M),
+        joint_target_vx_mps: preferred_float(metric::WAYPOINT_JOINT_TARGET_VX_MPS),
+        joint_target_vy_mps: preferred_float(metric::WAYPOINT_JOINT_TARGET_VY_MPS),
+        joint_time_to_go_s: preferred_float(metric::WAYPOINT_JOINT_TIME_TO_GO_S),
+        joint_continuation_outbound_heading_error_rad: preferred_float(
+            metric::WAYPOINT_JOINT_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD,
+        ),
+        joint_required_accel_ratio_max: preferred_float(
+            metric::WAYPOINT_JOINT_REQUIRED_ACCEL_RATIO_MAX,
+        ),
+        joint_total_saturated_time_s: preferred_float(
+            metric::WAYPOINT_JOINT_TOTAL_SATURATED_TIME_S,
+        ),
+        joint_continuation_passing_candidate_count: preferred_integer(
+            metric::WAYPOINT_JOINT_CONTINUATION_PASSING_CANDIDATE_COUNT,
         )
         .and_then(|count| usize::try_from(count).ok()),
         plan_reference_position_error_max_m: None,
@@ -6914,6 +7056,36 @@ fn terminal_waypoint_review_metrics(
         continuation_outbound_heading_error_rad: guidance.continuation_outbound_heading_error_rad,
         continuation_required_accel_ratio_max: guidance.continuation_required_accel_ratio_max,
         continuation_passing_candidate_count: guidance.continuation_passing_candidate_count,
+        transition_next_waypoint_index: guidance.transition_next_waypoint_index,
+        transition_position_error_m: guidance.transition_position_error_m,
+        transition_velocity_error_mps: guidance.transition_velocity_error_mps,
+        transition_attitude_error_rad: guidance.transition_attitude_error_rad,
+        transition_mass_error_kg: guidance.transition_mass_error_kg,
+        transition_fuel_error_kg: guidance.transition_fuel_error_kg,
+        transition_event_time_error_s: guidance.transition_event_time_error_s,
+        transition_continuation_contract_pass: guidance.transition_continuation_contract_pass,
+        transition_continuation_contract_reasons: guidance.transition_continuation_contract_reasons,
+        transition_continuation_outbound_heading_error_rad: guidance
+            .transition_continuation_outbound_heading_error_rad,
+        transition_continuation_required_accel_ratio_max: guidance
+            .transition_continuation_required_accel_ratio_max,
+        transition_continuation_passing_candidate_count: guidance
+            .transition_continuation_passing_candidate_count,
+        joint_next_waypoint_index: guidance.joint_next_waypoint_index,
+        joint_evaluated_candidate_count: guidance.joint_evaluated_candidate_count,
+        joint_passing_candidate_count: guidance.joint_passing_candidate_count,
+        joint_contract_pass: guidance.joint_contract_pass,
+        joint_endpoint_x_m: guidance.joint_endpoint_x_m,
+        joint_endpoint_y_m: guidance.joint_endpoint_y_m,
+        joint_target_vx_mps: guidance.joint_target_vx_mps,
+        joint_target_vy_mps: guidance.joint_target_vy_mps,
+        joint_time_to_go_s: guidance.joint_time_to_go_s,
+        joint_continuation_outbound_heading_error_rad: guidance
+            .joint_continuation_outbound_heading_error_rad,
+        joint_required_accel_ratio_max: guidance.joint_required_accel_ratio_max,
+        joint_total_saturated_time_s: guidance.joint_total_saturated_time_s,
+        joint_continuation_passing_candidate_count: guidance
+            .joint_continuation_passing_candidate_count,
         plan_reference_position_error_max_m: None,
         plan_reference_cross_error_max_abs_m: None,
         plan_reference_velocity_error_max_mps: None,
@@ -7018,6 +7190,9 @@ fn batch_waypoint_handoff_metrics(
         .map(|spec| spec.id.clone());
     let continuation_matches_handoff =
         waypoint.continuation_next_waypoint_index == waypoint_index.checked_add(1);
+    let transition_matches_handoff =
+        waypoint.transition_next_waypoint_index == waypoint_index.checked_add(1);
+    let joint_matches_handoff = waypoint.joint_next_waypoint_index == waypoint_index.checked_add(1);
     Some(BatchWaypointHandoffReviewMetrics {
         waypoint_index,
         waypoint_id,
@@ -7098,6 +7273,81 @@ fn batch_waypoint_handoff_metrics(
             .flatten(),
         continuation_passing_candidate_count: continuation_matches_handoff
             .then_some(waypoint.continuation_passing_candidate_count)
+            .flatten(),
+        transition_next_waypoint_index: transition_matches_handoff
+            .then_some(waypoint.transition_next_waypoint_index)
+            .flatten(),
+        transition_position_error_m: transition_matches_handoff
+            .then_some(waypoint.transition_position_error_m)
+            .flatten(),
+        transition_velocity_error_mps: transition_matches_handoff
+            .then_some(waypoint.transition_velocity_error_mps)
+            .flatten(),
+        transition_attitude_error_rad: transition_matches_handoff
+            .then_some(waypoint.transition_attitude_error_rad)
+            .flatten(),
+        transition_mass_error_kg: transition_matches_handoff
+            .then_some(waypoint.transition_mass_error_kg)
+            .flatten(),
+        transition_fuel_error_kg: transition_matches_handoff
+            .then_some(waypoint.transition_fuel_error_kg)
+            .flatten(),
+        transition_event_time_error_s: transition_matches_handoff
+            .then_some(waypoint.transition_event_time_error_s)
+            .flatten(),
+        transition_continuation_contract_pass: transition_matches_handoff
+            .then_some(waypoint.transition_continuation_contract_pass)
+            .flatten(),
+        transition_continuation_contract_reasons: transition_matches_handoff
+            .then_some(waypoint.transition_continuation_contract_reasons.clone())
+            .unwrap_or_default(),
+        transition_continuation_outbound_heading_error_rad: transition_matches_handoff
+            .then_some(waypoint.transition_continuation_outbound_heading_error_rad)
+            .flatten(),
+        transition_continuation_required_accel_ratio_max: transition_matches_handoff
+            .then_some(waypoint.transition_continuation_required_accel_ratio_max)
+            .flatten(),
+        transition_continuation_passing_candidate_count: transition_matches_handoff
+            .then_some(waypoint.transition_continuation_passing_candidate_count)
+            .flatten(),
+        joint_next_waypoint_index: joint_matches_handoff
+            .then_some(waypoint.joint_next_waypoint_index)
+            .flatten(),
+        joint_evaluated_candidate_count: joint_matches_handoff
+            .then_some(waypoint.joint_evaluated_candidate_count)
+            .flatten(),
+        joint_passing_candidate_count: joint_matches_handoff
+            .then_some(waypoint.joint_passing_candidate_count)
+            .flatten(),
+        joint_contract_pass: joint_matches_handoff
+            .then_some(waypoint.joint_contract_pass)
+            .flatten(),
+        joint_endpoint_x_m: joint_matches_handoff
+            .then_some(waypoint.joint_endpoint_x_m)
+            .flatten(),
+        joint_endpoint_y_m: joint_matches_handoff
+            .then_some(waypoint.joint_endpoint_y_m)
+            .flatten(),
+        joint_target_vx_mps: joint_matches_handoff
+            .then_some(waypoint.joint_target_vx_mps)
+            .flatten(),
+        joint_target_vy_mps: joint_matches_handoff
+            .then_some(waypoint.joint_target_vy_mps)
+            .flatten(),
+        joint_time_to_go_s: joint_matches_handoff
+            .then_some(waypoint.joint_time_to_go_s)
+            .flatten(),
+        joint_continuation_outbound_heading_error_rad: joint_matches_handoff
+            .then_some(waypoint.joint_continuation_outbound_heading_error_rad)
+            .flatten(),
+        joint_required_accel_ratio_max: joint_matches_handoff
+            .then_some(waypoint.joint_required_accel_ratio_max)
+            .flatten(),
+        joint_total_saturated_time_s: joint_matches_handoff
+            .then_some(waypoint.joint_total_saturated_time_s)
+            .flatten(),
+        joint_continuation_passing_candidate_count: joint_matches_handoff
+            .then_some(waypoint.joint_continuation_passing_candidate_count)
             .flatten(),
         plan_reference_position_error_max_m: waypoint.plan_reference_position_error_max_m,
         plan_reference_cross_error_max_abs_m: waypoint.plan_reference_cross_error_max_abs_m,
@@ -11159,6 +11409,30 @@ mod tests {
                         metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS.to_owned(),
                         TelemetryValue::from(12.0 + index as f64),
                     ),
+                    (
+                        metric::WAYPOINT_TRANSITION_NEXT_INDEX.to_owned(),
+                        TelemetryValue::from(index + 1),
+                    ),
+                    (
+                        metric::WAYPOINT_TRANSITION_POSITION_ERROR_M.to_owned(),
+                        TelemetryValue::from(4.0 + index as f64),
+                    ),
+                    (
+                        metric::WAYPOINT_TRANSITION_CONTINUATION_CONTRACT_PASS.to_owned(),
+                        TelemetryValue::from(true),
+                    ),
+                    (
+                        metric::WAYPOINT_JOINT_NEXT_INDEX.to_owned(),
+                        TelemetryValue::from(index + 1),
+                    ),
+                    (
+                        metric::WAYPOINT_JOINT_EVALUATED_CANDIDATE_COUNT.to_owned(),
+                        TelemetryValue::from(0_i64),
+                    ),
+                    (
+                        metric::WAYPOINT_JOINT_PASSING_CANDIDATE_COUNT.to_owned(),
+                        TelemetryValue::from(0_i64),
+                    ),
                 ]),
             });
             update
@@ -11172,8 +11446,61 @@ mod tests {
         assert_eq!(history[0].active_index, Some(0));
         assert_eq!(history[0].guidance_replan_count, Some(2));
         assert_eq!(history[0].target_velocity_error_mps, Some(12.0));
+        assert_eq!(history[0].transition_next_waypoint_index, Some(1));
+        assert_eq!(history[0].transition_position_error_m, Some(4.0));
+        assert_eq!(history[0].transition_continuation_contract_pass, Some(true));
+        assert_eq!(history[0].joint_next_waypoint_index, Some(1));
+        assert_eq!(history[0].joint_evaluated_candidate_count, Some(0));
         assert_eq!(history[1].active_index, Some(1));
         assert_eq!(history[1].guidance_replan_count, Some(3));
+    }
+
+    #[test]
+    fn waypoint_transition_and_joint_evidence_require_the_immediate_next_index() {
+        let scenario = waypoint_contract_scenario();
+        let mut waypoint = WaypointReviewMetrics {
+            active_index: Some(0),
+            transition_next_waypoint_index: Some(2),
+            transition_position_error_m: Some(4.0),
+            transition_continuation_contract_pass: Some(true),
+            joint_next_waypoint_index: Some(2),
+            joint_evaluated_candidate_count: Some(4),
+            joint_passing_candidate_count: Some(2),
+            joint_contract_pass: Some(true),
+            ..WaypointReviewMetrics::default()
+        };
+
+        let mismatched = batch_waypoint_handoff_metrics(&scenario, &waypoint).unwrap();
+        assert_eq!(mismatched.transition_next_waypoint_index, None);
+        assert_eq!(mismatched.transition_position_error_m, None);
+        assert_eq!(mismatched.joint_next_waypoint_index, None);
+        assert_eq!(mismatched.joint_evaluated_candidate_count, None);
+
+        waypoint.transition_next_waypoint_index = Some(1);
+        waypoint.joint_next_waypoint_index = Some(1);
+        let matched = batch_waypoint_handoff_metrics(&scenario, &waypoint).unwrap();
+        assert_eq!(matched.transition_next_waypoint_index, Some(1));
+        assert_eq!(matched.transition_position_error_m, Some(4.0));
+        assert_eq!(matched.joint_next_waypoint_index, Some(1));
+        assert_eq!(matched.joint_evaluated_candidate_count, Some(4));
+        assert_eq!(matched.joint_passing_candidate_count, Some(2));
+        assert_eq!(matched.joint_contract_pass, Some(true));
+    }
+
+    #[test]
+    fn waypoint_review_schema_reads_legacy_continuation_without_audit_fields() {
+        let handoff: BatchWaypointHandoffReviewMetrics =
+            serde_json::from_value(serde_json::json!({
+                "waypoint_index": 0,
+                "continuation_next_waypoint_index": 1,
+                "continuation_contract_pass": true
+            }))
+            .unwrap();
+
+        assert_eq!(handoff.continuation_next_waypoint_index, Some(1));
+        assert_eq!(handoff.continuation_contract_pass, Some(true));
+        assert_eq!(handoff.transition_next_waypoint_index, None);
+        assert_eq!(handoff.joint_next_waypoint_index, None);
     }
 
     #[test]

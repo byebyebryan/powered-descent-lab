@@ -2569,6 +2569,25 @@ struct WaypointSequenceCellSummary {
     continuation_outbound_heading_error_deg: Option<crate::BatchMetricSummary>,
     continuation_required_accel_ratio_max: Option<crate::BatchMetricSummary>,
     continuation_passing_candidate_count: Option<crate::BatchMetricSummary>,
+    transition_observed: usize,
+    transition_continuation_pass_runs: usize,
+    transition_position_error_m: Option<crate::BatchMetricSummary>,
+    transition_velocity_error_mps: Option<crate::BatchMetricSummary>,
+    transition_attitude_error_deg: Option<crate::BatchMetricSummary>,
+    transition_mass_error_kg: Option<crate::BatchMetricSummary>,
+    transition_fuel_error_kg: Option<crate::BatchMetricSummary>,
+    transition_event_time_error_s: Option<crate::BatchMetricSummary>,
+    transition_continuation_outbound_heading_error_deg: Option<crate::BatchMetricSummary>,
+    transition_continuation_required_accel_ratio_max: Option<crate::BatchMetricSummary>,
+    transition_continuation_passing_candidate_count: Option<crate::BatchMetricSummary>,
+    joint_observed: usize,
+    joint_contract_pass_runs: usize,
+    joint_evaluated_candidate_count: Option<crate::BatchMetricSummary>,
+    joint_passing_candidate_count: Option<crate::BatchMetricSummary>,
+    joint_time_to_go_s: Option<crate::BatchMetricSummary>,
+    joint_continuation_outbound_heading_error_deg: Option<crate::BatchMetricSummary>,
+    joint_required_accel_ratio_max: Option<crate::BatchMetricSummary>,
+    joint_total_saturated_time_s: Option<crate::BatchMetricSummary>,
     plan_reference_position_error_max_m: Option<crate::BatchMetricSummary>,
     plan_reference_cross_error_max_abs_m: Option<crate::BatchMetricSummary>,
     plan_reference_velocity_error_max_mps: Option<crate::BatchMetricSummary>,
@@ -2666,6 +2685,53 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
             )
         })
         .unwrap_or_default();
+    let continuation_audit_row_html = rows
+        .iter()
+        .filter(|summary| {
+            summary.continuation_contract_observed > 0
+                || summary.transition_observed > 0
+                || summary.joint_observed > 0
+        })
+        .map(render_waypoint_continuation_audit_row)
+        .collect::<String>();
+    let continuation_seed_row_html = render_waypoint_continuation_seed_rows(&sequence_records);
+    let continuation_audit_html = (!continuation_audit_row_html.is_empty())
+        .then(|| {
+            let seed_html = (!continuation_seed_row_html.is_empty())
+                .then(|| {
+                    format!(
+                        r#"<details class="transfer-handoff-section waypoint-continuation-seed-section">
+  <summary class="section-head transfer-triage-summary">
+    <h3>Seed Evidence</h3>
+    <div class="section-note">Exact transition and selected joint-state evidence for each observed handoff.</div>
+  </summary>
+  <div class="table-wrap">
+    <table class="transfer-handoff-table waypoint-continuation-seed-table">
+      <thead><tr><th>Route</th><th>Vehicle</th><th>Seed</th><th>Waypoint</th><th>Planned</th><th>Transition Error</th><th>Actual Continuation</th><th>Joint Search</th></tr></thead>
+      <tbody>{continuation_seed_row_html}</tbody>
+    </table>
+  </div>
+</details>"#,
+                    )
+                })
+                .unwrap_or_default();
+            format!(
+                r#"<details class="transfer-handoff-section waypoint-continuation-audit-section">
+  <summary class="section-head transfer-triage-summary">
+    <h2>Waypoint Continuation Audit</h2>
+    <div class="section-note">Planned projection, actual transition state, next-leg viability, and bounded joint-state search. Legacy packs retain planned evidence and show dashes for schema-31 fields.</div>
+  </summary>
+  <div class="table-wrap">
+    <table class="transfer-handoff-table waypoint-continuation-audit-table">
+      <thead><tr><th>Route</th><th>Vehicle</th><th>Waypoint</th><th>Planned Continuation</th><th>Transition Error</th><th>Actual Continuation</th><th>Joint Search</th></tr></thead>
+      <tbody>{continuation_audit_row_html}</tbody>
+    </table>
+  </div>
+  {seed_html}
+</details>"#,
+            )
+        })
+        .unwrap_or_default();
 
     format!(
         r#"<details class="transfer-handoff-section waypoint-sequence-section">
@@ -2696,7 +2762,8 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
     </table>
   </div>
 </details>
-{trackability_html}"#,
+{trackability_html}
+{continuation_audit_html}"#,
         total_runs = sequence_records.len(),
     )
 }
@@ -2960,6 +3027,75 @@ fn waypoint_sequence_cell_summary(
                 .continuation_passing_candidate_count
                 .map(|count| count as f64)
         }),
+        transition_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.transition_next_waypoint_index.is_some())
+            })
+            .count(),
+        transition_continuation_pass_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.transition_continuation_contract_pass)
+                    == Some(true)
+            })
+            .count(),
+        transition_position_error_m: metric(|handoff| handoff.transition_position_error_m),
+        transition_velocity_error_mps: metric(|handoff| handoff.transition_velocity_error_mps),
+        transition_attitude_error_deg: metric(|handoff| {
+            handoff.transition_attitude_error_rad.map(f64::to_degrees)
+        }),
+        transition_mass_error_kg: metric(|handoff| handoff.transition_mass_error_kg),
+        transition_fuel_error_kg: metric(|handoff| handoff.transition_fuel_error_kg),
+        transition_event_time_error_s: metric(|handoff| handoff.transition_event_time_error_s),
+        transition_continuation_outbound_heading_error_deg: metric(|handoff| {
+            handoff
+                .transition_continuation_outbound_heading_error_rad
+                .map(f64::to_degrees)
+        }),
+        transition_continuation_required_accel_ratio_max: metric(|handoff| {
+            handoff.transition_continuation_required_accel_ratio_max
+        }),
+        transition_continuation_passing_candidate_count: metric(|handoff| {
+            handoff
+                .transition_continuation_passing_candidate_count
+                .map(|count| count as f64)
+        }),
+        joint_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.joint_next_waypoint_index.is_some())
+            })
+            .count(),
+        joint_contract_pass_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.joint_contract_pass)
+                    == Some(true)
+            })
+            .count(),
+        joint_evaluated_candidate_count: metric(|handoff| {
+            handoff
+                .joint_evaluated_candidate_count
+                .map(|count| count as f64)
+        }),
+        joint_passing_candidate_count: metric(|handoff| {
+            handoff
+                .joint_passing_candidate_count
+                .map(|count| count as f64)
+        }),
+        joint_time_to_go_s: metric(|handoff| handoff.joint_time_to_go_s),
+        joint_continuation_outbound_heading_error_deg: metric(|handoff| {
+            handoff
+                .joint_continuation_outbound_heading_error_rad
+                .map(f64::to_degrees)
+        }),
+        joint_required_accel_ratio_max: metric(|handoff| handoff.joint_required_accel_ratio_max),
+        joint_total_saturated_time_s: metric(|handoff| handoff.joint_total_saturated_time_s),
         plan_reference_position_error_max_m: metric(|handoff| {
             handoff.plan_reference_position_error_max_m
         }),
@@ -3266,6 +3402,209 @@ fn render_waypoint_trackability_row(summary: &WaypointSequenceCellSummary) -> St
         escape_html(&summary.key.route_angle),
         escape_html(&summary.key.vehicle_variant),
     )
+}
+
+fn render_waypoint_continuation_audit_row(summary: &WaypointSequenceCellSummary) -> String {
+    let mean = |value: &Option<crate::BatchMetricSummary>, suffix: &str| {
+        value
+            .as_ref()
+            .map(|value| format!("{:.2}{suffix}", value.mean))
+            .unwrap_or_else(|| "-".to_owned())
+    };
+    let waypoint = format!(
+        r#"<div class="overview-stack"><div class="overview-main"><code>#{}</code> {}</div><div class="overview-sub"><code>{}</code></div></div>"#,
+        summary.key.waypoint_index + 1,
+        escape_html(summary.waypoint_id.as_deref().unwrap_or("waypoint")),
+        escape_html(&summary.key.waypoint_profile),
+    );
+    let planned = if summary.continuation_contract_observed == 0 {
+        r#"<span class="muted">not observed</span>"#.to_owned()
+    } else {
+        format!(
+            r#"<div class="overview-stack"><div class="overview-main">pass {}/{}</div><div class="overview-sub">heading {} · peak {}</div><div class="overview-sub">next candidates {}</div></div>"#,
+            summary.continuation_contract_pass_runs,
+            summary.continuation_contract_observed,
+            mean(&summary.continuation_outbound_heading_error_deg, "deg"),
+            mean(&summary.continuation_required_accel_ratio_max, "x"),
+            mean(&summary.continuation_passing_candidate_count, ""),
+        )
+    };
+    let transition = if summary.transition_observed == 0 {
+        r#"<span class="muted">legacy schema or no transition</span>"#.to_owned()
+    } else {
+        format!(
+            r#"<div class="overview-stack"><div class="overview-main">pos {} · vel {}</div><div class="overview-sub">att {} · time {}</div><div class="overview-sub">mass {} · fuel {}</div></div>"#,
+            mean(&summary.transition_position_error_m, "m"),
+            mean(&summary.transition_velocity_error_mps, "m/s"),
+            mean(&summary.transition_attitude_error_deg, "deg"),
+            mean(&summary.transition_event_time_error_s, "s"),
+            mean(&summary.transition_mass_error_kg, "kg"),
+            mean(&summary.transition_fuel_error_kg, "kg"),
+        )
+    };
+    let actual = if summary.transition_observed == 0 {
+        r#"<span class="muted">not observed</span>"#.to_owned()
+    } else {
+        format!(
+            r#"<div class="overview-stack"><div class="overview-main">pass {}/{}</div><div class="overview-sub">heading {} · peak {}</div><div class="overview-sub">next candidates {}</div></div>"#,
+            summary.transition_continuation_pass_runs,
+            summary.transition_observed,
+            mean(
+                &summary.transition_continuation_outbound_heading_error_deg,
+                "deg",
+            ),
+            mean(
+                &summary.transition_continuation_required_accel_ratio_max,
+                "x",
+            ),
+            mean(&summary.transition_continuation_passing_candidate_count, "",),
+        )
+    };
+    let joint = if summary.joint_observed == 0 {
+        r#"<span class="muted">not observed</span>"#.to_owned()
+    } else {
+        format!(
+            r#"<div class="overview-stack"><div class="overview-main">pass {}/{} · eval {}</div><div class="overview-sub">passing {} · ttg {}</div><div class="overview-sub">heading {} · peak {} · saturated {}</div></div>"#,
+            summary.joint_contract_pass_runs,
+            summary.joint_observed,
+            mean(&summary.joint_evaluated_candidate_count, ""),
+            mean(&summary.joint_passing_candidate_count, ""),
+            mean(&summary.joint_time_to_go_s, "s"),
+            mean(
+                &summary.joint_continuation_outbound_heading_error_deg,
+                "deg",
+            ),
+            mean(&summary.joint_required_accel_ratio_max, "x"),
+            mean(&summary.joint_total_saturated_time_s, "s"),
+        )
+    };
+    format!(
+        r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{waypoint}</td><td>{planned}</td><td>{transition}</td><td>{actual}</td><td>{joint}</td></tr>"#,
+        escape_html(&summary.key.route_angle),
+        escape_html(&summary.key.vehicle_variant),
+    )
+}
+
+fn render_waypoint_continuation_seed_rows(records: &[&crate::BatchRunRecord]) -> String {
+    let value = |value: Option<f64>, suffix: &str| {
+        value
+            .map(|value| format!("{value:.2}{suffix}"))
+            .unwrap_or_else(|| "-".to_owned())
+    };
+    let status = |value: Option<bool>| match value {
+        Some(true) => "pass",
+        Some(false) => "fail",
+        None => "-",
+    };
+    let mut rows = records
+        .iter()
+        .flat_map(|record| {
+            record
+                .review
+                .waypoint_handoffs
+                .iter()
+                .filter(|handoff| {
+                    handoff.continuation_next_waypoint_index.is_some()
+                        || handoff.transition_next_waypoint_index.is_some()
+                        || handoff.joint_next_waypoint_index.is_some()
+                })
+                .map(move |handoff| (*record, handoff))
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|(lhs_record, lhs), (rhs_record, rhs)| {
+        selector_sort_rank(&lhs_record.resolved.selector.route_angle)
+            .cmp(&selector_sort_rank(
+                &rhs_record.resolved.selector.route_angle,
+            ))
+            .then(
+                selector_sort_rank(&lhs_record.resolved.selector.vehicle_variant).cmp(
+                    &selector_sort_rank(&rhs_record.resolved.selector.vehicle_variant),
+                ),
+            )
+            .then(lhs.waypoint_index.cmp(&rhs.waypoint_index))
+            .then(
+                lhs_record
+                    .resolved
+                    .resolved_seed
+                    .cmp(&rhs_record.resolved.resolved_seed),
+            )
+    });
+    rows.into_iter()
+        .map(|(record, handoff)| {
+            let planned = format!(
+                r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">heading {} · peak {} · candidates {}</div></div>"#,
+                status(handoff.continuation_contract_pass),
+                value(
+                    handoff.continuation_outbound_heading_error_rad.map(f64::to_degrees),
+                    "deg",
+                ),
+                value(handoff.continuation_required_accel_ratio_max, "x"),
+                handoff
+                    .continuation_passing_candidate_count
+                    .map_or_else(|| "-".to_owned(), |count| count.to_string()),
+            );
+            let transition = format!(
+                r#"<div class="overview-stack"><div class="overview-main">pos {} · vel {}</div><div class="overview-sub">att {} · time {}</div><div class="overview-sub">mass {} · fuel {}</div></div>"#,
+                value(handoff.transition_position_error_m, "m"),
+                value(handoff.transition_velocity_error_mps, "m/s"),
+                value(
+                    handoff.transition_attitude_error_rad.map(f64::to_degrees),
+                    "deg",
+                ),
+                value(handoff.transition_event_time_error_s, "s"),
+                value(handoff.transition_mass_error_kg, "kg"),
+                value(handoff.transition_fuel_error_kg, "kg"),
+            );
+            let actual = format!(
+                r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">heading {} · peak {} · candidates {}</div></div>"#,
+                status(handoff.transition_continuation_contract_pass),
+                value(
+                    handoff
+                        .transition_continuation_outbound_heading_error_rad
+                        .map(f64::to_degrees),
+                    "deg",
+                ),
+                value(
+                    handoff.transition_continuation_required_accel_ratio_max,
+                    "x",
+                ),
+                handoff
+                    .transition_continuation_passing_candidate_count
+                    .map_or_else(|| "-".to_owned(), |count| count.to_string()),
+            );
+            let joint = format!(
+                r#"<div class="overview-stack"><div class="overview-main">{} · eval {} · pass {}</div><div class="overview-sub">endpoint ({}, {}) · velocity ({}, {})</div><div class="overview-sub">ttg {} · heading {} · peak {} · saturated {}</div></div>"#,
+                status(handoff.joint_contract_pass),
+                handoff
+                    .joint_evaluated_candidate_count
+                    .map_or_else(|| "-".to_owned(), |count| count.to_string()),
+                handoff
+                    .joint_passing_candidate_count
+                    .map_or_else(|| "-".to_owned(), |count| count.to_string()),
+                value(handoff.joint_endpoint_x_m, "m"),
+                value(handoff.joint_endpoint_y_m, "m"),
+                value(handoff.joint_target_vx_mps, "m/s"),
+                value(handoff.joint_target_vy_mps, "m/s"),
+                value(handoff.joint_time_to_go_s, "s"),
+                value(
+                    handoff
+                        .joint_continuation_outbound_heading_error_rad
+                        .map(f64::to_degrees),
+                    "deg",
+                ),
+                value(handoff.joint_required_accel_ratio_max, "x"),
+                value(handoff.joint_total_saturated_time_s, "s"),
+            );
+            format!(
+                r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{}</td><td><code>#{}</code> {}</td><td>{planned}</td><td>{transition}</td><td>{actual}</td><td>{joint}</td></tr>"#,
+                escape_html(&record.resolved.selector.route_angle),
+                escape_html(&record.resolved.selector.vehicle_variant),
+                record.resolved.resolved_seed,
+                handoff.waypoint_index + 1,
+                escape_html(handoff.waypoint_id.as_deref().unwrap_or("waypoint")),
+            )
+        })
+        .collect()
 }
 
 fn render_waypoint_sequence_state_debt(summary: &WaypointSequenceCellSummary) -> String {
@@ -9542,6 +9881,34 @@ mod report_tests {
                     continuation_outbound_heading_error_rad: Some(0.18),
                     continuation_required_accel_ratio_max: Some(0.82),
                     continuation_passing_candidate_count: Some(4),
+                    transition_next_waypoint_index: Some(1),
+                    transition_position_error_m: Some(6.0 + index as f64),
+                    transition_velocity_error_mps: Some(2.5),
+                    transition_attitude_error_rad: Some(0.08),
+                    transition_mass_error_kg: Some(1.2),
+                    transition_fuel_error_kg: Some(0.4),
+                    transition_event_time_error_s: Some(0.15),
+                    transition_continuation_contract_pass: Some(route_pass),
+                    transition_continuation_outbound_heading_error_rad: Some(0.22),
+                    transition_continuation_required_accel_ratio_max: Some(0.91),
+                    transition_continuation_passing_candidate_count: Some(if route_pass {
+                        2
+                    } else {
+                        0
+                    }),
+                    joint_next_waypoint_index: Some(1),
+                    joint_evaluated_candidate_count: Some(4),
+                    joint_passing_candidate_count: Some(if route_pass { 2 } else { 0 }),
+                    joint_contract_pass: Some(route_pass),
+                    joint_endpoint_x_m: Some(-120.0),
+                    joint_endpoint_y_m: Some(80.0),
+                    joint_target_vx_mps: Some(30.0),
+                    joint_target_vy_mps: Some(12.0),
+                    joint_time_to_go_s: Some(5.5),
+                    joint_continuation_outbound_heading_error_rad: Some(0.15),
+                    joint_required_accel_ratio_max: Some(0.88),
+                    joint_total_saturated_time_s: Some(0.2),
+                    joint_continuation_passing_candidate_count: Some(3),
                     plan_reference_position_error_max_m: Some(18.0 + index as f64),
                     plan_reference_cross_error_max_abs_m: Some(7.0),
                     plan_reference_velocity_error_max_mps: Some(5.0),
@@ -9646,10 +10013,31 @@ mod report_tests {
         assert!(html.contains("actuated reachable forecast"));
         assert!(html.contains("<th>Continuation</th>"));
         assert!(html.contains("passing candidates 4.00"));
+        assert!(html.contains("<h2>Waypoint Continuation Audit</h2>"));
+        assert!(html.contains("<h3>Seed Evidence</h3>"));
+        assert!(html.contains("Transition Error"));
+        assert!(html.contains("Actual Continuation"));
+        assert!(html.contains("Joint Search"));
+        assert!(html.contains("eval 4.00"));
+        assert!(html.contains("endpoint (-120.00m, 80.00m)"));
         assert!(html.contains("pass 0/2"));
         assert!(html.contains("disagree 1"));
         assert!(html.contains("peak 1.20x"));
         assert!(html.contains("authority_recovery"));
+
+        for record in &mut report.records {
+            let first = &mut record.review.waypoint_handoffs[0];
+            first.transition_next_waypoint_index = None;
+            first.joint_next_waypoint_index = None;
+        }
+        let legacy_html = render_batch_report(
+            Path::new("outputs/eval/waypoint_sequence_unit"),
+            &report,
+            None,
+            None,
+        );
+        assert!(legacy_html.contains("<h2>Waypoint Continuation Audit</h2>"));
+        assert!(legacy_html.contains("legacy schema or no transition"));
     }
 
     #[test]
