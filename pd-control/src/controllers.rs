@@ -1024,6 +1024,7 @@ struct WaypointGuidancePrediction {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointReachablePrediction {
     prediction: WaypointGuidancePrediction,
+    event_state: TransferSimState,
     required_accel_ratio_max: f64,
     thrust_saturated_time_s: f64,
     tilt_saturated_time_s: f64,
@@ -1077,7 +1078,7 @@ struct WaypointGuidanceTrackability {
     reference_cross_speed_error_mps: f64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointGuidanceCandidate {
     target_velocity_mps: Vec2,
     time_to_go_s: f64,
@@ -1128,7 +1129,7 @@ struct WaypointGuidanceTargetState {
     reachable_prediction: WaypointReachablePrediction,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct TransferSimState {
     position_m: Vec2,
     velocity_mps: Vec2,
@@ -1497,19 +1498,26 @@ impl TransferPdgController {
     }
 
     fn waypoint_leg_geometry<'a>(&self, ctx: &'a RunContext) -> Option<WaypointLegGeometry<'a>> {
+        Self::waypoint_leg_geometry_at(ctx, self.waypoint_active_index)
+    }
+
+    fn waypoint_leg_geometry_at(
+        ctx: &RunContext,
+        active_index: usize,
+    ) -> Option<WaypointLegGeometry<'_>> {
         let route = ctx.mission.transfer_route.as_ref()?;
-        let waypoint = route.waypoints.get(self.waypoint_active_index)?;
-        let anchor_m = if self.waypoint_active_index == 0 {
+        let waypoint = route.waypoints.get(active_index)?;
+        let anchor_m = if active_index == 0 {
             ctx.world
                 .landing_pad(&route.source_pad_id)
                 .map(|pad| Vec2::new(pad.center_x_m, pad.surface_y_m))?
         } else {
-            route.waypoints[self.waypoint_active_index - 1].position_m
+            route.waypoints[active_index - 1].position_m
         };
         let target_m = waypoint.position_m;
         let next_target_m = route
             .waypoints
-            .get(self.waypoint_active_index + 1)
+            .get(active_index + 1)
             .map(|next| next.position_m)
             .unwrap_or_else(|| Vec2::new(ctx.target_pad.center_x_m, ctx.target_pad.surface_y_m));
         let leg_vector = target_m - anchor_m;
@@ -1517,7 +1525,7 @@ impl TransferPdgController {
         let leg_unit = normalized_or_none(leg_vector)?;
         let next_leg_unit = normalized_or_none(next_target_m - target_m)?;
         Some(WaypointLegGeometry {
-            active_index: self.waypoint_active_index,
+            active_index,
             waypoint,
             anchor_m,
             target_m,
@@ -1964,6 +1972,20 @@ impl TransferPdgController {
         guidance: WaypointGuidanceFrame,
         contract_aware: bool,
     ) -> WaypointGuidanceCandidate {
+        self.waypoint_guidance_candidates(ctx, observation, guidance)
+            .into_iter()
+            .min_by(|lhs, rhs| {
+                self.compare_waypoint_guidance_candidates(*lhs, *rhs, contract_aware)
+            })
+            .expect("waypoint guidance always creates at least one candidate")
+    }
+
+    fn waypoint_guidance_candidates(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+    ) -> Vec<WaypointGuidanceCandidate> {
         let minimum_speed_mps = guidance
             .envelope
             .min_speed_mps
@@ -2061,11 +2083,6 @@ impl TransferPdgController {
         }
 
         candidates
-            .into_iter()
-            .min_by(|lhs, rhs| {
-                self.compare_waypoint_guidance_candidates(*lhs, *rhs, contract_aware)
-            })
-            .expect("waypoint guidance always creates at least one candidate")
     }
 
     fn select_reachable_waypoint_event_candidate(
@@ -2290,6 +2307,7 @@ impl TransferPdgController {
         target_velocity_mps: Vec2,
         time_to_go_s: f64,
     ) -> WaypointReachablePrediction {
+        let initial_state = self.initial_transfer_sim_state(observation);
         let initial_stats = waypoint_leg_stats_from_axes(
             observation.position_m,
             observation.velocity_mps,
@@ -2306,6 +2324,7 @@ impl TransferPdgController {
                     stats: initial_stats,
                     assessment: initial_assessment,
                 },
+                event_state: initial_state,
                 required_accel_ratio_max: 0.0,
                 thrust_saturated_time_s: 0.0,
                 tilt_saturated_time_s: 0.0,
@@ -2320,7 +2339,7 @@ impl TransferPdgController {
         let horizon_s = time_to_go_s
             .max(0.0)
             .min(WAYPOINT_GUIDANCE_PREDICTION_HORIZON_S);
-        let mut state = self.initial_transfer_sim_state(observation);
+        let mut state = initial_state;
         let mut elapsed_s = 0.0;
         let mut required_accel_ratio_max: f64 = 0.0;
         let mut thrust_saturated_time_s = 0.0;
@@ -2415,6 +2434,7 @@ impl TransferPdgController {
                 stats: last_stats,
                 assessment: last_assessment,
             },
+            event_state: state,
             required_accel_ratio_max,
             thrust_saturated_time_s,
             tilt_saturated_time_s,
@@ -5513,6 +5533,13 @@ mod tests {
     fn waypoint_reachable_fixture(contract_pass: bool) -> WaypointReachablePrediction {
         WaypointReachablePrediction {
             prediction: waypoint_candidate_fixture(contract_pass, 0.8, 4.0).prediction,
+            event_state: TransferSimState {
+                position_m: Vec2::new(80.0, 0.0),
+                velocity_mps: Vec2::new(20.0, 0.0),
+                attitude_rad: 0.0,
+                fuel_kg: 200.0,
+                dry_mass_kg: 700.0,
+            },
             required_accel_ratio_max: 1.4,
             thrust_saturated_time_s: 0.2,
             tilt_saturated_time_s: 0.0,
@@ -5538,6 +5565,11 @@ mod tests {
 
         assert!(reachable.prediction.assessment.triggered);
         assert!(reachable.prediction.assessment.contract_pass());
+        assert!(reachable.event_state.position_m.x >= 80.0);
+        assert_eq!(
+            reachable.event_state.dry_mass_kg,
+            observation.mass_kg - observation.fuel_kg
+        );
         assert!(reachable.required_accel_ratio_max <= 1.0);
         assert_eq!(reachable.thrust_saturated_time_s, 0.0);
     }
@@ -6099,8 +6131,19 @@ mod tests {
 
         let candidate =
             controller.select_waypoint_guidance_candidate(&ctx, &observation, guidance, false);
+        let candidates = controller.waypoint_guidance_candidates(&ctx, &observation, guidance);
         let target_speed_mps = candidate.target_velocity_mps.length();
 
+        assert!(candidates.contains(&candidate));
+        assert_eq!(
+            candidates
+                .into_iter()
+                .min_by(|lhs, rhs| {
+                    controller.compare_waypoint_guidance_candidates(*lhs, *rhs, false)
+                })
+                .unwrap(),
+            candidate
+        );
         assert!(candidate.target_envelope_feasible);
         assert!(vec_cross(candidate.target_velocity_mps, geometry.next_leg_unit).abs() < 1.0e-9);
         assert!(target_speed_mps >= geometry.waypoint.min_speed_mps);
@@ -6364,6 +6407,12 @@ mod tests {
             .unwrap()
             .waypoints
             .push(second_waypoint);
+        let explicit_second = TransferPdgController::waypoint_leg_geometry_at(&ctx, 1).unwrap();
+        assert_eq!(explicit_second.active_index, 1);
+        assert_eq!(
+            explicit_second.anchor_m,
+            ctx.mission.transfer_route.as_ref().unwrap().waypoints[0].position_m
+        );
         let mut config = TransferPdgControllerConfig::default();
         config.waypoint_guidance_enabled = true;
         let mut controller = TransferPdgController::new(config);
