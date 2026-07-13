@@ -76,6 +76,29 @@ pub mod metric {
     pub const WAYPOINT_ACTIVE_LEG_INDEX: &str = "waypoint.active_leg_index";
     pub const WAYPOINT_CAPTURE_STATUS: &str = "waypoint.capture_status";
     pub const WAYPOINT_CAPTURE_TIME_S: &str = "waypoint.capture_time_s";
+    pub const WAYPOINT_WINDOW_ENTRY_TIME_S: &str = "waypoint.window_entry_time_s";
+    pub const WAYPOINT_WINDOW_ENTRY_POSITION_X_M: &str = "waypoint.window_entry_position_x_m";
+    pub const WAYPOINT_WINDOW_ENTRY_POSITION_Y_M: &str = "waypoint.window_entry_position_y_m";
+    pub const WAYPOINT_WINDOW_ENTRY_VELOCITY_X_MPS: &str = "waypoint.window_entry_velocity_x_mps";
+    pub const WAYPOINT_WINDOW_ENTRY_VELOCITY_Y_MPS: &str = "waypoint.window_entry_velocity_y_mps";
+    pub const WAYPOINT_WINDOW_ENTRY_DISTANCE_M: &str = "waypoint.window_entry_distance_m";
+    pub const WAYPOINT_WINDOW_ENTRY_CROSS_TRACK_M: &str = "waypoint.window_entry_cross_track_m";
+    pub const WAYPOINT_WINDOW_ENTRY_PLANE_PROGRESS_M: &str =
+        "waypoint.window_entry_plane_progress_m";
+    pub const WAYPOINT_WINDOW_ENTRY_OUTBOUND_HEADING_ERROR_RAD: &str =
+        "waypoint.window_entry_outbound_heading_error_rad";
+    pub const WAYPOINT_WINDOW_ENTRY_OUTBOUND_PROGRESS_MPS: &str =
+        "waypoint.window_entry_outbound_progress_mps";
+    pub const WAYPOINT_WINDOW_ENTRY_OUTBOUND_CROSS_SPEED_MPS: &str =
+        "waypoint.window_entry_outbound_cross_speed_mps";
+    pub const WAYPOINT_WINDOW_ENTRY_SPEED_MPS: &str = "waypoint.window_entry_speed_mps";
+    pub const WAYPOINT_WINDOW_ENTRY_VERTICAL_SPEED_MPS: &str =
+        "waypoint.window_entry_vertical_speed_mps";
+    pub const WAYPOINT_WINDOW_ENTRY_CONTRACT_PASS: &str = "waypoint.window_entry_contract_pass";
+    pub const WAYPOINT_WINDOW_ENTRY_CONTRACT_REASONS: &str =
+        "waypoint.window_entry_contract_reasons";
+    pub const WAYPOINT_HANDOFF_RESOLUTION_REASON: &str = "waypoint.handoff_resolution_reason";
+    pub const WAYPOINT_HANDOFF_WINDOW_DURATION_S: &str = "waypoint.handoff_window_duration_s";
     pub const WAYPOINT_CLOSEST_DISTANCE_M: &str = "waypoint.closest_distance_m";
     pub const WAYPOINT_DISTANCE_M: &str = "waypoint.distance_m";
     pub const WAYPOINT_CROSS_TRACK_M: &str = "waypoint.cross_track_m";

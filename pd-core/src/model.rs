@@ -354,8 +354,16 @@ impl WaypointHandoffAssessment {
         self.triggered && self.spatial_pass && self.envelope_pass
     }
 
+    pub fn contract_pass_in_window(&self, window_open: bool) -> bool {
+        (self.triggered || window_open) && self.spatial_pass && self.envelope_pass
+    }
+
     pub fn resolved(&self) -> bool {
         self.contract_pass() || self.deadline_reached
+    }
+
+    pub fn resolved_in_window(&self, window_open: bool) -> bool {
+        self.contract_pass_in_window(window_open) || self.deadline_reached
     }
 }
 

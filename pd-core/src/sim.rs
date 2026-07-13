@@ -47,6 +47,7 @@ pub struct SimulationState {
     pub max_abs_angular_rate_radps: f64,
     pub waypoint_sequence_passed: usize,
     pub waypoint_sequence_first_failure_index: Option<usize>,
+    pub waypoint_handoff_window_index: Option<usize>,
 }
 
 impl SimulationState {
@@ -83,6 +84,7 @@ impl SimulationState {
             max_abs_angular_rate_radps: 0.0,
             waypoint_sequence_passed: 0,
             waypoint_sequence_first_failure_index: None,
+            waypoint_handoff_window_index: None,
         };
         state.update_extrema(ctx);
         Ok(state)

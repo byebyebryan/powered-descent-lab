@@ -116,11 +116,16 @@ fn apply_waypoint_sequence_progress(
     let Some(evaluation) = waypoint_handoff_evaluation(ctx, state, waypoint_index) else {
         return Vec::new();
     };
-    if !evaluation.triggered {
+    if evaluation.capture_window_open {
+        state.waypoint_handoff_window_index = Some(waypoint_index);
+    }
+    let window_open = state.waypoint_handoff_window_index == Some(waypoint_index);
+    if !evaluation.resolved_in_window(window_open) {
         return Vec::new();
     }
+    state.waypoint_handoff_window_index = None;
 
-    if !evaluation.contract_pass() {
+    if !evaluation.contract_pass_in_window(window_open) {
         state.waypoint_sequence_first_failure_index = Some(waypoint_index);
         state.mission_outcome = MissionOutcome::FailedCheckpoint;
         state.end_reason = EndReason::CheckpointFailed;
@@ -190,11 +195,16 @@ fn apply_waypoint_handoff_progress(
     let Some(evaluation) = waypoint_handoff_evaluation(ctx, state, waypoint_index) else {
         return Vec::new();
     };
-    if !evaluation.triggered {
+    if evaluation.capture_window_open {
+        state.waypoint_handoff_window_index = Some(waypoint_index);
+    }
+    let window_open = state.waypoint_handoff_window_index == Some(waypoint_index);
+    if !evaluation.resolved_in_window(window_open) {
         return Vec::new();
     }
+    state.waypoint_handoff_window_index = None;
 
-    if evaluation.contract_pass() {
+    if evaluation.contract_pass_in_window(window_open) {
         state.mission_outcome = MissionOutcome::Success;
         state.end_reason = EndReason::CheckpointSatisfied;
         vec![
@@ -252,6 +262,7 @@ fn waypoint_handoff_evaluation(
         .unwrap_or_else(|| Vec2::new(ctx.target_pad.center_x_m, ctx.target_pad.surface_y_m));
     let leg_unit = normalized(target_m - anchor_m)?;
     let next_leg_unit = normalized(next_target_m - target_m)?;
+    let handoff_tangent_unit = waypoint.handoff_tangent_unit.unwrap_or(next_leg_unit);
     let to_waypoint_m = state.position_m - target_m;
     let speed_mps = state.velocity_mps.length();
     let velocity_unit = if speed_mps > 1.0e-9 {
@@ -259,20 +270,20 @@ fn waypoint_handoff_evaluation(
     } else {
         Vec2::new(0.0, 0.0)
     };
-    let outbound_heading_error_rad = vec_dot(velocity_unit, next_leg_unit)
+    let outbound_heading_error_rad = vec_dot(velocity_unit, handoff_tangent_unit)
         .clamp(-1.0, 1.0)
         .acos();
     let distance_m = to_waypoint_m.length();
     let cross_track_m = vec_cross(to_waypoint_m, leg_unit).abs();
     let plane_progress_m = vec_dot(to_waypoint_m, leg_unit);
-    let outbound_progress_mps = vec_dot(state.velocity_mps, next_leg_unit);
+    let outbound_progress_mps = vec_dot(state.velocity_mps, handoff_tangent_unit);
     Some(waypoint.assess_handoff(WaypointHandoffKinematics {
         distance_m,
         cross_track_m,
         plane_progress_m,
         outbound_heading_error_rad,
         outbound_progress_mps,
-        outbound_cross_speed_mps: vec_cross(state.velocity_mps, next_leg_unit).abs(),
+        outbound_cross_speed_mps: vec_cross(state.velocity_mps, handoff_tangent_unit).abs(),
         speed_mps,
         vertical_speed_mps: state.velocity_mps.y,
     }))
@@ -695,6 +706,56 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(events[0].kind, EventKind::CheckpointFailed));
         assert_eq!(events[0].message, "waypoint_handoff_failed");
+    }
+
+    #[test]
+    fn waypoint_handoff_window_allows_entry_violation_to_recover_before_deadline() {
+        let scenario = waypoint_handoff_scenario();
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let route = ctx.mission.transfer_route.as_ref().unwrap();
+        let waypoint = &route.waypoints[0];
+        let source = ctx.world.landing_pad(&route.source_pad_id).unwrap();
+        let source_m = Vec2::new(source.center_x_m, source.surface_y_m);
+        let leg_unit = normalized(waypoint.position_m - source_m).unwrap();
+        let mut state = SimulationState::new(&ctx).unwrap();
+        state.sim_time_s = 1.0;
+        state.physics_step = 120;
+        state.position_m = waypoint.position_m - (leg_unit * 5.0);
+        state.velocity_mps = Vec2::new(-25.0, 0.0);
+
+        let entry_events = apply_progress_evaluation(&ctx, &mut state);
+
+        assert!(entry_events.is_empty());
+        assert!(matches!(state.mission_outcome, MissionOutcome::InProgress));
+        assert_eq!(state.waypoint_handoff_window_index, Some(0));
+
+        state.sim_time_s = 2.0;
+        state.physics_step = 240;
+        state.position_m = waypoint.position_m - (leg_unit * 1.0);
+        state.velocity_mps = Vec2::new(25.0, 0.0);
+        let resolution_events = apply_progress_evaluation(&ctx, &mut state);
+
+        assert!(matches!(state.mission_outcome, MissionOutcome::Success));
+        assert_eq!(state.waypoint_handoff_window_index, None);
+        assert_eq!(resolution_events[0].message, "waypoint_handoff_satisfied");
+    }
+
+    #[test]
+    fn waypoint_handoff_uses_explicit_planned_tangent() {
+        let mut scenario = waypoint_handoff_scenario();
+        scenario.mission.transfer_route.as_mut().unwrap().waypoints[0].handoff_tangent_unit =
+            Some(Vec2::new(0.0, 1.0));
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut state = SimulationState::new(&ctx).unwrap();
+        state.sim_time_s = 1.0;
+        state.physics_step = 120;
+        state.position_m = Vec2::new(0.0, 0.0);
+        state.velocity_mps = Vec2::new(0.0, 25.0);
+
+        let events = apply_progress_evaluation(&ctx, &mut state);
+
+        assert!(matches!(state.mission_outcome, MissionOutcome::Success));
+        assert_eq!(events[0].message, "waypoint_handoff_satisfied");
     }
 
     #[test]

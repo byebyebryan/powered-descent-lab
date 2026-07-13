@@ -874,6 +874,17 @@ struct WaypointCaptureSnapshot {
     target_state: Option<WaypointGuidanceTargetState>,
     transition_audit: Option<WaypointTransitionAudit>,
     guidance_replan_count: u32,
+    window_entry: Option<WaypointWindowEntrySnapshot>,
+    resolution_reason: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WaypointWindowEntrySnapshot {
+    time_s: f64,
+    position_m: Vec2,
+    velocity_mps: Vec2,
+    stats: WaypointLegStats,
+    assessment: WaypointGuidanceAssessment,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -884,7 +895,7 @@ struct WaypointLegGeometry<'a> {
     target_m: Vec2,
     leg_unit: Vec2,
     leg_length_m: f64,
-    next_leg_unit: Vec2,
+    handoff_tangent_unit: Vec2,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -921,7 +932,7 @@ struct WaypointGuidanceFrame {
     endpoint_m: Vec2,
     steering_target_m: Vec2,
     leg_unit: Vec2,
-    next_leg_unit: Vec2,
+    handoff_tangent_unit: Vec2,
     envelope: WaypointGuidanceEnvelope,
     approach: WaypointApproachState,
 }
@@ -941,7 +952,9 @@ struct WaypointGuidanceEnvelope {
 
 impl WaypointGuidanceEnvelope {
     fn assess(self, stats: WaypointLegStats) -> WaypointGuidanceAssessment {
-        let triggered = stats.plane_progress_m >= 0.0 || stats.distance_m <= self.capture_radius_m;
+        let capture_window_open = stats.distance_m <= self.capture_radius_m;
+        let deadline_reached = stats.plane_progress_m >= 0.0;
+        let triggered = capture_window_open || deadline_reached;
         let spatial_pass = stats.distance_m <= self.capture_radius_m
             || (stats.cross_track_m <= self.max_cross_track_m
                 && stats.plane_progress_m >= -self.capture_radius_m);
@@ -972,6 +985,8 @@ impl WaypointGuidanceEnvelope {
         }
         WaypointGuidanceAssessment {
             triggered,
+            capture_window_open,
+            deadline_reached,
             spatial_pass,
             violation_mask,
         }
@@ -981,6 +996,8 @@ impl WaypointGuidanceEnvelope {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointGuidanceAssessment {
     triggered: bool,
+    capture_window_open: bool,
+    deadline_reached: bool,
     spatial_pass: bool,
     violation_mask: u8,
 }
@@ -992,6 +1009,20 @@ impl WaypointGuidanceAssessment {
 
     fn contract_pass(self) -> bool {
         self.triggered && self.spatial_pass && self.envelope_pass()
+    }
+
+    fn contract_pass_in_window(self, window_open: bool) -> bool {
+        (self.triggered || window_open) && self.spatial_pass && self.envelope_pass()
+    }
+
+    fn resolved_in_window(self, window_open: bool) -> bool {
+        self.contract_pass_in_window(window_open) || self.deadline_reached
+    }
+
+    fn with_window_open(mut self, window_open: bool) -> Self {
+        self.capture_window_open |= window_open;
+        self.triggered |= window_open;
+        self
     }
 
     fn reasons(self) -> String {
@@ -1260,6 +1291,7 @@ pub struct TransferPdgController {
     waypoint_active_index: usize,
     waypoint_closest_distance_m: f64,
     last_waypoint_capture: Option<WaypointCaptureSnapshot>,
+    waypoint_window_entry: Option<WaypointWindowEntrySnapshot>,
     waypoint_guidance_plan: Option<WaypointGuidancePlan>,
     waypoint_guidance_replan_count: u32,
     waypoint_guidance_contract_failure_ticks: u32,
@@ -1291,6 +1323,7 @@ impl TransferPdgController {
             waypoint_active_index: 0,
             waypoint_closest_distance_m: f64::INFINITY,
             last_waypoint_capture: None,
+            waypoint_window_entry: None,
             waypoint_guidance_plan: None,
             waypoint_guidance_replan_count: 0,
             waypoint_guidance_contract_failure_ticks: 0,
@@ -1450,12 +1483,19 @@ impl TransferPdgController {
         let handoff = geometry
             .waypoint
             .assess_handoff(waypoint_handoff_kinematics(stats));
-        if handoff.triggered {
-            let status = if handoff.spatial_pass {
-                "captured"
-            } else {
-                "missed"
-            };
+        if handoff.capture_window_open && self.waypoint_window_entry.is_none() {
+            self.waypoint_window_entry = Some(WaypointWindowEntrySnapshot {
+                time_s: observation.sim_time_s,
+                position_m: observation.position_m,
+                velocity_mps: observation.velocity_mps,
+                stats,
+                assessment: guidance.envelope.assess(stats),
+            });
+        }
+        let window_open = self.waypoint_window_entry.is_some();
+        if handoff.resolved_in_window(window_open) {
+            let contract_pass = handoff.contract_pass_in_window(window_open);
+            let status = if contract_pass { "captured" } else { "missed" };
             let target_state =
                 self.waypoint_guidance_target_state_for_current_plan(ctx, observation, guidance);
             let transition_audit = target_state
@@ -1491,10 +1531,17 @@ impl TransferPdgController {
                 target_state,
                 transition_audit,
                 guidance_replan_count: self.waypoint_guidance_replan_count,
+                window_entry: self.waypoint_window_entry,
+                resolution_reason: if contract_pass {
+                    "contract_pass"
+                } else {
+                    "plane_deadline"
+                },
             };
             self.last_waypoint_capture = Some(capture);
             self.waypoint_active_index += 1;
             self.waypoint_closest_distance_m = f64::INFINITY;
+            self.waypoint_window_entry = None;
             self.waypoint_guidance_plan = None;
             self.waypoint_guidance_replan_count = 0;
             self.waypoint_guidance_contract_failure_ticks = 0;
@@ -1536,7 +1583,11 @@ impl TransferPdgController {
             telemetry: WaypointTelemetry {
                 active_index: geometry.active_index as i64,
                 active_leg_index: geometry.active_index as i64,
-                capture_status: "tracking",
+                capture_status: if window_open {
+                    "capture_window"
+                } else {
+                    "tracking"
+                },
                 capture_time_s: None,
                 closest_distance_m: self.waypoint_closest_distance_m,
                 distance_m: stats.distance_m,
@@ -1604,6 +1655,7 @@ impl TransferPdgController {
         let leg_length_m = leg_vector.length();
         let leg_unit = normalized_or_none(leg_vector)?;
         let next_leg_unit = normalized_or_none(next_target_m - target_m)?;
+        let handoff_tangent_unit = waypoint.handoff_tangent_unit.unwrap_or(next_leg_unit);
         Some(WaypointLegGeometry {
             active_index,
             waypoint,
@@ -1611,7 +1663,7 @@ impl TransferPdgController {
             target_m,
             leg_unit,
             leg_length_m,
-            next_leg_unit,
+            handoff_tangent_unit,
         })
     }
 
@@ -1830,7 +1882,7 @@ impl TransferPdgController {
         target_velocity_mps: Vec2,
     ) -> bool {
         let speed_mps = target_velocity_mps.length();
-        let outbound_progress_mps = vec_dot(target_velocity_mps, guidance.next_leg_unit);
+        let outbound_progress_mps = vec_dot(target_velocity_mps, guidance.handoff_tangent_unit);
         if speed_mps + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS < guidance.envelope.min_speed_mps
             || speed_mps > guidance.envelope.max_speed_mps + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS
             || outbound_progress_mps + WAYPOINT_GUIDANCE_ENVELOPE_EPS_MPS
@@ -2075,7 +2127,7 @@ impl TransferPdgController {
         let mut target_speeds_mps = Vec::new();
         for speed_mps in [
             self.config.boost_speed_mps,
-            vec_dot(observation.velocity_mps, guidance.next_leg_unit),
+            vec_dot(observation.velocity_mps, guidance.handoff_tangent_unit),
             minimum_speed_mps,
         ] {
             self.push_unique_candidate(
@@ -2083,7 +2135,7 @@ impl TransferPdgController {
                 speed_mps.clamp(minimum_speed_mps, maximum_speed_mps),
             );
         }
-        if guidance.next_leg_unit.y.abs() > WAYPOINT_GUIDANCE_UNIQUE_EPS {
+        if guidance.handoff_tangent_unit.y.abs() > WAYPOINT_GUIDANCE_UNIQUE_EPS {
             for vertical_speed_mps in [
                 guidance.envelope.min_vertical_speed_mps,
                 guidance.envelope.max_vertical_speed_mps,
@@ -2091,7 +2143,7 @@ impl TransferPdgController {
             .into_iter()
             .flatten()
             {
-                let speed_mps = vertical_speed_mps / guidance.next_leg_unit.y;
+                let speed_mps = vertical_speed_mps / guidance.handoff_tangent_unit.y;
                 if speed_mps >= minimum_speed_mps && speed_mps <= maximum_speed_mps {
                     self.push_unique_candidate(&mut target_speeds_mps, speed_mps);
                 }
@@ -2107,7 +2159,7 @@ impl TransferPdgController {
         let mut candidates = Vec::new();
 
         for speed_mps in target_speeds_mps {
-            let target_velocity_mps = guidance.next_leg_unit * speed_mps;
+            let target_velocity_mps = guidance.handoff_tangent_unit * speed_mps;
             let target_envelope_feasible =
                 self.waypoint_target_velocity_is_valid(guidance, target_velocity_mps);
             let target_closing_mps = vec_dot(target_velocity_mps, guidance.leg_unit).max(0.0);
@@ -2147,7 +2199,7 @@ impl TransferPdgController {
             .iter()
             .any(|candidate| candidate.target_envelope_feasible)
         {
-            let target_velocity_mps = guidance.next_leg_unit
+            let target_velocity_mps = guidance.handoff_tangent_unit
                 * self
                     .config
                     .boost_speed_mps
@@ -2180,7 +2232,7 @@ impl TransferPdgController {
         let mut speeds_mps = Vec::new();
         for speed_mps in [
             minimum_speed_mps,
-            vec_dot(observation.velocity_mps, guidance.next_leg_unit),
+            vec_dot(observation.velocity_mps, guidance.handoff_tangent_unit),
             self.config.boost_speed_mps,
         ] {
             self.push_unique_candidate(
@@ -2191,8 +2243,8 @@ impl TransferPdgController {
 
         let endpoints = waypoint_reachable_event_endpoints(guidance);
 
-        let turn_rad = vec_cross(guidance.next_leg_unit, guidance.leg_unit)
-            .atan2(vec_dot(guidance.next_leg_unit, guidance.leg_unit));
+        let turn_rad = vec_cross(guidance.handoff_tangent_unit, guidance.leg_unit)
+            .atan2(vec_dot(guidance.handoff_tangent_unit, guidance.leg_unit));
         let mut reachable_candidates = Vec::new();
         for endpoint_m in endpoints {
             let to_endpoint_m = endpoint_m - observation.position_m;
@@ -2222,13 +2274,13 @@ impl TransferPdgController {
                     turn_rad.signum() * turn_rad.abs().min((allowed_heading_rad - 1.0e-6).max(0.0));
                 let (sin_boundary, cos_boundary) = boundary_angle_rad.sin_cos();
                 let boundary_direction = Vec2::new(
-                    (guidance.next_leg_unit.x * cos_boundary)
-                        - (guidance.next_leg_unit.y * sin_boundary),
-                    (guidance.next_leg_unit.x * sin_boundary)
-                        + (guidance.next_leg_unit.y * cos_boundary),
+                    (guidance.handoff_tangent_unit.x * cos_boundary)
+                        - (guidance.handoff_tangent_unit.y * sin_boundary),
+                    (guidance.handoff_tangent_unit.x * sin_boundary)
+                        + (guidance.handoff_tangent_unit.y * cos_boundary),
                 );
-                let mut velocity_directions = vec![guidance.next_leg_unit];
-                if (boundary_direction - guidance.next_leg_unit).length() > 1.0e-6 {
+                let mut velocity_directions = vec![guidance.handoff_tangent_unit];
+                if (boundary_direction - guidance.handoff_tangent_unit).length() > 1.0e-6 {
                     velocity_directions.push(boundary_direction);
                 }
 
@@ -2425,10 +2477,14 @@ impl TransferPdgController {
             observation.velocity_mps,
             guidance.center_m,
             guidance.leg_unit,
-            guidance.next_leg_unit,
+            guidance.handoff_tangent_unit,
         );
-        let initial_assessment = guidance.envelope.assess(initial_stats);
-        if initial_assessment.triggered {
+        let mut window_open = guidance.envelope.assess(initial_stats).capture_window_open;
+        let initial_assessment = guidance
+            .envelope
+            .assess(initial_stats)
+            .with_window_open(window_open);
+        if initial_assessment.resolved_in_window(window_open) {
             return WaypointReachablePrediction {
                 prediction: WaypointGuidancePrediction {
                     time_to_event_s: 0.0,
@@ -2531,10 +2587,12 @@ impl TransferPdgController {
                 state.velocity_mps,
                 guidance.center_m,
                 guidance.leg_unit,
-                guidance.next_leg_unit,
+                guidance.handoff_tangent_unit,
             );
-            last_assessment = guidance.envelope.assess(last_stats);
-            if last_assessment.triggered {
+            let assessment = guidance.envelope.assess(last_stats);
+            window_open |= assessment.capture_window_open;
+            last_assessment = assessment.with_window_open(window_open);
+            if last_assessment.resolved_in_window(window_open) {
                 break;
             }
         }
@@ -5200,7 +5258,7 @@ fn waypoint_guidance_frame(
         endpoint_m: geometry.target_m,
         steering_target_m: waypoint_leg_steering_target_m(geometry, stats),
         leg_unit: geometry.leg_unit,
-        next_leg_unit: geometry.next_leg_unit,
+        handoff_tangent_unit: geometry.handoff_tangent_unit,
         envelope: WaypointGuidanceEnvelope {
             capture_radius_m: geometry.waypoint.capture_radius_m,
             max_cross_track_m: geometry.waypoint.max_cross_track_m,
@@ -5221,7 +5279,7 @@ fn waypoint_reachable_event_endpoints(guidance: WaypointGuidanceFrame) -> Vec<Ve
     let mut endpoints = Vec::new();
     for blend in [0.0, 0.5, 1.0] {
         let Some(direction) = normalized_or_none(
-            (guidance.leg_unit * (1.0 - blend)) + (guidance.next_leg_unit * blend),
+            (guidance.leg_unit * (1.0 - blend)) + (guidance.handoff_tangent_unit * blend),
         ) else {
             continue;
         };
@@ -5300,7 +5358,7 @@ fn waypoint_guidance_prediction(
             velocity_mps,
             guidance.center_m,
             guidance.leg_unit,
-            guidance.next_leg_unit,
+            guidance.handoff_tangent_unit,
         )
     };
     let prediction_at = |elapsed_s| {
@@ -5313,33 +5371,46 @@ fn waypoint_guidance_prediction(
         }
     };
 
-    let initial = prediction_at(0.0);
-    if initial.assessment.triggered {
+    let mut window_open = false;
+    let mut initial = prediction_at(0.0);
+    window_open |= initial.assessment.capture_window_open;
+    initial.assessment = initial.assessment.with_window_open(window_open);
+    if initial.assessment.resolved_in_window(window_open) {
         return initial;
     }
 
     let scan_step_s = time_to_go_s / WAYPOINT_GUIDANCE_TRIGGER_SCAN_STEPS as f64;
     for step in 1..=WAYPOINT_GUIDANCE_TRIGGER_SCAN_STEPS {
         let upper_s = scan_step_s * step as f64;
-        let upper = prediction_at(upper_s);
-        if !upper.assessment.triggered {
+        let window_open_before_step = window_open;
+        let mut upper = prediction_at(upper_s);
+        window_open |= upper.assessment.capture_window_open;
+        upper.assessment = upper.assessment.with_window_open(window_open);
+        if !upper.assessment.resolved_in_window(window_open) {
             continue;
         }
         let mut lower_s = upper_s - scan_step_s;
         let mut upper_s = upper_s;
         for _ in 0..WAYPOINT_GUIDANCE_TRIGGER_BISECTION_STEPS {
             let midpoint_s = (lower_s + upper_s) * 0.5;
-            if prediction_at(midpoint_s).assessment.triggered {
+            let midpoint = prediction_at(midpoint_s);
+            let midpoint_window_open =
+                window_open_before_step || midpoint.assessment.capture_window_open;
+            if midpoint.assessment.resolved_in_window(midpoint_window_open) {
                 upper_s = midpoint_s;
             } else {
                 lower_s = midpoint_s;
             }
         }
-        return prediction_at(upper_s);
+        let mut resolved = prediction_at(upper_s);
+        resolved.assessment = resolved.assessment.with_window_open(window_open);
+        return resolved;
     }
 
-    let endpoint = prediction_at(time_to_go_s);
-    debug_assert!(endpoint.assessment.triggered);
+    let mut endpoint = prediction_at(time_to_go_s);
+    window_open |= endpoint.assessment.capture_window_open;
+    endpoint.assessment = endpoint.assessment.with_window_open(window_open);
+    debug_assert!(endpoint.assessment.resolved_in_window(window_open));
     endpoint
 }
 
@@ -5360,7 +5431,7 @@ fn waypoint_leg_stats_from_kinematics(
         velocity_mps,
         geometry.target_m,
         geometry.leg_unit,
-        geometry.next_leg_unit,
+        geometry.handoff_tangent_unit,
     )
 }
 
@@ -5369,7 +5440,7 @@ fn waypoint_leg_stats_from_axes(
     velocity_mps: Vec2,
     target_m: Vec2,
     leg_unit: Vec2,
-    next_leg_unit: Vec2,
+    handoff_tangent_unit: Vec2,
 ) -> WaypointLegStats {
     let to_waypoint_m = position_m - target_m;
     let speed_mps = velocity_mps.length();
@@ -5378,7 +5449,7 @@ fn waypoint_leg_stats_from_axes(
     } else {
         Vec2::new(0.0, 0.0)
     };
-    let heading_cos = vec_dot(velocity_unit, next_leg_unit).clamp(-1.0, 1.0);
+    let heading_cos = vec_dot(velocity_unit, handoff_tangent_unit).clamp(-1.0, 1.0);
     WaypointLegStats {
         distance_m: to_waypoint_m.length(),
         cross_track_m: vec_cross(to_waypoint_m, leg_unit).abs(),
@@ -5388,8 +5459,8 @@ fn waypoint_leg_stats_from_axes(
         } else {
             std::f64::consts::PI
         },
-        outbound_progress_mps: vec_dot(velocity_mps, next_leg_unit),
-        outbound_cross_speed_mps: vec_cross(velocity_mps, next_leg_unit).abs(),
+        outbound_progress_mps: vec_dot(velocity_mps, handoff_tangent_unit),
+        outbound_cross_speed_mps: vec_cross(velocity_mps, handoff_tangent_unit).abs(),
         speed_mps,
         vertical_speed_mps: velocity_mps.y,
     }
@@ -5596,6 +5667,7 @@ impl Controller for TransferPdgController {
         self.waypoint_active_index = 0;
         self.waypoint_closest_distance_m = f64::INFINITY;
         self.last_waypoint_capture = None;
+        self.waypoint_window_entry = None;
         self.waypoint_guidance_plan = None;
         self.waypoint_guidance_replan_count = 0;
         self.waypoint_guidance_contract_failure_ticks = 0;
@@ -5755,7 +5827,79 @@ fn waypoint_handoff_marker(
             metric::WAYPOINT_GUIDANCE_REPLAN_COUNT.to_owned(),
             TelemetryValue::from(capture.guidance_replan_count as i64),
         ),
+        (
+            metric::WAYPOINT_HANDOFF_RESOLUTION_REASON.to_owned(),
+            TelemetryValue::from(capture.resolution_reason),
+        ),
     ]);
+    if let Some(entry) = capture.window_entry {
+        metadata.extend([
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_TIME_S.to_owned(),
+                TelemetryValue::from(entry.time_s),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_POSITION_X_M.to_owned(),
+                TelemetryValue::from(entry.position_m.x),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_POSITION_Y_M.to_owned(),
+                TelemetryValue::from(entry.position_m.y),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_VELOCITY_X_MPS.to_owned(),
+                TelemetryValue::from(entry.velocity_mps.x),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_VELOCITY_Y_MPS.to_owned(),
+                TelemetryValue::from(entry.velocity_mps.y),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_DISTANCE_M.to_owned(),
+                TelemetryValue::from(entry.stats.distance_m),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_CROSS_TRACK_M.to_owned(),
+                TelemetryValue::from(entry.stats.cross_track_m),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_PLANE_PROGRESS_M.to_owned(),
+                TelemetryValue::from(entry.stats.plane_progress_m),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+                TelemetryValue::from(entry.stats.outbound_heading_error_rad),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_OUTBOUND_PROGRESS_MPS.to_owned(),
+                TelemetryValue::from(entry.stats.outbound_progress_mps),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_OUTBOUND_CROSS_SPEED_MPS.to_owned(),
+                TelemetryValue::from(entry.stats.outbound_cross_speed_mps),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_SPEED_MPS.to_owned(),
+                TelemetryValue::from(entry.stats.speed_mps),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_VERTICAL_SPEED_MPS.to_owned(),
+                TelemetryValue::from(entry.stats.vertical_speed_mps),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_PASS.to_owned(),
+                TelemetryValue::from(entry.assessment.contract_pass()),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_REASONS.to_owned(),
+                TelemetryValue::from(entry.assessment.reasons()),
+            ),
+            (
+                metric::WAYPOINT_HANDOFF_WINDOW_DURATION_S.to_owned(),
+                TelemetryValue::from((capture.capture_time_s - entry.time_s).max(0.0)),
+            ),
+        ]);
+    }
     if let Some(target_state) = capture.target_state {
         insert_waypoint_target_state_metrics(&mut metadata, target_state);
     }
@@ -6046,7 +6190,7 @@ mod tests {
             endpoint_m: Vec2::new(100.0, 0.0),
             steering_target_m: Vec2::new(100.0, 0.0),
             leg_unit: Vec2::new(1.0, 0.0),
-            next_leg_unit: Vec2::new(1.0, 0.0),
+            handoff_tangent_unit: Vec2::new(1.0, 0.0),
             envelope: WaypointGuidanceEnvelope {
                 capture_radius_m: 20.0,
                 max_cross_track_m: 30.0,
@@ -6098,6 +6242,8 @@ mod tests {
                 },
                 assessment: WaypointGuidanceAssessment {
                     triggered: true,
+                    capture_window_open: true,
+                    deadline_reached: false,
                     spatial_pass: true,
                     violation_mask: if contract_pass {
                         0
@@ -6209,7 +6355,7 @@ mod tests {
     #[test]
     fn waypoint_reachable_event_endpoints_stay_inside_the_capture_envelope() {
         let mut guidance = straight_waypoint_guidance();
-        guidance.next_leg_unit = normalized_or_none(Vec2::new(1.0, -1.0)).unwrap();
+        guidance.handoff_tangent_unit = normalized_or_none(Vec2::new(1.0, -1.0)).unwrap();
 
         let endpoints = waypoint_reachable_event_endpoints(guidance);
 
@@ -6828,7 +6974,7 @@ mod tests {
     #[test]
     fn waypoint_prediction_finds_plane_crossing_before_radius_entry() {
         let mut guidance = straight_waypoint_guidance();
-        guidance.next_leg_unit = Vec2::new(0.0, -1.0);
+        guidance.handoff_tangent_unit = Vec2::new(0.0, -1.0);
         guidance.envelope.max_cross_track_m = 200.0;
         guidance.envelope.max_outbound_heading_error_rad = std::f64::consts::PI;
         guidance.envelope.max_outbound_cross_speed_mps = None;
@@ -6859,7 +7005,7 @@ mod tests {
     #[test]
     fn waypoint_prediction_assessment_matches_authoritative_contract() {
         let mut guidance = straight_waypoint_guidance();
-        guidance.next_leg_unit = Vec2::new(0.0, 1.0);
+        guidance.handoff_tangent_unit = Vec2::new(0.0, 1.0);
         let mut observation = transfer_observation(100.0, 0.0, Vec2::new(10.0, 0.0), 0.0);
         observation.position_m = Vec2::new(0.0, 0.0);
         let prediction =
@@ -6904,7 +7050,8 @@ mod tests {
         let ctx = context_with_waypoint();
         let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
         let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * 28.0, 4.0);
+        let mut observation =
+            transfer_observation(0.0, 0.0, geometry.handoff_tangent_unit * 28.0, 4.0);
         observation.position_m =
             geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 6.0);
         observation.mass_kg = 940.0;
@@ -6922,7 +7069,8 @@ mod tests {
         let ctx = context_with_waypoint();
         let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
         let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
-        let mut observation = transfer_observation(0.0, 0.0, geometry.next_leg_unit * -70.0, 4.0);
+        let mut observation =
+            transfer_observation(0.0, 0.0, geometry.handoff_tangent_unit * -70.0, 4.0);
         observation.position_m =
             geometry.target_m - (geometry.leg_unit * geometry.waypoint.capture_radius_m * 1.5);
         observation.mass_kg = 940.0;
@@ -7039,11 +7187,13 @@ mod tests {
             candidate
         );
         assert!(candidate.target_envelope_feasible);
-        assert!(vec_cross(candidate.target_velocity_mps, geometry.next_leg_unit).abs() < 1.0e-9);
+        assert!(
+            vec_cross(candidate.target_velocity_mps, geometry.handoff_tangent_unit).abs() < 1.0e-9
+        );
         assert!(target_speed_mps >= geometry.waypoint.min_speed_mps);
         assert!(target_speed_mps <= geometry.waypoint.max_speed_mps);
         assert!(
-            vec_dot(candidate.target_velocity_mps, geometry.next_leg_unit)
+            vec_dot(candidate.target_velocity_mps, geometry.handoff_tangent_unit)
                 >= geometry.waypoint.min_outbound_progress_mps
         );
         assert!(candidate.time_to_go_s >= WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S);
@@ -7053,17 +7203,17 @@ mod tests {
     fn transfer_waypoint_target_velocity_accepts_max_speed_roundoff() {
         let controller = TransferPdgController::default();
         let mut guidance = straight_waypoint_guidance();
-        guidance.next_leg_unit = Vec2::new(0.866_025_403_784_438_7, -0.5);
+        guidance.handoff_tangent_unit = Vec2::new(0.866_025_403_784_438_7, -0.5);
         guidance.envelope.min_speed_mps = 10.0;
         guidance.envelope.max_speed_mps = 55.0;
         guidance.envelope.min_outbound_progress_mps = 8.0;
-        let target_velocity_mps = guidance.next_leg_unit * guidance.envelope.max_speed_mps;
+        let target_velocity_mps = guidance.handoff_tangent_unit * guidance.envelope.max_speed_mps;
 
         assert!(target_velocity_mps.length() > guidance.envelope.max_speed_mps);
         assert!(controller.waypoint_target_velocity_is_valid(guidance, target_velocity_mps));
 
         let over_limit_velocity_mps =
-            guidance.next_leg_unit * (guidance.envelope.max_speed_mps + 0.01);
+            guidance.handoff_tangent_unit * (guidance.envelope.max_speed_mps + 0.01);
         assert!(!controller.waypoint_target_velocity_is_valid(guidance, over_limit_velocity_mps));
     }
 
@@ -7288,6 +7438,85 @@ mod tests {
     }
 
     #[test]
+    fn transfer_waypoint_guidance_keeps_leg_active_until_window_contract_resolves() {
+        let ctx = context_with_waypoint();
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        let mut controller = TransferPdgController::new(config);
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let entry = waypoint_transfer_observation(
+            &ctx,
+            geometry.target_m - (geometry.leg_unit * 5.0),
+            geometry.handoff_tangent_unit * -30.0,
+            10.0,
+        );
+
+        let entry_frame = controller.update(&ctx, &entry);
+
+        assert_eq!(controller.waypoint_active_index, 0);
+        assert_eq!(
+            entry_frame.metrics.get(metric::WAYPOINT_CAPTURE_STATUS),
+            Some(&TelemetryValue::from("capture_window"))
+        );
+        assert!(
+            entry_frame
+                .markers
+                .iter()
+                .all(|marker| marker.id != crate::kit::marker::WAYPOINT_HANDOFF)
+        );
+
+        let resolution = waypoint_transfer_observation(
+            &ctx,
+            geometry.target_m - geometry.leg_unit,
+            geometry.handoff_tangent_unit * 30.0,
+            10.5,
+        );
+        let resolution_frame = controller.update(&ctx, &resolution);
+
+        assert_eq!(controller.waypoint_active_index, 1);
+        let handoff = resolution_frame
+            .markers
+            .iter()
+            .find(|marker| marker.id == crate::kit::marker::WAYPOINT_HANDOFF)
+            .expect("resolved handoff marker");
+        assert_eq!(
+            handoff
+                .metadata
+                .get(metric::WAYPOINT_HANDOFF_RESOLUTION_REASON),
+            Some(&TelemetryValue::from("contract_pass"))
+        );
+        assert_eq!(
+            handoff
+                .metadata
+                .get(metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_PASS),
+            Some(&TelemetryValue::from(false))
+        );
+        assert_eq!(
+            handoff
+                .metadata
+                .get(metric::WAYPOINT_HANDOFF_WINDOW_DURATION_S),
+            Some(&TelemetryValue::from(0.5))
+        );
+    }
+
+    #[test]
+    fn transfer_waypoint_geometry_uses_explicit_handoff_tangent() {
+        let mut ctx = context_with_waypoint();
+        ctx.mission.transfer_route.as_mut().unwrap().waypoints[0].handoff_tangent_unit =
+            Some(Vec2::new(0.0, 1.0));
+        let controller = TransferPdgController::default();
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let observation =
+            waypoint_transfer_observation(&ctx, geometry.target_m, Vec2::new(0.0, 30.0), 10.0);
+
+        let stats = waypoint_leg_stats(&observation, &geometry);
+
+        assert_eq!(geometry.handoff_tangent_unit, Vec2::new(0.0, 1.0));
+        assert!(stats.outbound_heading_error_rad < 1.0e-9);
+        assert!((stats.outbound_progress_mps - 30.0).abs() < 1.0e-9);
+    }
+
+    #[test]
     fn transfer_waypoint_guidance_emits_one_handoff_marker_per_switch() {
         let mut ctx = context_with_waypoint();
         let second_waypoint = TransferWaypointSpec {
@@ -7322,7 +7551,7 @@ mod tests {
         let first_observation = waypoint_transfer_observation(
             &ctx,
             first_geometry.target_m + (first_geometry.leg_unit * 5.0),
-            first_geometry.next_leg_unit * 40.0,
+            first_geometry.handoff_tangent_unit * 40.0,
             10.0,
         );
         let first_frame = controller.update(&ctx, &first_observation);
@@ -7331,7 +7560,7 @@ mod tests {
         let second_observation = waypoint_transfer_observation(
             &ctx,
             second_geometry.target_m + (second_geometry.leg_unit * 5.0),
-            second_geometry.next_leg_unit * 40.0,
+            second_geometry.handoff_tangent_unit * 40.0,
             20.0,
         );
         let second_frame = controller.update(&ctx, &second_observation);
