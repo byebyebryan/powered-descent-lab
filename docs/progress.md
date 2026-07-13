@@ -2,6 +2,37 @@
 
 ## 2026-07-12
 
+### Reachable recovery-plan durability checkpoint
+
+- Batch seed rows now explain failed ordered checkpoints with the failed
+  waypoint, measured value, configured limit, signed margin, and whether an
+  actuated passing forecast was lost before capture. Existing schema `29`
+  artifacts supply the data; legacy artifacts keep the generic outcome label.
+- A plan produced by the bounded reachable event-state search now retains
+  ownership through transient instantaneous authority saturation while its
+  reference and actuated forecasts both still pass. Expired plans, ordinary
+  center plans, and never-passing plans keep the existing replacement policy.
+- A broader variant that retained every actuated-passing plan reached `36 / 54`
+  but regressed two previously passing first-leg `double_bend_v1 / empty / r00`
+  runs. Restricting durability to `reachable_recovery` plans avoids that
+  regression without route, profile, payload, seed, timeout, or grace-period
+  branches.
+- Fresh strict-gate results:
+  - focused trackability: `12 / 18`, up from `6 / 18`
+  - ordered sequence: `38 / 54`, up from `27 / 54`, with no prior-success
+    regressions and distribution `0:3 | 1:13 | 2:38`
+  - sequence landing: `54 / 54`
+  - balanced contract and landing: `81 / 81` each
+  - smooth-bend contract and landing: unchanged `21 / 27 | 15 / 27`
+  - direct route-angle/radius: `297 / 297`
+- The cited `double_bend_v1 / full / r-30 / nominal / seed 0000` case now
+  passes both handoffs; its second-handoff heading error falls from `0.365rad`
+  to `0.072rad` instead of being replaced immediately before capture.
+- Remaining failed-handoff history is `9` reference never-passing and `7`
+  reference pass-lost; the actuated split is `12 | 4`. Sequence-landing compute
+  remains below the `1ms` budget across `181,946` updates: `243us` mean,
+  `442us` p95, `559us` p99, and `2.89ms` isolated maximum.
+
 ### Reachable waypoint event-state checkpoint
 
 - Added an actuation-aware fixed-plan forecast that advances the existing

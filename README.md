@@ -450,18 +450,18 @@ Transfer route-angle checkpoint:
   - retained terminal horizons now release when their attitude-aware vertical
     braking margin is exhausted; waypoint contract quality remains `81 / 81`
 - `transfer_waypoint_sequence_smoke`
-  - `current`: `54 / 54` final landings and `27 / 54` routes satisfying both
+  - `current`: `54 / 54` final landings and `38 / 54` routes satisfying both
     ordered waypoint contracts
 - `transfer_waypoint_sequence_contract_smoke`
-  - `current`: `27 / 54` ordered sequence successes
-  - passed-handoff distribution is `0:3 | 1:24 | 2:27`
+  - `current`: `38 / 54` ordered sequence successes
+  - passed-handoff distribution is `0:3 | 1:13 | 2:38`
 - `transfer_waypoint_sequence_trackability_focus`
-  - `current`: `6 / 18` complete ordered routes across the six representative
+  - `current`: `12 / 18` complete ordered routes across the six representative
     failure cells
   - actuated forecasts include thrust, tilt, attitude-rate, fuel, and mass
     limits; a bounded capture-envelope search now repairs confirmed
-    never-passing legs without replacing plans that have already predicted a
-    pass
+    never-passing legs, and its passing recovery plans retain ownership through
+    transient instantaneous authority saturation
 - smoother `r+80` bend reset:
   - landing: `15 / 27` smoke and `54 / 108` full
   - handoff contract: `21 / 27` smoke and `89 / 108` full
@@ -475,14 +475,15 @@ optimistic stopping-distance ratio exceeds `0.75`; the observed maximum is
 and continuation ratio directly. The old `single_dogleg_v1` packs remain only
 as parked diagnostic history and were not regenerated.
 
-The capture-envelope search closes one complete three-seed never-passing cell
-and raises ordered route success to `27 / 54`. It activates only after a
-confirmed reference failure and only when no reference-passing state has been
-seen on the leg; allowing the actuated forecast to veto already passing center
-plans regressed ordered success to `17 / 54` and was rejected. Pass-lost
-retained plans remain separate durability debt. Future work should preserve
-`81 / 81` balanced contracts and landings, `27 / 54` ordered routes,
-`54 / 54` sequence landing, and `297 / 297` direct transfer. General terrain
-avoidance remains parked at the planning/collision-warning layer. Detailed
-checkpoint history lives in `docs/progress.md`, `docs/transfer_suite.md`, and
-`docs/terminal_suite.md`.
+The capture-envelope search closes one complete three-seed never-passing cell.
+Its physically passing recovery plans now survive transient instantaneous
+authority saturation, raising ordered route success to `38 / 54`. It activates
+only after a confirmed reference failure and only when no reference-passing
+state has been seen on the leg; allowing the actuated forecast to veto already
+passing center plans regressed ordered success to `17 / 54` and was rejected.
+Pass-lost ordinary center plans remain separate durability debt. Future work
+should preserve `81 / 81` balanced contracts and landings, `38 / 54` ordered
+routes, `54 / 54` sequence landing, and `297 / 297` direct transfer. General
+terrain avoidance remains parked at the planning/collision-warning layer.
+Detailed checkpoint history lives in `docs/progress.md`,
+`docs/transfer_suite.md`, and `docs/terminal_suite.md`.

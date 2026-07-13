@@ -527,16 +527,16 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-12:
 - `transfer_waypoint_turn_smoke`: `81 / 81` landings. The braking-reserve
   release closes all six former sharp `r+30` half/full post-handoff crashes
   without changing waypoint contracts or transfer-shape metrics.
-- `transfer_waypoint_sequence_smoke`: `54 / 54` landings and `27 / 54`
+- `transfer_waypoint_sequence_smoke`: `54 / 54` landings and `38 / 54`
   complete ordered routes
-- `transfer_waypoint_sequence_contract_smoke`: `27 / 54` complete routes with
-  passed-handoff distribution `0:3 | 1:24 | 2:27`; worst continuation ratio
+- `transfer_waypoint_sequence_contract_smoke`: `38 / 54` complete routes with
+  passed-handoff distribution `0:3 | 1:13 | 2:38`; worst continuation ratio
   `0.668`
-- full-leg reference history splits the `27` failed handoffs into `9` that
-  never predict a contract pass and `18` that lose one before capture. The
-  actuated forecast splits them `12 | 15`; both histories are rendered rather
+- full-leg reference history splits the `16` failed handoffs into `9` that
+  never predict a contract pass and `7` that lose one before capture. The
+  actuated forecast splits them `12 | 4`; both histories are rendered rather
   than inferred from the final capture snapshot.
-- `transfer_waypoint_sequence_trackability_focus`: `6 / 18` complete routes.
+- `transfer_waypoint_sequence_trackability_focus`: `12 / 18` complete routes.
   Pass-lost double-bend second legs demand up to `3.45x` available acceleration;
   representative never-passing second legs stay at or below available thrust
   authority and fail in target-state/candidate selection instead.
@@ -555,9 +555,14 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-12:
   not rerun and are not acceptance gates.
 - hard next-turn speed caps, envelope-margin ordering, pathwise cubic authority
   rejection, and a fixed replan authority reserve were measured and rejected.
-  The next controller pass should address pass-lost retained-plan durability
-  while preserving `81 / 81` balanced contracts and landing, `27 / 54` ordered
-  routes, `54 / 54` sequence landing, and `297 / 297` direct transfer.
+  Reachable-state recovery plans now retain ownership while both their
+  reference and actuated forecasts still pass, even if instantaneous requested
+  acceleration briefly exceeds authority. Extending that retention to every
+  passing plan regressed two first-leg `r00` successes and was rejected.
+  The next controller pass should separate the remaining `12` actuated
+  never-passing and `4` pass-lost handoffs while preserving `81 / 81` balanced
+  contracts and landing, `38 / 54` ordered routes, `54 / 54` sequence landing,
+  and `297 / 297` direct transfer.
 - route/radius expansion remains a later evidence axis. Generalized terrain
   avoidance remains out of scope; waypoint planning still owns terrain-valid
   placement.

@@ -49,7 +49,7 @@ Current implementation status:
     pass-through handoff and paired landing corpora
   - ordered two-waypoint evaluation, first-trigger prediction, and paired smoke
     corpora now exist; normalized route-frame fixtures establish a
-    `27 / 54` route-contract and `54 / 54` final-landing checkpoint
+    `38 / 54` route-contract and `54 / 54` final-landing checkpoint
 
 ## 2. What Not To Build First
 
@@ -362,19 +362,21 @@ Status:
     time-to-go candidates, and bounded path correction remain free of sim-time,
     route-angle, and profile branches
 - current ordered waypoint-sequence checkpoint:
-  - final landing is `54 / 54`; ordered route success is `27 / 54`
-  - passed-handoff distribution is `0:3 | 1:24 | 2:27`
+  - final landing is `54 / 54`; ordered route success is `38 / 54`
+  - passed-handoff distribution is `0:3 | 1:13 | 2:38`
   - both sequence profiles now land `27 / 27`; route-contract debt remains
     concentrated in handoff shaping rather than touchdown recovery
   - first-trigger projection, roundoff-safe envelope validation, and bounded
     local replacement remain the current controller mechanism
-  - the `18`-run sequence trackability focus pack completes `6 / 18`
+  - the `18`-run sequence trackability focus pack completes `12 / 18`
   - actuation-aware forecasts and a bounded capture-envelope state search close
     one complete never-passing three-seed cell without route/profile branches
+  - physically passing plans produced by that search retain ownership through
+    transient authority saturation; ordinary center-plan recovery is unchanged
 - next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - make retained-plan prediction authority-aware so an analytically passing
-    state is not accepted when its reference is physically untrackable
+  - separate the remaining actuated never-passing candidate-selection debt from
+    the four ordinary pass-lost center plans before changing either mechanism
   - preserve the event-state search boundary: confirmed never-passing legs only;
     actuated-forecast vetoes on already reference-passing plans are regressive
   - keep those mechanisms independent of route/profile labels; hard speed caps,
@@ -540,14 +542,14 @@ The next useful work is:
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
    direct-transfer regression gates. Preserve balanced handoffs at `81 / 81`,
    balanced landing at `81 / 81`, sequence landing at `54 / 54`, and ordered
-   sequence handoffs at or above `27 / 54` before
+   sequence handoffs at or above `38 / 54` before
    waypoint planning or terrain-aware routing.
 
 The immediate controller direction should stay conservative. Direct transfer,
 balanced pass-through handoff, and paired final landing are clean. Ordered
-route success is now `27 / 54` with `54 / 54` sequence landings. The bounded
-event-state search has improved confirmed never-passing legs; the next distinct
-debt is pass-lost retained-plan durability, not a wider search or global
-actuated-forecast veto. Do not retune terminal recovery, widen the prediction
-horizon, or add route/profile policy. Radius tiers should follow once that
-durability mechanism is credible.
+route success is now `38 / 54` with `54 / 54` sequence landings. The bounded
+event-state search and mechanism-specific recovery-plan durability are now
+credible; the remaining split is `12` actuated never-passing versus `4`
+pass-lost handoffs. Do not broaden durability to ordinary center plans, retune
+terminal recovery, widen the prediction horizon, or add route/profile policy.
+Radius tiers should follow after the remaining failure split is analyzed.
