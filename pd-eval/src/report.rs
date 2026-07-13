@@ -9515,6 +9515,10 @@ fn scope_entries(scope_dir: &Path) -> Result<Vec<ScopeEntry>> {
     if !scope_dir.exists() {
         return Ok(entries);
     }
+    let fixture_pack_ids = is_eval_report_scope(scope_dir)
+        .then(|| load_fixture_pack_ids(&crate::repo_root().join("fixtures").join("packs")))
+        .transpose()?;
+    let raw_eval_dir = crate::repo_root().join("outputs").join("eval");
     for dir_entry in fs::read_dir(scope_dir)
         .with_context(|| format!("failed to read scope dir {}", scope_dir.display()))?
     {
@@ -9522,6 +9526,11 @@ fn scope_entries(scope_dir: &Path) -> Result<Vec<ScopeEntry>> {
         let path = dir_entry.path();
         let name = dir_entry.file_name().to_string_lossy().into_owned();
         if name == "latest" || name == "index.html" {
+            continue;
+        }
+        if let Some(fixture_pack_ids) = fixture_pack_ids.as_ref()
+            && !eval_report_entry_is_fixture_backed(&raw_eval_dir, &name, fixture_pack_ids)
+        {
             continue;
         }
         let metadata = fs::symlink_metadata(&path)?;
@@ -9542,6 +9551,53 @@ fn scope_entries(scope_dir: &Path) -> Result<Vec<ScopeEntry>> {
             .then(lhs.name.cmp(&rhs.name))
     });
     Ok(entries)
+}
+
+fn is_eval_report_scope(scope_dir: &Path) -> bool {
+    normalize_path(&resolve_repo_relative(scope_dir))
+        == normalize_path(
+            &crate::repo_root()
+                .join("outputs")
+                .join("reports")
+                .join("eval"),
+        )
+}
+
+#[derive(Deserialize)]
+struct PackIdentity {
+    id: String,
+}
+
+fn load_fixture_pack_ids(fixtures_dir: &Path) -> Result<BTreeSet<String>> {
+    let mut ids = BTreeSet::new();
+    for entry in fs::read_dir(fixtures_dir).with_context(|| {
+        format!(
+            "failed to read scenario pack fixtures {}",
+            fixtures_dir.display()
+        )
+    })? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let raw = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read scenario pack fixture {}", path.display()))?;
+        let identity = serde_json::from_str::<PackIdentity>(&raw)
+            .with_context(|| format!("failed to parse scenario pack fixture {}", path.display()))?;
+        ids.insert(identity.id);
+    }
+    Ok(ids)
+}
+
+fn eval_report_entry_is_fixture_backed(
+    raw_eval_dir: &Path,
+    entry_name: &str,
+    fixture_pack_ids: &BTreeSet<String>,
+) -> bool {
+    load_json_file::<PackIdentity>(&raw_eval_dir.join(entry_name).join("pack.json"))
+        .map(|pack| fixture_pack_ids.contains(&pack.id))
+        .unwrap_or(false)
 }
 
 fn modified_label(modified: SystemTime) -> String {
@@ -9797,7 +9853,8 @@ mod report_tests {
     };
 
     use super::{
-        BatchReportRenderCache, directory_href, html_with_base_href, load_preview_trajectory,
+        BatchReportRenderCache, directory_href, eval_report_entry_is_fixture_backed,
+        html_with_base_href, load_fixture_pack_ids, load_preview_trajectory,
         records_by_waypoint_profile, render_batch_report, render_lane_preview,
         report_site_output_for_batch, sort_selector_keys, tree_group_id,
         waypoint_checkpoint_failure_detail,
@@ -9847,6 +9904,65 @@ mod report_tests {
         let aliased = html_with_base_href(rendered, "../../../eval/fixture_pack/");
         assert!(aliased.contains(r#"<base href="../../../eval/fixture_pack/" />"#));
         assert_eq!(aliased.matches("<title>report</title>").count(), 1);
+    }
+
+    #[test]
+    fn eval_report_index_keeps_only_current_fixture_pack_ids() {
+        let root = temp_report_dir("fixture-backed-index");
+        let fixtures_dir = root.join("fixtures");
+        let raw_eval_dir = root.join("eval");
+        fs::create_dir_all(&fixtures_dir).unwrap();
+        fs::create_dir_all(raw_eval_dir.join("custom-output")).unwrap();
+        fs::create_dir_all(raw_eval_dir.join("diagnostic-output")).unwrap();
+        fs::create_dir_all(raw_eval_dir.join("orphan-output")).unwrap();
+        fs::write(
+            fixtures_dir.join("maintained.json"),
+            r#"{"id":"maintained_pack"}"#,
+        )
+        .unwrap();
+        fs::write(
+            fixtures_dir.join("diagnostic.json"),
+            r#"{"id":"diagnostic_pack"}"#,
+        )
+        .unwrap();
+        fs::write(
+            raw_eval_dir.join("custom-output").join("pack.json"),
+            r#"{"id":"maintained_pack"}"#,
+        )
+        .unwrap();
+        fs::write(
+            raw_eval_dir.join("diagnostic-output").join("pack.json"),
+            r#"{"id":"diagnostic_pack"}"#,
+        )
+        .unwrap();
+        fs::write(
+            raw_eval_dir.join("orphan-output").join("pack.json"),
+            r#"{"id":"removed_pack"}"#,
+        )
+        .unwrap();
+
+        let fixture_ids = load_fixture_pack_ids(&fixtures_dir).unwrap();
+        assert!(eval_report_entry_is_fixture_backed(
+            &raw_eval_dir,
+            "custom-output",
+            &fixture_ids
+        ));
+        assert!(eval_report_entry_is_fixture_backed(
+            &raw_eval_dir,
+            "diagnostic-output",
+            &fixture_ids
+        ));
+        assert!(!eval_report_entry_is_fixture_backed(
+            &raw_eval_dir,
+            "orphan-output",
+            &fixture_ids
+        ));
+        assert!(!eval_report_entry_is_fixture_backed(
+            &raw_eval_dir,
+            "cache",
+            &fixture_ids
+        ));
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
