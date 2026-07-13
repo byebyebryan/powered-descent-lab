@@ -6811,10 +6811,18 @@ fn render_seed_run_row(
         } else {
             outcome_label
         };
-        format!(
-            r#"<span class="outcome-bad">{}</span>"#,
-            escape_html(&label)
-        )
+        if let Some(detail) = waypoint_checkpoint_failure_detail(record) {
+            format!(
+                r#"<div class="overview-stack"><div class="overview-main"><span class="outcome-bad">{}</span></div><div class="overview-sub">{}</div></div>"#,
+                escape_html(&label),
+                escape_html(&detail),
+            )
+        } else {
+            format!(
+                r#"<span class="outcome-bad">{}</span>"#,
+                escape_html(&label)
+            )
+        }
     };
     let fuel = record
         .review
@@ -6892,6 +6900,124 @@ fn render_seed_run_row(
         reference_gap = escape_html(&reference_gap),
         details = details,
     )
+}
+
+fn waypoint_checkpoint_failure_detail(record: &crate::BatchRunRecord) -> Option<String> {
+    if !matches!(
+        record.manifest.mission_outcome,
+        pd_core::MissionOutcome::FailedCheckpoint
+    ) {
+        return None;
+    }
+    let waypoint_index = record.review.waypoint_route_first_failure_index?;
+    let handoff = record
+        .review
+        .waypoint_handoffs
+        .iter()
+        .find(|handoff| handoff.waypoint_index == waypoint_index)?;
+    let parameter = |metric: &str| {
+        record
+            .resolved
+            .resolved_parameters
+            .get(&format!("waypoint_{waypoint_index}_{metric}"))
+            .copied()
+    };
+    let mut violations = Vec::new();
+    for reason in &handoff.contract_reasons {
+        match reason.as_str() {
+            "heading" => {
+                if let (Some(actual), Some(limit)) = (
+                    handoff.outbound_heading_error_rad,
+                    parameter("max_outbound_heading_error_rad"),
+                ) {
+                    violations.push(format!(
+                        "heading {:.2}deg > {:.2}deg (+{:.2}deg)",
+                        actual.to_degrees(),
+                        limit.to_degrees(),
+                        (actual - limit).max(0.0).to_degrees(),
+                    ));
+                }
+            }
+            "outbound_progress" => {
+                if let (Some(actual), Some(limit)) = (
+                    handoff.outbound_progress_mps,
+                    parameter("min_outbound_progress_mps"),
+                ) {
+                    violations.push(format!(
+                        "progress {actual:.2}m/s < {limit:.2}m/s ({:.2}m/s)",
+                        actual - limit,
+                    ));
+                }
+            }
+            "outbound_cross_speed" => {
+                if let (Some(actual), Some(limit)) = (
+                    handoff.outbound_cross_speed_mps,
+                    parameter("max_outbound_cross_speed_mps"),
+                ) {
+                    let actual = actual.abs();
+                    violations.push(format!(
+                        "cross speed {actual:.2}m/s > {limit:.2}m/s (+{:.2}m/s)",
+                        (actual - limit).max(0.0),
+                    ));
+                }
+            }
+            "speed" => {
+                if let Some(actual) = handoff.speed_mps {
+                    let min = parameter("min_speed_mps");
+                    let max = parameter("max_speed_mps");
+                    match (min, max) {
+                        (Some(min), _) if actual < min => violations.push(format!(
+                            "speed {actual:.2}m/s < {min:.2}m/s ({:.2}m/s)",
+                            actual - min,
+                        )),
+                        (_, Some(max)) if actual > max => violations.push(format!(
+                            "speed {actual:.2}m/s > {max:.2}m/s (+{:.2}m/s)",
+                            actual - max,
+                        )),
+                        _ => {}
+                    }
+                }
+            }
+            "vertical_speed" => {
+                if let Some(actual) = handoff.vertical_speed_mps {
+                    let min = parameter("min_vertical_speed_mps");
+                    let max = parameter("max_vertical_speed_mps");
+                    match (min, max) {
+                        (Some(min), _) if actual < min => violations.push(format!(
+                            "vertical speed {actual:.2}m/s < {min:.2}m/s ({:.2}m/s)",
+                            actual - min,
+                        )),
+                        (_, Some(max)) if actual > max => violations.push(format!(
+                            "vertical speed {actual:.2}m/s > {max:.2}m/s (+{:.2}m/s)",
+                            actual - max,
+                        )),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if violations.is_empty() && handoff.contract_status.as_deref() == Some("spatial_miss") {
+        if let (Some(closest), Some(capture)) = (
+            handoff.closest_distance_m.or(handoff.distance_m),
+            parameter("capture_radius_m"),
+        ) {
+            violations.push(format!(
+                "spatial miss: closest {closest:.2}m, capture {capture:.2}m"
+            ));
+        } else {
+            violations.push("spatial miss".to_owned());
+        }
+    }
+    if violations.is_empty() {
+        return None;
+    }
+    let mut detail = format!("WP{} {}", waypoint_index + 1, violations.join(" · "));
+    if handoff.reachable_candidate_pass_lost_before_capture == Some(true) {
+        detail.push_str(" · reachable pass lost");
+    }
+    Some(detail)
 }
 
 fn render_transfer_review_note(review: &crate::BatchRunReviewMetrics) -> String {
@@ -9068,6 +9194,7 @@ mod report_tests {
 
     use super::{
         records_by_waypoint_profile, render_batch_report, sort_selector_keys, tree_group_id,
+        waypoint_checkpoint_failure_detail,
     };
 
     fn fixtures_root() -> PathBuf {
@@ -9471,6 +9598,72 @@ mod report_tests {
         assert!(html.contains("disagree 1"));
         assert!(html.contains("peak 1.20x"));
         assert!(html.contains("authority_recovery"));
+    }
+
+    #[test]
+    fn waypoint_checkpoint_failure_detail_exposes_limits_and_pass_loss() {
+        let report = synthetic_transfer_shape_report(
+            "waypoint_checkpoint_detail_unit",
+            &[("r-30", "full", 20.0, 0)],
+        );
+        let mut record = report.records[0].clone();
+        record.manifest.mission_outcome = pd_core::MissionOutcome::FailedCheckpoint;
+        record.manifest.end_reason = pd_core::EndReason::CheckpointFailed;
+        record.review.waypoint_route_first_failure_index = Some(1);
+        for (metric, value) in [
+            ("max_outbound_heading_error_rad", 0.35),
+            ("max_outbound_cross_speed_mps", 20.0),
+        ] {
+            record
+                .resolved
+                .resolved_parameters
+                .insert(format!("waypoint_1_{metric}"), value);
+        }
+        record.review.waypoint_handoffs = vec![crate::BatchWaypointHandoffReviewMetrics {
+            waypoint_index: 1,
+            contract_status: Some("outbound_out_of_envelope".to_owned()),
+            contract_reasons: vec!["heading".to_owned(), "outbound_cross_speed".to_owned()],
+            outbound_heading_error_rad: Some(0.36521479774317),
+            outbound_cross_speed_mps: Some(-21.25),
+            reachable_candidate_pass_lost_before_capture: Some(true),
+            ..crate::BatchWaypointHandoffReviewMetrics::default()
+        }];
+
+        assert_eq!(
+            waypoint_checkpoint_failure_detail(&record).as_deref(),
+            Some(
+                "WP2 heading 20.93deg > 20.05deg (+0.87deg) · cross speed 21.25m/s > 20.00m/s (+1.25m/s) · reachable pass lost"
+            )
+        );
+
+        record.resolved.resolved_parameters.clear();
+        assert_eq!(waypoint_checkpoint_failure_detail(&record), None);
+    }
+
+    #[test]
+    fn waypoint_checkpoint_failure_detail_falls_back_to_spatial_status() {
+        let report = synthetic_transfer_shape_report(
+            "waypoint_checkpoint_spatial_unit",
+            &[("r00", "empty", 20.0, 0)],
+        );
+        let mut record = report.records[0].clone();
+        record.manifest.mission_outcome = pd_core::MissionOutcome::FailedCheckpoint;
+        record.review.waypoint_route_first_failure_index = Some(0);
+        record
+            .resolved
+            .resolved_parameters
+            .insert("waypoint_0_capture_radius_m".to_owned(), 64.0);
+        record.review.waypoint_handoffs = vec![crate::BatchWaypointHandoffReviewMetrics {
+            waypoint_index: 0,
+            contract_status: Some("spatial_miss".to_owned()),
+            closest_distance_m: Some(70.25),
+            ..crate::BatchWaypointHandoffReviewMetrics::default()
+        }];
+
+        assert_eq!(
+            waypoint_checkpoint_failure_detail(&record).as_deref(),
+            Some("WP1 spatial miss: closest 70.25m, capture 64.00m")
+        );
     }
 
     #[test]
