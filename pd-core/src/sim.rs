@@ -217,15 +217,20 @@ impl SimulationState {
 
     fn detect_contact_classification(&self, ctx: &RunContext) -> ContactClassification {
         let snapshot = self.landing_snapshot(ctx);
-        const STABLE_TOUCHDOWN_HULL_PENETRATION_TOLERANCE_M: f64 = 0.012;
 
         if snapshot.min_touchdown_clearance_m > 0.0 && snapshot.min_hull_clearance_m > 0.0 {
             return ContactClassification::None;
         }
 
+        let hull_radius_m = (ctx.vehicle.geometry.hull_width_m * 0.5)
+            .hypot(ctx.vehicle.geometry.hull_height_m * 0.5);
+        let contact_closing_speed_mps =
+            snapshot.normal_speed_mps + snapshot.angular_rate_radps * hull_radius_m;
+        let hull_penetration_tolerance_m =
+            0.012_f64.max(contact_closing_speed_mps * ctx.sim.physics_dt_s());
         let stable_touchdown = snapshot.min_touchdown_clearance_m <= 0.05
             && snapshot.max_touchdown_clearance_m <= 0.15
-            && snapshot.min_hull_clearance_m >= -STABLE_TOUCHDOWN_HULL_PENETRATION_TOLERANCE_M;
+            && snapshot.min_hull_clearance_m >= -hull_penetration_tolerance_m;
         let safe_touchdown = snapshot.normal_speed_mps
             <= ctx.vehicle.safe_touchdown_normal_speed_mps
             && snapshot.tangential_speed_mps <= ctx.vehicle.safe_touchdown_tangential_speed_mps
@@ -835,13 +840,14 @@ mod tests {
 
     fn contact_state_with_hull_penetration(
         hull_penetration_m: f64,
+        normal_speed_mps: f64,
         tangential_speed_mps: f64,
     ) -> (RunContext, SimulationState) {
         let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
         let mut state = SimulationState::new(&ctx).unwrap();
         let half_h = ctx.vehicle.geometry.hull_height_m * 0.5;
         state.position_m = Vec2::new(0.0, half_h - hull_penetration_m);
-        state.velocity_mps = Vec2::new(tangential_speed_mps, -1.5);
+        state.velocity_mps = Vec2::new(tangential_speed_mps, -normal_speed_mps);
         state.attitude_rad = 0.0;
         state.angular_rate_radps = 0.0;
         state.update_extrema(&ctx);
@@ -888,7 +894,7 @@ mod tests {
 
     #[test]
     fn near_edge_safe_touchdown_penetration_is_still_stable() {
-        let (ctx, state) = contact_state_with_hull_penetration(0.0105, 1.85);
+        let (ctx, state) = contact_state_with_hull_penetration(0.0105, 1.5, 1.85);
 
         assert!(matches!(
             state.detect_contact_classification(&ctx),
@@ -898,7 +904,27 @@ mod tests {
 
     #[test]
     fn deeper_touchdown_penetration_is_still_a_crash() {
-        let (ctx, state) = contact_state_with_hull_penetration(0.02, 1.85);
+        let (ctx, state) = contact_state_with_hull_penetration(0.02, 1.5, 1.85);
+
+        assert!(matches!(
+            state.detect_contact_classification(&ctx),
+            ContactClassification::Crash
+        ));
+    }
+
+    #[test]
+    fn one_step_safe_touchdown_penetration_is_still_stable() {
+        let (ctx, state) = contact_state_with_hull_penetration(0.0171, 2.58, 0.758);
+
+        assert!(matches!(
+            state.detect_contact_classification(&ctx),
+            ContactClassification::StableTouchdown { on_target: true }
+        ));
+    }
+
+    #[test]
+    fn one_step_penetration_does_not_excuse_unsafe_touchdown_speed() {
+        let (ctx, state) = contact_state_with_hull_penetration(0.02, 3.286, 0.566);
 
         assert!(matches!(
             state.detect_contact_classification(&ctx),
