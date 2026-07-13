@@ -1,0 +1,36 @@
+{
+  "id": "transfer_waypoint_sequence_contract_route_angle_full",
+  "name": "Transfer waypoint sequence contract route-angle full suite",
+  "description": "Full-seed nominal-radius ordered-handoff reliability suite paired with the maintained two-waypoint landing matrix.",
+  "entries": [
+    {
+      "id": "transfer_waypoint_sequence_contract_route_angles_double_empty_full",
+      "transfer_matrix": "signed_route_arc_transfer_v1", "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
+      "seed_tier": "full", "vehicle_variant": "empty", "expectation_tier": "contract_probe",
+      "route_angles": ["r-60", "r-30", "r00", "r+30", "r+60"], "radius_tiers": ["nominal"],
+      "waypoint_profile": "double_bend_v1", "waypoint_handoff_envelope": "sequence_pass_through_v1", "evaluation_goal": "waypoint_sequence",
+      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "waypoint_contract", "route_angle_coverage", "clean", "empty", "full_seed"]
+    },
+    {
+      "id": "transfer_waypoint_sequence_contract_route_angles_double_half_full",
+      "transfer_matrix": "signed_route_arc_transfer_v1", "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
+      "seed_tier": "full", "vehicle_variant": "half", "expectation_tier": "contract_probe",
+      "route_angles": ["r-60", "r-30", "r00", "r+30", "r+60"], "radius_tiers": ["nominal"],
+      "waypoint_profile": "double_bend_v1", "waypoint_handoff_envelope": "sequence_pass_through_v1", "evaluation_goal": "waypoint_sequence",
+      "adjustments": [{"id": "payload_half_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 2250.0}],
+      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "waypoint_contract", "route_angle_coverage", "clean", "half", "full_seed"]
+    },
+    {
+      "id": "transfer_waypoint_sequence_contract_route_angles_double_full_full",
+      "transfer_matrix": "signed_route_arc_transfer_v1", "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
+      "seed_tier": "full", "vehicle_variant": "full", "expectation_tier": "contract_probe",
+      "route_angles": ["r-60", "r-30", "r00", "r+30", "r+60"], "radius_tiers": ["nominal"],
+      "waypoint_profile": "double_bend_v1", "waypoint_handoff_envelope": "sequence_pass_through_v1", "evaluation_goal": "waypoint_sequence",
+      "adjustments": [{"id": "payload_full_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 4500.0}],
+      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "waypoint_contract", "route_angle_coverage", "clean", "full", "full_seed"]
+    }
+  ]
+}

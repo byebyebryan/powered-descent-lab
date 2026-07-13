@@ -11569,6 +11569,87 @@ mod tests {
     }
 
     #[test]
+    fn transfer_waypoint_route_angle_full_packs_preserve_paired_cells() {
+        let packs_dir = fixtures_root().join("packs");
+        for (landing_filename, contract_filename, expected_runs, expected_waypoints) in [
+            (
+                "transfer_waypoint_turn_route_angle_full.json",
+                "transfer_waypoint_turn_contract_route_angle_full.json",
+                540,
+                1,
+            ),
+            (
+                "transfer_waypoint_sequence_route_angle_full.json",
+                "transfer_waypoint_sequence_contract_route_angle_full.json",
+                180,
+                2,
+            ),
+        ] {
+            let landing_pack = load_pack(&packs_dir.join(landing_filename)).unwrap();
+            let contract_pack = load_pack(&packs_dir.join(contract_filename)).unwrap();
+            let landing_runs = resolve_pack_runs(&landing_pack, &packs_dir).unwrap();
+            let contract_runs = resolve_pack_runs(&contract_pack, &packs_dir).unwrap();
+
+            assert_eq!(landing_runs.len(), expected_runs);
+            assert_eq!(contract_runs.len(), expected_runs);
+            for runs in [&landing_runs, &contract_runs] {
+                assert!(runs.iter().all(|run| {
+                    run.descriptor.selector.radius_tier == "nominal"
+                        && run
+                            .scenario
+                            .mission
+                            .transfer_route
+                            .as_ref()
+                            .is_some_and(|route| route.waypoints.len() == expected_waypoints)
+                }));
+                for seed in 0..12 {
+                    assert_eq!(
+                        runs.iter()
+                            .filter(|run| run.descriptor.resolved_seed == seed)
+                            .count(),
+                        expected_runs / 12
+                    );
+                }
+            }
+
+            let selector_key = |run: &ResolvedBatchRun| {
+                format!(
+                    "{}|{}|{}|{}|{}",
+                    run.descriptor.selector.waypoint_profile,
+                    run.descriptor.selector.vehicle_variant,
+                    run.descriptor.selector.route_angle,
+                    run.descriptor.selector.radius_tier,
+                    run.descriptor.resolved_seed,
+                )
+            };
+            let landing_cells = landing_runs
+                .iter()
+                .map(selector_key)
+                .collect::<BTreeSet<_>>();
+            let contract_cells = contract_runs
+                .iter()
+                .map(selector_key)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(landing_cells, contract_cells);
+            assert!(landing_runs.iter().all(|run| matches!(
+                run.scenario.mission.goal,
+                EvaluationGoal::LandingOnPad { .. }
+            )));
+            if expected_waypoints == 1 {
+                assert!(contract_runs.iter().all(|run| matches!(
+                    run.scenario.mission.goal,
+                    EvaluationGoal::WaypointHandoff { .. }
+                )));
+            } else {
+                assert!(contract_runs.iter().all(|run| matches!(
+                    run.scenario.mission.goal,
+                    EvaluationGoal::WaypointSequence { .. }
+                )));
+            }
+        }
+    }
+
+    #[test]
     fn transfer_waypoint_late_bend_diagnostic_preserves_full_matrix() {
         let packs_dir = fixtures_root().join("packs");
         let pack =
