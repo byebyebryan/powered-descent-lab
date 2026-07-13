@@ -72,7 +72,7 @@ pub(crate) fn write_batch_report_artifacts_with_cache(
         comparison.as_ref(),
         render_cache,
     );
-    fs::write(output_dir.join("report.html"), html).with_context(|| {
+    fs::write(output_dir.join("report.html"), &html).with_context(|| {
         format!(
             "failed to write batch report html {}",
             output_dir.join("report.html").display()
@@ -88,15 +88,12 @@ pub(crate) fn write_batch_report_artifacts_with_cache(
                 )
             })?;
         }
-        let site_html = render_batch_report_with_cache(
-            site_output
-                .parent()
-                .expect("report site output should have parent directory"),
-            candidate,
-            baseline.map(|(dir, report)| (dir, report)),
-            comparison.as_ref(),
-            render_cache,
-        );
+        let site_dir = site_output
+            .parent()
+            .expect("report site output should have parent directory");
+        let stable_output_dir = resolve_repo_relative(output_dir);
+        let base_href = directory_href(site_dir, &stable_output_dir);
+        let site_html = html_with_base_href(&html, &base_href);
         fs::write(&site_output, site_html).with_context(|| {
             format!(
                 "failed to write batch report site html {}",
@@ -8936,12 +8933,35 @@ fn report_site_output_for_batch(batch_dir: &Path) -> Option<PathBuf> {
     let relative = resolved_batch_dir
         .strip_prefix(crate::repo_root().join("outputs"))
         .ok()?;
+    let mut components = relative.components();
+    if components.next()?.as_os_str() == "eval"
+        && components.next().map(|part| part.as_os_str()) == Some("cache".as_ref())
+    {
+        return None;
+    }
     Some(
         crate::repo_root()
             .join("outputs")
             .join("reports")
             .join(relative)
             .join("index.html"),
+    )
+}
+
+fn directory_href(from_dir: &Path, target_dir: &Path) -> String {
+    let href = relative_href(from_dir, target_dir);
+    if href.ends_with('/') {
+        href
+    } else {
+        format!("{href}/")
+    }
+}
+
+fn html_with_base_href(html: &str, base_href: &str) -> String {
+    html.replacen(
+        "<head>",
+        &format!("<head>\n  <base href=\"{}\" />", escape_html(base_href)),
+        1,
     )
 }
 
@@ -9777,8 +9797,9 @@ mod report_tests {
     };
 
     use super::{
-        BatchReportRenderCache, load_preview_trajectory, records_by_waypoint_profile,
-        render_batch_report, render_lane_preview, sort_selector_keys, tree_group_id,
+        BatchReportRenderCache, directory_href, html_with_base_href, load_preview_trajectory,
+        records_by_waypoint_profile, render_batch_report, render_lane_preview,
+        report_site_output_for_batch, sort_selector_keys, tree_group_id,
         waypoint_checkpoint_failure_detail,
     };
 
@@ -9795,6 +9816,37 @@ mod report_tests {
             "pd-eval-report-{label}-{}-{nonce}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn batch_report_site_alias_targets_stable_output_without_rendering_cache_sites() {
+        let outputs = crate::repo_root().join("outputs");
+        let stable_dir = outputs.join("eval").join("fixture_pack");
+        let site_dir = outputs.join("reports").join("eval").join("fixture_pack");
+        assert_eq!(
+            directory_href(&site_dir, &stable_dir),
+            "../../../eval/fixture_pack/"
+        );
+        assert_eq!(
+            report_site_output_for_batch(&stable_dir),
+            Some(site_dir.join("index.html"))
+        );
+        assert!(
+            report_site_output_for_batch(
+                &outputs
+                    .join("eval")
+                    .join("cache")
+                    .join("workspace")
+                    .join("fixture_pack")
+            )
+            .is_none()
+        );
+
+        let rendered =
+            "<!DOCTYPE html><html><head><title>report</title></head><body></body></html>";
+        let aliased = html_with_base_href(rendered, "../../../eval/fixture_pack/");
+        assert!(aliased.contains(r#"<base href="../../../eval/fixture_pack/" />"#));
+        assert_eq!(aliased.matches("<title>report</title>").count(), 1);
     }
 
     #[test]
