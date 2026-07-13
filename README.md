@@ -229,6 +229,19 @@ cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_smoke.json --workers 8
 ```
 
+Run the full-seed nominal and all-radius waypoint closure packs:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_full.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_full.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_full.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_full.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_radius_smoke.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_radius_smoke.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_radius_smoke.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_radius_smoke.json --workers 8
+```
+
 Force a rerun and skip cache reuse if needed:
 
 ```bash
@@ -476,6 +489,14 @@ Transfer route-angle checkpoint:
 - `transfer_waypoint_sequence_route_angle_smoke`
   - `current`: `45 / 45` final landings with `0` invalidations
   - all `90` ordered handoffs and all `45` final landings complete cleanly
+- full-seed nominal waypoint closure:
+  - turn landing and contract: `540 / 540` for both goals
+  - ordered landing and contract: `180 / 180` for both goals
+- all-radius waypoint closure:
+  - turn contract: `405 / 405`; paired landing: `404 / 405`
+  - ordered contract and landing: `135 / 135` for both goals
+  - the one residual is `single_gentle_bend_v1/full/r-30/short/seed 02`, which
+    passes its waypoint contract before crashing during final recovery
 - `transfer_waypoint_sequence_late_bend_diagnostic`
   - `current`: `27 / 27` final landings and complete route telemetry
   - `27 / 54` handoffs enter the capture radius outside the envelope, then
@@ -490,17 +511,19 @@ tangent: the normalized inbound/outbound angle bisector. Spatial radius entry
 opens an acceptance window; guidance keeps the active leg until the contract
 passes or the craft reaches the waypoint plane. Maintained handoff envelopes
 also cap energy and reject fixtures whose optimistic stopping-distance ratio
-exceeds `0.75`. Schema `32` reports the immutable plan tangent, window-entry
-snapshot, final resolution reason, and window duration separately. The reset
-preserves `81 / 81` balanced waypoint landings, `27 / 27` maintained ordered
-landings/contracts, and `297 / 297` direct transfers. The separate route-wide
-packs now preserve both contracts and final landings through `+/-60deg`:
-`135 / 135` single-turn and `45 / 45` ordered landings. Final-state ranking is
-terrain-blind and uses terminal braking authority rather than route/profile
-labels. Controller compute remains below the `1ms` p99 budget.
+exceeds `0.75`. Schema `33` reports the immutable plan tangent, window-entry
+snapshot, final resolution reason, window duration, and final-terminal
+recoverability separately. Full-seed nominal closure is `540 / 540` for turn
+landing/contracts and `180 / 180` for ordered landing/contracts. All-radius
+contracts are `405 / 405` turn and `135 / 135` ordered; paired landings are
+`404 / 405` and `135 / 135`. Final-state ranking is terrain-blind and uses
+terminal braking authority rather than route/profile labels. Controller compute
+remains below the `1ms` p99 budget.
 
 The old `single_dogleg_v1` packs and the full-matrix `late_bend_v1` pack remain
 parked diagnostic history rather than acceptance gates.
-General terrain avoidance remains parked at the planning/collision-warning layer.
+Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
+corpus. General terrain avoidance remains parked at the planning/collision-warning
+layer, and waypoint planning is the next transfer slice.
 Detailed checkpoint history lives in `docs/progress.md`,
 `docs/transfer_suite.md`, and `docs/terminal_suite.md`.

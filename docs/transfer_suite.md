@@ -520,12 +520,12 @@ turning transfer guidance into a full route planner.
 
 ## Current Checkpoint
 
-Current direct-transfer checkpoint, refreshed on 2026-07-12 with `8` workers,
+Current direct-transfer checkpoint, refreshed on 2026-07-13 with `8` workers,
 `--no-reuse`, and no comparison basis:
 
 - `transfer_route_angle_radius_suite`: `297 / 297` successes, `0` crashes, and
   `0` invalidations across every route angle, radius, payload, and smoke seed;
-  wall clock is `45.69s`
+  wall clock is `46.29s`
 - `transfer_route_angle_radius_frontier_full`: `108 / 108` successes and `0`
   invalidations across the full-seed `r+80` partition
 - the focused uphill-corridor brake closes the former direct `r+80` failure
@@ -535,11 +535,6 @@ Current direct-transfer checkpoint, refreshed on 2026-07-12 with `8` workers,
 
 Current normalized waypoint checkpoint, refreshed on 2026-07-13:
 
-- `transfer_waypoint_bend_rpos80_smoke`: `15 / 27` landings
-- `transfer_waypoint_bend_contract_rpos80_smoke`: `21 / 27` handoffs
-- `transfer_waypoint_bend_rpos80_full`: `54 / 108` landings
-- `transfer_waypoint_bend_contract_rpos80_full`: `89 / 108` handoffs; worst
-  continuation ratio `0.742`
 - `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes; worst
   continuation ratio `0.529`
 - `transfer_waypoint_turn_smoke`: `81 / 81` landings. The braking-reserve
@@ -556,6 +551,18 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-13:
   routes, `0` invalidations, and `3.29s` wall clock
 - `transfer_waypoint_sequence_route_angle_smoke`: `45 / 45` landings, `0`
   invalidations, and `10.69s` wall clock
+- `transfer_waypoint_turn_contract_route_angle_full`: `540 / 540` handoff
+  successes; paired landing is also `540 / 540`
+- `transfer_waypoint_sequence_contract_route_angle_full`: `180 / 180` complete
+  routes; paired landing is also `180 / 180`
+- `transfer_waypoint_turn_contract_route_angle_radius_smoke`: `405 / 405`
+  handoff successes across all three radius tiers
+- `transfer_waypoint_sequence_contract_route_angle_radius_smoke`: `135 / 135`
+  complete routes; paired all-radius landing is also `135 / 135`
+- `transfer_waypoint_turn_route_angle_radius_smoke`: `404 / 405` landings with
+  `0` invalidations. The only residual is
+  `single_gentle_bend_v1/full/r-30/short/seed 02`; it passes the handoff contract
+  before crashing during final recovery.
 - final-waypoint candidate ranking uses only the planned handoff contract and
   terrain-blind terminal dynamics. It prefers states within terminal thrust
   authority, then lower required acceleration, before the existing actuated
@@ -567,9 +574,11 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-13:
 - `transfer_waypoint_sequence_late_bend_diagnostic`: `27 / 27` landings and
   complete route telemetry; `27 / 54` handoffs enter outside the contract and
   recover before the waypoint plane
-- Batch schema `32` separates the immutable planned tangent, first window-entry
-  snapshot, final resolution reason, and window duration. Detailed plots render
-  entry and resolution as different events.
+- Batch schema `33` separates the immutable planned tangent, first window-entry
+  snapshot, final resolution reason, and window duration. It also reports the
+  final-handoff required acceleration ratio and recoverable-run count as a
+  kinematic estimate. Detailed plots render entry and resolution as different
+  events.
 - Route-wide turn controller compute is `267us` mean, `432us` p95, and `635us`
   p99 across `463,272` updates. The maintained controller remains below its
   `1ms` p99 budget.
@@ -578,12 +587,16 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-13:
   changes are controller evidence, not hidden waypoint movement.
 - `single_dogleg_v1`, its four packs, and `late_bend_v1` contract scoring are
   parked diagnostic history rather than acceptance gates.
-- Radius expansion remains a separate planning slice. A selector-only probe
-  found that `single_gentle_bend_v1/r00/short` has `48.0m` terrain clearance
-  against a required `48.75m`, while every short-radius `double_bend_v1` route
-  exceeds the `0.75` continuation stopping-ratio bound (`0.842` at waypoint
-  zero before heavier-payload pressure). Those contracts should be rescaled
-  deliberately rather than admitted as holes in the maintained matrix.
+- Maintained waypoint geometry now expands across all three route-radius tiers.
+  Capture radii scale with route geometry, and double-bend speed caps scale with
+  the square root of radius. Resolver tests require paired landing/contract
+  parity so radius coverage cannot silently gain asymmetric holes.
+- Waypoint source clearance regulates initial vertical speed from planned
+  inbound-leg length. This closes the short-radius handoff failures without
+  route, profile, payload, seed, terrain, or mission-time branches.
+- Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
+  corpus. Future route quality and terrain clearance belong to waypoint
+  planning; the single retained landing crash remains a final-recovery watch.
 - Generalized terrain avoidance remains out of scope; waypoint planning still
   owns terrain-valid placement.
 

@@ -198,6 +198,15 @@ planned-tangent error, closest approach, cross-track miss, speed, vertical rate,
 turn margin, and replan count. This keeps one primary goal per scenario while
 preventing a later landing from hiding poor route guidance.
 
+Waypoint guidance v1 is closed against a preplanned maintained corpus spanning
+turn and ordered routes, full nominal seeds, and route-radius tiers. Initial
+launch energy is regulated from immutable inbound-leg geometry, while final
+handoff selection and direct terminal entry use terrain-blind recoverability.
+Batch schema `33` reports that recoverability as a kinematic estimate alongside
+the observed route contract and final landing outcome. The planner still owns
+terrain-valid placement, leg ordering, and arrival-envelope design; guidance
+must not infer obstacle classes or repair a structurally bad route.
+
 ## 4. Terrain Direction
 
 The canonical terrain model should remain a 1D piecewise-linear heightfield in

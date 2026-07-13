@@ -2,6 +2,45 @@
 
 ## 2026-07-13
 
+### Waypoint guidance v1 closure checkpoint
+
+- Added paired full-seed nominal closure packs for both final landing and the
+  route contract. The turn matrix covers `540` runs per goal and the ordered
+  double-bend matrix covers `180` runs per goal.
+- Expanded the maintained waypoint corpus across `short | nominal | long`
+  radius tiers. Capture radii scale with route geometry, and double-bend speed
+  caps scale with the square root of route radius so the same physical
+  contracts remain meaningful without selector-specific holes.
+- Final contract-valid waypoint states now carry a terrain-blind terminal
+  recoverability estimate. A recoverable final handoff enters terminal guidance
+  directly; non-recoverable or missing evidence keeps the previous transfer
+  fallback.
+- Batch schema `33` exposes the final-handoff required acceleration ratio and
+  recoverable-run count in JSON and review tables. This is a kinematic estimate,
+  not a replacement for final landing evidence.
+- Short-radius contract loss was traced to fixed full-throttle source
+  clearance, which crossed the first-leg energy envelope before guidance could
+  shape the route. Waypoint launch now regulates upright speed from the
+  immutable inbound-leg length, with an `8m/s` floor. The rule does not inspect
+  route/profile labels, payload, seed, terrain, or mission timeout.
+- Fresh eight-worker, `--no-reuse`, no-comparison schema-33 evidence at
+  `a5ecbae`:
+  - full nominal turn landing and contract: `540 / 540` for both
+  - full nominal ordered landing and contract: `180 / 180` for both
+  - all-radius turn contract: `405 / 405`
+  - all-radius ordered contract and landing: `135 / 135` for both
+  - all-radius turn landing: `404 / 405`, with `0` invalidations
+- The one retained landing residual is
+  `single_gentle_bend_v1/full/r-30/short/seed 02`. It satisfies the waypoint
+  contract and then crashes during final recovery, so it remains a visible
+  touchdown-reliability frontier rather than weakening waypoint acceptance.
+- An actuated reserve-triggered replan experiment did not improve outcomes and
+  drove plan-revision churn as high as `211`; it was removed. Fixed launch-speed
+  probes established that launch energy needed to scale with route geometry.
+- This closes terrain-blind waypoint guidance v1 over the preplanned maintained
+  corpus. The next Phase 3 slice is waypoint planning: produce terrain-valid
+  route geometry and arrival envelopes for the existing guidance contract.
+
 ### Waypoint final-leg recovery checkpoint
 
 - Closed the route-wide post-handoff landing frontier without changing the

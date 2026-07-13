@@ -45,12 +45,14 @@ Current implementation status:
   - `transfer_pdg_v1` provides the first staged launch/boost/coast/terminal
     handoff controller
   - direct transfer is clean across the maintained route-angle/radius matrix
-  - `transfer_waypoint_pdg_v1` closes the normalized balanced terrain-blind
-    pass-through handoff and paired landing corpora
-  - ordered two-waypoint evaluation and paired smoke corpora now use planned
-    handoff tangents plus entry-to-plane acceptance windows; the maintained
-    double-bend fixtures establish a `27 / 27` route-contract and final-landing
-    checkpoint
+  - `transfer_waypoint_pdg_v1` closes terrain-blind waypoint guidance v1 over
+    the preplanned maintained turn and ordered corpora
+  - full-seed nominal waypoint contracts and landings are clean at `540 / 540`
+    turn runs and `180 / 180` ordered runs
+  - all-radius waypoint contracts are clean at `405 / 405` turn runs and
+    `135 / 135` ordered runs; paired landings are `404 / 405` and `135 / 135`
+  - the one retained short-radius landing crash passes its waypoint contract,
+    leaving waypoint planning as the next Phase 3 slice
 
 ## 2. What Not To Build First
 
@@ -308,6 +310,11 @@ Status:
 - `transfer_waypoint_turn_route_angle_smoke` and its paired contract pack extend
   the same profiles to `r-60 | r-30 | r00 | r+30 | r+60` without replacing the
   faster maintained gate
+- `transfer_waypoint_turn_route_angle_full` and its paired contract pack expand
+  the same nominal-radius matrix to all `12` seeds
+- `transfer_waypoint_turn_route_angle_radius_smoke` and its paired contract pack
+  cover `short | nominal | long` radius tiers across the five route angles,
+  three turn profiles, all payloads, and smoke seeds
 - `transfer_waypoint_sequence_smoke` and
   `transfer_waypoint_sequence_contract_smoke` are the first paired ordered
   route workbench: the maintained `double_bend_v1` two-waypoint profile,
@@ -316,6 +323,11 @@ Status:
 - `transfer_waypoint_sequence_route_angle_smoke` and its paired contract pack
   extend `double_bend_v1` to the same five smoke route angles while preserving
   nominal radius and three smoke seeds
+- `transfer_waypoint_sequence_route_angle_full` and its paired contract pack
+  expand that nominal-radius matrix to all `12` seeds
+- `transfer_waypoint_sequence_route_angle_radius_smoke` and its paired contract
+  pack cover all three radius tiers over the same five route angles, payloads,
+  and smoke seeds
 - waypoint profiles and handoff envelopes are separate selectors. The balanced
   corpus uses one `pass_through_v1` route-relative envelope across every turn
   profile so geometry and contract difficulty are not conflated.
@@ -327,9 +339,10 @@ Status:
   on controller observation boundaries
 - `EvaluationGoal::WaypointSequence` evaluates every route waypoint in order,
   stops at the first failed contract, and persists passed/total/first-failure
-  evidence. Batch schema `32` retains ordered handoff histories and route-level
+  evidence. Batch schema `33` retains ordered handoff histories and route-level
   status while separating the planned tangent, immutable window-entry state,
-  and final handoff resolution.
+  and final handoff resolution. It also exposes final-handoff terminal
+  recoverability evidence.
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run, including post-handoff apex gain, time-to-apex, and apex lateral
@@ -370,12 +383,14 @@ Status:
     time-to-go candidates, and bounded path correction remain free of sim-time,
     route-angle, and profile branches
 - current route-wide waypoint checkpoint:
-  - turn contract and landing are both `135 / 135`
-  - ordered contract and landing are both `45 / 45`
+  - full-seed nominal turn contract and landing are both `540 / 540`
+  - full-seed nominal ordered contract and landing are both `180 / 180`
+  - all-radius turn contract is `405 / 405`; landing is `404 / 405`
+  - all-radius ordered contract and landing are both `135 / 135`
   - final-waypoint states are ranked by terrain-blind terminal recoverability;
     direct transfer remains `297 / 297`
-  - short-radius waypoint coverage remains deferred until capture and sequence
-    energy envelopes are rescaled without weakening their physical bounds
+  - the sole residual is a post-contract final-recovery crash at
+    `single_gentle_bend_v1/full/r-30/short/seed 02`
 - current ordered waypoint-sequence checkpoint:
   - maintained double-bend landing and ordered contract are both `27 / 27`
   - each planned waypoint carries the normalized inbound/outbound angle-bisector
@@ -383,23 +398,22 @@ Status:
   - capture-radius entry opens a window instead of resolving the handoff;
     guidance retains the active leg until contract pass or waypoint-plane
     deadline
-  - schema `32` separates plan tangent, window-entry state, and final resolution
-    in JSON and HTML reports
+  - schema `33` separates plan tangent, window-entry state, final resolution,
+    and final-terminal recoverability in JSON and HTML reports
   - the full `late_bend_v1` matrix is parked as a 27-run diagnostic: it lands
     `27 / 27`, with `27 / 54` initially bad entries recovering in-window
   - ordered-contract compute remains within budget at `434us` p99
-- next transfer slice should expand the corrected corpus deliberately:
-  - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - treat the maintained contract reset as the new behavior baseline rather
-    than reviving route/profile-specific recovery experiments
-  - add radius tiers only after waypoint placement and energy contracts are
-    scaled without asymmetric holes
+- next transfer slice is waypoint planning:
+  - keep guidance terrain-blind and make the planner own terrain-valid waypoint
+    placement, leg ordering, and arrival envelopes
+  - treat the full-seed and all-radius maintained corpus as the waypoint-guidance
+    v1 regression baseline
   - keep future mechanisms independent of route/profile labels and mission
     timeout; use planned geometry, state, authority, and envelope margins
   - use handoff packs as guidance targets and paired landing packs as
     recovery/reliability regression gates
-  - expand route count and radius coverage only after these nominal mechanisms
-    improve without terrain reaction or route/profile-specific branches
+  - retain the one short-radius post-contract crash as a final-recovery watch,
+    not a reason to weaken waypoint contracts
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
@@ -554,15 +568,15 @@ The next useful work is:
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
-   direct-transfer regression gates. Preserve balanced handoffs at `81 / 81`,
-   balanced landing at `81 / 81`, and maintained sequence landing/contracts at
-   `27 / 27` before waypoint planning or terrain-aware routing.
+   direct-transfer regression gates. Preserve full-seed nominal waypoint
+   handoff/landing at `540 / 540` turn and `180 / 180` ordered runs, plus
+   all-radius contracts at `405 / 405` and `135 / 135`, before changing
+   waypoint planning or routing.
 
-The immediate controller direction should stay conservative. Direct transfer,
-balanced pass-through handoff, and paired final landing are clean. Ordered
-route success and final landing are now `27 / 27` on the maintained double-bend
-corpus. Schema-32 window evidence also demonstrates that the parked late-bend
-profile can recover after a bad radius entry, so future waypoint work should use
-the window contract instead of first-trigger tolerances. The next meaningful
-expansion is waypoint-plan/radius coverage or waypoint planning itself, not more
-nominal-route recovery heuristics.
+The immediate controller direction should stay conservative. Direct transfer
+and waypoint contracts are clean across the maintained route-angle/radius
+matrix, while full-seed nominal contracts and landings are clean. Schema-33
+window and terminal-recovery evidence keeps contract quality separate from final
+touchdown reliability. Terrain-blind waypoint guidance v1 is therefore closed;
+the next meaningful expansion is waypoint planning, not more route-specific
+guidance recovery heuristics.
