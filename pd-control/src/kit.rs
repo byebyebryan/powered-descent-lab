@@ -155,6 +155,26 @@ pub mod metric {
         "waypoint.continuation_required_accel_ratio_max";
     pub const WAYPOINT_CONTINUATION_PASSING_CANDIDATE_COUNT: &str =
         "waypoint.continuation_passing_candidate_count";
+    pub const WAYPOINT_TRANSITION_NEXT_INDEX: &str = "waypoint.transition_next_index";
+    pub const WAYPOINT_TRANSITION_POSITION_ERROR_M: &str = "waypoint.transition_position_error_m";
+    pub const WAYPOINT_TRANSITION_VELOCITY_ERROR_MPS: &str =
+        "waypoint.transition_velocity_error_mps";
+    pub const WAYPOINT_TRANSITION_ATTITUDE_ERROR_RAD: &str =
+        "waypoint.transition_attitude_error_rad";
+    pub const WAYPOINT_TRANSITION_MASS_ERROR_KG: &str = "waypoint.transition_mass_error_kg";
+    pub const WAYPOINT_TRANSITION_FUEL_ERROR_KG: &str = "waypoint.transition_fuel_error_kg";
+    pub const WAYPOINT_TRANSITION_EVENT_TIME_ERROR_S: &str =
+        "waypoint.transition_event_time_error_s";
+    pub const WAYPOINT_TRANSITION_CONTINUATION_CONTRACT_PASS: &str =
+        "waypoint.transition_continuation_contract_pass";
+    pub const WAYPOINT_TRANSITION_CONTINUATION_CONTRACT_REASONS: &str =
+        "waypoint.transition_continuation_contract_reasons";
+    pub const WAYPOINT_TRANSITION_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD: &str =
+        "waypoint.transition_continuation_outbound_heading_error_rad";
+    pub const WAYPOINT_TRANSITION_CONTINUATION_REQUIRED_ACCEL_RATIO_MAX: &str =
+        "waypoint.transition_continuation_required_accel_ratio_max";
+    pub const WAYPOINT_TRANSITION_CONTINUATION_PASSING_CANDIDATE_COUNT: &str =
+        "waypoint.transition_continuation_passing_candidate_count";
     pub const WAYPOINT_TARGET_DEADLINE_REMAINING_S: &str = "waypoint.target_deadline_remaining_s";
     pub const WAYPOINT_TARGET_VELOCITY_ERROR_MPS: &str = "waypoint.target_velocity_error_mps";
     pub const WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S: &str =
