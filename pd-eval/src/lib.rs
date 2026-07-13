@@ -2806,6 +2806,7 @@ const SIGNED_ROUTE_ARC_TRANSFER_V1_ROUTE_ANGLES: [TransferRouteAngleSpec; 11] = 
 const SIGNED_ROUTE_ARC_TRANSFER_V1_SMOKE_ROUTE_ANGLES: [&str; 5] =
     ["r-60", "r-30", "r00", "r+30", "r+60"];
 
+const SIGNED_ROUTE_ARC_TRANSFER_V1_NOMINAL_RADIUS_M: f64 = 800.0;
 const SIGNED_ROUTE_ARC_TRANSFER_V1_RADIUS_TIERS: [TransferRadiusTierSpec; 3] = [
     TransferRadiusTierSpec {
         id: "short",
@@ -2813,7 +2814,7 @@ const SIGNED_ROUTE_ARC_TRANSFER_V1_RADIUS_TIERS: [TransferRadiusTierSpec; 3] = [
     },
     TransferRadiusTierSpec {
         id: "nominal",
-        radius_m: 800.0,
+        radius_m: SIGNED_ROUTE_ARC_TRANSFER_V1_NOMINAL_RADIUS_M,
     },
     TransferRadiusTierSpec {
         id: "long",
@@ -3657,7 +3658,17 @@ fn transfer_route_sequence_waypoints(
     let direction = if route_m.x >= 0.0 { 1.0 } else { -1.0 };
     let source_side_normal_m = Vec2::new(-route_unit_m.y * direction, route_unit_m.x * direction);
     let radius_m = radius_tier.radius_m;
-    let capture_radius_m = (radius_m * 0.08).clamp(35.0, 95.0);
+    let maintained = profile == TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1;
+    let capture_radius_m = if maintained {
+        (radius_m * 0.08).min(95.0)
+    } else {
+        (radius_m * 0.08).clamp(35.0, 95.0)
+    };
+    let speed_scale = if maintained {
+        (radius_m / SIGNED_ROUTE_ARC_TRANSFER_V1_NOMINAL_RADIUS_M).sqrt()
+    } else {
+        1.0
+    };
     let node_specs = match profile {
         TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 => [
             ("wp_double_bend_01", 0.33, 0.20, 55.0),
@@ -3686,7 +3697,7 @@ fn transfer_route_sequence_waypoints(
                     min_outbound_progress_mps: 8.0,
                     max_outbound_cross_speed_mps: Some(20.0),
                     min_speed_mps: 10.0,
-                    max_speed_mps,
+                    max_speed_mps: max_speed_mps * speed_scale,
                     min_vertical_speed_mps: None,
                     max_vertical_speed_mps: None,
                 }
@@ -3903,7 +3914,7 @@ fn transfer_waypoint_bend_profile_spec(profile: &str) -> Option<TransferWaypoint
         progress_frac: TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC,
         lateral_offset_ratio,
         capture_radius_ratio: 0.08,
-        min_capture_radius_m: 35.0,
+        min_capture_radius_m: 0.0,
         max_capture_radius_m: 95.0,
         max_cross_track_factor: 1.25,
         min_route_angle_deg: None,
@@ -11314,7 +11325,9 @@ mod tests {
                     params["waypoint_0_max_cross_track_m"] / params["waypoint_0_capture_radius_m"],
                     1.25
                 );
-                let expected_speed_caps = [55.0, 65.0];
+                let speed_scale =
+                    (route.route_radius_m / SIGNED_ROUTE_ARC_TRANSFER_V1_NOMINAL_RADIUS_M).sqrt();
+                let expected_speed_caps = [55.0 * speed_scale, 65.0 * speed_scale];
                 assert_eq!(route.waypoints[0].max_speed_mps, expected_speed_caps[0]);
                 assert_eq!(route.waypoints[1].max_speed_mps, expected_speed_caps[1]);
                 assert!(params["waypoint_0_turn_authority_ratio"] <= 0.75);
@@ -11645,6 +11658,146 @@ mod tests {
                     run.scenario.mission.goal,
                     EvaluationGoal::WaypointSequence { .. }
                 )));
+            }
+        }
+    }
+
+    #[test]
+    fn transfer_waypoint_radius_smoke_packs_preserve_paired_cells() {
+        let packs_dir = fixtures_root().join("packs");
+        for (landing_filename, contract_filename, expected_runs, expected_waypoints) in [
+            (
+                "transfer_waypoint_turn_route_angle_radius_smoke.json",
+                "transfer_waypoint_turn_contract_route_angle_radius_smoke.json",
+                405,
+                1,
+            ),
+            (
+                "transfer_waypoint_sequence_route_angle_radius_smoke.json",
+                "transfer_waypoint_sequence_contract_route_angle_radius_smoke.json",
+                135,
+                2,
+            ),
+        ] {
+            let landing_pack = load_pack(&packs_dir.join(landing_filename)).unwrap();
+            let contract_pack = load_pack(&packs_dir.join(contract_filename)).unwrap();
+            let landing_runs = resolve_pack_runs(&landing_pack, &packs_dir).unwrap();
+            let contract_runs = resolve_pack_runs(&contract_pack, &packs_dir).unwrap();
+
+            assert_eq!(landing_runs.len(), expected_runs);
+            assert_eq!(contract_runs.len(), expected_runs);
+            for runs in [&landing_runs, &contract_runs] {
+                for radius_tier in ["short", "nominal", "long"] {
+                    assert_eq!(
+                        runs.iter()
+                            .filter(|run| run.descriptor.selector.radius_tier == radius_tier)
+                            .count(),
+                        expected_runs / 3
+                    );
+                }
+                assert!(runs.iter().all(|run| {
+                    run.scenario
+                        .mission
+                        .transfer_route
+                        .as_ref()
+                        .is_some_and(|route| route.waypoints.len() == expected_waypoints)
+                }));
+            }
+
+            let selector_key = |run: &ResolvedBatchRun| {
+                format!(
+                    "{}|{}|{}|{}|{}",
+                    run.descriptor.selector.waypoint_profile,
+                    run.descriptor.selector.vehicle_variant,
+                    run.descriptor.selector.route_angle,
+                    run.descriptor.selector.radius_tier,
+                    run.descriptor.resolved_seed,
+                )
+            };
+            let landing_cells = landing_runs
+                .iter()
+                .map(selector_key)
+                .collect::<BTreeSet<_>>();
+            let contract_cells = contract_runs
+                .iter()
+                .map(selector_key)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(landing_cells, contract_cells);
+        }
+    }
+
+    #[test]
+    fn maintained_waypoint_radius_profiles_resolve_at_full_seed_depth() {
+        let packs_dir = fixtures_root().join("packs");
+        for (filename, expected_runs, expected_waypoints) in [
+            (
+                "transfer_waypoint_turn_route_angle_radius_smoke.json",
+                3_564,
+                1,
+            ),
+            (
+                "transfer_waypoint_sequence_route_angle_radius_smoke.json",
+                1_188,
+                2,
+            ),
+        ] {
+            let mut pack = load_pack(&packs_dir.join(filename)).unwrap();
+            for entry in &mut pack.entries {
+                if let ScenarioPackEntry::TransferMatrix(entry) = entry {
+                    entry.seed_tier = TransferSeedTier::Full;
+                }
+            }
+            let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
+
+            assert_eq!(runs.len(), expected_runs);
+            for run in &runs {
+                let route = run
+                    .scenario
+                    .mission
+                    .transfer_route
+                    .as_ref()
+                    .expect("maintained waypoint profile should resolve a route");
+                assert_eq!(route.waypoints.len(), expected_waypoints);
+                for (index, waypoint) in route.waypoints.iter().enumerate() {
+                    let terrain_clearance_m = waypoint.position_m.y
+                        - run
+                            .scenario
+                            .world
+                            .terrain
+                            .sample_height(waypoint.position_m.x);
+                    assert!(
+                        terrain_clearance_m
+                            > waypoint.max_cross_track_m
+                                + run.scenario.vehicle.geometry.touchdown_base_offset_m
+                    );
+                    let authority_key = if expected_waypoints == 1 {
+                        format!("waypoint_{index}_continuation_stop_ratio")
+                    } else {
+                        format!("waypoint_{index}_turn_authority_ratio")
+                    };
+                    assert!(run.descriptor.resolved_parameters[&authority_key] <= 0.75);
+                }
+            }
+
+            if expected_waypoints == 2 {
+                for (radius_tier, speed_scale) in [
+                    ("short", 0.5_f64.sqrt()),
+                    ("nominal", 1.0),
+                    ("long", 1.5_f64.sqrt()),
+                ] {
+                    let run = runs
+                        .iter()
+                        .find(|run| {
+                            run.descriptor.selector.radius_tier == radius_tier
+                                && run.descriptor.selector.vehicle_variant == "empty"
+                                && run.descriptor.selector.route_angle == "r00"
+                                && run.descriptor.resolved_seed == 0
+                        })
+                        .expect("radius profile seed-zero cell should resolve");
+                    let route = run.scenario.mission.transfer_route.as_ref().unwrap();
+                    assert!((route.waypoints[0].max_speed_mps - 55.0 * speed_scale).abs() < 1.0e-9);
+                    assert!((route.waypoints[1].max_speed_mps - 65.0 * speed_scale).abs() < 1.0e-9);
+                }
             }
         }
     }

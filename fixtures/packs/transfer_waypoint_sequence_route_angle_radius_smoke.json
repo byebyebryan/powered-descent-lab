@@ -1,0 +1,36 @@
+{
+  "id": "transfer_waypoint_sequence_route_angle_radius_smoke",
+  "name": "Transfer waypoint sequence route-angle radius smoke suite",
+  "description": "All-radius smoke landing suite for the maintained two-waypoint route across representative route angles and payloads.",
+  "entries": [
+    {
+      "id": "transfer_waypoint_sequence_radii_double_empty",
+      "transfer_matrix": "signed_route_arc_transfer_v1", "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
+      "seed_tier": "smoke", "vehicle_variant": "empty", "expectation_tier": "reference",
+      "radius_tiers": ["short", "nominal", "long"], "waypoint_profile": "double_bend_v1",
+      "waypoint_handoff_envelope": "sequence_pass_through_v1",
+      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "radius_coverage", "clean", "empty", "smoke_seed"]
+    },
+    {
+      "id": "transfer_waypoint_sequence_radii_double_half",
+      "transfer_matrix": "signed_route_arc_transfer_v1", "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
+      "seed_tier": "smoke", "vehicle_variant": "half", "expectation_tier": "reference",
+      "radius_tiers": ["short", "nominal", "long"], "waypoint_profile": "double_bend_v1",
+      "waypoint_handoff_envelope": "sequence_pass_through_v1",
+      "adjustments": [{"id": "payload_half_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 2250.0}],
+      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "radius_coverage", "clean", "half", "smoke_seed"]
+    },
+    {
+      "id": "transfer_waypoint_sequence_radii_double_full",
+      "transfer_matrix": "signed_route_arc_transfer_v1", "base_scenario": "../scenarios/flat_terminal_descent.json",
+      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
+      "seed_tier": "smoke", "vehicle_variant": "full", "expectation_tier": "reference",
+      "radius_tiers": ["short", "nominal", "long"], "waypoint_profile": "double_bend_v1",
+      "waypoint_handoff_envelope": "sequence_pass_through_v1",
+      "adjustments": [{"id": "payload_full_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 4500.0}],
+      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "radius_coverage", "clean", "full", "smoke_seed"]
+    }
+  ]
+}
