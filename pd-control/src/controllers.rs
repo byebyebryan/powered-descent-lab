@@ -4031,10 +4031,6 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         };
 
-        if self.phase == TransferPhase::Terminal {
-            return TransferPhase::Terminal;
-        }
-
         let source_clearance_m = observation.position_m.y
             - source_pad.surface_y_m
             - ctx.vehicle.geometry.touchdown_base_offset_m;
@@ -4050,12 +4046,21 @@ impl TransferPdgController {
             || diagnostics.route_dy_m > self.config.uphill_boost_dy_min_m;
         let transfer_burn_started = self.boost_anchor.is_some()
             || matches!(self.phase, TransferPhase::Boost | TransferPhase::Coast);
+        let completed_waypoint_route =
+            !route.waypoints.is_empty() && self.waypoint_active_index >= route.waypoints.len();
+        if self.phase == TransferPhase::Terminal && completed_waypoint_route {
+            return TransferPhase::Terminal;
+        }
         if !route_needs_transfer_burn
             && !transfer_burn_started
             && source_clearance_m < self.config.takeoff_clearance_m
             && self.source_clearance_hold_needed(ctx, observation)
         {
             return TransferPhase::Takeoff;
+        }
+
+        if self.phase == TransferPhase::Terminal {
+            return TransferPhase::Terminal;
         }
 
         if !route_needs_transfer_burn && !transfer_burn_started {
@@ -4411,7 +4416,7 @@ impl TransferPdgController {
             }
         }
         if self.boost_projected_overshoot(observation, diagnostics)
-            && Self::boost_cut_admissible(gate, corridor)
+            && self.boost_cut_admissible(gate, corridor)
         {
             self.push_unique_candidate(&mut throttle_candidates, 0.0);
         }
@@ -4446,11 +4451,16 @@ impl TransferPdgController {
         }
     }
 
-    fn boost_cut_admissible(gate: TransferGateReadiness, corridor: TransferCorridorState) -> bool {
+    fn boost_cut_admissible(
+        &self,
+        gate: TransferGateReadiness,
+        corridor: TransferCorridorState,
+    ) -> bool {
         !corridor.active
-            && gate.terrain_clearance_safe
-            && gate.latest_safe_margin_s > 0.0
-            && gate.required_accel_ratio <= 1.0
+            && (!self.config.waypoint_guidance_enabled
+                || (gate.terrain_clearance_safe
+                    && gate.latest_safe_margin_s > 0.0
+                    && gate.required_accel_ratio <= 1.0))
     }
 
     fn score_boost_candidate(
@@ -8128,6 +8138,10 @@ mod tests {
 
     #[test]
     fn transfer_boost_cut_requires_clear_corridor_and_terminal_reserve() {
+        let direct_controller = TransferPdgController::default();
+        let mut waypoint_config = TransferPdgControllerConfig::default();
+        waypoint_config.waypoint_guidance_enabled = true;
+        let waypoint_controller = TransferPdgController::new(waypoint_config);
         let clear_corridor = TransferCorridorState::inactive();
         let active_corridor = TransferCorridorState {
             mode: "active",
@@ -8136,32 +8150,38 @@ mod tests {
             margin_m: -1.0,
         };
 
-        assert!(TransferPdgController::boost_cut_admissible(
-            transfer_gate_fixture(2.0, 0.8, true),
-            clear_corridor,
-        ));
-        assert!(!TransferPdgController::boost_cut_admissible(
-            transfer_gate_fixture(2.0, 0.8, true),
-            active_corridor,
-        ));
-        assert!(!TransferPdgController::boost_cut_admissible(
-            transfer_gate_fixture(-0.1, 0.8, true),
-            clear_corridor,
-        ));
-        assert!(!TransferPdgController::boost_cut_admissible(
-            transfer_gate_fixture(2.0, 1.01, true),
-            clear_corridor,
-        ));
-        assert!(!TransferPdgController::boost_cut_admissible(
-            transfer_gate_fixture(2.0, 0.8, false),
-            clear_corridor,
-        ));
+        assert!(
+            waypoint_controller
+                .boost_cut_admissible(transfer_gate_fixture(2.0, 0.8, true), clear_corridor,)
+        );
+        assert!(
+            !waypoint_controller
+                .boost_cut_admissible(transfer_gate_fixture(2.0, 0.8, true), active_corridor,)
+        );
+        assert!(
+            !waypoint_controller
+                .boost_cut_admissible(transfer_gate_fixture(-0.1, 0.8, true), clear_corridor,)
+        );
+        assert!(
+            !waypoint_controller
+                .boost_cut_admissible(transfer_gate_fixture(2.0, 1.01, true), clear_corridor,)
+        );
+        assert!(
+            !waypoint_controller
+                .boost_cut_admissible(transfer_gate_fixture(2.0, 0.8, false), clear_corridor,)
+        );
+        assert!(
+            direct_controller
+                .boost_cut_admissible(transfer_gate_fixture(-0.1, 1.01, false), clear_corridor,)
+        );
     }
 
     #[test]
     fn transfer_boost_scorer_cannot_cut_thrust_without_terminal_reserve() {
         let ctx = uphill_transfer_context();
-        let mut controller = TransferPdgController::default();
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        let mut controller = TransferPdgController::new(config);
         controller.boost_anchor = Some(TransferBoostAnchor {
             route_dx_m: 700.0,
             route_dy_m: 400.0,
@@ -8870,7 +8890,17 @@ mod tests {
         let mut terminal_controller = TransferPdgController::default();
         terminal_controller.phase = TransferPhase::Terminal;
         assert!(terminal_controller.source_clearance_hold_needed(&ctx, &observation));
-        let terminal_phase =
+        let direct_terminal_phase =
+            terminal_controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
+
+        ctx.mission
+            .transfer_route
+            .as_mut()
+            .unwrap()
+            .waypoints
+            .push(waypoint_fixture());
+        terminal_controller.waypoint_active_index = 1;
+        let completed_waypoint_terminal_phase =
             terminal_controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
 
         observation.position_m.y = 430.0;
@@ -8889,7 +8919,8 @@ mod tests {
         );
 
         assert_eq!(held_phase, TransferPhase::Takeoff);
-        assert_eq!(terminal_phase, TransferPhase::Terminal);
+        assert_eq!(direct_terminal_phase, TransferPhase::Takeoff);
+        assert_eq!(completed_waypoint_terminal_phase, TransferPhase::Terminal);
         assert_eq!(released_phase, TransferPhase::Terminal);
     }
 
