@@ -63,6 +63,7 @@ const WAYPOINT_GUIDANCE_TRIGGER_BISECTION_STEPS: usize = 12;
 const WAYPOINT_GUIDANCE_CONTRACT_FAILURE_HYSTERESIS_TICKS: u32 = 2;
 const WAYPOINT_GUIDANCE_REPLAN_MATERIALITY_RATIO: f64 = 0.1;
 const WAYPOINT_GUIDANCE_PREDICTION_HORIZON_S: f64 = 12.0;
+const WAYPOINT_JOINT_MAX_CURRENT_CANDIDATES: usize = 4;
 const WAYPOINT_VIOLATION_HEADING: u8 = 1 << 0;
 const WAYPOINT_VIOLATION_OUTBOUND_PROGRESS: u8 = 1 << 1;
 const WAYPOINT_VIOLATION_OUTBOUND_CROSS_SPEED: u8 = 1 << 2;
@@ -1112,12 +1113,52 @@ struct WaypointGuidanceCandidate {
     prediction: WaypointGuidancePrediction,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointReachableCandidate {
     candidate: WaypointGuidanceCandidate,
     endpoint_m: Vec2,
     target_mode: &'static str,
     reachable_prediction: WaypointReachablePrediction,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointJointCandidatePrediction {
+    current: WaypointReachableCandidate,
+    continuation: WaypointReachablePrediction,
+    continuation_passing_candidate_count: usize,
+}
+
+impl WaypointJointCandidatePrediction {
+    fn contract_pass(self) -> bool {
+        self.current
+            .reachable_prediction
+            .prediction
+            .assessment
+            .contract_pass()
+            && self.continuation.prediction.assessment.contract_pass()
+    }
+
+    fn total_saturated_time_s(self) -> f64 {
+        self.current.reachable_prediction.thrust_saturated_time_s
+            + self.current.reachable_prediction.tilt_saturated_time_s
+            + self.continuation.thrust_saturated_time_s
+            + self.continuation.tilt_saturated_time_s
+    }
+
+    fn required_accel_ratio_max(self) -> f64 {
+        self.current
+            .reachable_prediction
+            .required_accel_ratio_max
+            .max(self.continuation.required_accel_ratio_max)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointJointSearchPrediction {
+    next_waypoint_index: usize,
+    selected: Option<WaypointJointCandidatePrediction>,
+    passing_candidate_count: usize,
+    evaluated_candidate_count: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1137,6 +1178,7 @@ struct WaypointGuidanceCommandState {
     prediction: WaypointGuidancePrediction,
     reachable_prediction: WaypointReachablePrediction,
     continuation_prediction: Option<WaypointContinuationPrediction>,
+    joint_prediction: Option<WaypointJointSearchPrediction>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1152,6 +1194,7 @@ struct WaypointGuidanceTargetState {
     prediction: WaypointGuidancePrediction,
     reachable_prediction: WaypointReachablePrediction,
     continuation_prediction: Option<WaypointContinuationPrediction>,
+    joint_prediction: Option<WaypointJointSearchPrediction>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1223,6 +1266,7 @@ pub struct TransferPdgController {
     waypoint_reachable_search_attempted_revision: Option<u32>,
     waypoint_reference_contract_pass_ever: bool,
     waypoint_continuation_snapshot: Option<(u32, WaypointContinuationPrediction)>,
+    waypoint_joint_snapshot: Option<(u32, WaypointJointSearchPrediction)>,
 }
 
 impl Default for TransferPdgController {
@@ -1253,6 +1297,7 @@ impl TransferPdgController {
             waypoint_reachable_search_attempted_revision: None,
             waypoint_reference_contract_pass_ever: false,
             waypoint_continuation_snapshot: None,
+            waypoint_joint_snapshot: None,
         }
     }
 
@@ -1456,6 +1501,7 @@ impl TransferPdgController {
             self.waypoint_reachable_search_attempted_revision = None;
             self.waypoint_reference_contract_pass_ever = false;
             self.waypoint_continuation_snapshot = None;
+            self.waypoint_joint_snapshot = None;
             self.boost_anchor = None;
             self.transfer_gate_ready_ticks = 0;
             self.phase = TransferPhase::Boost;
@@ -2258,6 +2304,54 @@ impl TransferPdgController {
         reachable_candidates
     }
 
+    fn compare_waypoint_reachable_candidates(
+        lhs: WaypointReachableCandidate,
+        rhs: WaypointReachableCandidate,
+    ) -> std::cmp::Ordering {
+        (lhs.reachable_prediction.thrust_saturated_time_s
+            + lhs.reachable_prediction.tilt_saturated_time_s)
+            .total_cmp(
+                &(rhs.reachable_prediction.thrust_saturated_time_s
+                    + rhs.reachable_prediction.tilt_saturated_time_s),
+            )
+            .then_with(|| {
+                lhs.reachable_prediction
+                    .required_accel_ratio_max
+                    .total_cmp(&rhs.reachable_prediction.required_accel_ratio_max)
+            })
+            .then_with(|| {
+                lhs.reachable_prediction
+                    .prediction
+                    .stats
+                    .outbound_heading_error_rad
+                    .total_cmp(
+                        &rhs.reachable_prediction
+                            .prediction
+                            .stats
+                            .outbound_heading_error_rad,
+                    )
+            })
+            .then_with(|| {
+                lhs.candidate
+                    .time_to_go_s
+                    .total_cmp(&rhs.candidate.time_to_go_s)
+            })
+            .then_with(|| lhs.endpoint_m.x.total_cmp(&rhs.endpoint_m.x))
+            .then_with(|| lhs.endpoint_m.y.total_cmp(&rhs.endpoint_m.y))
+            .then_with(|| {
+                lhs.candidate
+                    .target_velocity_mps
+                    .x
+                    .total_cmp(&rhs.candidate.target_velocity_mps.x)
+            })
+            .then_with(|| {
+                lhs.candidate
+                    .target_velocity_mps
+                    .y
+                    .total_cmp(&rhs.candidate.target_velocity_mps.y)
+            })
+    }
+
     fn select_reachable_waypoint_event_candidate(
         &self,
         ctx: &RunContext,
@@ -2266,36 +2360,7 @@ impl TransferPdgController {
     ) -> Option<WaypointReachableCandidate> {
         self.waypoint_reachable_event_candidates(ctx, observation, guidance)
             .into_iter()
-            .min_by(|lhs, rhs| {
-                (lhs.reachable_prediction.thrust_saturated_time_s
-                    + lhs.reachable_prediction.tilt_saturated_time_s)
-                    .total_cmp(
-                        &(rhs.reachable_prediction.thrust_saturated_time_s
-                            + rhs.reachable_prediction.tilt_saturated_time_s),
-                    )
-                    .then_with(|| {
-                        lhs.reachable_prediction
-                            .required_accel_ratio_max
-                            .total_cmp(&rhs.reachable_prediction.required_accel_ratio_max)
-                    })
-                    .then_with(|| {
-                        lhs.reachable_prediction
-                            .prediction
-                            .stats
-                            .outbound_heading_error_rad
-                            .total_cmp(
-                                &rhs.reachable_prediction
-                                    .prediction
-                                    .stats
-                                    .outbound_heading_error_rad,
-                            )
-                    })
-                    .then_with(|| {
-                        lhs.candidate
-                            .time_to_go_s
-                            .total_cmp(&rhs.candidate.time_to_go_s)
-                    })
-            })
+            .min_by(|lhs, rhs| Self::compare_waypoint_reachable_candidates(*lhs, *rhs))
     }
 
     fn waypoint_guidance_candidate_for_plan(
@@ -2594,6 +2659,111 @@ impl TransferPdgController {
         })
     }
 
+    fn compare_waypoint_joint_candidates(
+        lhs: WaypointJointCandidatePrediction,
+        rhs: WaypointJointCandidatePrediction,
+    ) -> std::cmp::Ordering {
+        (!lhs.contract_pass())
+            .cmp(&(!rhs.contract_pass()))
+            .then_with(|| {
+                lhs.total_saturated_time_s()
+                    .total_cmp(&rhs.total_saturated_time_s())
+            })
+            .then_with(|| {
+                lhs.required_accel_ratio_max()
+                    .total_cmp(&rhs.required_accel_ratio_max())
+            })
+            .then_with(|| {
+                lhs.continuation
+                    .prediction
+                    .stats
+                    .outbound_heading_error_rad
+                    .total_cmp(&rhs.continuation.prediction.stats.outbound_heading_error_rad)
+            })
+            .then_with(|| {
+                lhs.current
+                    .candidate
+                    .time_to_go_s
+                    .total_cmp(&rhs.current.candidate.time_to_go_s)
+            })
+            .then_with(|| {
+                lhs.current
+                    .endpoint_m
+                    .x
+                    .total_cmp(&rhs.current.endpoint_m.x)
+            })
+            .then_with(|| {
+                lhs.current
+                    .endpoint_m
+                    .y
+                    .total_cmp(&rhs.current.endpoint_m.y)
+            })
+            .then_with(|| {
+                lhs.current
+                    .candidate
+                    .target_velocity_mps
+                    .x
+                    .total_cmp(&rhs.current.candidate.target_velocity_mps.x)
+            })
+            .then_with(|| {
+                lhs.current
+                    .candidate
+                    .target_velocity_mps
+                    .y
+                    .total_cmp(&rhs.current.candidate.target_velocity_mps.y)
+            })
+    }
+
+    fn waypoint_joint_search_prediction(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+    ) -> Option<WaypointJointSearchPrediction> {
+        let next_waypoint_index = guidance.active_index + 1;
+        Self::waypoint_leg_geometry_at(ctx, next_waypoint_index)?;
+
+        let mut current_candidates =
+            self.waypoint_reachable_event_candidates(ctx, observation, guidance);
+        current_candidates
+            .sort_by(|lhs, rhs| Self::compare_waypoint_reachable_candidates(*lhs, *rhs));
+        current_candidates.truncate(WAYPOINT_JOINT_MAX_CURRENT_CANDIDATES);
+
+        let mut joint_candidates = Vec::with_capacity(current_candidates.len());
+        for current in current_candidates {
+            let next_observation = Self::observation_at_transfer_state(
+                observation,
+                current.reachable_prediction.event_state,
+                current.reachable_prediction.prediction.time_to_event_s,
+            );
+            let Some((continuation, continuation_passing_candidate_count)) =
+                self.waypoint_leg_reachability(ctx, &next_observation, next_waypoint_index)
+            else {
+                continue;
+            };
+            joint_candidates.push(WaypointJointCandidatePrediction {
+                current,
+                continuation,
+                continuation_passing_candidate_count,
+            });
+        }
+
+        let evaluated_candidate_count = joint_candidates.len();
+        let passing_candidate_count = joint_candidates
+            .iter()
+            .filter(|candidate| candidate.contract_pass())
+            .count();
+        let selected = joint_candidates
+            .into_iter()
+            .min_by(|lhs, rhs| Self::compare_waypoint_joint_candidates(*lhs, *rhs));
+        Some(WaypointJointSearchPrediction {
+            next_waypoint_index,
+            selected,
+            passing_candidate_count,
+            evaluated_candidate_count,
+        })
+    }
+
     fn cached_waypoint_continuation_prediction(
         &mut self,
         ctx: &RunContext,
@@ -2610,6 +2780,27 @@ impl TransferPdgController {
         let prediction =
             self.waypoint_continuation_prediction(ctx, observation, guidance, current_reachable)?;
         self.waypoint_continuation_snapshot = Some((plan_revision, prediction));
+        Some(prediction)
+    }
+
+    fn cached_waypoint_joint_search_prediction(
+        &mut self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+        plan_revision: u32,
+        current_reachable: WaypointReachablePrediction,
+    ) -> Option<WaypointJointSearchPrediction> {
+        if let Some((revision, prediction)) = self.waypoint_joint_snapshot
+            && revision == plan_revision
+        {
+            return Some(prediction);
+        }
+        if !current_reachable.prediction.assessment.contract_pass() {
+            return None;
+        }
+        let prediction = self.waypoint_joint_search_prediction(ctx, observation, guidance)?;
+        self.waypoint_joint_snapshot = Some((plan_revision, prediction));
         Some(prediction)
     }
 
@@ -2650,6 +2841,10 @@ impl TransferPdgController {
             .waypoint_continuation_snapshot
             .filter(|(revision, _)| *revision == plan.revision)
             .map(|(_, prediction)| prediction);
+        let joint_prediction = self
+            .waypoint_joint_snapshot
+            .filter(|(revision, _)| *revision == plan.revision)
+            .map(|(_, prediction)| prediction);
         Some(WaypointGuidanceTargetState {
             target_velocity_mps: candidate.target_velocity_mps,
             deadline_remaining_s: plan.arrival_time_s - observation.sim_time_s,
@@ -2664,6 +2859,7 @@ impl TransferPdgController {
             prediction: candidate.prediction,
             reachable_prediction,
             continuation_prediction,
+            joint_prediction,
         })
     }
 
@@ -2681,6 +2877,7 @@ impl TransferPdgController {
             self.waypoint_guidance_contract_failure_ticks = 0;
             self.waypoint_reachable_search_attempted_revision = None;
             self.waypoint_continuation_snapshot = None;
+            self.waypoint_joint_snapshot = None;
         }
 
         let current = self.waypoint_guidance_plan.map(|plan| {
@@ -2899,6 +3096,13 @@ impl TransferPdgController {
             plan.revision,
             reachable_prediction,
         );
+        let joint_prediction = self.cached_waypoint_joint_search_prediction(
+            ctx,
+            observation,
+            guidance,
+            plan.revision,
+            reachable_prediction,
+        );
         WaypointGuidanceCommandState {
             command: allocate_accel_command(
                 required_accel_mps2.x,
@@ -2922,6 +3126,7 @@ impl TransferPdgController {
             prediction: candidate.prediction,
             reachable_prediction,
             continuation_prediction,
+            joint_prediction,
         }
     }
 
@@ -3062,6 +3267,7 @@ impl TransferPdgController {
                     prediction: state.prediction,
                     reachable_prediction: state.reachable_prediction,
                     continuation_prediction: state.continuation_prediction,
+                    joint_prediction: state.joint_prediction,
                 },
             );
         }
@@ -4773,6 +4979,9 @@ fn insert_waypoint_target_state_metrics(
             TelemetryValue::from(continuation.passing_candidate_count as i64),
         );
     }
+    if let Some(joint) = target_state.joint_prediction {
+        insert_waypoint_joint_prediction_metrics(metrics, joint);
+    }
     let prediction = target_state.prediction;
     metrics.insert(
         metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S.to_owned(),
@@ -4833,6 +5042,73 @@ fn insert_waypoint_target_state_metrics(
     metrics.insert(
         metric::WAYPOINT_PREDICTED_HANDOFF_VERTICAL_SPEED_MPS.to_owned(),
         TelemetryValue::from(prediction.stats.vertical_speed_mps),
+    );
+}
+
+fn insert_waypoint_joint_prediction_metrics(
+    metrics: &mut BTreeMap<String, TelemetryValue>,
+    joint: WaypointJointSearchPrediction,
+) {
+    metrics.insert(
+        metric::WAYPOINT_JOINT_NEXT_INDEX.to_owned(),
+        TelemetryValue::from(joint.next_waypoint_index as i64),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_EVALUATED_CANDIDATE_COUNT.to_owned(),
+        TelemetryValue::from(joint.evaluated_candidate_count as i64),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_PASSING_CANDIDATE_COUNT.to_owned(),
+        TelemetryValue::from(joint.passing_candidate_count as i64),
+    );
+    let Some(selected) = joint.selected else {
+        return;
+    };
+    metrics.insert(
+        metric::WAYPOINT_JOINT_CONTRACT_PASS.to_owned(),
+        TelemetryValue::from(selected.contract_pass()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_ENDPOINT_X_M.to_owned(),
+        TelemetryValue::from(selected.current.endpoint_m.x),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_ENDPOINT_Y_M.to_owned(),
+        TelemetryValue::from(selected.current.endpoint_m.y),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_TARGET_VX_MPS.to_owned(),
+        TelemetryValue::from(selected.current.candidate.target_velocity_mps.x),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_TARGET_VY_MPS.to_owned(),
+        TelemetryValue::from(selected.current.candidate.target_velocity_mps.y),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_TIME_TO_GO_S.to_owned(),
+        TelemetryValue::from(selected.current.candidate.time_to_go_s),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD.to_owned(),
+        TelemetryValue::from(
+            selected
+                .continuation
+                .prediction
+                .stats
+                .outbound_heading_error_rad,
+        ),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_REQUIRED_ACCEL_RATIO_MAX.to_owned(),
+        TelemetryValue::from(selected.required_accel_ratio_max()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_TOTAL_SATURATED_TIME_S.to_owned(),
+        TelemetryValue::from(selected.total_saturated_time_s()),
+    );
+    metrics.insert(
+        metric::WAYPOINT_JOINT_CONTINUATION_PASSING_CANDIDATE_COUNT.to_owned(),
+        TelemetryValue::from(selected.continuation_passing_candidate_count as i64),
     );
 }
 
@@ -5326,6 +5602,7 @@ impl Controller for TransferPdgController {
         self.waypoint_reachable_search_attempted_revision = None;
         self.waypoint_reference_contract_pass_ever = false;
         self.waypoint_continuation_snapshot = None;
+        self.waypoint_joint_snapshot = None;
         self.terminal.reset(ctx);
     }
 
@@ -5847,6 +6124,33 @@ mod tests {
         }
     }
 
+    fn waypoint_reachable_candidate_fixture(
+        contract_pass: bool,
+        endpoint_x_m: f64,
+        saturated_time_s: f64,
+    ) -> WaypointReachableCandidate {
+        let mut reachable_prediction = waypoint_reachable_fixture(contract_pass);
+        reachable_prediction.thrust_saturated_time_s = saturated_time_s;
+        WaypointReachableCandidate {
+            candidate: waypoint_candidate_fixture(contract_pass, 0.8, 4.0),
+            endpoint_m: Vec2::new(endpoint_x_m, 0.0),
+            target_mode: "capture_envelope",
+            reachable_prediction,
+        }
+    }
+
+    fn waypoint_joint_candidate_fixture(
+        continuation_contract_pass: bool,
+        endpoint_x_m: f64,
+        saturated_time_s: f64,
+    ) -> WaypointJointCandidatePrediction {
+        WaypointJointCandidatePrediction {
+            current: waypoint_reachable_candidate_fixture(true, endpoint_x_m, saturated_time_s),
+            continuation: waypoint_reachable_fixture(continuation_contract_pass),
+            continuation_passing_candidate_count: usize::from(continuation_contract_pass),
+        }
+    }
+
     #[test]
     fn waypoint_reachable_prediction_tracks_an_actuated_straight_plan() {
         let ctx = context_with_waypoint();
@@ -6046,6 +6350,161 @@ mod tests {
             controller.waypoint_transition_audit(&ctx, &observation, continuation),
             None
         );
+    }
+
+    #[test]
+    fn waypoint_joint_search_requires_a_next_waypoint() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::default();
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let observation = waypoint_transfer_observation(
+            &ctx,
+            geometry.anchor_m + (geometry.leg_unit * 120.0),
+            geometry.leg_unit * 25.0,
+            5.0,
+        );
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+        let guidance = waypoint_guidance_frame(&geometry, stats, approach);
+
+        assert_eq!(
+            controller.waypoint_joint_search_prediction(&ctx, &observation, guidance),
+            None
+        );
+    }
+
+    #[test]
+    fn waypoint_joint_search_evaluates_at_most_four_current_candidates() {
+        let mut ctx = context_with_waypoint();
+        ctx.mission
+            .transfer_route
+            .as_mut()
+            .unwrap()
+            .waypoints
+            .push(TransferWaypointSpec {
+                id: "wp_1".to_owned(),
+                position_m: Vec2::new(-100.0, -150.0),
+                ..waypoint_fixture()
+            });
+        let controller = TransferPdgController::default();
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let observation = waypoint_transfer_observation(
+            &ctx,
+            geometry.anchor_m + (geometry.leg_unit * 120.0),
+            geometry.leg_unit * 25.0,
+            5.0,
+        );
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+        let guidance = waypoint_guidance_frame(&geometry, stats, approach);
+
+        let joint = controller
+            .waypoint_joint_search_prediction(&ctx, &observation, guidance)
+            .unwrap();
+
+        assert!(joint.evaluated_candidate_count <= WAYPOINT_JOINT_MAX_CURRENT_CANDIDATES);
+        assert!(joint.passing_candidate_count <= joint.evaluated_candidate_count);
+        assert_eq!(
+            joint
+                .selected
+                .is_some_and(|selected| selected.contract_pass()),
+            joint.passing_candidate_count > 0
+        );
+    }
+
+    #[test]
+    fn waypoint_joint_candidate_order_requires_both_contracts() {
+        let passing = waypoint_joint_candidate_fixture(true, 80.0, 1.0);
+        let failing = waypoint_joint_candidate_fixture(false, 80.0, 0.0);
+
+        assert!(passing.contract_pass());
+        assert!(!failing.contract_pass());
+        assert_eq!(
+            TransferPdgController::compare_waypoint_joint_candidates(passing, failing),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn waypoint_joint_candidate_order_is_deterministic() {
+        let earlier_endpoint = waypoint_joint_candidate_fixture(true, 70.0, 0.2);
+        let later_endpoint = waypoint_joint_candidate_fixture(true, 80.0, 0.2);
+
+        assert_eq!(
+            TransferPdgController::compare_waypoint_joint_candidates(
+                earlier_endpoint,
+                later_endpoint,
+            ),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn waypoint_joint_search_is_cached_once_per_plan_revision() {
+        let mut ctx = context_with_waypoint();
+        ctx.mission
+            .transfer_route
+            .as_mut()
+            .unwrap()
+            .waypoints
+            .push(TransferWaypointSpec {
+                id: "wp_1".to_owned(),
+                position_m: Vec2::new(-100.0, -150.0),
+                ..waypoint_fixture()
+            });
+        let mut controller = TransferPdgController::default();
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let observation = waypoint_transfer_observation(
+            &ctx,
+            geometry.anchor_m + (geometry.leg_unit * 120.0),
+            geometry.leg_unit * 25.0,
+            5.0,
+        );
+        let stats = waypoint_leg_stats(&observation, &geometry);
+        let approach = controller.waypoint_approach_state(&ctx, &observation, &geometry, stats);
+        let guidance = waypoint_guidance_frame(&geometry, stats, approach);
+        assert_eq!(
+            controller.cached_waypoint_joint_search_prediction(
+                &ctx,
+                &observation,
+                guidance,
+                2,
+                waypoint_reachable_fixture(false),
+            ),
+            None
+        );
+        assert_eq!(controller.waypoint_joint_snapshot, None);
+        let first = controller
+            .cached_waypoint_joint_search_prediction(
+                &ctx,
+                &observation,
+                guidance,
+                2,
+                waypoint_reachable_fixture(true),
+            )
+            .unwrap();
+        let mut changed_observation = observation.clone();
+        changed_observation.position_m += Vec2::new(200.0, 100.0);
+
+        let cached = controller
+            .cached_waypoint_joint_search_prediction(
+                &ctx,
+                &changed_observation,
+                guidance,
+                2,
+                waypoint_reachable_fixture(false),
+            )
+            .unwrap();
+        controller.cached_waypoint_joint_search_prediction(
+            &ctx,
+            &changed_observation,
+            guidance,
+            3,
+            waypoint_reachable_fixture(true),
+        );
+
+        assert_eq!(cached, first);
+        assert_eq!(controller.waypoint_joint_snapshot.unwrap().0, 3);
     }
 
     #[test]

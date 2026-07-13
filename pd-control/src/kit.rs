@@ -175,6 +175,24 @@ pub mod metric {
         "waypoint.transition_continuation_required_accel_ratio_max";
     pub const WAYPOINT_TRANSITION_CONTINUATION_PASSING_CANDIDATE_COUNT: &str =
         "waypoint.transition_continuation_passing_candidate_count";
+    pub const WAYPOINT_JOINT_NEXT_INDEX: &str = "waypoint.joint_next_index";
+    pub const WAYPOINT_JOINT_EVALUATED_CANDIDATE_COUNT: &str =
+        "waypoint.joint_evaluated_candidate_count";
+    pub const WAYPOINT_JOINT_PASSING_CANDIDATE_COUNT: &str =
+        "waypoint.joint_passing_candidate_count";
+    pub const WAYPOINT_JOINT_CONTRACT_PASS: &str = "waypoint.joint_contract_pass";
+    pub const WAYPOINT_JOINT_ENDPOINT_X_M: &str = "waypoint.joint_endpoint_x_m";
+    pub const WAYPOINT_JOINT_ENDPOINT_Y_M: &str = "waypoint.joint_endpoint_y_m";
+    pub const WAYPOINT_JOINT_TARGET_VX_MPS: &str = "waypoint.joint_target_vx_mps";
+    pub const WAYPOINT_JOINT_TARGET_VY_MPS: &str = "waypoint.joint_target_vy_mps";
+    pub const WAYPOINT_JOINT_TIME_TO_GO_S: &str = "waypoint.joint_time_to_go_s";
+    pub const WAYPOINT_JOINT_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD: &str =
+        "waypoint.joint_continuation_outbound_heading_error_rad";
+    pub const WAYPOINT_JOINT_REQUIRED_ACCEL_RATIO_MAX: &str =
+        "waypoint.joint_required_accel_ratio_max";
+    pub const WAYPOINT_JOINT_TOTAL_SATURATED_TIME_S: &str = "waypoint.joint_total_saturated_time_s";
+    pub const WAYPOINT_JOINT_CONTINUATION_PASSING_CANDIDATE_COUNT: &str =
+        "waypoint.joint_continuation_passing_candidate_count";
     pub const WAYPOINT_TARGET_DEADLINE_REMAINING_S: &str = "waypoint.target_deadline_remaining_s";
     pub const WAYPOINT_TARGET_VELOCITY_ERROR_MPS: &str = "waypoint.target_velocity_error_mps";
     pub const WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S: &str =
