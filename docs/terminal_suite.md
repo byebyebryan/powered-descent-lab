@@ -713,14 +713,14 @@ Trajectory-error report entrypoints:
 - `outputs/eval/terminal_traj_err_suite/summary.json`
 - `outputs/eval/terminal_traj_err_full/summary.json`
 
-The numeric checkpoint below is from fresh schema-25 local captures. Regenerate
+The numeric checkpoint below is from fresh schema-32 local captures. Regenerate
 the ignored `outputs/eval` entrypoints after schema/report changes before
 treating the files in this checkout as authoritative.
 
-Latest verified schema-25 wall-clock signal with `8` workers:
+Latest verified schema-32 wall-clock signal with `8` workers:
 
-- `terminal_traj_err_suite`: `28.38s`
-- `terminal_traj_err_full`: `114.24s`
+- `terminal_traj_err_suite`: `29.43s`
+- `terminal_traj_err_full`: `120.26s`
 
 Current-lane trajectory-error results:
 

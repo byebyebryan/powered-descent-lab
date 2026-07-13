@@ -1,5 +1,38 @@
 # Progress
 
+## 2026-07-13
+
+### Evaluation evidence workflow checkpoint
+
+- Replaced aggregate-preview loading of full samples and controller updates
+  with a compact position-only sample decoder. Lane SVGs are cached by their
+  canonical bundle paths and reused between cache and stable publication.
+- Aggregate previews retain terrain, target pad, actual trajectories, waypoint
+  markers, and outcome markers. They no longer deserialize the approximately
+  `11GB` of controller-update JSON in the 3,024-run trajectory-error cache.
+- Batch HTML is rendered once per output. Stable report-site pages reuse that
+  render with a relative base URL, and raw cache reports no longer create
+  public report-site mirrors.
+- The eval report index now includes only entries whose raw `pack.json` ID has
+  a current fixture under `fixtures/packs`. Cache internals and orphaned output
+  directories remain directly accessible but no longer clutter navigation.
+- On the same `terminal_traj_err_full` cache, report-only regeneration improved
+  from not completing within `240s` to `32.12s`.
+- Fresh or identity-matched schema-32 evidence with eight workers:
+  - terminal bot-lab smoke current lane: `171 / 180` scored successes, `9`
+    scored failures, and `9` invalidations
+  - terminal bot-lab full current lane: `684 / 720` scored successes, `36`
+    scored failures, and `36` invalidations
+  - trajectory-error smoke: `689 / 720` scored successes and `31` failures
+  - trajectory-error full: `2751 / 2880` scored successes, `129` failures, and
+    `144` invalidations
+  - direct transfer: `297 / 297` wide smoke, `1080 / 1080` full solved, and
+    `108 / 108` focused steep-uphill runs
+  - waypoint turn landing/contract: `81 / 81` for both gates
+  - waypoint sequence landing/contract: `27 / 27` for both gates
+- This checkpoint changes reporting and evidence publication only. Controller,
+  scenario, fixture, and persisted batch-schema behavior remain unchanged.
+
 ## 2026-07-12
 
 ### Waypoint mission contract reset

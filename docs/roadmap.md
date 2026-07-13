@@ -307,8 +307,9 @@ Status:
   route angles, all payloads, nominal radius, and smoke seeds
 - `transfer_waypoint_sequence_smoke` and
   `transfer_waypoint_sequence_contract_smoke` are the first paired ordered
-  route workbench: two two-waypoint profiles, `r-30 | r00 | r+30`, all
-  payloads, nominal radius, and smoke seeds
+  route workbench: the maintained `double_bend_v1` two-waypoint profile,
+  `r-30 | r00 | r+30`, all payloads, nominal radius, and smoke seeds. The full
+  `late_bend_v1` matrix is retained separately as diagnostic evidence.
 - waypoint profiles and handoff envelopes are separate selectors. The balanced
   corpus uses one `pass_through_v1` route-relative envelope across every turn
   profile so geometry and contract difficulty are not conflated.
@@ -320,9 +321,9 @@ Status:
   on controller observation boundaries
 - `EvaluationGoal::WaypointSequence` evaluates every route waypoint in order,
   stops at the first failed contract, and persists passed/total/first-failure
-  evidence. Batch schema `28` retains ordered handoff histories, route-level
-  status, completed-leg target/deadline debt, and predicted first-trigger state
-  while preserving waypoint-zero compatibility fields.
+  evidence. Batch schema `32` retains ordered handoff histories and route-level
+  status while separating the planned tangent, immutable window-entry state,
+  and final handoff resolution.
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run, including post-handoff apex gain, time-to-apex, and apex lateral

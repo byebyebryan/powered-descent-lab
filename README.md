@@ -400,21 +400,21 @@ Trajectory-error checkpoint:
   - `current`: `689 / 720` scored successes, `31` scored failures,
     `36` impossible warnings, `48` frontier annotations
 - `terminal_traj_err_full`
-  - `current`: `2754 / 2880` scored successes, `126` scored failures,
+  - `current`: `2751 / 2880` scored successes, `129` scored failures,
     `144` impossible warnings, `192` frontier annotations
   - by condition:
     - `traj_undershoot_small`: `693 / 720` scored, `27` fail,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_undershoot_large`: `707 / 720` scored, `13` fail,
+    - `traj_undershoot_large`: `705 / 720` scored, `15` fail,
       `36` impossible warnings, `48` frontier annotations
     - `traj_overshoot_small`: `683 / 720` scored, `37` fail,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_overshoot_large`: `671 / 720` scored, `49` fail,
+    - `traj_overshoot_large`: `670 / 720` scored, `50` fail,
       `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `1008 / 1008`
-    - `half`: `1006 / 1008`, `2` fail
-    - `full`: `740 / 864` scored, `124` fail, `144` impossible warnings,
+    - `half`: `1005 / 1008`, `3` fail
+    - `full`: `738 / 864` scored, `126` fail, `144` impossible warnings,
       `192` frontier annotations
 
 Experimental terrain diagnostic snapshot:
