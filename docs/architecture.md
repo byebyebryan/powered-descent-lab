@@ -181,20 +181,22 @@ positions and arrival envelopes that make each next leg feasible. It may use
 terrain, obstacle, and route-policy information later.
 
 Waypoint guidance assumes the waypoint list is already planned, follows the
-currently active route leg, passes through the waypoint envelope at the end of
-that leg, then switches to the next leg or final landing target. A waypoint is
-not a stop-and-land objective or an isolated point target; it is a switching
-surface and handoff contract between route legs.
+currently active route leg, and enters a bounded handoff window at the waypoint
+capture radius. The plan provides the desired handoff tangent and energy
+envelope. Guidance keeps the current leg active until that contract passes or
+the craft reaches the waypoint plane, then switches to the next leg or final
+landing target. A waypoint is not a stop-and-land objective or an isolated
+point target; it is a switching surface and handoff contract between route legs.
 
 Final `landing_on_pad` remains the product-level score. Ordered arrival quality
 is preserved as handoff telemetry and can be scored independently with
 `EvaluationGoal::WaypointSequence`: the core advances through waypoint
 contracts in order, stops at the first failed contract, and succeeds only after
 the final handoff. Run summaries preserve passed/total and first-failure index;
-batch artifacts preserve each handoff's closest approach, crossing state,
-cross-track miss, outbound direction, speed, vertical rate, turn margin, and
-replan count. This keeps one primary goal per scenario while preventing a later
-landing from hiding poor route guidance.
+batch artifacts preserve each handoff's window-entry state, resolution reason,
+planned-tangent error, closest approach, cross-track miss, speed, vertical rate,
+turn margin, and replan count. This keeps one primary goal per scenario while
+preventing a later landing from hiding poor route guidance.
 
 ## 4. Terrain Direction
 

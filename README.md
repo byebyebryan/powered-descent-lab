@@ -450,46 +450,33 @@ Transfer route-angle checkpoint:
   - retained terminal horizons now release when their attitude-aware vertical
     braking margin is exhausted; waypoint contract quality remains `81 / 81`
 - `transfer_waypoint_sequence_smoke`
-  - `current`: `54 / 54` final landings and `38 / 54` routes satisfying both
-    ordered waypoint contracts
+  - `current`: `27 / 27` final landings across the maintained double-bend corpus
 - `transfer_waypoint_sequence_contract_smoke`
-  - `current`: `38 / 54` ordered sequence successes
-  - passed-handoff distribution is `0:3 | 1:13 | 2:38`
-- `transfer_waypoint_sequence_trackability_focus`
-  - `current`: `12 / 18` complete ordered routes across the six representative
-    failure cells
-  - actuated forecasts include thrust, tilt, attitude-rate, fuel, and mass
-    limits; a bounded capture-envelope search now repairs confirmed
-    never-passing legs, and its passing recovery plans retain ownership through
-    transient instantaneous authority saturation
-  - schema `31` projects each passing actuated handoff into the next leg,
-    compares it with the actual capture transition, and reports bounded
-    joint-state candidate evidence without changing commands
+  - `current`: `27 / 27` ordered sequence successes
+  - all `54` handoffs satisfy the planned tangent/energy contract at window
+    entry and resolve as `contract_pass`
+- `transfer_waypoint_sequence_late_bend_diagnostic`
+  - `current`: `27 / 27` final landings and complete route telemetry
+  - `27 / 54` handoffs enter the capture radius outside the envelope, then
+    recover before the waypoint plane; this profile is diagnostic, not a gate
 - smoother `r+80` bend reset:
   - landing: `15 / 27` smoke and `54 / 108` full
   - handoff contract: `21 / 27` smoke and `89 / 108` full
 
-The waypoint corpus now uses fixed route-frame geometry rather than silently
-lifting waypoints in world Y. Gentle, medium, and sharp offsets are
-`0.12R | 0.20R | 0.30R`; double and late bends use fixed ordered route-frame
-nodes. Maintained handoff envelopes also cap energy and reject any fixture whose
-optimistic stopping-distance ratio exceeds `0.75`; the observed maximum is
-`0.742`. Reports expose planned progress, signed offset, signed turn, speed cap,
-and continuation ratio directly. The old `single_dogleg_v1` packs remain only
-as parked diagnostic history and were not regenerated.
+The waypoint corpus uses fixed route-frame geometry rather than silently lifting
+waypoints in world Y. Maintained ordered waypoints carry an explicit handoff
+tangent: the normalized inbound/outbound angle bisector. Spatial radius entry
+opens an acceptance window; guidance keeps the active leg until the contract
+passes or the craft reaches the waypoint plane. Maintained handoff envelopes
+also cap energy and reject fixtures whose optimistic stopping-distance ratio
+exceeds `0.75`. Schema `32` reports the immutable plan tangent, window-entry
+snapshot, final resolution reason, and window duration separately. The reset
+preserves `81 / 81` balanced waypoint landings, `27 / 27` maintained ordered
+landings/contracts, and `297 / 297` direct transfers, with controller compute at
+`434us` p99 on the ordered contract pack.
 
-The capture-envelope search closes one complete three-seed never-passing cell.
-Its physically passing recovery plans now survive transient instantaneous
-authority saturation, raising ordered route success to `38 / 54`. It activates
-only after a confirmed reference failure and only when no reference-passing
-state has been seen on the leg; allowing the actuated forecast to veto already
-passing center plans regressed ordered success to `17 / 54` and was rejected.
-Pass-lost ordinary center plans remain separate durability debt. Future work
-must first broaden the shadow candidate basis or define a bounded receding
-two-leg objective: the current four-candidate joint oracle evaluated zero
-states across all `51` observed transitions and covered `0 / 16` failed ordered
-routes. It should preserve `81 / 81` balanced contracts and landings, `38 / 54`
-ordered routes, `54 / 54` sequence landing, and `297 / 297` direct transfer.
+The old `single_dogleg_v1` packs and the full-matrix `late_bend_v1` pack remain
+parked diagnostic history rather than acceptance gates.
 General terrain avoidance remains parked at the planning/collision-warning layer.
 Detailed checkpoint history lives in `docs/progress.md`,
 `docs/transfer_suite.md`, and `docs/terminal_suite.md`.

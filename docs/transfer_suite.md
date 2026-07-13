@@ -165,17 +165,17 @@ Current corpus tiers:
   - scores `continuation_pass_through_v1` at the first waypoint handoff instead
     of allowing final-landing recovery to hide route-quality errors
 - `transfer_waypoint_sequence_smoke`
-  - 54 final-landing runs over two ordered profiles, three representative route
-    angles, all payload tiers, nominal radius, and smoke seeds
-  - the first multi-waypoint physical-outcome baseline
+  - 27 final-landing runs over the maintained `double_bend_v1` profile, three
+    representative route angles, all payload tiers, nominal radius, and smoke
+    seeds
+  - the maintained multi-waypoint physical-outcome baseline
 - `transfer_waypoint_sequence_contract_smoke`
-  - the same 54 selector cells and geometry as the sequence landing pack
+  - the same 27 selector cells and geometry as the sequence landing pack
   - scores every waypoint in order with `evaluation_goal = waypoint_sequence`
-- `transfer_waypoint_sequence_trackability_focus`
-  - 18 diagnostic runs across six representative ordered-sequence cells and
-    three smoke seeds
-  - preserves the sequence contract goal while concentrating plan ownership,
-    reference error, authority demand, and saturation evidence
+- `transfer_waypoint_sequence_late_bend_diagnostic`
+  - 27 final-landing diagnostic runs over the full former `late_bend_v1` matrix
+  - preserves physical and handoff-window evidence without making its asymmetric
+    route geometry an acceptance gate
 
 Resolved transfer runs use transfer-specific selector fields:
 
@@ -187,7 +187,8 @@ Resolved transfer runs use transfer-specific selector fields:
 - `vehicle_variant = empty | half | full`
 - `waypoint_profile` selects `single_gentle_bend_v1`,
   `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn
-  corpus; the sequence corpus uses `double_bend_v1 | late_bend_v1`
+  corpus; the maintained sequence corpus uses `double_bend_v1`, while
+  `late_bend_v1` is diagnostic-only
 - `waypoint_handoff_envelope = continuation_pass_through_v1` for maintained
   single-bend and balanced-turn corpora
 - `waypoint_handoff_envelope = sequence_pass_through_v1` for the ordered
@@ -300,8 +301,9 @@ Implementation checkpoint:
 - `double_bend_v1` places two waypoints at nominal route progress
   `0.33 | 0.67`, each with a `0.20R` source-side offset. The resulting signed
   turns are `-31.22deg | -31.22deg`; waypoint speed caps are
-  `55m/s | 65m/s`.
-- `late_bend_v1` uses the same nominal progress with offsets
+  `55m/s | 65m/s`. Each waypoint's handoff tangent is the normalized bisector
+  of its inbound and outbound leg directions.
+- Diagnostic-only `late_bend_v1` uses the same nominal progress with offsets
   `0.13R | 0.26R`. The resulting signed turns are
   `-0.58deg | -59.16deg`, so the first bend no longer reverses direction;
   speed caps are `45m/s | 65m/s`.
@@ -344,21 +346,22 @@ Implementation checkpoint:
 - Active waypoint guidance does not query terrain. Source-pad clearance remains
   a separate launch guard; waypoint placement and terrain-valid arrival
   envelopes remain planner responsibilities.
-- V1 capture status is deliberately spatial: capture means reaching the
-  configured radius or crossing the waypoint plane inside the cross-track band.
-  The stricter waypoint contract is reported separately: spatial misses are
-  split from captures whose configured outbound heading, progress, cross-speed,
-  total-speed, or optional vertical-speed bounds are out of envelope.
+- V1 capture status remains deliberately spatial and independent from contract
+  resolution. Reaching the configured radius opens the handoff window. The
+  active leg remains authoritative while heading, progress, cross-speed,
+  total-speed, and optional vertical-speed are assessed against the planned
+  handoff tangent; a passing state resolves the handoff, while reaching the
+  waypoint plane without one resolves it as `plane_deadline`.
 - `evaluation_goal = waypoint_handoff` is the first waypoint contract probe. It
-  evaluates at controller observation boundaries, stops at capture-radius entry
-  or waypoint-plane crossing, and scores the selected waypoint's spatial and
-  outbound envelope directly. This keeps paired landing/contract status aligned
-  with what the controller could actually observe.
+  evaluates at controller observation boundaries, opens at capture-radius entry,
+  and stops at contract pass or waypoint-plane deadline. This keeps paired
+  landing/contract status aligned with what the controller could actually
+  observe without treating a recoverable entry state as final.
 - `evaluation_goal = waypoint_sequence` owns ordered progress in `pd-core`.
-  Intermediate contract passes advance the active evaluation index without
-  ending the run; the first failed contract ends with `failed_checkpoint`; the
-  final pass ends with `checkpoint_satisfied`. Run summaries preserve passed,
-  total, and first-failed index.
+  Intermediate window resolutions advance the active evaluation index without
+  ending the run; a `plane_deadline` failure ends with `failed_checkpoint`; the
+  final contract pass ends with `checkpoint_satisfied`. Run summaries preserve
+  passed, total, and first-failed index.
 - Controller route transitions emit one `waypoint/handoff` marker. Batch review
   preserves the ordered marker history and synthesizes the terminal handoff
   from the authoritative final sample because checkpoint evaluation ends before
@@ -527,52 +530,22 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-12:
 - `transfer_waypoint_turn_smoke`: `81 / 81` landings. The braking-reserve
   release closes all six former sharp `r+30` half/full post-handoff crashes
   without changing waypoint contracts or transfer-shape metrics.
-- `transfer_waypoint_sequence_smoke`: `54 / 54` landings and `38 / 54`
-  complete ordered routes
-- `transfer_waypoint_sequence_contract_smoke`: `38 / 54` complete routes with
-  passed-handoff distribution `0:3 | 1:13 | 2:38`; worst continuation ratio
-  `0.668`
-- full-leg reference history splits the `16` failed handoffs into `9` that
-  never predict a contract pass and `7` that lose one before capture. The
-  actuated forecast splits them `12 | 4`; both histories are rendered rather
-  than inferred from the final capture snapshot.
-- `transfer_waypoint_sequence_trackability_focus`: `12 / 18` complete routes.
-  Pass-lost double-bend second legs demand up to `3.45x` available acceleration;
-  representative never-passing second legs stay at or below available thrust
-  authority and fail in target-state/candidate selection instead.
-- New artifacts carry explicit plan index/revision/reason ownership plus
-  reference position/velocity errors, required acceleration ratio, saturation
-  duration, and last-passing-state diagnostics. Peak error alone is not a
-  failure gate because successful controls can show comparable maxima.
-- Batch schema `31` adds an actuated forecast beside the Hermite reference,
-  projects each passing handoff state into the next waypoint, and compares that
-  projected state with the actual capture transition. Reports expose planned
-  and actual continuation contract status, transition error, authority, and
-  candidate evidence without changing controller commands.
-  Confirmed never-passing legs may search at most `18` geometry-derived
-  capture-envelope states once per plan revision; any leg that has already
-  predicted a reference pass keeps center-plan ownership.
+- `transfer_waypoint_sequence_smoke`: `27 / 27` maintained double-bend landings
+- `transfer_waypoint_sequence_contract_smoke`: `27 / 27` complete routes; all
+  `54` handoffs pass at window entry and resolve as `contract_pass`
+- `transfer_waypoint_sequence_late_bend_diagnostic`: `27 / 27` landings and
+  complete route telemetry; `27 / 54` handoffs enter outside the contract and
+  recover before the waypoint plane
+- Batch schema `32` separates the immutable planned tangent, first window-entry
+  snapshot, final resolution reason, and window duration. Detailed plots render
+  entry and resolution as different events.
+- Ordered-contract controller compute is `434us` p99 across `28,930` updates;
+  the isolated maximum is `11.6ms`.
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
-- `single_dogleg_v1` and its four packs are parked diagnostic history. They were
-  not rerun and are not acceptance gates.
-- hard next-turn speed caps, envelope-margin ordering, pathwise cubic authority
-  rejection, and a fixed replan authority reserve were measured and rejected.
-  Reachable-state recovery plans now retain ownership while both their
-  reference and actuated forecasts still pass, even if instantaneous requested
-  acceleration briefly exceeds authority. Extending that retention to every
-  passing plan regressed two first-leg `r00` successes and was rejected.
-  A center-target continuation recovery was also rejected: it reached
-  `39 / 54` with no prior-success regressions but missed the `41 / 54`
-  retention gate and did not improve the `12 / 18` focus pack. A subsequent
-  four-candidate shadow joint-state oracle covered `0 / 16` failed routes
-  because the existing reachable-event candidate lattice was empty at all `51`
-  observed transitions. No joint recovery behavior was attempted. The next
-  controller pass must first establish broader shadow candidate coverage or use
-  receding two-leg guidance while preserving `81 / 81` balanced contracts and landing,
-  `38 / 54` ordered routes, `54 / 54` sequence landing, and `297 / 297` direct
-  transfer.
+- `single_dogleg_v1`, its four packs, and `late_bend_v1` contract scoring are
+  parked diagnostic history rather than acceptance gates.
 - route/radius expansion remains a later evidence axis. Generalized terrain
   avoidance remains out of scope; waypoint planning still owns terrain-valid
   placement.

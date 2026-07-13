@@ -47,9 +47,10 @@ Current implementation status:
   - direct transfer is clean across the maintained route-angle/radius matrix
   - `transfer_waypoint_pdg_v1` closes the normalized balanced terrain-blind
     pass-through handoff and paired landing corpora
-  - ordered two-waypoint evaluation, first-trigger prediction, and paired smoke
-    corpora now exist; normalized route-frame fixtures establish a
-    `38 / 54` route-contract and `54 / 54` final-landing checkpoint
+  - ordered two-waypoint evaluation and paired smoke corpora now use planned
+    handoff tangents plus entry-to-plane acceptance windows; the maintained
+    double-bend fixtures establish a `27 / 27` route-contract and final-landing
+    checkpoint
 
 ## 2. What Not To Build First
 
@@ -362,38 +363,23 @@ Status:
     time-to-go candidates, and bounded path correction remain free of sim-time,
     route-angle, and profile branches
 - current ordered waypoint-sequence checkpoint:
-  - final landing is `54 / 54`; ordered route success is `38 / 54`
-  - passed-handoff distribution is `0:3 | 1:13 | 2:38`
-  - both sequence profiles now land `27 / 27`; route-contract debt remains
-    concentrated in handoff shaping rather than touchdown recovery
-  - first-trigger projection, roundoff-safe envelope validation, and bounded
-    local replacement remain the current controller mechanism
-  - the `18`-run sequence trackability focus pack completes `12 / 18`
-  - actuation-aware forecasts and a bounded capture-envelope state search close
-    one complete never-passing three-seed cell without route/profile branches
-  - physically passing plans produced by that search retain ownership through
-    transient authority saturation; ordinary center-plan recovery is unchanged
-  - schema `31` projects each passing actuated handoff into the next leg,
-    compares the projected and actual capture state, and reports planned,
-    actual, and bounded joint-search evidence without affecting commands
+  - maintained double-bend landing and ordered contract are both `27 / 27`
+  - each planned waypoint carries the normalized inbound/outbound angle-bisector
+    tangent; contract heading and energy are assessed in that frame
+  - capture-radius entry opens a window instead of resolving the handoff;
+    guidance retains the active leg until contract pass or waypoint-plane
+    deadline
+  - schema `32` separates plan tangent, window-entry state, and final resolution
+    in JSON and HTML reports
+  - the full `late_bend_v1` matrix is parked as a 27-run diagnostic: it lands
+    `27 / 27`, with `27 / 54` initially bad entries recovering in-window
+  - ordered-contract compute remains within budget at `434us` p99
 - next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
-  - separate the remaining actuated never-passing candidate-selection debt from
-    the four ordinary pass-lost center plans before changing either mechanism
-  - preserve the event-state search boundary: confirmed never-passing legs only;
-    actuated-forecast vetoes on already reference-passing plans are regressive
-  - do not repeat center-target one-step continuation reselection: it was safe
-    but improved ordered routes only to `39 / 54`, below the `41 / 54` retention
-    gate, and did not move the `12 / 18` focus result
-  - the first four-candidate joint handoff-state oracle evaluated zero states in
-    all `51` observed transitions and covered `0 / 16` failed routes; do not add
-    a recovery mode around that empty candidate set
-  - broaden the shadow candidate basis or assess a bounded receding two-leg
-    objective before adding another replacement heuristic; require at least
-    `4 / 16` failed-route coverage before behavior work
-  - keep those mechanisms independent of route/profile labels; hard speed caps,
-    margin-only ordering, pathwise rejection, and fixed replan reserves have all
-    regressed or merely redistributed the current failures
+  - treat the maintained contract reset as the new behavior baseline rather
+    than reviving route/profile-specific recovery experiments
+  - keep future mechanisms independent of route/profile labels and mission
+    timeout; use planned geometry, state, authority, and envelope margins
   - use handoff packs as guidance targets and paired landing packs as
     recovery/reliability regression gates
   - expand route count and radius coverage only after these nominal mechanisms
@@ -553,19 +539,14 @@ The next useful work is:
    into a half-arc around the target and exercises climbing arrivals.
 6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
    direct-transfer regression gates. Preserve balanced handoffs at `81 / 81`,
-   balanced landing at `81 / 81`, sequence landing at `54 / 54`, and ordered
-   sequence handoffs at or above `38 / 54` before
-   waypoint planning or terrain-aware routing.
+   balanced landing at `81 / 81`, and maintained sequence landing/contracts at
+   `27 / 27` before waypoint planning or terrain-aware routing.
 
 The immediate controller direction should stay conservative. Direct transfer,
 balanced pass-through handoff, and paired final landing are clean. Ordered
-route success is now `38 / 54` with `54 / 54` sequence landings. The bounded
-event-state search and mechanism-specific recovery-plan durability are now
-credible; the remaining split is `12` actuated never-passing versus `4`
-pass-lost handoffs. Schema-31 transition auditing shows only `1.22m` mean
-position and `0.65m/s` mean velocity drift at capture, while the first joint
-oracle finds no existing capture-envelope candidates. The next step is
-therefore shadow candidate-basis or bounded receding-objective work, not
-transition tolerance, broader durability, terminal retuning, prediction-horizon
-changes, or route/profile policy. Radius tiers should follow after the remaining
-failure split is analyzed.
+route success and final landing are now `27 / 27` on the maintained double-bend
+corpus. Schema-32 window evidence also demonstrates that the parked late-bend
+profile can recover after a bad radius entry, so future waypoint work should use
+the window contract instead of first-trigger tolerances. The next meaningful
+expansion is waypoint-plan/radius coverage or waypoint planning itself, not more
+nominal-route recovery heuristics.

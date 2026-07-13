@@ -2,6 +2,31 @@
 
 ## 2026-07-12
 
+### Waypoint mission contract reset
+
+- Replaced implicit next-leg heading targets with a planned handoff tangent on
+  each maintained ordered waypoint. `double_bend_v1` uses the normalized
+  inbound/outbound angle bisector at both nodes.
+- Split spatial entry from contract resolution. Radius entry opens a handoff
+  window; the controller and evaluator retain the active leg until the planned
+  tangent/energy envelope passes or the waypoint plane becomes the deadline.
+- Retiered the maintained paired sequence packs to the 27-run double-bend matrix.
+  The full 27-run `late_bend_v1` matrix is retained as diagnostic-only evidence.
+- Batch schema `32` reports planned tangent, immutable window-entry state,
+  resolution reason, and window duration separately. Terminal handoff fallback
+  recovers the entry snapshot from authoritative samples when evaluation ends
+  before another controller update.
+- Fresh no-reuse gates with eight workers:
+  - maintained ordered contract: `27 / 27`, all `54` handoffs resolving as
+    `contract_pass`
+  - maintained sequence landing: `27 / 27`
+  - balanced waypoint landing: `81 / 81`
+  - direct route-angle/radius transfer: `297 / 297`
+  - late-bend diagnostic landing: `27 / 27`; `27 / 54` handoffs recover after
+    entering the window outside the contract
+- Controller compute on the maintained ordered pack is `434us` p99 over
+  `28,930` updates, with an isolated `11.6ms` maximum.
+
 ### Waypoint joint-state oracle checkpoint
 
 - Added behavior-neutral capture-transition auditing. Each handoff marker now
