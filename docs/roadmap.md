@@ -373,8 +373,9 @@ Status:
     one complete never-passing three-seed cell without route/profile branches
   - physically passing plans produced by that search retain ownership through
     transient authority saturation; ordinary center-plan recovery is unchanged
-  - schema `30` now projects each passing actuated handoff into the next leg and
-    reports continuation contract/authority evidence without affecting commands
+  - schema `31` projects each passing actuated handoff into the next leg,
+    compares the projected and actual capture state, and reports planned,
+    actual, and bounded joint-search evidence without affecting commands
 - next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
   - separate the remaining actuated never-passing candidate-selection debt from
@@ -384,8 +385,12 @@ Status:
   - do not repeat center-target one-step continuation reselection: it was safe
     but improved ordered routes only to `39 / 54`, below the `41 / 54` retention
     gate, and did not move the `12 / 18` focus result
-  - use the continuation telemetry to assess a bounded joint handoff-state solve
-    or receding two-leg objective before adding another replacement heuristic
+  - the first four-candidate joint handoff-state oracle evaluated zero states in
+    all `51` observed transitions and covered `0 / 16` failed routes; do not add
+    a recovery mode around that empty candidate set
+  - broaden the shadow candidate basis or assess a bounded receding two-leg
+    objective before adding another replacement heuristic; require at least
+    `4 / 16` failed-route coverage before behavior work
   - keep those mechanisms independent of route/profile labels; hard speed caps,
     margin-only ordering, pathwise rejection, and fixed replan reserves have all
     regressed or merely redistributed the current failures
@@ -557,6 +562,10 @@ balanced pass-through handoff, and paired final landing are clean. Ordered
 route success is now `38 / 54` with `54 / 54` sequence landings. The bounded
 event-state search and mechanism-specific recovery-plan durability are now
 credible; the remaining split is `12` actuated never-passing versus `4`
-pass-lost handoffs. Do not broaden durability to ordinary center plans, retune
-terminal recovery, widen the prediction horizon, or add route/profile policy.
-Radius tiers should follow after the remaining failure split is analyzed.
+pass-lost handoffs. Schema-31 transition auditing shows only `1.22m` mean
+position and `0.65m/s` mean velocity drift at capture, while the first joint
+oracle finds no existing capture-envelope candidates. The next step is
+therefore shadow candidate-basis or bounded receding-objective work, not
+transition tolerance, broader durability, terminal retuning, prediction-horizon
+changes, or route/profile policy. Radius tiers should follow after the remaining
+failure split is analyzed.

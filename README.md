@@ -462,9 +462,9 @@ Transfer route-angle checkpoint:
     limits; a bounded capture-envelope search now repairs confirmed
     never-passing legs, and its passing recovery plans retain ownership through
     transient instantaneous authority saturation
-  - schema `30` also projects each passing actuated handoff into the next leg;
-    reports expose continuation contract, authority, and candidate evidence
-    without changing commands
+  - schema `31` projects each passing actuated handoff into the next leg,
+    compares it with the actual capture transition, and reports bounded
+    joint-state candidate evidence without changing commands
 - smoother `r+80` bend reset:
   - landing: `15 / 27` smoke and `54 / 108` full
   - handoff contract: `21 / 27` smoke and `89 / 108` full
@@ -485,8 +485,11 @@ only after a confirmed reference failure and only when no reference-passing
 state has been seen on the leg; allowing the actuated forecast to veto already
 passing center plans regressed ordered success to `17 / 54` and was rejected.
 Pass-lost ordinary center plans remain separate durability debt. Future work
-should preserve `81 / 81` balanced contracts and landings, `38 / 54` ordered
-routes, `54 / 54` sequence landing, and `297 / 297` direct transfer. General
-terrain avoidance remains parked at the planning/collision-warning layer.
+must first broaden the shadow candidate basis or define a bounded receding
+two-leg objective: the current four-candidate joint oracle evaluated zero
+states across all `51` observed transitions and covered `0 / 16` failed ordered
+routes. It should preserve `81 / 81` balanced contracts and landings, `38 / 54`
+ordered routes, `54 / 54` sequence landing, and `297 / 297` direct transfer.
+General terrain avoidance remains parked at the planning/collision-warning layer.
 Detailed checkpoint history lives in `docs/progress.md`,
 `docs/transfer_suite.md`, and `docs/terminal_suite.md`.
