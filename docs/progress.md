@@ -2,6 +2,37 @@
 
 ## 2026-07-13
 
+### Waypoint route-angle coverage checkpoint
+
+- Added separate route-wide landing and contract packs while preserving the
+  fast `81`-run turn and `27`-run sequence gates.
+- The new nominal-radius matrices cover
+  `r-60 | r-30 | r00 | r+30 | r+60`, all payload tiers, and smoke seeds:
+  - balanced turn landing and contract: `135` runs each
+  - double-bend sequence landing and contract: `45` runs each
+- Fresh schema-32 evidence with eight workers, `--no-reuse`, and no comparison
+  basis:
+  - turn contract: `135 / 135`, `0` invalidations, `10.73s` wall clock
+  - turn landing: `127 / 135`, `8` crashes, `0` invalidations, `26.27s` wall
+    clock
+  - ordered contract: `45 / 45`, `0` invalidations, `2.85s` wall clock
+  - sequence landing: `42 / 45`, `3` crashes, `0` invalidations, `11.34s` wall
+    clock
+- Every failed landing completed its route contract. The exact frontier is:
+  - `single_gentle_bend_v1/full/r-60`: seeds `0-1`
+  - `single_medium_bend_v1/full/r+60`: seeds `0-2`
+  - `single_sharp_bend_v1/full/r+60`: seeds `0-2`
+  - `double_bend_v1/full/r-60`: seeds `0-2`
+- The next controller problem is therefore full-payload final-leg recovery at
+  the outer route angles, not waypoint capture or acceptance.
+- Radius coverage remains a separate design slice. A temporary selector probe
+  rejected `single_gentle_bend_v1/r00/short` because `48.0m` terrain clearance
+  does not exceed the `48.75m` capture-envelope requirement, and rejected all
+  short-radius `double_bend_v1` routes because waypoint zero's continuation
+  stop ratio is `0.842`, above the `0.75` bound. The maintained radius matrix
+  should not gain asymmetric holes or weaker contracts merely to make the pack
+  resolve.
+
 ### Evaluation evidence workflow checkpoint
 
 - Replaced aggregate-preview loading of full samples and controller updates

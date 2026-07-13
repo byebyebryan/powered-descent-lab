@@ -303,13 +303,19 @@ Status:
   at the first waypoint handoff
 - `transfer_waypoint_turn_smoke` and
   `transfer_waypoint_turn_contract_smoke` are the paired broad waypoint
-  workbench: three `23deg` through `62deg` turn profiles, three representative
+  workbench: three `27deg` through `62deg` turn profiles, three representative
   route angles, all payloads, nominal radius, and smoke seeds
+- `transfer_waypoint_turn_route_angle_smoke` and its paired contract pack extend
+  the same profiles to `r-60 | r-30 | r00 | r+30 | r+60` without replacing the
+  faster maintained gate
 - `transfer_waypoint_sequence_smoke` and
   `transfer_waypoint_sequence_contract_smoke` are the first paired ordered
   route workbench: the maintained `double_bend_v1` two-waypoint profile,
   `r-30 | r00 | r+30`, all payloads, nominal radius, and smoke seeds. The full
   `late_bend_v1` matrix is retained separately as diagnostic evidence.
+- `transfer_waypoint_sequence_route_angle_smoke` and its paired contract pack
+  extend `double_bend_v1` to the same five smoke route angles while preserving
+  nominal radius and three smoke seeds
 - waypoint profiles and handoff envelopes are separate selectors. The balanced
   corpus uses one `pass_through_v1` route-relative envelope across every turn
   profile so geometry and contract difficulty are not conflated.
@@ -363,6 +369,13 @@ Status:
   - fixed endpoint geometry, outbound target velocity, geometry-derived
     time-to-go candidates, and bounded path correction remain free of sim-time,
     route-angle, and profile branches
+- current route-wide waypoint checkpoint:
+  - turn contract is `135 / 135`; turn landing is `127 / 135`
+  - ordered contract is `45 / 45`; ordered landing is `42 / 45`
+  - all `11` failed landings are full-payload outer-route cells whose waypoint
+    contracts pass, so final-leg recovery is the next controller frontier
+  - short-radius waypoint coverage remains deferred until capture and sequence
+    energy envelopes are rescaled without weakening their physical bounds
 - current ordered waypoint-sequence checkpoint:
   - maintained double-bend landing and ordered contract are both `27 / 27`
   - each planned waypoint carries the normalized inbound/outbound angle-bisector

@@ -164,6 +164,14 @@ Current corpus tiers:
   - the same `81` selector cells as `transfer_waypoint_turn_smoke`
   - scores `continuation_pass_through_v1` at the first waypoint handoff instead
     of allowing final-landing recovery to hide route-quality errors
+- `transfer_waypoint_turn_route_angle_smoke`
+  - 135 landing runs over all three balanced turn profiles,
+    `r-60 | r-30 | r00 | r+30 | r+60`, all payload tiers, nominal radius, and
+    smoke seeds
+  - extends physical-outcome evidence without replacing the faster 81-run gate
+- `transfer_waypoint_turn_contract_route_angle_smoke`
+  - the same 135 selector cells and geometry as the route-wide turn landing pack
+  - scores the first handoff contract independently from final-leg recovery
 - `transfer_waypoint_sequence_smoke`
   - 27 final-landing runs over the maintained `double_bend_v1` profile, three
     representative route angles, all payload tiers, nominal radius, and smoke
@@ -172,6 +180,13 @@ Current corpus tiers:
 - `transfer_waypoint_sequence_contract_smoke`
   - the same 27 selector cells and geometry as the sequence landing pack
   - scores every waypoint in order with `evaluation_goal = waypoint_sequence`
+- `transfer_waypoint_sequence_route_angle_smoke`
+  - 45 final-landing runs over `double_bend_v1`, the five smoke route angles,
+    all payload tiers, nominal radius, and smoke seeds
+- `transfer_waypoint_sequence_contract_route_angle_smoke`
+  - the same 45 selector cells and geometry as the route-wide sequence landing
+    pack
+  - scores both waypoints in order with `evaluation_goal = waypoint_sequence`
 - `transfer_waypoint_sequence_late_bend_diagnostic`
   - 27 final-landing diagnostic runs over the full former `late_bend_v1` matrix
   - preserves physical and handoff-window evidence without making its asymmetric
@@ -518,7 +533,7 @@ Current direct-transfer checkpoint, refreshed on 2026-07-12 with `8` workers,
 - `near_vertical_transfer_route` remains useful as a stress annotation, but it
   no longer describes a failing direct-transfer region
 
-Current normalized waypoint checkpoint, refreshed on 2026-07-12:
+Current normalized waypoint checkpoint, refreshed on 2026-07-13:
 
 - `transfer_waypoint_bend_rpos80_smoke`: `15 / 27` landings
 - `transfer_waypoint_bend_contract_rpos80_smoke`: `21 / 27` handoffs
@@ -533,6 +548,22 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-12:
 - `transfer_waypoint_sequence_smoke`: `27 / 27` maintained double-bend landings
 - `transfer_waypoint_sequence_contract_smoke`: `27 / 27` complete routes; all
   `54` handoffs pass at window entry and resolve as `contract_pass`
+- `transfer_waypoint_turn_contract_route_angle_smoke`: `135 / 135` handoff
+  successes, `0` invalidations, and `10.73s` wall clock
+- `transfer_waypoint_turn_route_angle_smoke`: `127 / 135` landings, `8`
+  crashes, `0` invalidations, and `26.27s` wall clock
+- `transfer_waypoint_sequence_contract_route_angle_smoke`: `45 / 45` complete
+  routes, `0` invalidations, and `2.85s` wall clock
+- `transfer_waypoint_sequence_route_angle_smoke`: `42 / 45` landings, `3`
+  crashes, `0` invalidations, and `11.34s` wall clock
+- every route-wide landing failure completes its waypoint contract. The turn
+  failures are full-payload `single_gentle_bend_v1/r-60` seeds `0-1` and
+  both `single_medium_bend_v1/r+60` and `single_sharp_bend_v1/r+60` seeds
+  `0-2`; the sequence failures are full-payload `double_bend_v1/r-60` seeds
+  `0-2`.
+- This separates the active frontier from waypoint acceptance: route contracts
+  remain clean, while final-leg boost/terminal recovery fails at the outer
+  route angles under full payload.
 - `transfer_waypoint_sequence_late_bend_diagnostic`: `27 / 27` landings and
   complete route telemetry; `27 / 54` handoffs enter outside the contract and
   recover before the waypoint plane
@@ -546,9 +577,14 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-12:
   changes are controller evidence, not hidden waypoint movement.
 - `single_dogleg_v1`, its four packs, and `late_bend_v1` contract scoring are
   parked diagnostic history rather than acceptance gates.
-- route/radius expansion remains a later evidence axis. Generalized terrain
-  avoidance remains out of scope; waypoint planning still owns terrain-valid
-  placement.
+- Radius expansion remains a separate planning slice. A selector-only probe
+  found that `single_gentle_bend_v1/r00/short` has `48.0m` terrain clearance
+  against a required `48.75m`, while every short-radius `double_bend_v1` route
+  exceeds the `0.75` continuation stopping-ratio bound (`0.842` at waypoint
+  zero before heavier-payload pressure). Those contracts should be rescaled
+  deliberately rather than admitted as holes in the maintained matrix.
+- Generalized terrain avoidance remains out of scope; waypoint planning still
+  owns terrain-valid placement.
 
 The following checkpoints are retained as historical tuning evidence.
 
