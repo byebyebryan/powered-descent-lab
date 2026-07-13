@@ -2,6 +2,34 @@
 
 ## 2026-07-12
 
+### Waypoint continuation-forecast checkpoint
+
+- Added a behavior-neutral one-leg continuation projection. After an actuated
+  current-handoff forecast passes, the controller projects that event state
+  into the next waypoint and evaluates the existing bounded candidate lattice
+  there. The projection carries position, velocity, attitude, fuel, and mass
+  forward without changing the selected command.
+- Batch schema `30` records the next waypoint index, projected continuation
+  contract status and reasons, outbound heading error, peak required authority,
+  and count of physically passing next-leg candidates. `Waypoint Plan
+  Trackability` renders the result in a dedicated `Continuation` column.
+- The behavior-neutral checkpoint preserved focused, ordered-contract, and
+  sequence-landing action streams byte-for-byte. A fresh ordered-contract run
+  produced `52` first-handoff continuation forecasts: `26` passed, `26` failed,
+  and `23` exposed at least one passing next-leg candidate.
+- Rejected a bounded center-target recovery experiment that waited for two
+  failed continuation forecasts, searched only the existing current-handoff
+  candidate lattice, required both current and next actuated contracts to pass,
+  and attempted once per plan revision. It improved ordered routes from
+  `38 / 54` to `39 / 54` with no prior-success regressions, but missed the
+  agreed `41 / 54` retention threshold and left the focus pack at `12 / 18`.
+  The behavior change was removed.
+- The result narrows the remaining design debt: continuation state is useful
+  evidence, but changing only center-target velocity/time choices rarely moves
+  the current handoff enough to repair the next leg. A future controller pass
+  should use the telemetry to evaluate a bounded joint handoff-state solve or
+  receding two-leg objective, while preserving route/profile independence.
+
 ### Reachable recovery-plan durability checkpoint
 
 - Batch seed rows now explain failed ordered checkpoints with the failed

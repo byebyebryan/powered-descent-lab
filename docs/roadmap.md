@@ -373,12 +373,19 @@ Status:
     one complete never-passing three-seed cell without route/profile branches
   - physically passing plans produced by that search retain ownership through
     transient authority saturation; ordinary center-plan recovery is unchanged
+  - schema `30` now projects each passing actuated handoff into the next leg and
+    reports continuation contract/authority evidence without affecting commands
 - next transfer slice should improve guidance against the corrected corpus:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
   - separate the remaining actuated never-passing candidate-selection debt from
     the four ordinary pass-lost center plans before changing either mechanism
   - preserve the event-state search boundary: confirmed never-passing legs only;
     actuated-forecast vetoes on already reference-passing plans are regressive
+  - do not repeat center-target one-step continuation reselection: it was safe
+    but improved ordered routes only to `39 / 54`, below the `41 / 54` retention
+    gate, and did not move the `12 / 18` focus result
+  - use the continuation telemetry to assess a bounded joint handoff-state solve
+    or receding two-leg objective before adding another replacement heuristic
   - keep those mechanisms independent of route/profile labels; hard speed caps,
     margin-only ordering, pathwise rejection, and fixed replan reserves have all
     regressed or merely redistributed the current failures

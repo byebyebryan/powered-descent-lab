@@ -462,6 +462,9 @@ Transfer route-angle checkpoint:
     limits; a bounded capture-envelope search now repairs confirmed
     never-passing legs, and its passing recovery plans retain ownership through
     transient instantaneous authority saturation
+  - schema `30` also projects each passing actuated handoff into the next leg;
+    reports expose continuation contract, authority, and candidate evidence
+    without changing commands
 - smoother `r+80` bend reset:
   - landing: `15 / 27` smoke and `54 / 108` full
   - handoff contract: `21 / 27` smoke and `89 / 108` full
