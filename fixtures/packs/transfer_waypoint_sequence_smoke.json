@@ -46,50 +46,6 @@
       "waypoint_handoff_envelope": "sequence_pass_through_v1",
       "adjustments": [{"id": "payload_full_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 4500.0}],
       "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "clean", "full", "smoke_seed"]
-    },
-    {
-      "id": "transfer_waypoint_sequence_late_empty",
-      "transfer_matrix": "signed_route_arc_transfer_v1",
-      "base_scenario": "../scenarios/flat_terminal_descent.json",
-      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
-      "seed_tier": "smoke",
-      "vehicle_variant": "empty",
-      "expectation_tier": "reference",
-      "route_angles": ["r-30", "r00", "r+30"],
-      "radius_tiers": ["nominal"],
-      "waypoint_profile": "late_bend_v1",
-      "waypoint_handoff_envelope": "sequence_pass_through_v1",
-      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "clean", "empty", "smoke_seed"]
-    },
-    {
-      "id": "transfer_waypoint_sequence_late_half",
-      "transfer_matrix": "signed_route_arc_transfer_v1",
-      "base_scenario": "../scenarios/flat_terminal_descent.json",
-      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
-      "seed_tier": "smoke",
-      "vehicle_variant": "half",
-      "expectation_tier": "reference",
-      "route_angles": ["r-30", "r00", "r+30"],
-      "radius_tiers": ["nominal"],
-      "waypoint_profile": "late_bend_v1",
-      "waypoint_handoff_envelope": "sequence_pass_through_v1",
-      "adjustments": [{"id": "payload_half_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 2250.0}],
-      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "clean", "half", "smoke_seed"]
-    },
-    {
-      "id": "transfer_waypoint_sequence_late_full",
-      "transfer_matrix": "signed_route_arc_transfer_v1",
-      "base_scenario": "../scenarios/flat_terminal_descent.json",
-      "lanes": [{"id": "current", "controller": "transfer_waypoint_pdg"}],
-      "seed_tier": "smoke",
-      "vehicle_variant": "full",
-      "expectation_tier": "reference",
-      "route_angles": ["r-30", "r00", "r+30"],
-      "radius_tiers": ["nominal"],
-      "waypoint_profile": "late_bend_v1",
-      "waypoint_handoff_envelope": "sequence_pass_through_v1",
-      "adjustments": [{"id": "payload_full_mass_kg", "path": "vehicle.dry_mass_kg", "mode": "offset", "value": 4500.0}],
-      "tags": ["transfer_guidance", "waypoint_guidance", "waypoint_sequence", "clean", "full", "smoke_seed"]
     }
   ]
 }

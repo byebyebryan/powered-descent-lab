@@ -2074,6 +2074,16 @@ fn validate_transfer_matrix_entry(entry: &TransferMatrixEntry) -> Result<()> {
                 TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC
             );
         }
+        if profile == TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1
+            && entry.expectation_tier != TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC
+        {
+            bail!(
+                "transfer matrix entry '{}' waypoint_profile '{}' requires expectation_tier '{}'",
+                entry.id,
+                profile,
+                TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC
+            );
+        }
     }
     if let Some(envelope) = &entry.waypoint_handoff_envelope {
         validate_transfer_waypoint_envelope(&entry.id, envelope)?;
@@ -3421,6 +3431,15 @@ fn configure_transfer_route_geometry(
             &waypoints,
             &scenario.vehicle,
         )?;
+        if profile == TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 {
+            validate_transfer_waypoint_turn_authority(
+                profile,
+                &source_pad,
+                &target_pad,
+                &waypoints,
+                &scenario.vehicle,
+            )?;
+        }
     }
     scenario.mission.transfer_route = Some(TransferRouteSpec {
         source_pad_id: source_pad.id.clone(),
@@ -3596,7 +3615,7 @@ fn transfer_route_sequence_waypoints(
         ],
         _ => unreachable!("validated sequence waypoint profile"),
     };
-    let waypoints = node_specs
+    let mut waypoints = node_specs
         .into_iter()
         .map(
             |(waypoint_id, progress_frac, lateral_offset_ratio, max_speed_mps)| {
@@ -3620,7 +3639,37 @@ fn transfer_route_sequence_waypoints(
             },
         )
         .collect::<Vec<_>>();
+    apply_transfer_waypoint_handoff_tangents(profile, source_m, target_m, &mut waypoints)?;
     Ok(waypoints)
+}
+
+fn apply_transfer_waypoint_handoff_tangents(
+    profile: &str,
+    source_m: Vec2,
+    target_m: Vec2,
+    waypoints: &mut [TransferWaypointSpec],
+) -> Result<()> {
+    for index in 0..waypoints.len() {
+        let anchor_m = if index == 0 {
+            source_m
+        } else {
+            waypoints[index - 1].position_m
+        };
+        let next_target_m = waypoints
+            .get(index + 1)
+            .map_or(target_m, |next| next.position_m);
+        let inbound_unit = waypoint_normalized(waypoints[index].position_m - anchor_m)
+            .ok_or_else(|| anyhow!("waypoint profile '{profile}' has a zero-length inbound leg"))?;
+        let outbound_unit = waypoint_normalized(next_target_m - waypoints[index].position_m)
+            .ok_or_else(|| {
+                anyhow!("waypoint profile '{profile}' has a zero-length outbound leg")
+            })?;
+        let tangent = waypoint_normalized(inbound_unit + outbound_unit).ok_or_else(|| {
+            anyhow!("waypoint profile '{profile}' cannot bisect opposing route legs")
+        })?;
+        waypoints[index].handoff_tangent_unit = Some(tangent);
+    }
+    Ok(())
 }
 
 fn validate_transfer_waypoint_geometry(
@@ -3742,6 +3791,23 @@ fn validate_transfer_waypoint_geometry(
                 "waypoint profile '{profile}' waypoint {index} signed turn {signed_turn_deg:.6}deg must equal {:.6}deg",
                 expected.signed_turn_deg
             );
+        }
+        if matches!(
+            profile,
+            TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 | TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1
+        ) {
+            let expected_tangent = waypoint_normalized(
+                waypoint_normalized(inbound_m).unwrap() + waypoint_normalized(outbound_m).unwrap(),
+            )
+            .expect("validated sequence legs cannot oppose");
+            let tangent = waypoints[index]
+                .handoff_tangent_unit
+                .ok_or_else(|| anyhow!("waypoint profile '{profile}' waypoint {index} requires an explicit handoff tangent"))?;
+            if (tangent - expected_tangent).length() > TRANSFER_WAYPOINT_GEOMETRY_TOLERANCE {
+                bail!(
+                    "waypoint profile '{profile}' waypoint {index} handoff tangent must bisect its route legs"
+                );
+            }
         }
     }
 
@@ -3913,6 +3979,64 @@ fn validate_transfer_waypoint_continuation(
     Ok(())
 }
 
+fn transfer_waypoint_turn_authority_ratio(
+    waypoint: &TransferWaypointSpec,
+    anchor_m: Vec2,
+    next_target_m: Vec2,
+    vehicle: &VehicleSpec,
+) -> Result<f64> {
+    let tangent = waypoint.handoff_tangent_unit.ok_or_else(|| {
+        anyhow!(
+            "waypoint '{}' requires an explicit handoff tangent",
+            waypoint.id
+        )
+    })?;
+    let inbound_m = waypoint.position_m - anchor_m;
+    let outbound_m = next_target_m - waypoint.position_m;
+    let inbound_unit = waypoint_normalized(inbound_m)
+        .ok_or_else(|| anyhow!("waypoint '{}' has a zero-length inbound leg", waypoint.id))?;
+    let outbound_unit = waypoint_normalized(outbound_m)
+        .ok_or_else(|| anyhow!("waypoint '{}' has a zero-length outbound leg", waypoint.id))?;
+    let initial_mass_kg = vehicle.dry_mass_kg + vehicle.initial_fuel_kg;
+    let max_acceleration_mps2 = vehicle.max_thrust_n / initial_mass_kg.max(1.0);
+    let side_ratio = |leg_m: Vec2, leg_unit: Vec2| {
+        let available_distance_m = (leg_m.length() - waypoint.capture_radius_m).max(1.0);
+        let deflection_rad = waypoint_dot(leg_unit, tangent).clamp(-1.0, 1.0).acos();
+        2.0 * waypoint.max_speed_mps.powi(2) * (deflection_rad * 0.5).sin()
+            / (max_acceleration_mps2 * available_distance_m)
+    };
+    Ok(side_ratio(inbound_m, inbound_unit).max(side_ratio(outbound_m, outbound_unit)))
+}
+
+fn validate_transfer_waypoint_turn_authority(
+    profile: &str,
+    source_pad: &LandingPadSpec,
+    target_pad: &LandingPadSpec,
+    waypoints: &[TransferWaypointSpec],
+    vehicle: &VehicleSpec,
+) -> Result<()> {
+    let source_m = Vec2::new(source_pad.center_x_m, source_pad.surface_y_m);
+    let target_m = Vec2::new(target_pad.center_x_m, target_pad.surface_y_m);
+    for (index, waypoint) in waypoints.iter().enumerate() {
+        let anchor_m = if index == 0 {
+            source_m
+        } else {
+            waypoints[index - 1].position_m
+        };
+        let next_target_m = waypoints
+            .get(index + 1)
+            .map_or(target_m, |next| next.position_m);
+        let ratio =
+            transfer_waypoint_turn_authority_ratio(waypoint, anchor_m, next_target_m, vehicle)?;
+        if ratio > TRANSFER_WAYPOINT_CONTINUATION_MAX_STOP_RATIO + REGRESSION_POLICY_EPSILON {
+            bail!(
+                "waypoint profile '{profile}' waypoint {index} optimistic turn-authority ratio {ratio:.6} exceeds 0.750000"
+            );
+        }
+    }
+    Ok(())
+}
+
 fn insert_waypoint_geometry_resolved_parameters(
     resolved_parameters: &mut BTreeMap<String, f64>,
     source_m: Vec2,
@@ -3956,6 +4080,34 @@ fn insert_waypoint_geometry_resolved_parameters(
         let outbound_length_m = outbound_m.length();
         resolved_parameters.insert(format!("{prefix}_inbound_leg_length_m"), inbound_length_m);
         resolved_parameters.insert(format!("{prefix}_outbound_leg_length_m"), outbound_length_m);
+        if let Some(tangent) = waypoint.handoff_tangent_unit {
+            let inbound_unit = waypoint_normalized(inbound_m).expect("resolved inbound leg");
+            let outbound_unit = waypoint_normalized(outbound_m).expect("resolved outbound leg");
+            resolved_parameters.insert(format!("{prefix}_handoff_tangent_x"), tangent.x);
+            resolved_parameters.insert(format!("{prefix}_handoff_tangent_y"), tangent.y);
+            resolved_parameters.insert(
+                format!("{prefix}_handoff_tangent_heading_deg"),
+                tangent.y.atan2(tangent.x).to_degrees(),
+            );
+            resolved_parameters.insert(
+                format!("{prefix}_inbound_tangent_angle_deg"),
+                waypoint_dot(inbound_unit, tangent)
+                    .clamp(-1.0, 1.0)
+                    .acos()
+                    .to_degrees(),
+            );
+            resolved_parameters.insert(
+                format!("{prefix}_tangent_outbound_angle_deg"),
+                waypoint_dot(tangent, outbound_unit)
+                    .clamp(-1.0, 1.0)
+                    .acos()
+                    .to_degrees(),
+            );
+            resolved_parameters.insert(
+                format!("{prefix}_turn_authority_ratio"),
+                transfer_waypoint_turn_authority_ratio(waypoint, anchor_m, next_target_m, vehicle)?,
+            );
+        }
         let metrics = transfer_waypoint_continuation_metrics(waypoint, next_target_m, vehicle)?;
         resolved_parameters.insert(
             format!("{prefix}_continuation_available_distance_m"),
@@ -10449,6 +10601,39 @@ mod tests {
     }
 
     #[test]
+    fn transfer_matrix_late_bend_profile_requires_diagnostic_tier() {
+        let entry = TransferMatrixEntry {
+            id: "transfer_guidance_waypoint_late_bend".to_owned(),
+            transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
+            base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
+            lanes: vec![TransferMatrixLaneSpec {
+                id: "current".to_owned(),
+                controller: "transfer_pdg".to_owned(),
+                controller_config: None,
+            }],
+            seed_tier: TransferSeedTier::Smoke,
+            vehicle_variant: "empty".to_owned(),
+            expectation_tier: "contract_probe".to_owned(),
+            route_angles: vec!["r+30".to_owned()],
+            radius_tiers: vec!["nominal".to_owned()],
+            waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1.to_owned()),
+            waypoint_handoff_envelope: Some(
+                TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1.to_owned(),
+            ),
+            evaluation_goal: TransferMatrixEvaluationGoal::WaypointSequence,
+            adjustments: Vec::new(),
+            tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
+            metadata: BTreeMap::new(),
+        };
+
+        let message = validate_transfer_matrix_entry(&entry)
+            .unwrap_err()
+            .to_string();
+
+        assert!(message.contains("requires expectation_tier 'diagnostic'"));
+    }
+
+    #[test]
     fn transfer_matrix_waypoint_profile_injects_smooth_bend_waypoint() {
         let base_dir = fixtures_root();
         let pack = ScenarioPackSpec {
@@ -10762,35 +10947,27 @@ mod tests {
         let mission_runs = resolve_pack_runs(&mission_pack, &packs_dir).unwrap();
         let contract_runs = resolve_pack_runs(&contract_pack, &packs_dir).unwrap();
 
-        assert_eq!(mission_runs.len(), 54);
-        assert_eq!(contract_runs.len(), 54);
+        assert_eq!(mission_runs.len(), 27);
+        assert_eq!(contract_runs.len(), 27);
         for runs in [&mission_runs, &contract_runs] {
             let run_ids = runs
                 .iter()
                 .map(|run| run.descriptor.run_id.as_str())
                 .collect::<BTreeSet<_>>();
-            assert_eq!(run_ids.len(), 54);
+            assert_eq!(run_ids.len(), 27);
             assert!(runs.iter().all(|run| {
                 run.descriptor.selector.waypoint_handoff_envelope
                     == TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1
             }));
-            for profile in [
-                TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1,
-                TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1,
-            ] {
-                assert_eq!(
-                    runs.iter()
-                        .filter(|run| run.descriptor.selector.waypoint_profile == profile)
-                        .count(),
-                    27
-                );
-            }
+            assert!(runs.iter().all(|run| {
+                run.descriptor.selector.waypoint_profile == TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1
+            }));
             for vehicle in ["empty", "half", "full"] {
                 assert_eq!(
                     runs.iter()
                         .filter(|run| run.descriptor.selector.vehicle_variant == vehicle)
                         .count(),
-                    18
+                    9
                 );
             }
             for route_angle in ["r-30", "r00", "r+30"] {
@@ -10798,7 +10975,7 @@ mod tests {
                     runs.iter()
                         .filter(|run| run.descriptor.selector.route_angle == route_angle)
                         .count(),
-                    18
+                    9
                 );
             }
             for run in runs {
@@ -10814,6 +10991,7 @@ mod tests {
                         > route.waypoints[0].capture_radius_m + route.waypoints[1].capture_radius_m
                 );
                 for waypoint in &route.waypoints {
+                    assert!(waypoint.handoff_tangent_unit.is_some());
                     let terrain_clearance_m = waypoint.position_m.y
                         - run
                             .scenario
@@ -10835,15 +11013,11 @@ mod tests {
                     params["waypoint_0_max_cross_track_m"] / params["waypoint_0_capture_radius_m"],
                     1.25
                 );
-                let expected_speed_caps = if run.descriptor.selector.waypoint_profile
-                    == TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1
-                {
-                    [55.0, 65.0]
-                } else {
-                    [45.0, 65.0]
-                };
+                let expected_speed_caps = [55.0, 65.0];
                 assert_eq!(route.waypoints[0].max_speed_mps, expected_speed_caps[0]);
                 assert_eq!(route.waypoints[1].max_speed_mps, expected_speed_caps[1]);
+                assert!(params["waypoint_0_turn_authority_ratio"] <= 0.75);
+                assert!(params["waypoint_1_turn_authority_ratio"] <= 0.75);
             }
         }
 
@@ -10905,55 +11079,77 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         assert_eq!(mission_geometry, contract_geometry);
 
-        for (profile, expected_turn_angles) in [
-            (TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1, [31.2184, 31.2184]),
-            (TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1, [0.5769, 59.1583]),
-        ] {
-            for route_angle in ["r-30", "r00", "r+30"] {
-                let run = mission_runs
-                    .iter()
-                    .find(|run| {
-                        run.descriptor.selector.waypoint_profile == profile
-                            && run.descriptor.selector.vehicle_variant == "empty"
-                            && run.descriptor.selector.route_angle == route_angle
-                            && run.descriptor.resolved_seed == 0
-                    })
-                    .expect("sequence profile cell should resolve");
-                let params = &run.descriptor.resolved_parameters;
-                for (index, expected_turn_angle_deg) in expected_turn_angles.iter().enumerate() {
-                    assert!(
-                        (params[&format!("waypoint_{index}_turn_angle_deg")]
-                            - expected_turn_angle_deg)
-                            .abs()
-                            < 1.0e-3
-                    );
-                    assert!(
-                        (params[&format!("waypoint_{index}_signed_turn_angle_deg")]
-                            + expected_turn_angle_deg)
-                            .abs()
-                            < 1.0e-3
-                    );
-                }
+        for route_angle in ["r-30", "r00", "r+30"] {
+            let run = mission_runs
+                .iter()
+                .find(|run| {
+                    run.descriptor.selector.vehicle_variant == "empty"
+                        && run.descriptor.selector.route_angle == route_angle
+                        && run.descriptor.resolved_seed == 0
+                })
+                .expect("double-bend sequence cell should resolve");
+            let params = &run.descriptor.resolved_parameters;
+            for index in 0..2 {
+                assert!(
+                    (params[&format!("waypoint_{index}_turn_angle_deg")] - 31.2184).abs() < 1.0e-3
+                );
+                assert!(
+                    (params[&format!("waypoint_{index}_signed_turn_angle_deg")] + 31.2184).abs()
+                        < 1.0e-3
+                );
+                assert!(
+                    (params[&format!("waypoint_{index}_inbound_tangent_angle_deg")] - 15.6092)
+                        .abs()
+                        < 1.0e-3
+                );
+                assert!(
+                    (params[&format!("waypoint_{index}_tangent_outbound_angle_deg")] - 15.6092)
+                        .abs()
+                        < 1.0e-3
+                );
             }
         }
+        let uphill = mission_runs
+            .iter()
+            .find(|run| {
+                run.descriptor.selector.vehicle_variant == "empty"
+                    && run.descriptor.selector.route_angle == "r+30"
+                    && run.descriptor.resolved_seed == 0
+            })
+            .unwrap();
+        assert!(
+            (uphill.descriptor.resolved_parameters["waypoint_0_handoff_tangent_heading_deg"]
+                - 45.6092)
+                .abs()
+                < 1.0e-3
+        );
+        assert!(
+            (uphill.descriptor.resolved_parameters["waypoint_1_handoff_tangent_heading_deg"]
+                - 14.3908)
+                .abs()
+                < 1.0e-3
+        );
     }
 
     #[test]
-    fn transfer_waypoint_trackability_focus_expands_selected_cells() {
+    fn transfer_waypoint_late_bend_diagnostic_preserves_full_matrix() {
         let packs_dir = fixtures_root().join("packs");
-        let pack = load_pack(&packs_dir.join("transfer_waypoint_sequence_trackability_focus.json"))
-            .unwrap();
+        let pack =
+            load_pack(&packs_dir.join("transfer_waypoint_sequence_late_bend_diagnostic.json"))
+                .unwrap();
         let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
 
-        assert_eq!(runs.len(), 18);
+        assert_eq!(runs.len(), 27);
         assert!(runs.iter().all(|run| {
             run.descriptor.selector.expectation_tier.as_deref() == Some("diagnostic")
                 && run.descriptor.selector.radius_tier == "nominal"
+                && run.descriptor.selector.waypoint_profile
+                    == TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1
                 && run.descriptor.selector.waypoint_handoff_envelope
                     == TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1
                 && matches!(
                     run.scenario.mission.goal,
-                    EvaluationGoal::WaypointSequence { .. }
+                    EvaluationGoal::LandingOnPad { .. }
                 )
                 && run
                     .scenario
@@ -10962,41 +11158,12 @@ mod tests {
                     .as_ref()
                     .is_some_and(|route| route.waypoints.len() == 2)
         }));
-        let cells = runs
-            .iter()
-            .map(|run| {
-                format!(
-                    "{}|{}|{}",
-                    run.descriptor.selector.waypoint_profile,
-                    run.descriptor.selector.vehicle_variant,
-                    run.descriptor.selector.route_angle,
-                )
-            })
-            .collect::<BTreeSet<_>>();
-        assert_eq!(
-            cells,
-            BTreeSet::from([
-                "double_bend_v1|empty|r+30".to_owned(),
-                "double_bend_v1|half|r-30".to_owned(),
-                "late_bend_v1|empty|r+30".to_owned(),
-                "late_bend_v1|empty|r-30".to_owned(),
-                "late_bend_v1|full|r00".to_owned(),
-                "late_bend_v1|half|r00".to_owned(),
-            ])
-        );
-        for cell in cells {
+        for vehicle in ["empty", "half", "full"] {
             assert_eq!(
                 runs.iter()
-                    .filter(|run| {
-                        format!(
-                            "{}|{}|{}",
-                            run.descriptor.selector.waypoint_profile,
-                            run.descriptor.selector.vehicle_variant,
-                            run.descriptor.selector.route_angle,
-                        ) == cell
-                    })
+                    .filter(|run| run.descriptor.selector.vehicle_variant == vehicle)
                     .count(),
-                3
+                9
             );
         }
     }
