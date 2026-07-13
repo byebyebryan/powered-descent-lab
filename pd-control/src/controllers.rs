@@ -1406,7 +1406,8 @@ impl TransferPdgController {
                 None,
             ),
             TransferPhase::Boost => {
-                let selection = self.select_boost_command(ctx, observation, diagnostics, corridor);
+                let selection =
+                    self.select_boost_command(ctx, observation, diagnostics, gate, corridor);
                 self.frame_for_open_loop_phase(
                     ctx,
                     observation,
@@ -3821,6 +3822,10 @@ impl TransferPdgController {
             return TransferPhase::Terminal;
         };
 
+        if self.phase == TransferPhase::Terminal {
+            return TransferPhase::Terminal;
+        }
+
         let source_clearance_m = observation.position_m.y
             - source_pad.surface_y_m
             - ctx.vehicle.geometry.touchdown_base_offset_m;
@@ -3842,10 +3847,6 @@ impl TransferPdgController {
             && self.source_clearance_hold_needed(ctx, observation)
         {
             return TransferPhase::Takeoff;
-        }
-
-        if self.phase == TransferPhase::Terminal {
-            return TransferPhase::Terminal;
         }
 
         if !route_needs_transfer_burn && !transfer_burn_started {
@@ -4160,6 +4161,7 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
+        gate: TransferGateReadiness,
         corridor: TransferCorridorState,
     ) -> TransferBoostCommandSelection {
         let base_attitude = self.boost_attitude_rad(observation, diagnostics, corridor);
@@ -4199,7 +4201,9 @@ impl TransferPdgController {
                 );
             }
         }
-        if self.boost_projected_overshoot(observation, diagnostics) {
+        if self.boost_projected_overshoot(observation, diagnostics)
+            && Self::boost_cut_admissible(gate, corridor)
+        {
             self.push_unique_candidate(&mut throttle_candidates, 0.0);
         }
 
@@ -4231,6 +4235,13 @@ impl TransferPdgController {
             settled_projection: settled.projection,
             settled_quality: settled.quality,
         }
+    }
+
+    fn boost_cut_admissible(gate: TransferGateReadiness, corridor: TransferCorridorState) -> bool {
+        !corridor.active
+            && gate.terrain_clearance_safe
+            && gate.latest_safe_margin_s > 0.0
+            && gate.required_accel_ratio <= 1.0
     }
 
     fn score_boost_candidate(
@@ -5950,6 +5961,23 @@ mod tests {
             target_pad_half_width_m: 18.0,
             touchdown_clearance_m: height_above_target_m.abs() + 100.0,
             min_hull_clearance_m: height_above_target_m.abs() + 100.0,
+        }
+    }
+
+    fn transfer_gate_fixture(
+        latest_safe_margin_s: f64,
+        required_accel_ratio: f64,
+        terrain_clearance_safe: bool,
+    ) -> TransferGateReadiness {
+        TransferGateReadiness {
+            mode: TransferGateReadinessMode::Pending,
+            ready_ticks: 0,
+            burn_time_s: 5.0,
+            latest_safe_margin_s,
+            required_accel_ratio,
+            terrain_min_clearance_m: 20.0,
+            terrain_clearance_safe,
+            deferred: false,
         }
     }
 
@@ -7838,6 +7866,75 @@ mod tests {
     }
 
     #[test]
+    fn transfer_boost_cut_requires_clear_corridor_and_terminal_reserve() {
+        let clear_corridor = TransferCorridorState::inactive();
+        let active_corridor = TransferCorridorState {
+            mode: "active",
+            active: true,
+            tilt_limited: false,
+            margin_m: -1.0,
+        };
+
+        assert!(TransferPdgController::boost_cut_admissible(
+            transfer_gate_fixture(2.0, 0.8, true),
+            clear_corridor,
+        ));
+        assert!(!TransferPdgController::boost_cut_admissible(
+            transfer_gate_fixture(2.0, 0.8, true),
+            active_corridor,
+        ));
+        assert!(!TransferPdgController::boost_cut_admissible(
+            transfer_gate_fixture(-0.1, 0.8, true),
+            clear_corridor,
+        ));
+        assert!(!TransferPdgController::boost_cut_admissible(
+            transfer_gate_fixture(2.0, 1.01, true),
+            clear_corridor,
+        ));
+        assert!(!TransferPdgController::boost_cut_admissible(
+            transfer_gate_fixture(2.0, 0.8, false),
+            clear_corridor,
+        ));
+    }
+
+    #[test]
+    fn transfer_boost_scorer_cannot_cut_thrust_without_terminal_reserve() {
+        let ctx = uphill_transfer_context();
+        let mut controller = TransferPdgController::default();
+        controller.boost_anchor = Some(TransferBoostAnchor {
+            route_dx_m: 700.0,
+            route_dy_m: 400.0,
+        });
+        let observation = transfer_observation(100.0, -50.0, Vec2::new(50.0, 50.0), 6.0);
+        let diagnostics = controller.transfer_diagnostics(&observation);
+        let active_corridor = TransferCorridorState {
+            mode: "active",
+            active: true,
+            tilt_limited: false,
+            margin_m: -1.0,
+        };
+
+        assert!(controller.boost_projected_overshoot(&observation, diagnostics));
+        let corridor_selection = controller.select_boost_command(
+            &ctx,
+            &observation,
+            diagnostics,
+            transfer_gate_fixture(2.0, 0.8, true),
+            active_corridor,
+        );
+        let overdue_selection = controller.select_boost_command(
+            &ctx,
+            &observation,
+            diagnostics,
+            transfer_gate_fixture(-0.1, 0.8, true),
+            TransferCorridorState::inactive(),
+        );
+
+        assert_eq!(corridor_selection.command.throttle_frac, 1.0);
+        assert!(overdue_selection.command.throttle_frac > 0.0);
+    }
+
+    #[test]
     fn transfer_coast_accepts_settled_ascending_solution_above_target_height() {
         let ctx = uphill_transfer_context();
         let mut controller = TransferPdgController::default();
@@ -7976,7 +8073,13 @@ mod tests {
             .corridor_lateral_brake_attitude_rad(&observation, diagnostics, corridor)
             .expect("targetward speed should trigger corridor braking");
         let boost_attitude_rad = controller.boost_attitude_rad(&observation, diagnostics, corridor);
-        let selection = controller.select_boost_command(&ctx, &observation, diagnostics, corridor);
+        let selection = controller.select_boost_command(
+            &ctx,
+            &observation,
+            diagnostics,
+            transfer_gate_fixture(2.0, 0.8, true),
+            corridor,
+        );
 
         assert!(corridor.active);
         assert!(corridor.tilt_limited);
@@ -8084,6 +8187,7 @@ mod tests {
             &ctx,
             &observation,
             diagnostics,
+            transfer_gate_fixture(2.0, 0.8, true),
             TransferCorridorState::inactive(),
         );
 
@@ -8144,6 +8248,7 @@ mod tests {
             &ctx,
             &observation,
             diagnostics,
+            transfer_gate_fixture(2.0, 0.8, true),
             TransferCorridorState::inactive(),
         );
 
@@ -8339,6 +8444,7 @@ mod tests {
             &ctx,
             &observation,
             diagnostics,
+            transfer_gate_fixture(2.0, 0.8, true),
             TransferCorridorState::inactive(),
         );
 
@@ -8359,7 +8465,13 @@ mod tests {
         let diagnostics = controller.transfer_diagnostics(&observation);
         let corridor = controller.transfer_corridor_state(&ctx, &observation, diagnostics);
 
-        let selection = controller.select_boost_command(&ctx, &observation, diagnostics, corridor);
+        let selection = controller.select_boost_command(
+            &ctx,
+            &observation,
+            diagnostics,
+            transfer_gate_fixture(2.0, 0.8, true),
+            corridor,
+        );
 
         assert!(corridor.tilt_limited);
         assert!(
@@ -8494,6 +8606,12 @@ mod tests {
 
         let held_phase = controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
 
+        let mut terminal_controller = TransferPdgController::default();
+        terminal_controller.phase = TransferPhase::Terminal;
+        assert!(terminal_controller.source_clearance_hold_needed(&ctx, &observation));
+        let terminal_phase =
+            terminal_controller.choose_phase(&ctx, &observation, diagnostics, gate, corridor);
+
         observation.position_m.y = 430.0;
         observation.height_above_target_m = 430.0;
         observation.touchdown_clearance_m = 30.0;
@@ -8510,6 +8628,7 @@ mod tests {
         );
 
         assert_eq!(held_phase, TransferPhase::Takeoff);
+        assert_eq!(terminal_phase, TransferPhase::Terminal);
         assert_eq!(released_phase, TransferPhase::Terminal);
     }
 
