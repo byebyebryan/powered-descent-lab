@@ -7298,9 +7298,11 @@ fn batch_waypoint_handoff_metrics(
         transition_continuation_contract_pass: transition_matches_handoff
             .then_some(waypoint.transition_continuation_contract_pass)
             .flatten(),
-        transition_continuation_contract_reasons: transition_matches_handoff
-            .then_some(waypoint.transition_continuation_contract_reasons.clone())
-            .unwrap_or_default(),
+        transition_continuation_contract_reasons: if transition_matches_handoff {
+            waypoint.transition_continuation_contract_reasons.clone()
+        } else {
+            Vec::new()
+        },
         transition_continuation_outbound_heading_error_rad: transition_matches_handoff
             .then_some(waypoint.transition_continuation_outbound_heading_error_rad)
             .flatten(),

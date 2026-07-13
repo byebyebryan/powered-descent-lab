@@ -2695,12 +2695,14 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
         .map(render_waypoint_continuation_audit_row)
         .collect::<String>();
     let continuation_seed_row_html = render_waypoint_continuation_seed_rows(&sequence_records);
-    let continuation_audit_html = (!continuation_audit_row_html.is_empty())
-        .then(|| {
-            let seed_html = (!continuation_seed_row_html.is_empty())
-                .then(|| {
-                    format!(
-                        r#"<details class="transfer-handoff-section waypoint-continuation-seed-section">
+    let continuation_audit_html = if continuation_audit_row_html.is_empty() {
+        String::new()
+    } else {
+        let seed_html = if continuation_seed_row_html.is_empty() {
+            String::new()
+        } else {
+            format!(
+                r#"<details class="transfer-handoff-section waypoint-continuation-seed-section">
   <summary class="section-head transfer-triage-summary">
     <h3>Seed Evidence</h3>
     <div class="section-note">Exact transition and selected joint-state evidence for each observed handoff.</div>
@@ -2712,11 +2714,10 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
     </table>
   </div>
 </details>"#,
-                    )
-                })
-                .unwrap_or_default();
-            format!(
-                r#"<details class="transfer-handoff-section waypoint-continuation-audit-section">
+            )
+        };
+        format!(
+            r#"<details class="transfer-handoff-section waypoint-continuation-audit-section">
   <summary class="section-head transfer-triage-summary">
     <h2>Waypoint Continuation Audit</h2>
     <div class="section-note">Planned projection, actual transition state, next-leg viability, and bounded joint-state search. Legacy packs retain planned evidence and show dashes for schema-31 fields.</div>
@@ -2729,9 +2730,8 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
   </div>
   {seed_html}
 </details>"#,
-            )
-        })
-        .unwrap_or_default();
+        )
+    };
 
     format!(
         r#"<details class="transfer-handoff-section waypoint-sequence-section">
