@@ -7202,6 +7202,33 @@ fn terminal_waypoint_review_metrics(
         .filter_map(|sample| waypoint_sample_stats(scenario, &sample.observation, waypoint_index))
         .map(|stats| stats.distance_m)
         .min_by(|lhs, rhs| lhs.total_cmp(rhs));
+    let sampled_window_entry = samples.iter().find_map(|sample| {
+        let entry_stats = waypoint_sample_stats(scenario, &sample.observation, waypoint_index)?;
+        (entry_stats.distance_m <= waypoint.capture_radius_m).then(|| {
+            let assessment = waypoint.assess_handoff(entry_stats);
+            BatchWaypointWindowEntryReviewMetrics {
+                time_s: Some(sample.sim_time_s),
+                position_x_m: Some(sample.observation.position_m.x),
+                position_y_m: Some(sample.observation.position_m.y),
+                velocity_x_mps: Some(sample.observation.velocity_mps.x),
+                velocity_y_mps: Some(sample.observation.velocity_mps.y),
+                distance_m: Some(entry_stats.distance_m),
+                cross_track_m: Some(entry_stats.cross_track_m),
+                plane_progress_m: Some(entry_stats.plane_progress_m),
+                handoff_heading_error_rad: Some(entry_stats.outbound_heading_error_rad),
+                handoff_progress_mps: Some(entry_stats.outbound_progress_mps),
+                handoff_cross_speed_mps: Some(entry_stats.outbound_cross_speed_mps),
+                speed_mps: Some(entry_stats.speed_mps),
+                vertical_speed_mps: Some(entry_stats.vertical_speed_mps),
+                contract_pass: Some(assessment.contract_pass()),
+                contract_reasons: assessment
+                    .violations
+                    .iter()
+                    .map(|violation| violation.as_str().to_owned())
+                    .collect(),
+            }
+        })
+    });
     let active_index = i64::try_from(waypoint_index).ok();
     let guidance_update = controller_updates.iter().rev().find(|update| {
         telemetry_bool(&update.frame.metrics, metric::WAYPOINT_GUIDANCE_ENABLED) == Some(true)
@@ -7238,14 +7265,32 @@ fn terminal_waypoint_review_metrics(
     let handoff_turn_margin_m = remaining_to_handoff_m
         .zip(guidance.required_turn_distance_m)
         .map(|(remaining_m, required_m)| remaining_m - required_m);
+    let window_entry = guidance.window_entry.clone().or(sampled_window_entry);
+    let final_assessment = waypoint.assess_handoff(stats);
+    let resolution_reason = guidance.resolution_reason.clone().or_else(|| {
+        terminal_handoff.then(|| {
+            if final_assessment.contract_pass_in_window(window_entry.is_some()) {
+                "contract_pass"
+            } else {
+                "plane_deadline"
+            }
+            .to_owned()
+        })
+    });
+    let window_duration_s = guidance.window_duration_s.or_else(|| {
+        terminal_handoff
+            .then_some(last_sample.sim_time_s)
+            .zip(window_entry.as_ref().and_then(|entry| entry.time_s))
+            .map(|(resolution_time_s, entry_time_s)| (resolution_time_s - entry_time_s).max(0.0))
+    });
 
     Some(WaypointReviewMetrics {
         capture_status: Some(capture_status.to_owned()),
         active_index,
         capture_time_s: terminal_handoff.then_some(last_sample.sim_time_s),
-        window_entry: guidance.window_entry.clone(),
-        resolution_reason: guidance.resolution_reason.clone(),
-        window_duration_s: guidance.window_duration_s,
+        window_entry,
+        resolution_reason,
+        window_duration_s,
         closest_distance_m,
         distance_m: Some(stats.distance_m),
         cross_track_m: Some(stats.cross_track_m),
@@ -11616,6 +11661,22 @@ mod tests {
                 TelemetryValue::from(0.5),
             ),
             (
+                metric::WAYPOINT_WINDOW_ENTRY_TIME_S.to_owned(),
+                TelemetryValue::from(0.5),
+            ),
+            (
+                metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_PASS.to_owned(),
+                TelemetryValue::from(true),
+            ),
+            (
+                metric::WAYPOINT_HANDOFF_RESOLUTION_REASON.to_owned(),
+                TelemetryValue::from("contract_pass"),
+            ),
+            (
+                metric::WAYPOINT_HANDOFF_WINDOW_DURATION_S.to_owned(),
+                TelemetryValue::from(0.0),
+            ),
+            (
                 metric::WAYPOINT_CLOSEST_DISTANCE_M.to_owned(),
                 TelemetryValue::from(12.0),
             ),
@@ -11642,6 +11703,19 @@ mod tests {
         assert_eq!(metrics.capture_status.as_deref(), Some("captured"));
         assert_eq!(metrics.active_index, Some(0));
         assert_eq!(metrics.capture_time_s, Some(0.5));
+        assert_eq!(
+            metrics.window_entry.as_ref().and_then(|entry| entry.time_s),
+            Some(0.5)
+        );
+        assert_eq!(
+            metrics
+                .window_entry
+                .as_ref()
+                .and_then(|entry| entry.contract_pass),
+            Some(true)
+        );
+        assert_eq!(metrics.resolution_reason.as_deref(), Some("contract_pass"));
+        assert_eq!(metrics.window_duration_s, Some(0.0));
         assert_eq!(metrics.closest_distance_m, Some(12.0));
         assert_eq!(metrics.cross_track_m, Some(8.0));
         assert_eq!(metrics.outbound_progress_mps, Some(24.0));
