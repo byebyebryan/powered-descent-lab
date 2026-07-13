@@ -11101,6 +11101,144 @@ mod tests {
     }
 
     #[test]
+    fn transfer_waypoint_turn_route_angle_packs_expand_paired_matrix() {
+        let packs_dir = fixtures_root().join("packs");
+        let mission_pack =
+            load_pack(&packs_dir.join("transfer_waypoint_turn_route_angle_smoke.json")).unwrap();
+        let contract_pack =
+            load_pack(&packs_dir.join("transfer_waypoint_turn_contract_route_angle_smoke.json"))
+                .unwrap();
+        let mission_runs = resolve_pack_runs(&mission_pack, &packs_dir).unwrap();
+        let contract_runs = resolve_pack_runs(&contract_pack, &packs_dir).unwrap();
+
+        assert_eq!(mission_runs.len(), 135);
+        assert_eq!(contract_runs.len(), 135);
+        for runs in [&mission_runs, &contract_runs] {
+            let run_ids = runs
+                .iter()
+                .map(|run| run.descriptor.run_id.as_str())
+                .collect::<BTreeSet<_>>();
+            assert_eq!(run_ids.len(), 135);
+            assert!(runs.iter().all(|run| {
+                run.descriptor.selector.radius_tier == "nominal"
+                    && run.descriptor.selector.waypoint_handoff_envelope
+                        == TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1
+            }));
+            for profile in [
+                TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1,
+                TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1,
+                TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1,
+            ] {
+                assert_eq!(
+                    runs.iter()
+                        .filter(|run| run.descriptor.selector.waypoint_profile == profile)
+                        .count(),
+                    45
+                );
+            }
+            for vehicle in ["empty", "half", "full"] {
+                assert_eq!(
+                    runs.iter()
+                        .filter(|run| run.descriptor.selector.vehicle_variant == vehicle)
+                        .count(),
+                    45
+                );
+            }
+            for route_angle in ["r-60", "r-30", "r00", "r+30", "r+60"] {
+                assert_eq!(
+                    runs.iter()
+                        .filter(|run| run.descriptor.selector.route_angle == route_angle)
+                        .count(),
+                    27
+                );
+            }
+            for seed in 0..3 {
+                assert_eq!(
+                    runs.iter()
+                        .filter(|run| run.descriptor.resolved_seed == seed)
+                        .count(),
+                    45
+                );
+            }
+            for run in runs {
+                let route = run
+                    .scenario
+                    .mission
+                    .transfer_route
+                    .as_ref()
+                    .expect("route-angle waypoint profile should resolve a route");
+                assert_eq!(route.waypoints.len(), 1);
+                let waypoint = &route.waypoints[0];
+                let terrain_clearance_m = waypoint.position_m.y
+                    - run
+                        .scenario
+                        .world
+                        .terrain
+                        .sample_height(waypoint.position_m.x);
+                assert!(
+                    terrain_clearance_m
+                        > waypoint.max_cross_track_m
+                            + run.scenario.vehicle.geometry.touchdown_base_offset_m
+                );
+            }
+        }
+
+        let selector_key = |run: &ResolvedBatchRun| {
+            format!(
+                "{}|{}|{}|{}|{}",
+                run.descriptor.selector.waypoint_profile,
+                run.descriptor.selector.vehicle_variant,
+                run.descriptor.selector.route_angle,
+                run.descriptor.selector.radius_tier,
+                run.descriptor.resolved_seed,
+            )
+        };
+        let mission_geometry = mission_runs
+            .iter()
+            .map(|run| {
+                (
+                    selector_key(run),
+                    run.scenario
+                        .mission
+                        .transfer_route
+                        .as_ref()
+                        .unwrap()
+                        .waypoints
+                        .iter()
+                        .map(|waypoint| waypoint.position_m)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let contract_geometry = contract_runs
+            .iter()
+            .map(|run| {
+                (
+                    selector_key(run),
+                    run.scenario
+                        .mission
+                        .transfer_route
+                        .as_ref()
+                        .unwrap()
+                        .waypoints
+                        .iter()
+                        .map(|waypoint| waypoint.position_m)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(mission_geometry, contract_geometry);
+        assert!(mission_runs.iter().all(|run| matches!(
+            run.scenario.mission.goal,
+            EvaluationGoal::LandingOnPad { .. }
+        )));
+        assert!(contract_runs.iter().all(|run| matches!(
+            run.scenario.mission.goal,
+            EvaluationGoal::WaypointHandoff { .. }
+        )));
+    }
+
+    #[test]
     fn transfer_waypoint_sequence_packs_expand_balanced_paired_matrix() {
         let packs_dir = fixtures_root().join("packs");
         let mission_pack =
@@ -11292,6 +11430,142 @@ mod tests {
                 .abs()
                 < 1.0e-3
         );
+    }
+
+    #[test]
+    fn transfer_waypoint_sequence_route_angle_packs_expand_paired_matrix() {
+        let packs_dir = fixtures_root().join("packs");
+        let mission_pack =
+            load_pack(&packs_dir.join("transfer_waypoint_sequence_route_angle_smoke.json"))
+                .unwrap();
+        let contract_pack = load_pack(
+            &packs_dir.join("transfer_waypoint_sequence_contract_route_angle_smoke.json"),
+        )
+        .unwrap();
+        let mission_runs = resolve_pack_runs(&mission_pack, &packs_dir).unwrap();
+        let contract_runs = resolve_pack_runs(&contract_pack, &packs_dir).unwrap();
+
+        assert_eq!(mission_runs.len(), 45);
+        assert_eq!(contract_runs.len(), 45);
+        for runs in [&mission_runs, &contract_runs] {
+            let run_ids = runs
+                .iter()
+                .map(|run| run.descriptor.run_id.as_str())
+                .collect::<BTreeSet<_>>();
+            assert_eq!(run_ids.len(), 45);
+            assert!(runs.iter().all(|run| {
+                run.descriptor.selector.radius_tier == "nominal"
+                    && run.descriptor.selector.waypoint_profile
+                        == TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1
+                    && run.descriptor.selector.waypoint_handoff_envelope
+                        == TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1
+            }));
+            for vehicle in ["empty", "half", "full"] {
+                assert_eq!(
+                    runs.iter()
+                        .filter(|run| run.descriptor.selector.vehicle_variant == vehicle)
+                        .count(),
+                    15
+                );
+            }
+            for route_angle in ["r-60", "r-30", "r00", "r+30", "r+60"] {
+                assert_eq!(
+                    runs.iter()
+                        .filter(|run| run.descriptor.selector.route_angle == route_angle)
+                        .count(),
+                    9
+                );
+            }
+            for seed in 0..3 {
+                assert_eq!(
+                    runs.iter()
+                        .filter(|run| run.descriptor.resolved_seed == seed)
+                        .count(),
+                    15
+                );
+            }
+            for run in runs {
+                let route = run
+                    .scenario
+                    .mission
+                    .transfer_route
+                    .as_ref()
+                    .expect("route-angle waypoint sequence should resolve a route");
+                assert_eq!(route.waypoints.len(), 2);
+                assert!(
+                    (route.waypoints[1].position_m - route.waypoints[0].position_m).length()
+                        > route.waypoints[0].capture_radius_m + route.waypoints[1].capture_radius_m
+                );
+                for waypoint in &route.waypoints {
+                    assert!(waypoint.handoff_tangent_unit.is_some());
+                    let terrain_clearance_m = waypoint.position_m.y
+                        - run
+                            .scenario
+                            .world
+                            .terrain
+                            .sample_height(waypoint.position_m.x);
+                    assert!(
+                        terrain_clearance_m
+                            > waypoint.max_cross_track_m
+                                + run.scenario.vehicle.geometry.touchdown_base_offset_m
+                    );
+                }
+            }
+        }
+
+        let selector_key = |run: &ResolvedBatchRun| {
+            format!(
+                "{}|{}|{}|{}|{}",
+                run.descriptor.selector.waypoint_profile,
+                run.descriptor.selector.vehicle_variant,
+                run.descriptor.selector.route_angle,
+                run.descriptor.selector.radius_tier,
+                run.descriptor.resolved_seed,
+            )
+        };
+        let mission_geometry = mission_runs
+            .iter()
+            .map(|run| {
+                (
+                    selector_key(run),
+                    run.scenario
+                        .mission
+                        .transfer_route
+                        .as_ref()
+                        .unwrap()
+                        .waypoints
+                        .iter()
+                        .map(|waypoint| waypoint.position_m)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let contract_geometry = contract_runs
+            .iter()
+            .map(|run| {
+                (
+                    selector_key(run),
+                    run.scenario
+                        .mission
+                        .transfer_route
+                        .as_ref()
+                        .unwrap()
+                        .waypoints
+                        .iter()
+                        .map(|waypoint| waypoint.position_m)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(mission_geometry, contract_geometry);
+        assert!(mission_runs.iter().all(|run| matches!(
+            run.scenario.mission.goal,
+            EvaluationGoal::LandingOnPad { .. }
+        )));
+        assert!(contract_runs.iter().all(|run| matches!(
+            run.scenario.mission.goal,
+            EvaluationGoal::WaypointSequence { .. }
+        )));
     }
 
     #[test]
