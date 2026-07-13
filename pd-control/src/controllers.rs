@@ -5414,7 +5414,6 @@ fn waypoint_guidance_prediction(
     let mut endpoint = prediction_at(time_to_go_s);
     window_open |= endpoint.assessment.capture_window_open;
     endpoint.assessment = endpoint.assessment.with_window_open(window_open);
-    debug_assert!(endpoint.assessment.resolved_in_window(window_open));
     endpoint
 }
 
@@ -7004,6 +7003,22 @@ mod tests {
         assert_eq!(prediction.time_to_event_s, 0.0);
         assert_eq!(prediction.deadline_lead_s, 2.0);
         assert!(prediction.assessment.contract_pass());
+    }
+
+    #[test]
+    fn waypoint_prediction_allows_horizon_to_end_before_handoff_resolution() {
+        let mut guidance = straight_waypoint_guidance();
+        guidance.endpoint_m = guidance.center_m - (guidance.leg_unit * 30.0);
+        let mut observation = transfer_observation(100.0, 0.0, Vec2::new(10.0, 0.0), 0.0);
+        observation.position_m = Vec2::new(0.0, 0.0);
+
+        let prediction =
+            waypoint_guidance_prediction(&observation, guidance, Vec2::new(10.0, 0.0), 2.0);
+
+        assert_eq!(prediction.time_to_event_s, 2.0);
+        assert!(!prediction.assessment.triggered);
+        assert!(!prediction.assessment.contract_pass());
+        assert!(!prediction.assessment.deadline_reached);
     }
 
     #[test]
