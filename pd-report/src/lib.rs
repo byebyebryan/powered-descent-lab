@@ -84,6 +84,7 @@ pub struct PreviewSeries<'a> {
 #[derive(Clone, Copy)]
 struct PreviewOptions {
     show_context: bool,
+    show_waypoints: bool,
     show_waypoint_guides: bool,
     show_reference: bool,
     show_endpoint_markers: bool,
@@ -93,6 +94,7 @@ impl PreviewOptions {
     const fn full() -> Self {
         Self {
             show_context: true,
+            show_waypoints: true,
             show_waypoint_guides: true,
             show_reference: true,
             show_endpoint_markers: true,
@@ -102,6 +104,7 @@ impl PreviewOptions {
     const fn aggregate_lane() -> Self {
         Self {
             show_context: true,
+            show_waypoints: true,
             show_waypoint_guides: false,
             show_reference: false,
             show_endpoint_markers: true,
@@ -263,7 +266,7 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
     let mut waypoint_keys = BTreeSet::new();
     let mut waypoints = Vec::new();
     let mut route_guides = Vec::new();
-    if options.show_waypoint_guides {
+    if options.show_waypoints || options.show_waypoint_guides {
         for series in series {
             let Some(route) = series.scenario.mission.transfer_route.as_ref() else {
                 continue;
@@ -285,7 +288,7 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
                     "{}:{x:.2}:{y:.2}:{:.2}:{:.2}",
                     waypoint.id, waypoint.capture_radius_m, waypoint.max_cross_track_m
                 );
-                if waypoint_keys.insert(key) {
+                if options.show_waypoints && waypoint_keys.insert(key) {
                     waypoints.push(PreviewWaypoint {
                         id: waypoint.id.clone(),
                         x_m: x,
@@ -305,7 +308,9 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
             if let Some((target_x_m, target_y_m, _)) = pad {
                 route_guide.push((target_x_m, target_y_m));
             }
-            route_guides.push(route_guide);
+            if options.show_waypoint_guides {
+                route_guides.push(route_guide);
+            }
         }
     }
     let trajectories = series
@@ -377,18 +382,22 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
         }
     }
     for waypoint in &waypoints {
-        let envelope_radius_m = waypoint
-            .capture_radius_m
-            .max(waypoint.max_cross_track_m)
-            .max(1.0);
-        include_point(
-            waypoint.x_m - envelope_radius_m,
-            waypoint.y_m - envelope_radius_m,
-        );
-        include_point(
-            waypoint.x_m + envelope_radius_m,
-            waypoint.y_m + envelope_radius_m,
-        );
+        if options.show_waypoint_guides {
+            let envelope_radius_m = waypoint
+                .capture_radius_m
+                .max(waypoint.max_cross_track_m)
+                .max(1.0);
+            include_point(
+                waypoint.x_m - envelope_radius_m,
+                waypoint.y_m - envelope_radius_m,
+            );
+            include_point(
+                waypoint.x_m + envelope_radius_m,
+                waypoint.y_m + envelope_radius_m,
+            );
+        } else {
+            include_point(waypoint.x_m, waypoint.y_m);
+        }
     }
     if options.show_context
         && let Some((center_x_m, surface_y_m, width_m)) = pad
@@ -536,6 +545,16 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
         .iter()
         .map(|waypoint| {
             let (px, py) = project(waypoint.x_m, waypoint.y_m);
+            if !options.show_waypoint_guides {
+                return format!(
+                    r##"<g><title>{title}</title><path d="M {px:.2} {top:.2} L {right:.2} {py:.2} L {px:.2} {bottom:.2} L {left:.2} {py:.2} Z" fill="#f08c00" stroke="#fffaf2" stroke-width="0.9"/></g>"##,
+                    title = escape_html(&format!("{} waypoint", waypoint.id)),
+                    top = py - 3.5,
+                    right = px + 3.5,
+                    bottom = py + 3.5,
+                    left = px - 3.5,
+                );
+            }
             let capture_radius_px = (waypoint.capture_radius_m * scale).clamp(3.0, 18.0);
             let cross_track_px = (waypoint.max_cross_track_m * scale)
                 .clamp(capture_radius_px + 1.0, 24.0);
