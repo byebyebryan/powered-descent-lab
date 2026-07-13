@@ -1305,7 +1305,13 @@ pub fn promote_pack_cache(
             promoted_at_unix_s: current_unix_timestamp(),
         }),
     });
-    write_batch_cache_dir(&target_dir, &pack, &report, false)?;
+    write_batch_cache_dir(
+        &target_dir,
+        &pack,
+        &report,
+        false,
+        &report::BatchReportRenderCache::default(),
+    )?;
     Ok(target_dir)
 }
 
@@ -1656,6 +1662,7 @@ pub fn run_pack_cached(
     let workspace = current_workspace_state()?;
     let batch_stem = batch_cache_stem(&pack.id, &identity);
     let cache_dir = cache_dir_for_batch_key(&workspace.workspace_key, &batch_stem);
+    let render_cache = report::BatchReportRenderCache::default();
 
     let base_cache_report = if reuse_cache {
         validate_cached_batch_dir(&cache_dir, pack, &identity)?
@@ -1699,7 +1706,7 @@ pub fn run_pack_cached(
             summary: summarize_records(&records),
             records,
         };
-        write_batch_cache_dir(&cache_dir, pack, &report, true)?;
+        write_batch_cache_dir(&cache_dir, pack, &report, true, &render_cache)?;
         report
     };
 
@@ -1725,6 +1732,7 @@ pub fn run_pack_cached(
             baseline
                 .as_ref()
                 .map(|baseline| (baseline.dir.as_path(), &baseline.report)),
+            &render_cache,
         )?;
         localized_report
     } else {
@@ -9273,6 +9281,7 @@ fn write_batch_cache_dir(
     pack: &ScenarioPackSpec,
     report: &BatchReport,
     update_latest: bool,
+    render_cache: &report::BatchReportRenderCache,
 ) -> Result<()> {
     write_batch_manifest_files(output_dir, pack, report)?;
     let cache = report
@@ -9292,7 +9301,7 @@ fn write_batch_cache_dir(
             cache,
         },
     )?;
-    report::write_batch_report_artifacts(output_dir, report, None)?;
+    report::write_batch_report_artifacts_with_cache(output_dir, report, None, render_cache)?;
     if update_latest {
         maybe_update_latest_link(output_dir)?;
         if let Some(last_record) = report.records.last()
@@ -9309,11 +9318,17 @@ fn write_batch_output_dir(
     pack: &ScenarioPackSpec,
     report: &BatchReport,
     baseline: Option<(&Path, &BatchReport)>,
+    render_cache: &report::BatchReportRenderCache,
 ) -> Result<()> {
     sync_output_run_bundles(output_dir, report)?;
     let localized_report = localize_report_bundle_dirs(report, output_dir);
     write_batch_manifest_files(output_dir, pack, &localized_report)?;
-    report::write_batch_report_artifacts(output_dir, &localized_report, baseline)?;
+    report::write_batch_report_artifacts_with_cache(
+        output_dir,
+        &localized_report,
+        baseline,
+        render_cache,
+    )?;
     maybe_update_latest_link(output_dir)?;
     if let Some(last_record) = localized_report.records.last()
         && let Some(bundle_dir) = last_record.bundle_dir.as_deref()

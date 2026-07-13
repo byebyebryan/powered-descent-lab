@@ -1,15 +1,17 @@
 use std::{
+    cell::RefCell,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
-    fs,
+    fs::{self, File},
+    io::BufReader,
     path::{Component, Path, PathBuf},
     time::SystemTime,
 };
 
 use anyhow::{Context, Result};
-use pd_core::{SampleRecord, ScenarioSpec};
-use pd_report::{PreviewSeries, build_multi_run_preview_svg};
-use serde::{Serialize, de::DeserializeOwned};
+use pd_core::{ScenarioSpec, Vec2};
+use pd_report::{AggregatePreviewSeries, build_multi_run_trajectory_preview_svg};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     BatchCacheInfo, BatchCacheStatus, BatchCompareResolutionStatus, BatchCompareSource,
@@ -17,10 +19,29 @@ use crate::{
     BatchRunComparison, BatchRunPointer, compare_batch_reports,
 };
 
+#[derive(Default)]
+pub(crate) struct BatchReportRenderCache {
+    lane_previews: RefCell<BTreeMap<Vec<PathBuf>, Option<String>>>,
+}
+
 pub fn write_batch_report_artifacts(
     output_dir: &Path,
     candidate: &BatchReport,
     baseline: Option<(&Path, &BatchReport)>,
+) -> Result<Option<BatchComparison>> {
+    write_batch_report_artifacts_with_cache(
+        output_dir,
+        candidate,
+        baseline,
+        &BatchReportRenderCache::default(),
+    )
+}
+
+pub(crate) fn write_batch_report_artifacts_with_cache(
+    output_dir: &Path,
+    candidate: &BatchReport,
+    baseline: Option<(&Path, &BatchReport)>,
+    render_cache: &BatchReportRenderCache,
 ) -> Result<Option<BatchComparison>> {
     fs::create_dir_all(output_dir).with_context(|| {
         format!(
@@ -44,11 +65,12 @@ pub fn write_batch_report_artifacts(
         }
     }
 
-    let html = render_batch_report(
+    let html = render_batch_report_with_cache(
         output_dir,
         candidate,
         baseline.map(|(dir, report)| (dir, report)),
         comparison.as_ref(),
+        render_cache,
     );
     fs::write(output_dir.join("report.html"), html).with_context(|| {
         format!(
@@ -66,13 +88,14 @@ pub fn write_batch_report_artifacts(
                 )
             })?;
         }
-        let site_html = render_batch_report(
+        let site_html = render_batch_report_with_cache(
             site_output
                 .parent()
                 .expect("report site output should have parent directory"),
             candidate,
             baseline.map(|(dir, report)| (dir, report)),
             comparison.as_ref(),
+            render_cache,
         );
         fs::write(&site_output, site_html).with_context(|| {
             format!(
@@ -86,11 +109,28 @@ pub fn write_batch_report_artifacts(
     Ok(comparison)
 }
 
+#[cfg(test)]
 fn render_batch_report(
     output_dir: &Path,
     candidate: &BatchReport,
     baseline: Option<(&Path, &BatchReport)>,
     comparison: Option<&BatchComparison>,
+) -> String {
+    render_batch_report_with_cache(
+        output_dir,
+        candidate,
+        baseline,
+        comparison,
+        &BatchReportRenderCache::default(),
+    )
+}
+
+fn render_batch_report_with_cache(
+    output_dir: &Path,
+    candidate: &BatchReport,
+    baseline: Option<(&Path, &BatchReport)>,
+    comparison: Option<&BatchComparison>,
+    render_cache: &BatchReportRenderCache,
 ) -> String {
     let output_dir = resolve_repo_relative(output_dir);
     let baseline_report_href = baseline
@@ -1192,6 +1232,7 @@ fn render_batch_report(
             baseline.map(|(_, report)| report),
             comparison,
             &output_dir,
+            render_cache,
             &candidate_record_links,
             &baseline_record_map,
         ),
@@ -5415,6 +5456,7 @@ fn render_review_tree(
     baseline: Option<&BatchReport>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
@@ -5472,6 +5514,7 @@ fn render_review_tree(
                 &run_change_map,
                 comparison,
                 output_dir,
+                render_cache,
                 candidate_record_map,
                 baseline_record_map,
             )
@@ -5500,6 +5543,7 @@ fn render_mission_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
@@ -5547,6 +5591,7 @@ fn render_mission_review_section(
                 run_change_map,
                 comparison,
                 output_dir,
+                render_cache,
                 candidate_record_map,
                 baseline_record_map,
                 1,
@@ -5653,6 +5698,7 @@ fn render_arrival_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -5705,6 +5751,7 @@ fn render_arrival_review_section(
                 run_change_map,
                 comparison,
                 output_dir,
+                render_cache,
                 candidate_record_map,
                 baseline_record_map,
                 depth + 1,
@@ -5749,6 +5796,7 @@ fn render_condition_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -5818,6 +5866,7 @@ fn render_condition_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -5841,6 +5890,7 @@ fn render_condition_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -5863,6 +5913,7 @@ fn render_condition_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -5909,6 +5960,7 @@ fn render_waypoint_profile_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -5954,6 +6006,7 @@ fn render_waypoint_profile_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -5981,6 +6034,7 @@ fn render_waypoint_profile_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -6027,6 +6081,7 @@ fn render_condition_arc_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -6095,6 +6150,7 @@ fn render_condition_arc_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -6129,6 +6185,7 @@ fn render_condition_arc_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -6177,6 +6234,7 @@ fn render_condition_velocity_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -6245,6 +6303,7 @@ fn render_condition_velocity_review_section(
                 run_change_map,
                 comparison,
                 output_dir,
+                render_cache,
                 candidate_record_map,
                 baseline_record_map,
                 depth + 1,
@@ -6293,6 +6352,7 @@ fn render_deep_vehicle_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -6378,6 +6438,7 @@ fn render_deep_vehicle_review_section(
                 run_change_map,
                 comparison,
                 output_dir,
+                render_cache,
                 candidate_record_map,
                 baseline_record_map,
                 depth + 1,
@@ -6423,6 +6484,7 @@ fn render_vehicle_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -6492,6 +6554,7 @@ fn render_vehicle_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -6526,6 +6589,7 @@ fn render_vehicle_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -6573,6 +6637,7 @@ fn render_arc_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -6641,6 +6706,7 @@ fn render_arc_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -6677,6 +6743,7 @@ fn render_arc_review_section(
                     run_change_map,
                     comparison,
                     output_dir,
+                    render_cache,
                     candidate_record_map,
                     baseline_record_map,
                     depth + 1,
@@ -6725,6 +6792,7 @@ fn render_velocity_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -6796,6 +6864,7 @@ fn render_velocity_review_section(
                 run_change_map,
                 comparison,
                 output_dir,
+                render_cache,
                 candidate_record_map,
                 baseline_record_map,
                 depth + 1,
@@ -6845,6 +6914,7 @@ fn render_lane_review_section(
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
+    render_cache: &BatchReportRenderCache,
     candidate_record_map: &BTreeMap<String, String>,
     baseline_record_map: &BTreeMap<String, String>,
     depth: usize,
@@ -6910,7 +6980,7 @@ fn render_lane_review_section(
     );
     let current_note = render_summary_note_with_preview(
         current_note.as_str(),
-        render_lane_preview(candidate_records.as_slice()).as_deref(),
+        render_lane_preview(candidate_records.as_slice(), render_cache).as_deref(),
     );
     rows.push_str(&render_summary_row(
         current_lane_label.as_str(),
@@ -6940,7 +7010,7 @@ fn render_lane_review_section(
         );
         let baseline_note = render_summary_note_with_preview(
             baseline_note.as_str(),
-            render_lane_preview(baseline_records.as_slice()).as_deref(),
+            render_lane_preview(baseline_records.as_slice(), render_cache).as_deref(),
         );
         rows.push_str(&render_summary_row(
             baseline_lane_label.as_str(),
@@ -8721,7 +8791,29 @@ fn render_run_preview(record: &crate::BatchRunRecord, output_dir: &Path) -> Stri
     render_link_row_for_bundle("run", bundle_dir.to_string_lossy().as_ref(), output_dir)
 }
 
-fn render_lane_preview(records: &[&crate::BatchRunRecord]) -> Option<String> {
+fn render_lane_preview(
+    records: &[&crate::BatchRunRecord],
+    render_cache: &BatchReportRenderCache,
+) -> Option<String> {
+    let cache_key = records
+        .iter()
+        .filter_map(|record| record.bundle_dir.as_deref())
+        .map(|bundle_dir| resolve_repo_relative(Path::new(bundle_dir)))
+        .map(|bundle_dir| fs::canonicalize(&bundle_dir).unwrap_or(bundle_dir))
+        .collect::<Vec<_>>();
+    if let Some(preview) = render_cache.lane_previews.borrow().get(&cache_key) {
+        return preview.clone();
+    }
+
+    let preview = render_lane_preview_uncached(records);
+    render_cache
+        .lane_previews
+        .borrow_mut()
+        .insert(cache_key, preview.clone());
+    preview
+}
+
+fn render_lane_preview_uncached(records: &[&crate::BatchRunRecord]) -> Option<String> {
     let mut loaded = Vec::new();
     for record in records {
         let Some(bundle_dir) = record.bundle_dir.as_deref() else {
@@ -8732,14 +8824,12 @@ fn render_lane_preview(records: &[&crate::BatchRunRecord]) -> Option<String> {
         else {
             continue;
         };
-        let Some(samples) = load_json_file::<Vec<SampleRecord>>(&bundle_dir.join("samples.json"))
+        let Some(trajectory_positions_m) =
+            load_preview_trajectory(&bundle_dir.join("samples.json"))
         else {
             continue;
         };
-        let controller_updates = load_json_file::<Vec<pd_control::ControllerUpdateRecord>>(
-            &bundle_dir.join("controller_updates.json"),
-        );
-        loaded.push((scenario, samples, controller_updates, &record.manifest));
+        loaded.push((scenario, trajectory_positions_m, &record.manifest));
     }
     if loaded.is_empty() {
         return None;
@@ -8747,18 +8837,38 @@ fn render_lane_preview(records: &[&crate::BatchRunRecord]) -> Option<String> {
     let series = loaded
         .iter()
         .map(
-            |(scenario, samples, controller_updates, manifest)| PreviewSeries {
+            |(scenario, trajectory_positions_m, manifest)| AggregatePreviewSeries {
                 scenario,
                 manifest: *manifest,
-                samples,
-                controller_updates: controller_updates.as_deref(),
+                trajectory_positions_m,
             },
         )
         .collect::<Vec<_>>();
     Some(format!(
         r#"<div class="run-preview lane-preview">{}</div>"#,
-        build_multi_run_preview_svg(&series)
+        build_multi_run_trajectory_preview_svg(&series)
     ))
+}
+
+#[derive(Deserialize)]
+struct PreviewSample {
+    observation: PreviewObservation,
+}
+
+#[derive(Deserialize)]
+struct PreviewObservation {
+    position_m: Vec2,
+}
+
+fn load_preview_trajectory(path: &Path) -> Option<Vec<Vec2>> {
+    let file = File::open(path).ok()?;
+    let samples = serde_json::from_reader::<_, Vec<PreviewSample>>(BufReader::new(file)).ok()?;
+    Some(
+        samples
+            .into_iter()
+            .map(|sample| sample.observation.position_m)
+            .collect(),
+    )
 }
 
 fn render_summary_note_with_preview(note_html: &str, preview_html: Option<&str>) -> String {
@@ -9650,8 +9760,12 @@ struct ScopeEntry {
 mod report_tests {
     use std::{
         collections::BTreeMap,
+        fs,
         path::{Path, PathBuf},
+        time::{SystemTime, UNIX_EPOCH},
     };
+
+    use pd_core::Vec2;
 
     use crate::{
         BatchReport, BatchRunAnalyticClass, BatchRunAnalyticReason, BatchRunRecord,
@@ -9663,12 +9777,64 @@ mod report_tests {
     };
 
     use super::{
-        records_by_waypoint_profile, render_batch_report, sort_selector_keys, tree_group_id,
+        BatchReportRenderCache, load_preview_trajectory, records_by_waypoint_profile,
+        render_batch_report, render_lane_preview, sort_selector_keys, tree_group_id,
         waypoint_checkpoint_failure_detail,
     };
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures")
+    }
+
+    fn temp_report_dir(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "pd-eval-report-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn aggregate_lane_preview_uses_compact_samples_and_reuses_cached_svg() {
+        let bundle_dir = temp_report_dir("lane-preview-cache");
+        fs::create_dir_all(&bundle_dir).unwrap();
+        fs::copy(
+            fixtures_root().join("scenarios/flat_terminal_descent.json"),
+            bundle_dir.join("scenario.json"),
+        )
+        .unwrap();
+        let samples_path = bundle_dir.join("samples.json");
+        fs::write(
+            &samples_path,
+            r#"[
+              {"observation":{"position_m":{"x":-120.0,"y":80.0},"ignored":true},"ignored":1},
+              {"observation":{"position_m":{"x":0.0,"y":0.0},"ignored":true},"ignored":2}
+            ]"#,
+        )
+        .unwrap();
+
+        let positions = load_preview_trajectory(&samples_path).unwrap();
+        assert_eq!(positions.len(), 2);
+        assert_eq!(positions[0], Vec2::new(-120.0, 80.0));
+
+        let mut report = synthetic_transfer_shape_report(
+            "aggregate_lane_preview_unit",
+            &[("r00", "empty", 20.0, 0)],
+        );
+        report.records[0].bundle_dir = Some(bundle_dir.to_string_lossy().into_owned());
+        let record = &report.records[0];
+        let cache = BatchReportRenderCache::default();
+        let first = render_lane_preview(&[record], &cache).unwrap();
+        assert!(first.contains("run trajectory preview"));
+        assert!(first.contains("polyline"));
+
+        fs::remove_file(&samples_path).unwrap();
+        let second = render_lane_preview(&[record], &cache).unwrap();
+        assert_eq!(second, first);
+        fs::remove_dir_all(&bundle_dir).unwrap();
     }
 
     fn terminal_metadata(

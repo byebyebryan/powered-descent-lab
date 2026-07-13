@@ -9,7 +9,9 @@ use anyhow::{Context, Result};
 use pd_control::{
     ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue, metric,
 };
-use pd_core::{EvaluationGoal, EventKind, EventRecord, RunManifest, SampleRecord, ScenarioSpec};
+use pd_core::{
+    EvaluationGoal, EventKind, EventRecord, RunManifest, SampleRecord, ScenarioSpec, Vec2,
+};
 use serde::Serialize;
 
 const PLOTLY_CDN_URL: &str = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";
@@ -81,6 +83,25 @@ pub struct PreviewSeries<'a> {
     pub controller_updates: Option<&'a [ControllerUpdateRecord]>,
 }
 
+pub struct AggregatePreviewSeries<'a> {
+    pub scenario: &'a ScenarioSpec,
+    pub manifest: &'a RunManifest,
+    pub trajectory_positions_m: &'a [Vec2],
+}
+
+#[derive(Clone, Copy)]
+enum PreviewTrajectory<'a> {
+    Samples(&'a [SampleRecord]),
+    Positions(&'a [Vec2]),
+}
+
+struct PreviewRenderSeries<'a> {
+    scenario: &'a ScenarioSpec,
+    manifest: &'a RunManifest,
+    trajectory: PreviewTrajectory<'a>,
+    controller_updates: Option<&'a [ControllerUpdateRecord]>,
+}
+
 #[derive(Clone, Copy)]
 struct PreviewOptions {
     show_context: bool,
@@ -127,7 +148,29 @@ struct PreviewWaypoint {
 }
 
 pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
-    build_preview_svg(series, PreviewOptions::aggregate_lane())
+    let render_series = series
+        .iter()
+        .map(|series| PreviewRenderSeries {
+            scenario: series.scenario,
+            manifest: series.manifest,
+            trajectory: PreviewTrajectory::Samples(series.samples),
+            controller_updates: series.controller_updates,
+        })
+        .collect::<Vec<_>>();
+    build_preview_svg(&render_series, PreviewOptions::aggregate_lane())
+}
+
+pub fn build_multi_run_trajectory_preview_svg(series: &[AggregatePreviewSeries<'_>]) -> String {
+    let render_series = series
+        .iter()
+        .map(|series| PreviewRenderSeries {
+            scenario: series.scenario,
+            manifest: series.manifest,
+            trajectory: PreviewTrajectory::Positions(series.trajectory_positions_m),
+            controller_updates: None,
+        })
+        .collect::<Vec<_>>();
+    build_preview_svg(&render_series, PreviewOptions::aggregate_lane())
 }
 
 fn build_report_data(
@@ -209,17 +252,17 @@ fn build_run_preview_svg(
     controller_updates: &[ControllerUpdateRecord],
 ) -> String {
     build_preview_svg(
-        &[PreviewSeries {
+        &[PreviewRenderSeries {
             scenario,
             manifest,
-            samples,
+            trajectory: PreviewTrajectory::Samples(samples),
             controller_updates: Some(controller_updates),
         }],
         PreviewOptions::full(),
     )
 }
 
-fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> String {
+fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions) -> String {
     const WIDTH_PX: f64 = 156.0;
     const HEIGHT_PX: f64 = 92.0;
     const PADDING_PX: f64 = 6.0;
@@ -318,17 +361,17 @@ fn build_preview_svg(series: &[PreviewSeries<'_>], options: PreviewOptions) -> S
         .map(|series| {
             let flip_sign =
                 preview_flip_sign(series.scenario.initial_state.position_m.x - normalize_center_x);
-            let trajectory = series
-                .samples
-                .iter()
-                .map(|sample| {
-                    (
-                        transform_x(sample.observation.position_m.x, flip_sign),
-                        sample.observation.position_m.y,
-                    )
-                })
-                .filter(|(x, y)| x.is_finite() && y.is_finite())
-                .collect::<Vec<_>>();
+            let trajectory = match series.trajectory {
+                PreviewTrajectory::Samples(samples) => samples
+                    .iter()
+                    .map(|sample| sample.observation.position_m)
+                    .collect::<Vec<_>>(),
+                PreviewTrajectory::Positions(positions) => positions.to_vec(),
+            }
+            .into_iter()
+            .map(|position| (transform_x(position.x, flip_sign), position.y))
+            .filter(|(x, y)| x.is_finite() && y.is_finite())
+            .collect::<Vec<_>>();
             let reference = if multi_run || !options.show_reference {
                 Vec::new()
             } else {
@@ -690,20 +733,22 @@ fn preview_flip_sign(initial_dx: f64) -> f64 {
 }
 
 fn transfer_preview_reference_curve(
-    series: &PreviewSeries<'_>,
+    series: &PreviewRenderSeries<'_>,
     target_x: f64,
     target_y: f64,
 ) -> Option<Vec<(f64, f64)>> {
     series.scenario.mission.transfer_route.as_ref()?;
     let controller_updates = series.controller_updates?;
+    let PreviewTrajectory::Samples(samples) = series.trajectory else {
+        return None;
+    };
     let first_boost = controller_updates.iter().find(|update| {
         telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
     })?;
-    let start_sample = series
-        .samples
+    let start_sample = samples
         .iter()
         .find(|sample| sample.physics_step >= first_boost.physics_step)
-        .or_else(|| series.samples.first())?;
+        .or_else(|| samples.first())?;
     let start_x = start_sample.observation.position_m.x;
     let start_y = start_sample.observation.position_m.y;
     let dx = target_x - start_x;
