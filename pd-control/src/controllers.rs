@@ -778,6 +778,32 @@ impl TransferPhase {
     }
 }
 
+fn waypoint_post_capture_phase(
+    final_waypoint: bool,
+    contract_pass: bool,
+    final_terminal_recoverable: Option<bool>,
+    terminal_spatial_ownership: bool,
+) -> TransferPhase {
+    if final_waypoint
+        && contract_pass
+        && final_terminal_recoverable == Some(true)
+        && terminal_spatial_ownership
+    {
+        TransferPhase::Terminal
+    } else {
+        TransferPhase::Boost
+    }
+}
+
+fn waypoint_terminal_spatial_ownership(
+    config: &TransferPdgControllerConfig,
+    observation: &Observation,
+) -> bool {
+    observation.height_above_target_m >= 0.0
+        || (observation.target_dx_m.abs() <= config.terminal_gate_dx_m
+            && -observation.height_above_target_m <= config.terminal_gate_altitude_m)
+}
+
 #[derive(Clone, Copy, Debug)]
 struct TransferBallisticProjection {
     has_target_y_solution: bool,
@@ -1516,6 +1542,7 @@ impl TransferPdgController {
         let window_open = self.waypoint_window_entry.is_some();
         if handoff.resolved_in_window(window_open) {
             let contract_pass = handoff.contract_pass_in_window(window_open);
+            let final_waypoint = geometry.active_index + 1 >= route.waypoints.len();
             let status = if handoff.spatial_pass {
                 "captured"
             } else {
@@ -1576,10 +1603,15 @@ impl TransferPdgController {
             self.waypoint_joint_snapshot = None;
             self.boost_anchor = None;
             self.transfer_gate_ready_ticks = 0;
-            self.phase = TransferPhase::Boost;
+            self.phase = waypoint_post_capture_phase(
+                final_waypoint,
+                contract_pass,
+                target_state.and_then(|state| state.final_terminal_recoverable),
+                waypoint_terminal_spatial_ownership(&self.config, observation),
+            );
             self.terminal.reset(ctx);
 
-            if self.waypoint_active_index >= route.waypoints.len() {
+            if final_waypoint {
                 return Some(WaypointUpdateContext {
                     observation: observation.clone(),
                     allow_terminal: true,
@@ -6868,6 +6900,53 @@ mod tests {
             ),
             std::cmp::Ordering::Less
         );
+    }
+
+    #[test]
+    fn waypoint_recoverable_final_capture_enters_terminal_guidance() {
+        assert_eq!(
+            waypoint_post_capture_phase(true, true, Some(true), true),
+            TransferPhase::Terminal
+        );
+    }
+
+    #[test]
+    fn waypoint_post_capture_phase_keeps_non_recoverable_paths_in_transfer() {
+        for (final_waypoint, contract_pass, recoverable, spatial_ownership) in [
+            (false, true, Some(true), true),
+            (true, false, Some(true), true),
+            (true, true, Some(false), true),
+            (true, true, None, true),
+            (true, true, Some(true), false),
+        ] {
+            assert_eq!(
+                waypoint_post_capture_phase(
+                    final_waypoint,
+                    contract_pass,
+                    recoverable,
+                    spatial_ownership,
+                ),
+                TransferPhase::Boost
+            );
+        }
+    }
+
+    #[test]
+    fn waypoint_terminal_spatial_ownership_bounds_uphill_handoffs() {
+        let config = TransferPdgControllerConfig::default();
+        let mut observation = transfer_observation(220.0, 110.0, Vec2::new(20.0, 10.0), 10.0);
+        observation.height_above_target_m = -110.0;
+        assert!(waypoint_terminal_spatial_ownership(&config, &observation));
+
+        observation.target_dx_m = config.terminal_gate_dx_m + 1.0;
+        assert!(!waypoint_terminal_spatial_ownership(&config, &observation));
+        observation.target_dx_m = 220.0;
+        observation.height_above_target_m = -config.terminal_gate_altitude_m - 1.0;
+        assert!(!waypoint_terminal_spatial_ownership(&config, &observation));
+
+        observation.height_above_target_m = 1.0;
+        observation.target_dx_m = config.terminal_gate_dx_m + 1.0;
+        assert!(waypoint_terminal_spatial_ownership(&config, &observation));
     }
 
     #[test]
