@@ -135,6 +135,9 @@ pub mod metric {
     pub const WAYPOINT_GUIDANCE_REQUIRED_ACCEL_RATIO: &str =
         "waypoint.guidance_required_accel_ratio";
     pub const WAYPOINT_GUIDANCE_FEASIBLE: &str = "waypoint.guidance_feasible";
+    pub const WAYPOINT_FINAL_TERMINAL_REQUIRED_ACCEL_RATIO: &str =
+        "waypoint.final_terminal_required_accel_ratio";
+    pub const WAYPOINT_FINAL_TERMINAL_RECOVERABLE: &str = "waypoint.final_terminal_recoverable";
     pub const WAYPOINT_GUIDANCE_PLAN_INDEX: &str = "waypoint.guidance_plan_index";
     pub const WAYPOINT_GUIDANCE_PLAN_REVISION: &str = "waypoint.guidance_plan_revision";
     pub const WAYPOINT_GUIDANCE_PLAN_REASON: &str = "waypoint.guidance_plan_reason";

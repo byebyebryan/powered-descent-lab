@@ -414,6 +414,17 @@ impl TerminalPdgController {
         }
     }
 
+    pub(crate) fn evaluate_transfer_dynamics(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        lateral_dx_m: f64,
+    ) -> TransferGateReadiness {
+        let mut dynamics_config = self.config.clone();
+        dynamics_config.terrain_clearance_enabled = false;
+        Self::new(dynamics_config).evaluate_transfer_gate(ctx, observation, lateral_dx_m, 0)
+    }
+
     pub(crate) fn set_guidance_plan_retention_enabled(&mut self, enabled: bool) {
         self.guidance_plan_retention_enabled = enabled;
         if !enabled {

@@ -1098,6 +1098,8 @@ struct WaypointGuidancePlan {
     target_velocity_mps: Vec2,
     arrival_time_s: f64,
     target_envelope_feasible: bool,
+    final_terminal_required_accel_ratio: Option<f64>,
+    final_terminal_recoverable: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1150,6 +1152,20 @@ struct WaypointReachableCandidate {
     endpoint_m: Vec2,
     target_mode: &'static str,
     reachable_prediction: WaypointReachablePrediction,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointFinalCandidate {
+    reachable: WaypointReachableCandidate,
+    terminal_gate: TransferGateReadiness,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointGuidancePlanSelection {
+    candidate: WaypointGuidanceCandidate,
+    endpoint_m: Vec2,
+    target_mode: &'static str,
+    terminal_gate: Option<TransferGateReadiness>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1210,6 +1226,8 @@ struct WaypointGuidanceCommandState {
     reachable_prediction: WaypointReachablePrediction,
     continuation_prediction: Option<WaypointContinuationPrediction>,
     joint_prediction: Option<WaypointJointSearchPrediction>,
+    final_terminal_required_accel_ratio: Option<f64>,
+    final_terminal_recoverable: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1226,6 +1244,8 @@ struct WaypointGuidanceTargetState {
     reachable_prediction: WaypointReachablePrediction,
     continuation_prediction: Option<WaypointContinuationPrediction>,
     joint_prediction: Option<WaypointJointSearchPrediction>,
+    final_terminal_required_accel_ratio: Option<f64>,
+    final_terminal_recoverable: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -2409,12 +2429,181 @@ impl TransferPdgController {
             })
     }
 
+    fn waypoint_is_final(ctx: &RunContext, guidance: WaypointGuidanceFrame) -> bool {
+        ctx.mission
+            .transfer_route
+            .as_ref()
+            .is_some_and(|route| guidance.active_index + 1 == route.waypoints.len())
+    }
+
+    fn target_relative_observation_at_transfer_state(
+        ctx: &RunContext,
+        observation: &Observation,
+        state: TransferSimState,
+        elapsed_s: f64,
+    ) -> Observation {
+        let target_x_m = observation.position_m.x + observation.target_dx_m;
+        let height_above_target_m = state.position_m.y - observation.target_surface_y_m;
+        let touchdown_clearance_m =
+            height_above_target_m - ctx.vehicle.geometry.touchdown_base_offset_m;
+        Observation {
+            sim_time_s: observation.sim_time_s + elapsed_s,
+            physics_step: observation.physics_step,
+            position_m: state.position_m,
+            velocity_mps: state.velocity_mps,
+            attitude_rad: state.attitude_rad,
+            angular_rate_radps: 0.0,
+            mass_kg: state.mass_kg(),
+            fuel_kg: state.fuel_kg,
+            gravity_mps2: observation.gravity_mps2,
+            target_dx_m: target_x_m - state.position_m.x,
+            height_above_target_m,
+            target_surface_y_m: observation.target_surface_y_m,
+            target_pad_half_width_m: observation.target_pad_half_width_m,
+            touchdown_clearance_m,
+            min_hull_clearance_m: touchdown_clearance_m,
+        }
+    }
+
+    fn waypoint_final_candidate(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        reachable: WaypointReachableCandidate,
+    ) -> Option<WaypointFinalCandidate> {
+        if !reachable
+            .reachable_prediction
+            .prediction
+            .assessment
+            .contract_pass()
+        {
+            return None;
+        }
+        let terminal_observation = Self::target_relative_observation_at_transfer_state(
+            ctx,
+            observation,
+            reachable.reachable_prediction.event_state,
+            reachable.reachable_prediction.prediction.time_to_event_s,
+        );
+        let diagnostics = self.transfer_diagnostics(&terminal_observation);
+        let lateral_dx_m = diagnostics
+            .projection
+            .projected_dx_m
+            .filter(|_| diagnostics.projection.has_target_y_solution)
+            .unwrap_or(diagnostics.route_dx_m);
+        Some(WaypointFinalCandidate {
+            reachable,
+            terminal_gate: self.terminal.evaluate_transfer_dynamics(
+                ctx,
+                &terminal_observation,
+                lateral_dx_m,
+            ),
+        })
+    }
+
+    fn compare_waypoint_final_candidates(
+        lhs: WaypointFinalCandidate,
+        rhs: WaypointFinalCandidate,
+    ) -> std::cmp::Ordering {
+        (lhs.terminal_gate.required_accel_ratio > 1.0)
+            .cmp(&(rhs.terminal_gate.required_accel_ratio > 1.0))
+            .then_with(|| {
+                lhs.terminal_gate
+                    .required_accel_ratio
+                    .total_cmp(&rhs.terminal_gate.required_accel_ratio)
+            })
+            .then_with(|| Self::compare_waypoint_reachable_candidates(lhs.reachable, rhs.reachable))
+    }
+
+    fn select_final_waypoint_event_candidate(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+    ) -> Option<WaypointFinalCandidate> {
+        self.waypoint_reachable_event_candidates(ctx, observation, guidance)
+            .into_iter()
+            .filter_map(|candidate| self.waypoint_final_candidate(ctx, observation, candidate))
+            .min_by(|lhs, rhs| Self::compare_waypoint_final_candidates(*lhs, *rhs))
+    }
+
+    fn select_waypoint_guidance_plan_candidate(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+        contract_aware: bool,
+    ) -> WaypointGuidancePlanSelection {
+        let candidate =
+            self.select_waypoint_guidance_candidate(ctx, observation, guidance, contract_aware);
+        let reachable_prediction = self.waypoint_reachable_prediction(
+            ctx,
+            observation,
+            guidance,
+            guidance.endpoint_m,
+            candidate.target_velocity_mps,
+            candidate.time_to_go_s,
+        );
+        let reachable = WaypointReachableCandidate {
+            candidate,
+            endpoint_m: guidance.endpoint_m,
+            target_mode: "waypoint_center",
+            reachable_prediction,
+        };
+        let terminal_gate = Self::waypoint_is_final(ctx, guidance)
+            .then(|| self.waypoint_final_candidate(ctx, observation, reachable))
+            .flatten()
+            .map(|final_candidate| final_candidate.terminal_gate);
+        let fallback = WaypointGuidancePlanSelection {
+            candidate,
+            endpoint_m: guidance.endpoint_m,
+            target_mode: "waypoint_center",
+            terminal_gate,
+        };
+        if !Self::waypoint_is_final(ctx, guidance) {
+            return fallback;
+        }
+
+        let Some(best) = self.select_final_waypoint_event_candidate(ctx, observation, guidance)
+        else {
+            return fallback;
+        };
+        if best.terminal_gate.required_accel_ratio > 1.0 {
+            return fallback;
+        }
+        if let Some(fallback_gate) = terminal_gate {
+            let fallback_final = WaypointFinalCandidate {
+                reachable,
+                terminal_gate: fallback_gate,
+            };
+            if Self::compare_waypoint_final_candidates(fallback_final, best)
+                != std::cmp::Ordering::Greater
+            {
+                return fallback;
+            }
+        }
+
+        WaypointGuidancePlanSelection {
+            candidate: best.reachable.candidate,
+            endpoint_m: best.reachable.endpoint_m,
+            target_mode: best.reachable.target_mode,
+            terminal_gate: Some(best.terminal_gate),
+        }
+    }
+
     fn select_reachable_waypoint_event_candidate(
         &self,
         ctx: &RunContext,
         observation: &Observation,
         guidance: WaypointGuidanceFrame,
     ) -> Option<WaypointReachableCandidate> {
+        if Self::waypoint_is_final(ctx, guidance)
+            && let Some(candidate) =
+                self.select_final_waypoint_event_candidate(ctx, observation, guidance)
+            && candidate.terminal_gate.required_accel_ratio <= 1.0
+        {
+            return Some(candidate.reachable);
+        }
         self.waypoint_reachable_event_candidates(ctx, observation, guidance)
             .into_iter()
             .min_by(|lhs, rhs| Self::compare_waypoint_reachable_candidates(*lhs, *rhs))
@@ -2923,6 +3112,8 @@ impl TransferPdgController {
             reachable_prediction,
             continuation_prediction,
             joint_prediction,
+            final_terminal_required_accel_ratio: plan.final_terminal_required_accel_ratio,
+            final_terminal_recoverable: plan.final_terminal_recoverable,
         })
     }
 
@@ -2969,7 +3160,7 @@ impl TransferPdgController {
                 || contract_failure_confirmed
         });
         if self.waypoint_guidance_plan.is_none() || expired || needs_replacement {
-            let replacement = self.select_waypoint_guidance_candidate(
+            let replacement = self.select_waypoint_guidance_plan_candidate(
                 ctx,
                 observation,
                 guidance,
@@ -2978,7 +3169,7 @@ impl TransferPdgController {
             let mut should_replace = current.is_none_or(|current| {
                 Self::should_replace_waypoint_guidance_plan(
                     current,
-                    replacement,
+                    replacement.candidate,
                     expired,
                     contract_failure_confirmed,
                 )
@@ -3017,11 +3208,17 @@ impl TransferPdgController {
                     created_time_s: observation.sim_time_s,
                     start_position_m: observation.position_m,
                     start_velocity_mps: observation.velocity_mps,
-                    endpoint_m: guidance.endpoint_m,
-                    target_mode: "waypoint_center",
-                    target_velocity_mps: replacement.target_velocity_mps,
-                    arrival_time_s: observation.sim_time_s + replacement.time_to_go_s,
-                    target_envelope_feasible: replacement.target_envelope_feasible,
+                    endpoint_m: replacement.endpoint_m,
+                    target_mode: replacement.target_mode,
+                    target_velocity_mps: replacement.candidate.target_velocity_mps,
+                    arrival_time_s: observation.sim_time_s + replacement.candidate.time_to_go_s,
+                    target_envelope_feasible: replacement.candidate.target_envelope_feasible,
+                    final_terminal_required_accel_ratio: replacement
+                        .terminal_gate
+                        .map(|gate| gate.required_accel_ratio),
+                    final_terminal_recoverable: replacement
+                        .terminal_gate
+                        .map(|gate| gate.required_accel_ratio <= 1.0),
                 });
                 self.waypoint_guidance_contract_failure_ticks = 0;
             }
@@ -3052,6 +3249,10 @@ impl TransferPdgController {
             if let Some(replacement) =
                 self.select_reachable_waypoint_event_candidate(ctx, observation, guidance)
             {
+                let terminal_gate = Self::waypoint_is_final(ctx, guidance)
+                    .then(|| self.waypoint_final_candidate(ctx, observation, replacement))
+                    .flatten()
+                    .map(|candidate| candidate.terminal_gate);
                 self.waypoint_guidance_replan_count =
                     self.waypoint_guidance_replan_count.saturating_add(1);
                 self.waypoint_guidance_plan = Some(WaypointGuidancePlan {
@@ -3066,6 +3267,10 @@ impl TransferPdgController {
                     target_velocity_mps: replacement.candidate.target_velocity_mps,
                     arrival_time_s: observation.sim_time_s + replacement.candidate.time_to_go_s,
                     target_envelope_feasible: replacement.candidate.target_envelope_feasible,
+                    final_terminal_required_accel_ratio: terminal_gate
+                        .map(|gate| gate.required_accel_ratio),
+                    final_terminal_recoverable: terminal_gate
+                        .map(|gate| gate.required_accel_ratio <= 1.0),
                 });
                 self.waypoint_guidance_contract_failure_ticks = 0;
                 self.waypoint_reachable_search_attempted_revision = None;
@@ -3190,6 +3395,8 @@ impl TransferPdgController {
             reachable_prediction,
             continuation_prediction,
             joint_prediction,
+            final_terminal_required_accel_ratio: plan.final_terminal_required_accel_ratio,
+            final_terminal_recoverable: plan.final_terminal_recoverable,
         }
     }
 
@@ -3331,6 +3538,8 @@ impl TransferPdgController {
                     reachable_prediction: state.reachable_prediction,
                     continuation_prediction: state.continuation_prediction,
                     joint_prediction: state.joint_prediction,
+                    final_terminal_required_accel_ratio: state.final_terminal_required_accel_ratio,
+                    final_terminal_recoverable: state.final_terminal_recoverable,
                 },
             );
         }
@@ -4929,6 +5138,18 @@ fn insert_waypoint_target_state_metrics(
         metric::WAYPOINT_GUIDANCE_FEASIBLE.to_owned(),
         TelemetryValue::from(target_state.feasible),
     );
+    if let Some(required_accel_ratio) = target_state.final_terminal_required_accel_ratio {
+        metrics.insert(
+            metric::WAYPOINT_FINAL_TERMINAL_REQUIRED_ACCEL_RATIO.to_owned(),
+            TelemetryValue::from(required_accel_ratio),
+        );
+    }
+    if let Some(recoverable) = target_state.final_terminal_recoverable {
+        metrics.insert(
+            metric::WAYPOINT_FINAL_TERMINAL_RECOVERABLE.to_owned(),
+            TelemetryValue::from(recoverable),
+        );
+    }
     metrics.insert(
         metric::WAYPOINT_GUIDANCE_PLAN_INDEX.to_owned(),
         TelemetryValue::from(target_state.trackability.plan_index as i64),
@@ -6317,6 +6538,17 @@ mod tests {
         }
     }
 
+    fn waypoint_final_candidate_fixture(
+        terminal_required_accel_ratio: f64,
+        endpoint_x_m: f64,
+        saturated_time_s: f64,
+    ) -> WaypointFinalCandidate {
+        WaypointFinalCandidate {
+            reachable: waypoint_reachable_candidate_fixture(true, endpoint_x_m, saturated_time_s),
+            terminal_gate: transfer_gate_fixture(1.0, terminal_required_accel_ratio, true),
+        }
+    }
+
     fn waypoint_joint_candidate_fixture(
         continuation_contract_pass: bool,
         endpoint_x_m: f64,
@@ -6604,6 +6836,31 @@ mod tests {
     }
 
     #[test]
+    fn waypoint_final_candidate_order_prefers_terminal_recoverability() {
+        let recoverable = waypoint_final_candidate_fixture(0.95, 80.0, 1.0);
+        let unrecoverable = waypoint_final_candidate_fixture(1.01, 70.0, 0.0);
+
+        assert_eq!(
+            TransferPdgController::compare_waypoint_final_candidates(recoverable, unrecoverable,),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn waypoint_final_candidate_order_prefers_lower_terminal_accel_ratio() {
+        let lower_ratio = waypoint_final_candidate_fixture(0.80, 80.0, 1.0);
+        let lower_rollout_saturation = waypoint_final_candidate_fixture(0.90, 70.0, 0.0);
+
+        assert_eq!(
+            TransferPdgController::compare_waypoint_final_candidates(
+                lower_ratio,
+                lower_rollout_saturation,
+            ),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
     fn waypoint_joint_candidate_order_is_deterministic() {
         let earlier_endpoint = waypoint_joint_candidate_fixture(true, 70.0, 0.2);
         let later_endpoint = waypoint_joint_candidate_fixture(true, 80.0, 0.2);
@@ -6706,6 +6963,8 @@ mod tests {
             target_velocity_mps: Vec2::new(10.0, 0.0),
             arrival_time_s: 10.0,
             target_envelope_feasible: true,
+            final_terminal_required_accel_ratio: None,
+            final_terminal_recoverable: None,
         });
 
         controller.current_waypoint_guidance_candidate(&ctx, &observation, guidance);
@@ -6957,6 +7216,8 @@ mod tests {
             target_velocity_mps: Vec2::new(12.0, -4.0),
             arrival_time_s: 8.0,
             target_envelope_feasible: true,
+            final_terminal_required_accel_ratio: None,
+            final_terminal_recoverable: None,
         };
         let mut observation = transfer_observation(0.0, 0.0, start_velocity_mps, 5.0);
         let (position_m, velocity_mps) = waypoint_cubic_reference_state(
