@@ -2,6 +2,41 @@
 
 ## 2026-07-12
 
+### Waypoint joint-state oracle checkpoint
+
+- Added behavior-neutral capture-transition auditing. Each handoff marker now
+  compares the projected actuated event state with the actual captured
+  position, velocity, attitude, mass, fuel, and event time, then reevaluates
+  the next leg from the actual state.
+- Added a shadow two-leg oracle that ranks at most four physically passing
+  current-handoff candidates, projects each into the next leg, and caches the
+  best joint result once per plan revision. The oracle does not select commands.
+- Batch schema `31` renders planned continuation, projected-to-actual error,
+  actual-state continuation viability, and joint-search coverage in a collapsed
+  `Waypoint Continuation Audit`, with exact seed evidence underneath.
+- Fresh behavior-neutral gates preserve action streams byte-for-byte:
+  - focused trackability: `12 / 18`, `0` invalidations
+  - ordered contract: `38 / 54`, `0` invalidations
+  - sequence landing: `54 / 54`, `0` invalidations
+- The ordered pack observed `51` first-to-second transitions. Planned and
+  actual-state continuation both pass `26 / 51`; mean projected-to-actual drift
+  is `1.22m` position, `0.65m/s` velocity, and `0.92deg` attitude, with at most
+  `0.033s` event-time error. The continuation model is therefore stable across
+  the actual capture boundary.
+- The joint oracle evaluated zero candidates in all `51` observed transitions
+  and covers `0 / 16` failed ordered routes. The current geometry-derived
+  reachable-event lattice is empty at the first actuated passing forecast, even
+  on successful routes, so it cannot support a continuation-recovery command.
+  The agreed `4 / 16` behavior gate did not open and no behavior change was
+  attempted.
+- Controller compute remains below the `1ms` p99 budget: focus `385us`, ordered
+  contract `387us`, and sequence landing `550us`. Isolated once-per-revision
+  search updates peak below `5.9ms`.
+- Next work should change the oracle candidate basis or use a bounded receding
+  two-leg objective. It should first prove candidate coverage in shadow mode;
+  adding recovery hysteresis or route/profile branches cannot repair an empty
+  target set.
+
 ### Waypoint continuation-forecast checkpoint
 
 - Added a behavior-neutral one-leg continuation projection. After an actuated

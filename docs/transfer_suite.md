@@ -544,10 +544,11 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-12:
   reference position/velocity errors, required acceleration ratio, saturation
   duration, and last-passing-state diagnostics. Peak error alone is not a
   failure gate because successful controls can show comparable maxima.
-- Batch schema `30` adds an actuated forecast beside the Hermite reference and
-  projects each passing handoff state into the next waypoint. Reports expose
-  continuation contract status, reasons, heading error, peak authority, and the
-  number of passing next-leg candidates without changing controller commands.
+- Batch schema `31` adds an actuated forecast beside the Hermite reference,
+  projects each passing handoff state into the next waypoint, and compares that
+  projected state with the actual capture transition. Reports expose planned
+  and actual continuation contract status, transition error, authority, and
+  candidate evidence without changing controller commands.
   Confirmed never-passing legs may search at most `18` geometry-derived
   capture-envelope states once per plan revision; any leg that has already
   predicted a reference pass keeps center-plan ownership.
@@ -564,9 +565,12 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-12:
   passing plan regressed two first-leg `r00` successes and was rejected.
   A center-target continuation recovery was also rejected: it reached
   `39 / 54` with no prior-success regressions but missed the `41 / 54`
-  retention gate and did not improve the `12 / 18` focus pack. The next
-  controller pass should evaluate joint handoff-state or receding two-leg
-  guidance while preserving `81 / 81` balanced contracts and landing,
+  retention gate and did not improve the `12 / 18` focus pack. A subsequent
+  four-candidate shadow joint-state oracle covered `0 / 16` failed routes
+  because the existing reachable-event candidate lattice was empty at all `51`
+  observed transitions. No joint recovery behavior was attempted. The next
+  controller pass must first establish broader shadow candidate coverage or use
+  receding two-leg guidance while preserving `81 / 81` balanced contracts and landing,
   `38 / 54` ordered routes, `54 / 54` sequence landing, and `297 / 297` direct
   transfer.
 - route/radius expansion remains a later evidence axis. Generalized terrain
