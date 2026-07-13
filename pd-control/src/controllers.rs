@@ -5890,6 +5890,7 @@ mod tests {
         TransferWaypointSpec {
             id: "wp_0".to_owned(),
             position_m: Vec2::new(-220.0, -300.0),
+            handoff_tangent_unit: None,
             capture_radius_m: 35.0,
             max_cross_track_m: 45.0,
             max_outbound_heading_error_rad: 0.6,
@@ -6866,6 +6867,7 @@ mod tests {
         let waypoint = TransferWaypointSpec {
             id: "prediction_contract".to_owned(),
             position_m: guidance.center_m,
+            handoff_tangent_unit: None,
             capture_radius_m: guidance.envelope.capture_radius_m,
             max_cross_track_m: guidance.envelope.max_cross_track_m,
             max_outbound_heading_error_rad: guidance.envelope.max_outbound_heading_error_rad,

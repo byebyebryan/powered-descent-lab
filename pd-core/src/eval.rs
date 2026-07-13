@@ -532,6 +532,7 @@ mod tests {
                     waypoints: vec![TransferWaypointSpec {
                         id: "wp_1".to_owned(),
                         position_m: Vec2::new(0.0, 0.0),
+                        handoff_tangent_unit: None,
                         capture_radius_m: 10.0,
                         max_cross_track_m: 15.0,
                         max_outbound_heading_error_rad: 0.7,
@@ -723,6 +724,7 @@ mod tests {
             TransferWaypointSpec {
                 id: "wp_1".to_owned(),
                 position_m: Vec2::new(-25.0, 0.0),
+                handoff_tangent_unit: None,
                 capture_radius_m: 10.0,
                 max_cross_track_m: 15.0,
                 max_outbound_heading_error_rad: 0.7,
@@ -736,6 +738,7 @@ mod tests {
             TransferWaypointSpec {
                 id: "wp_2".to_owned(),
                 position_m: Vec2::new(50.0, 0.0),
+                handoff_tangent_unit: None,
                 capture_radius_m: 10.0,
                 max_cross_track_m: 15.0,
                 max_outbound_heading_error_rad: 0.7,

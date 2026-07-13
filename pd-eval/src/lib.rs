@@ -3506,6 +3506,7 @@ fn transfer_route_waypoints_for_profile(
                     source_pad.center_x_m - (direction * radius_m * 0.70),
                     target_pad.surface_y_m + (radius_m * 0.45),
                 ),
+                handoff_tangent_unit: None,
                 capture_radius_m,
                 max_cross_track_m: capture_radius_m * 1.25,
                 max_outbound_heading_error_rad: 0.85,
@@ -3553,6 +3554,7 @@ fn transfer_route_waypoints_for_profile(
             Ok(vec![TransferWaypointSpec {
                 id: profile_spec.waypoint_id.to_owned(),
                 position_m,
+                handoff_tangent_unit: None,
                 capture_radius_m,
                 max_cross_track_m: capture_radius_m * profile_spec.max_cross_track_factor,
                 max_outbound_heading_error_rad: 0.85,
@@ -3604,6 +3606,7 @@ fn transfer_route_sequence_waypoints(
                 TransferWaypointSpec {
                     id: waypoint_id.to_owned(),
                     position_m,
+                    handoff_tangent_unit: None,
                     capture_radius_m,
                     max_cross_track_m: capture_radius_m * 1.25,
                     max_outbound_heading_error_rad: 0.35,
@@ -9439,6 +9442,7 @@ mod tests {
             waypoints: vec![TransferWaypointSpec {
                 id: "wp_0".to_owned(),
                 position_m: Vec2::new(-220.0, 180.0),
+                handoff_tangent_unit: None,
                 capture_radius_m: 40.0,
                 max_cross_track_m: 50.0,
                 max_outbound_heading_error_rad: 0.85,

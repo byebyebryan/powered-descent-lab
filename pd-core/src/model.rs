@@ -290,6 +290,8 @@ impl TransferRouteSpec {
 pub struct TransferWaypointSpec {
     pub id: String,
     pub position_m: Vec2,
+    #[serde(default)]
+    pub handoff_tangent_unit: Option<Vec2>,
     pub capture_radius_m: f64,
     pub max_cross_track_m: f64,
     pub max_outbound_heading_error_rad: f64,
@@ -340,6 +342,8 @@ impl WaypointHandoffViolation {
 #[derive(Clone, Debug, PartialEq)]
 pub struct WaypointHandoffAssessment {
     pub triggered: bool,
+    pub capture_window_open: bool,
+    pub deadline_reached: bool,
     pub spatial_pass: bool,
     pub envelope_pass: bool,
     pub violations: Vec<WaypointHandoffViolation>,
@@ -347,7 +351,11 @@ pub struct WaypointHandoffAssessment {
 
 impl WaypointHandoffAssessment {
     pub fn contract_pass(&self) -> bool {
-        self.spatial_pass && self.envelope_pass
+        self.triggered && self.spatial_pass && self.envelope_pass
+    }
+
+    pub fn resolved(&self) -> bool {
+        self.contract_pass() || self.deadline_reached
     }
 }
 
@@ -378,6 +386,18 @@ impl TransferWaypointSpec {
         }
         if self.max_cross_track_m <= 0.0 {
             return Err("transfer_route waypoint max_cross_track_m must be positive".to_owned());
+        }
+        if let Some(tangent) = self.handoff_tangent_unit {
+            if !tangent.x.is_finite() || !tangent.y.is_finite() {
+                return Err(
+                    "transfer_route waypoint handoff_tangent_unit must be finite".to_owned(),
+                );
+            }
+            if (tangent.length() - 1.0).abs() > 1.0e-6 {
+                return Err(
+                    "transfer_route waypoint handoff_tangent_unit must be normalized".to_owned(),
+                );
+            }
         }
         if self.max_outbound_heading_error_rad <= 0.0 {
             return Err(
@@ -420,8 +440,9 @@ impl TransferWaypointSpec {
         &self,
         kinematics: WaypointHandoffKinematics,
     ) -> WaypointHandoffAssessment {
-        let triggered =
-            kinematics.plane_progress_m >= 0.0 || kinematics.distance_m <= self.capture_radius_m;
+        let capture_window_open = kinematics.distance_m <= self.capture_radius_m;
+        let deadline_reached = kinematics.plane_progress_m >= 0.0;
+        let triggered = capture_window_open || deadline_reached;
         let spatial_pass = kinematics.distance_m <= self.capture_radius_m
             || (kinematics.cross_track_m <= self.max_cross_track_m
                 && kinematics.plane_progress_m >= -self.capture_radius_m);
@@ -454,6 +475,8 @@ impl TransferWaypointSpec {
 
         WaypointHandoffAssessment {
             triggered,
+            capture_window_open,
+            deadline_reached,
             spatial_pass,
             envelope_pass: violations.is_empty(),
             violations,
@@ -1001,6 +1024,7 @@ mod tests {
         let waypoint = TransferWaypointSpec {
             id: "wp_1".to_owned(),
             position_m: Vec2::new(-80.0, 140.0),
+            handoff_tangent_unit: None,
             capture_radius_m: 50.0,
             max_cross_track_m: 80.0,
             max_outbound_heading_error_rad: 0.7,
@@ -1019,6 +1043,14 @@ mod tests {
             waypoints: vec![waypoint.clone()],
         };
         assert!(route.validate().is_ok());
+
+        let mut invalid_tangent = waypoint.clone();
+        invalid_tangent.handoff_tangent_unit = Some(Vec2::new(2.0, 0.0));
+        let invalid_tangent_route = TransferRouteSpec {
+            waypoints: vec![invalid_tangent],
+            ..route.clone()
+        };
+        assert!(invalid_tangent_route.validate().is_err());
 
         let duplicate_waypoints = TransferRouteSpec {
             waypoints: vec![waypoint.clone(), waypoint.clone()],
@@ -1040,6 +1072,7 @@ mod tests {
         let waypoint = TransferWaypointSpec {
             id: "wp_1".to_owned(),
             position_m: Vec2::new(0.0, 0.0),
+            handoff_tangent_unit: None,
             capture_radius_m: 20.0,
             max_cross_track_m: 30.0,
             max_outbound_heading_error_rad: 0.35,
@@ -1063,7 +1096,10 @@ mod tests {
 
         let pass = waypoint.assess_handoff(kinematics);
         assert!(pass.triggered);
+        assert!(pass.capture_window_open);
+        assert!(!pass.deadline_reached);
         assert!(pass.contract_pass());
+        assert!(pass.resolved());
 
         let cross_speed_failure = waypoint.assess_handoff(WaypointHandoffKinematics {
             outbound_cross_speed_mps: 25.0,
@@ -1077,13 +1113,33 @@ mod tests {
         let vertically_bounded = TransferWaypointSpec {
             max_outbound_cross_speed_mps: None,
             max_vertical_speed_mps: Some(65.0),
-            ..waypoint
+            ..waypoint.clone()
         };
         let vertical_failure = vertically_bounded.assess_handoff(kinematics);
         assert_eq!(
             vertical_failure.violations,
             vec![WaypointHandoffViolation::VerticalSpeed]
         );
+
+        let pending = waypoint.assess_handoff(WaypointHandoffKinematics {
+            distance_m: 19.0,
+            outbound_heading_error_rad: 0.5,
+            ..kinematics
+        });
+        assert!(pending.capture_window_open);
+        assert!(!pending.deadline_reached);
+        assert!(!pending.contract_pass());
+        assert!(!pending.resolved());
+
+        let deadline_failure = waypoint.assess_handoff(WaypointHandoffKinematics {
+            distance_m: 25.0,
+            plane_progress_m: 0.0,
+            outbound_heading_error_rad: 0.5,
+            ..kinematics
+        });
+        assert!(deadline_failure.deadline_reached);
+        assert!(!deadline_failure.contract_pass());
+        assert!(deadline_failure.resolved());
     }
 
     #[test]
@@ -1091,6 +1147,7 @@ mod tests {
         let waypoint = TransferWaypointSpec {
             id: "wp_1".to_owned(),
             position_m: Vec2::new(-50.0, 60.0),
+            handoff_tangent_unit: None,
             capture_radius_m: 25.0,
             max_cross_track_m: 30.0,
             max_outbound_heading_error_rad: 0.8,
