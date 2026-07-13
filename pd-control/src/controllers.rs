@@ -1925,6 +1925,21 @@ impl TransferPdgController {
             && Self::waypoint_guidance_replacement_is_material(current, replacement)
     }
 
+    fn should_preserve_waypoint_plan_during_authority_recovery(
+        current: WaypointGuidanceCandidate,
+        current_reachable: WaypointReachablePrediction,
+        plan_reason: WaypointGuidancePlanReason,
+        expired: bool,
+        reference_contract_pass_ever: bool,
+    ) -> bool {
+        !expired
+            && reference_contract_pass_ever
+            && plan_reason == WaypointGuidancePlanReason::ReachableRecovery
+            && !Self::waypoint_guidance_candidate_has_control_authority(current)
+            && current.prediction.assessment.contract_pass()
+            && current_reachable.prediction.assessment.contract_pass()
+    }
+
     fn waypoint_guidance_plan_reason(
         current: Option<WaypointGuidanceCandidate>,
         expired: bool,
@@ -2502,7 +2517,7 @@ impl TransferPdgController {
                 guidance,
                 contract_failure_confirmed,
             );
-            let should_replace = current.is_none_or(|current| {
+            let mut should_replace = current.is_none_or(|current| {
                 Self::should_replace_waypoint_guidance_plan(
                     current,
                     replacement,
@@ -2510,6 +2525,27 @@ impl TransferPdgController {
                     contract_failure_confirmed,
                 )
             });
+            if should_replace
+                && let (Some(current), Some(plan)) = (current, self.waypoint_guidance_plan)
+            {
+                let current_reachable = self.waypoint_reachable_prediction(
+                    ctx,
+                    observation,
+                    guidance,
+                    plan.endpoint_m,
+                    current.target_velocity_mps,
+                    current.time_to_go_s,
+                );
+                if Self::should_preserve_waypoint_plan_during_authority_recovery(
+                    current,
+                    current_reachable,
+                    plan.reason,
+                    expired,
+                    self.waypoint_reference_contract_pass_ever,
+                ) {
+                    should_replace = false;
+                }
+            }
             if should_replace {
                 let reason = Self::waypoint_guidance_plan_reason(current, expired);
                 if self.waypoint_guidance_plan.is_some() {
@@ -5474,6 +5510,15 @@ mod tests {
         }
     }
 
+    fn waypoint_reachable_fixture(contract_pass: bool) -> WaypointReachablePrediction {
+        WaypointReachablePrediction {
+            prediction: waypoint_candidate_fixture(contract_pass, 0.8, 4.0).prediction,
+            required_accel_ratio_max: 1.4,
+            thrust_saturated_time_s: 0.2,
+            tilt_saturated_time_s: 0.0,
+        }
+    }
+
     #[test]
     fn waypoint_reachable_prediction_tracks_an_actuated_straight_plan() {
         let ctx = context_with_waypoint();
@@ -5650,6 +5695,79 @@ mod tests {
                 feasible_failure,
                 false,
                 false,
+            )
+        );
+    }
+
+    #[test]
+    fn waypoint_authority_recovery_preserves_actuated_passing_plan() {
+        let current = waypoint_candidate_fixture(true, 1.2, 4.0);
+        let feasible_current = waypoint_candidate_fixture(true, 0.8, 4.0);
+        let failing_current = waypoint_candidate_fixture(false, 1.2, 4.0);
+        let current_pass = waypoint_reachable_fixture(true);
+        let current_fail = waypoint_reachable_fixture(false);
+
+        assert!(
+            TransferPdgController::should_preserve_waypoint_plan_during_authority_recovery(
+                current,
+                current_pass,
+                WaypointGuidancePlanReason::ReachableRecovery,
+                false,
+                true,
+            )
+        );
+        assert!(
+            !TransferPdgController::should_preserve_waypoint_plan_during_authority_recovery(
+                current,
+                current_fail,
+                WaypointGuidancePlanReason::ReachableRecovery,
+                false,
+                true,
+            )
+        );
+        assert!(
+            !TransferPdgController::should_preserve_waypoint_plan_during_authority_recovery(
+                failing_current,
+                current_pass,
+                WaypointGuidancePlanReason::ReachableRecovery,
+                false,
+                true,
+            )
+        );
+        assert!(
+            !TransferPdgController::should_preserve_waypoint_plan_during_authority_recovery(
+                current,
+                current_pass,
+                WaypointGuidancePlanReason::ReachableRecovery,
+                true,
+                true,
+            )
+        );
+        assert!(
+            !TransferPdgController::should_preserve_waypoint_plan_during_authority_recovery(
+                current,
+                current_pass,
+                WaypointGuidancePlanReason::ReachableRecovery,
+                false,
+                false,
+            )
+        );
+        assert!(
+            !TransferPdgController::should_preserve_waypoint_plan_during_authority_recovery(
+                feasible_current,
+                current_pass,
+                WaypointGuidancePlanReason::ReachableRecovery,
+                false,
+                true,
+            )
+        );
+        assert!(
+            !TransferPdgController::should_preserve_waypoint_plan_during_authority_recovery(
+                current,
+                current_pass,
+                WaypointGuidancePlanReason::Initial,
+                false,
+                true,
             )
         );
     }
