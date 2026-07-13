@@ -2542,6 +2542,9 @@ struct WaypointCellSummary<'a> {
     planned_signed_turn_deg: Option<crate::BatchMetricSummary>,
     planned_max_speed_mps: Option<crate::BatchMetricSummary>,
     continuation_stop_ratio_max: Option<f64>,
+    final_terminal_recovery_observed: usize,
+    final_terminal_recoverable_runs: usize,
+    final_terminal_required_accel_ratio_max: Option<f64>,
     closest_distance_m: Option<crate::BatchMetricSummary>,
     cross_track_m: Option<crate::BatchMetricSummary>,
     heading_error_deg: Option<crate::BatchMetricSummary>,
@@ -2578,6 +2581,9 @@ struct WaypointSequenceCellSummary {
     planned_signed_turn_deg: Option<crate::BatchMetricSummary>,
     planned_max_speed_mps: Option<crate::BatchMetricSummary>,
     continuation_stop_ratio_max: Option<f64>,
+    final_terminal_recovery_observed: usize,
+    final_terminal_recoverable_runs: usize,
+    final_terminal_required_accel_ratio_max: Option<f64>,
     capture_time_s: Option<crate::BatchMetricSummary>,
     window_entry_time_s: Option<crate::BatchMetricSummary>,
     window_duration_s: Option<crate::BatchMetricSummary>,
@@ -2794,6 +2800,7 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
           <th>Plan</th>
           <th>Route Result</th>
           <th>Contract</th>
+          <th>Terminal Recovery</th>
           <th>Entry / Resolution</th>
           <th>Cross Track</th>
           <th>Tangent Error</th>
@@ -2948,6 +2955,27 @@ fn waypoint_sequence_cell_summary(
             waypoint_index,
             "continuation_stop_ratio",
         ),
+        final_terminal_recovery_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.final_terminal_recoverable.is_some())
+            })
+            .count(),
+        final_terminal_recoverable_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.final_terminal_recoverable)
+                    == Some(true)
+            })
+            .count(),
+        final_terminal_required_accel_ratio_max: records
+            .iter()
+            .filter_map(|record| waypoint_sequence_handoff(record, waypoint_index))
+            .filter_map(|handoff| handoff.final_terminal_required_accel_ratio)
+            .filter(|ratio| ratio.is_finite())
+            .max_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap_or(Ordering::Equal)),
         capture_time_s: metric(|handoff| handoff.capture_time_s),
         window_entry_time_s: entry_metric(|entry| entry.time_s),
         window_duration_s: metric(|handoff| handoff.window_duration_s),
@@ -3257,6 +3285,16 @@ fn waypoint_sequence_handoff(
         .find(|handoff| handoff.waypoint_index == waypoint_index)
 }
 
+fn waypoint_final_handoff(
+    record: &crate::BatchRunRecord,
+) -> Option<&crate::BatchWaypointHandoffReviewMetrics> {
+    record
+        .review
+        .waypoint_handoffs
+        .iter()
+        .max_by_key(|handoff| handoff.waypoint_index)
+}
+
 fn waypoint_resolved_metric_summary(
     records: &[&crate::BatchRunRecord],
     waypoint_index: usize,
@@ -3375,6 +3413,7 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
   <td>{plan}</td>
   <td>{route_result}</td>
   <td>{contract}</td>
+  <td>{terminal_recovery}</td>
   <td>{window}</td>
   <td>{cross_track}</td>
   <td>{heading_error}</td>
@@ -3385,6 +3424,11 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
         vehicle = escape_html(&summary.key.vehicle_variant),
         profile = profile,
         plan = plan,
+        terminal_recovery = render_waypoint_terminal_recovery_cell(
+            summary.final_terminal_recovery_observed,
+            summary.final_terminal_recoverable_runs,
+            summary.final_terminal_required_accel_ratio_max,
+        ),
         window = render_waypoint_window_cell(summary),
         cross_track = render_transfer_handoff_metric_cell(
             summary.cross_track_m.as_ref(),
@@ -3842,6 +3886,7 @@ fn render_waypoint_triage_section(
           <th>Profile</th>
           <th>Success</th>
           <th>Contract</th>
+          <th>Terminal Recovery</th>
           <th>Waypoint</th>
           <th>Plan</th>
           <th>Closest</th>
@@ -3877,6 +3922,11 @@ fn render_waypoint_triage_row(
     let profile_html = render_waypoint_profile_cell(summary);
     let success_html = render_waypoint_success_cell(summary);
     let contract_html = render_waypoint_contract_cell(summary);
+    let terminal_recovery_html = render_waypoint_terminal_recovery_cell(
+        summary.final_terminal_recovery_observed,
+        summary.final_terminal_recoverable_runs,
+        summary.final_terminal_required_accel_ratio_max,
+    );
     let waypoint_html = render_waypoint_capture_cell(summary);
     let plan_html = render_waypoint_plan_cell(
         summary.planned_progress_frac.as_ref(),
@@ -3918,6 +3968,7 @@ fn render_waypoint_triage_row(
   <td>{profile}</td>
   <td>{success}</td>
   <td>{contract}</td>
+  <td>{terminal_recovery}</td>
   <td>{waypoint}</td>
   <td>{plan}</td>
   <td>{closest}</td>
@@ -3932,6 +3983,7 @@ fn render_waypoint_triage_row(
         profile = profile_html,
         success = success_html,
         contract = contract_html,
+        terminal_recovery = terminal_recovery_html,
         waypoint = waypoint_html,
         plan = plan_html,
         closest = closest_html,
@@ -4078,6 +4130,27 @@ fn waypoint_cell_summary<'a>(
             0,
             "continuation_stop_ratio",
         ),
+        final_terminal_recovery_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_final_handoff(record)
+                    .is_some_and(|handoff| handoff.final_terminal_recoverable.is_some())
+            })
+            .count(),
+        final_terminal_recoverable_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_final_handoff(record)
+                    .and_then(|handoff| handoff.final_terminal_recoverable)
+                    == Some(true)
+            })
+            .count(),
+        final_terminal_required_accel_ratio_max: records
+            .iter()
+            .filter_map(|record| waypoint_final_handoff(record))
+            .filter_map(|handoff| handoff.final_terminal_required_accel_ratio)
+            .filter(|ratio| ratio.is_finite())
+            .max_by(|lhs, rhs| lhs.partial_cmp(rhs).unwrap_or(Ordering::Equal)),
         closest_distance_m: transfer_shape_metric_summary(records, |review| {
             review.waypoint_closest_distance_m
         }),
@@ -4179,6 +4252,23 @@ fn render_waypoint_plan_cell(
         r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">{}</div></div>"#,
         escape_html(&primary.join(" · ")),
         escape_html(&detail.join(" · ")),
+    )
+}
+
+fn render_waypoint_terminal_recovery_cell(
+    observed: usize,
+    recoverable: usize,
+    required_accel_ratio_max: Option<f64>,
+) -> String {
+    if observed == 0 {
+        return r#"<span class="muted">-</span>"#.to_owned();
+    }
+    let ratio = required_accel_ratio_max
+        .map(|value| format!("plan accel max {value:.2}x"))
+        .unwrap_or_else(|| "plan accel unavailable".to_owned());
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">{recoverable}/{observed} recoverable</div><div class="overview-sub">kinematic estimate · {}</div></div>"#,
+        escape_html(&ratio),
     )
 }
 
@@ -9856,8 +9946,8 @@ mod report_tests {
         BatchReportRenderCache, directory_href, eval_report_entry_is_fixture_backed,
         html_with_base_href, load_fixture_pack_ids, load_preview_trajectory,
         records_by_waypoint_profile, render_batch_report, render_lane_preview,
-        report_site_output_for_batch, sort_selector_keys, tree_group_id,
-        waypoint_checkpoint_failure_detail,
+        render_waypoint_terminal_recovery_cell, report_site_output_for_batch, sort_selector_keys,
+        tree_group_id, waypoint_checkpoint_failure_detail,
     };
 
     fn fixtures_root() -> PathBuf {
@@ -10215,6 +10305,16 @@ mod report_tests {
         report.records[1].review.waypoint_cross_track_m = Some(52.0);
         report.records[1].review.waypoint_outbound_heading_error_rad = Some(1.4);
         report.records[1].review.waypoint_outbound_progress_mps = Some(3.0);
+        for (record, (ratio, recoverable)) in
+            report.records.iter_mut().zip([(0.72, true), (1.08, false)])
+        {
+            record.review.waypoint_handoffs = vec![crate::BatchWaypointHandoffReviewMetrics {
+                waypoint_index: 0,
+                final_terminal_required_accel_ratio: Some(ratio),
+                final_terminal_recoverable: Some(recoverable),
+                ..crate::BatchWaypointHandoffReviewMetrics::default()
+            }];
+        }
 
         let html = render_batch_report(
             Path::new("outputs/eval/waypoint_triage_unit"),
@@ -10228,6 +10328,10 @@ mod report_tests {
         assert!(html.contains("landed with waypoint warning"));
         assert!(html.contains("<th>Profile</th>"));
         assert!(html.contains("<th>Plan</th>"));
+        assert!(html.contains("<th>Terminal Recovery</th>"));
+        assert!(html.contains("1/2 recoverable"));
+        assert!(html.contains("plan accel max 1.08x"));
+        assert!(html.contains("kinematic estimate"));
         assert!(html.contains("single_bend_v1"));
         assert!(html.contains("continuation_pass_through_v1"));
         assert!(html.contains("p 0.55"));
@@ -10383,6 +10487,8 @@ mod report_tests {
                     target_velocity_error_mps: Some(16.0 + index as f64),
                     target_deadline_remaining_s: Some(0.4),
                     guidance_feasible: Some(route_pass),
+                    final_terminal_required_accel_ratio: Some(if route_pass { 0.82 } else { 1.12 }),
+                    final_terminal_recoverable: Some(route_pass),
                     predicted_handoff_time_to_go_s: Some(0.02),
                     predicted_handoff_deadline_lead_s: Some(0.38),
                     predicted_handoff_contract_status: Some(
@@ -10448,6 +10554,9 @@ mod report_tests {
         assert!(html.contains("Entry / Resolution"));
         assert!(html.contains("Tangent Error"));
         assert!(html.contains("<th>State Debt</th>"));
+        assert!(html.contains("<th>Terminal Recovery</th>"));
+        assert!(html.contains("1/2 recoverable"));
+        assert!(html.contains("plan accel max 1.12x"));
         assert!(html.contains("Δv 8.5m/s"));
         assert!(html.contains("feasible 2/2"));
         assert!(html.contains("predict 2/2 pass"));
@@ -10484,6 +10593,14 @@ mod report_tests {
         );
         assert!(legacy_html.contains("<h2>Waypoint Continuation Audit</h2>"));
         assert!(legacy_html.contains("legacy schema or no transition"));
+    }
+
+    #[test]
+    fn waypoint_terminal_recovery_cell_marks_missing_legacy_evidence() {
+        assert_eq!(
+            render_waypoint_terminal_recovery_cell(0, 0, None),
+            r#"<span class="muted">-</span>"#
+        );
     }
 
     #[test]

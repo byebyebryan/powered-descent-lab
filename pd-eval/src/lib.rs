@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 32;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 33;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -216,6 +216,10 @@ pub struct BatchWaypointHandoffReviewMetrics {
     pub target_velocity_error_mps: Option<f64>,
     #[serde(default)]
     pub guidance_feasible: Option<bool>,
+    #[serde(default)]
+    pub final_terminal_required_accel_ratio: Option<f64>,
+    #[serde(default)]
+    pub final_terminal_recoverable: Option<bool>,
     #[serde(default)]
     pub predicted_handoff_time_to_go_s: Option<f64>,
     #[serde(default)]
@@ -6418,6 +6422,8 @@ struct WaypointReviewMetrics {
     target_deadline_remaining_s: Option<f64>,
     target_velocity_error_mps: Option<f64>,
     guidance_feasible: Option<bool>,
+    final_terminal_required_accel_ratio: Option<f64>,
+    final_terminal_recoverable: Option<bool>,
     predicted_handoff_time_to_go_s: Option<f64>,
     predicted_handoff_deadline_lead_s: Option<f64>,
     predicted_handoff_contract_status: Option<String>,
@@ -7012,6 +7018,11 @@ fn waypoint_review_metrics_from_update(
         target_velocity_error_mps: preferred_float(metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS)
             .filter(|value| *value >= 0.0),
         guidance_feasible: preferred_bool(metric::WAYPOINT_GUIDANCE_FEASIBLE),
+        final_terminal_required_accel_ratio: preferred_float(
+            metric::WAYPOINT_FINAL_TERMINAL_REQUIRED_ACCEL_RATIO,
+        )
+        .filter(|value| *value >= 0.0),
+        final_terminal_recoverable: preferred_bool(metric::WAYPOINT_FINAL_TERMINAL_RECOVERABLE),
         predicted_handoff_time_to_go_s: preferred_float(
             metric::WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S,
         )
@@ -7340,6 +7351,8 @@ fn terminal_waypoint_review_metrics(
         target_deadline_remaining_s,
         target_velocity_error_mps,
         guidance_feasible: guidance.guidance_feasible,
+        final_terminal_required_accel_ratio: guidance.final_terminal_required_accel_ratio,
+        final_terminal_recoverable: guidance.final_terminal_recoverable,
         predicted_handoff_time_to_go_s,
         predicted_handoff_deadline_lead_s: guidance.predicted_handoff_deadline_lead_s,
         predicted_handoff_contract_status: guidance.predicted_handoff_contract_status,
@@ -7550,6 +7563,8 @@ fn batch_waypoint_handoff_metrics(
         target_deadline_remaining_s: waypoint.target_deadline_remaining_s,
         target_velocity_error_mps: waypoint.target_velocity_error_mps,
         guidance_feasible: waypoint.guidance_feasible,
+        final_terminal_required_accel_ratio: waypoint.final_terminal_required_accel_ratio,
+        final_terminal_recoverable: waypoint.final_terminal_recoverable,
         predicted_handoff_time_to_go_s: waypoint.predicted_handoff_time_to_go_s,
         predicted_handoff_deadline_lead_s: waypoint.predicted_handoff_deadline_lead_s,
         predicted_handoff_contract_status: waypoint.predicted_handoff_contract_status.clone(),
@@ -12219,6 +12234,14 @@ mod tests {
                 metric::WAYPOINT_TURN_MARGIN_M.to_owned(),
                 TelemetryValue::from(38.0),
             ),
+            (
+                metric::WAYPOINT_FINAL_TERMINAL_REQUIRED_ACCEL_RATIO.to_owned(),
+                TelemetryValue::from(0.72),
+            ),
+            (
+                metric::WAYPOINT_FINAL_TERMINAL_RECOVERABLE.to_owned(),
+                TelemetryValue::from(true),
+            ),
         ]));
 
         let metrics = waypoint_review_metrics(&[tracking, captured]);
@@ -12244,6 +12267,8 @@ mod tests {
         assert_eq!(metrics.outbound_progress_mps, Some(24.0));
         assert_eq!(metrics.required_turn_distance_m, Some(72.0));
         assert_eq!(metrics.turn_margin_m, Some(38.0));
+        assert_eq!(metrics.final_terminal_required_accel_ratio, Some(0.72));
+        assert_eq!(metrics.final_terminal_recoverable, Some(true));
     }
 
     #[test]
@@ -12380,6 +12405,8 @@ mod tests {
         let scenario = waypoint_contract_scenario();
         let mut waypoint = WaypointReviewMetrics {
             active_index: Some(0),
+            final_terminal_required_accel_ratio: Some(0.76),
+            final_terminal_recoverable: Some(true),
             transition_next_waypoint_index: Some(2),
             transition_position_error_m: Some(4.0),
             transition_continuation_contract_pass: Some(true),
@@ -12395,6 +12422,8 @@ mod tests {
         assert_eq!(mismatched.transition_position_error_m, None);
         assert_eq!(mismatched.joint_next_waypoint_index, None);
         assert_eq!(mismatched.joint_evaluated_candidate_count, None);
+        assert_eq!(mismatched.final_terminal_required_accel_ratio, Some(0.76));
+        assert_eq!(mismatched.final_terminal_recoverable, Some(true));
 
         waypoint.transition_next_waypoint_index = Some(1);
         waypoint.joint_next_waypoint_index = Some(1);
@@ -12424,6 +12453,8 @@ mod tests {
         assert!(handoff.window_entry.is_none());
         assert_eq!(handoff.resolution_reason, None);
         assert_eq!(handoff.window_duration_s, None);
+        assert_eq!(handoff.final_terminal_required_accel_ratio, None);
+        assert_eq!(handoff.final_terminal_recoverable, None);
     }
 
     #[test]
