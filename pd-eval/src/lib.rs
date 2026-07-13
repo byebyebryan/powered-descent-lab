@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 31;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 32;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -108,6 +108,40 @@ pub struct BatchMetricSummary {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchWaypointWindowEntryReviewMetrics {
+    #[serde(default)]
+    pub time_s: Option<f64>,
+    #[serde(default)]
+    pub position_x_m: Option<f64>,
+    #[serde(default)]
+    pub position_y_m: Option<f64>,
+    #[serde(default)]
+    pub velocity_x_mps: Option<f64>,
+    #[serde(default)]
+    pub velocity_y_mps: Option<f64>,
+    #[serde(default)]
+    pub distance_m: Option<f64>,
+    #[serde(default)]
+    pub cross_track_m: Option<f64>,
+    #[serde(default)]
+    pub plane_progress_m: Option<f64>,
+    #[serde(default)]
+    pub handoff_heading_error_rad: Option<f64>,
+    #[serde(default)]
+    pub handoff_progress_mps: Option<f64>,
+    #[serde(default)]
+    pub handoff_cross_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub speed_mps: Option<f64>,
+    #[serde(default)]
+    pub vertical_speed_mps: Option<f64>,
+    #[serde(default)]
+    pub contract_pass: Option<bool>,
+    #[serde(default)]
+    pub contract_reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct BatchWaypointHandoffReviewMetrics {
     pub waypoint_index: usize,
     #[serde(default)]
@@ -120,6 +154,12 @@ pub struct BatchWaypointHandoffReviewMetrics {
     pub contract_reasons: Vec<String>,
     #[serde(default)]
     pub capture_time_s: Option<f64>,
+    #[serde(default)]
+    pub window_entry: Option<BatchWaypointWindowEntryReviewMetrics>,
+    #[serde(default)]
+    pub resolution_reason: Option<String>,
+    #[serde(default)]
+    pub window_duration_s: Option<f64>,
     #[serde(default)]
     pub closest_distance_m: Option<f64>,
     #[serde(default)]
@@ -430,6 +470,12 @@ pub struct BatchRunReviewMetrics {
     pub waypoint_active_index: Option<i64>,
     #[serde(default)]
     pub waypoint_capture_time_s: Option<f64>,
+    #[serde(default)]
+    pub waypoint_window_entry: Option<BatchWaypointWindowEntryReviewMetrics>,
+    #[serde(default)]
+    pub waypoint_handoff_resolution_reason: Option<String>,
+    #[serde(default)]
+    pub waypoint_handoff_window_duration_s: Option<f64>,
     #[serde(default)]
     pub waypoint_closest_distance_m: Option<f64>,
     #[serde(default)]
@@ -6292,6 +6338,9 @@ fn derive_run_review_metrics(
         waypoint_contract_reasons: waypoint_contract.reasons,
         waypoint_active_index: waypoint.active_index,
         waypoint_capture_time_s: waypoint.capture_time_s,
+        waypoint_window_entry: waypoint.window_entry.clone(),
+        waypoint_handoff_resolution_reason: waypoint.resolution_reason.clone(),
+        waypoint_handoff_window_duration_s: waypoint.window_duration_s,
         waypoint_closest_distance_m: waypoint.closest_distance_m,
         waypoint_distance_m: waypoint.distance_m,
         waypoint_cross_track_m: waypoint.cross_track_m,
@@ -6319,6 +6368,9 @@ struct WaypointReviewMetrics {
     capture_status: Option<String>,
     active_index: Option<i64>,
     capture_time_s: Option<f64>,
+    window_entry: Option<BatchWaypointWindowEntryReviewMetrics>,
+    resolution_reason: Option<String>,
+    window_duration_s: Option<f64>,
     closest_distance_m: Option<f64>,
     distance_m: Option<f64>,
     cross_track_m: Option<f64>,
@@ -6799,6 +6851,42 @@ fn waypoint_review_metrics_from_update(
         telemetry_integer(preferred_metrics, key)
             .or_else(|| telemetry_integer(&update.frame.metrics, key))
     };
+    let preferred_reasons = |key| {
+        preferred_text(key)
+            .map(|reasons| {
+                reasons
+                    .split(',')
+                    .filter(|reason| !reason.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let window_entry = preferred_float(metric::WAYPOINT_WINDOW_ENTRY_TIME_S).map(|time_s| {
+        BatchWaypointWindowEntryReviewMetrics {
+            time_s: Some(time_s),
+            position_x_m: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_POSITION_X_M),
+            position_y_m: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_POSITION_Y_M),
+            velocity_x_mps: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_VELOCITY_X_MPS),
+            velocity_y_mps: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_VELOCITY_Y_MPS),
+            distance_m: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_DISTANCE_M),
+            cross_track_m: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_CROSS_TRACK_M),
+            plane_progress_m: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_PLANE_PROGRESS_M),
+            handoff_heading_error_rad: preferred_float(
+                metric::WAYPOINT_WINDOW_ENTRY_OUTBOUND_HEADING_ERROR_RAD,
+            ),
+            handoff_progress_mps: preferred_float(
+                metric::WAYPOINT_WINDOW_ENTRY_OUTBOUND_PROGRESS_MPS,
+            ),
+            handoff_cross_speed_mps: preferred_float(
+                metric::WAYPOINT_WINDOW_ENTRY_OUTBOUND_CROSS_SPEED_MPS,
+            ),
+            speed_mps: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_SPEED_MPS),
+            vertical_speed_mps: preferred_float(metric::WAYPOINT_WINDOW_ENTRY_VERTICAL_SPEED_MPS),
+            contract_pass: preferred_bool(metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_PASS),
+            contract_reasons: preferred_reasons(metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_REASONS),
+        }
+    });
     let predicted_handoff_contract_reasons =
         preferred_text(metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_REASONS)
             .map(|reasons| {
@@ -6834,6 +6922,11 @@ fn waypoint_review_metrics_from_update(
             .map(ToOwned::to_owned),
         active_index: telemetry_integer(&update.frame.metrics, metric::WAYPOINT_ACTIVE_INDEX),
         capture_time_s,
+        window_entry,
+        resolution_reason: preferred_text(metric::WAYPOINT_HANDOFF_RESOLUTION_REASON)
+            .map(ToOwned::to_owned),
+        window_duration_s: preferred_float(metric::WAYPOINT_HANDOFF_WINDOW_DURATION_S)
+            .filter(|duration| *duration >= 0.0),
         closest_distance_m: telemetry_float(
             &update.frame.metrics,
             metric::WAYPOINT_CLOSEST_DISTANCE_M,
@@ -7114,8 +7207,10 @@ fn terminal_waypoint_review_metrics(
         telemetry_bool(&update.frame.metrics, metric::WAYPOINT_GUIDANCE_ENABLED) == Some(true)
             && telemetry_integer(&update.frame.metrics, metric::WAYPOINT_ACTIVE_INDEX)
                 == active_index
-            && telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS)
-                == Some("tracking")
+            && matches!(
+                telemetry_text(&update.frame.metrics, metric::WAYPOINT_CAPTURE_STATUS),
+                Some("tracking" | "capture_window")
+            )
     });
     let guidance = guidance_update
         .map(waypoint_review_metrics_from_update)
@@ -7148,6 +7243,9 @@ fn terminal_waypoint_review_metrics(
         capture_status: Some(capture_status.to_owned()),
         active_index,
         capture_time_s: terminal_handoff.then_some(last_sample.sim_time_s),
+        window_entry: guidance.window_entry.clone(),
+        resolution_reason: guidance.resolution_reason.clone(),
+        window_duration_s: guidance.window_duration_s,
         closest_distance_m,
         distance_m: Some(stats.distance_m),
         cross_track_m: Some(stats.cross_track_m),
@@ -7287,6 +7385,7 @@ fn waypoint_sample_stats(
     let target_m = waypoint.position_m;
     let leg_unit = waypoint_normalized(target_m - anchor_m)?;
     let next_leg_unit = waypoint_normalized(next_target_m - target_m)?;
+    let handoff_tangent_unit = waypoint.handoff_tangent_unit.unwrap_or(next_leg_unit);
     let to_waypoint_m = observation.position_m - target_m;
     let speed_mps = observation.velocity_mps.length();
     let velocity_unit = if speed_mps > 1.0e-9 {
@@ -7294,7 +7393,7 @@ fn waypoint_sample_stats(
     } else {
         Vec2::new(0.0, 0.0)
     };
-    let outbound_heading_error_rad = waypoint_dot(velocity_unit, next_leg_unit)
+    let outbound_heading_error_rad = waypoint_dot(velocity_unit, handoff_tangent_unit)
         .clamp(-1.0, 1.0)
         .acos();
     Some(WaypointHandoffKinematics {
@@ -7302,8 +7401,9 @@ fn waypoint_sample_stats(
         cross_track_m: waypoint_cross(to_waypoint_m, leg_unit).abs(),
         plane_progress_m: waypoint_dot(to_waypoint_m, leg_unit),
         outbound_heading_error_rad,
-        outbound_progress_mps: waypoint_dot(observation.velocity_mps, next_leg_unit),
-        outbound_cross_speed_mps: waypoint_cross(observation.velocity_mps, next_leg_unit).abs(),
+        outbound_progress_mps: waypoint_dot(observation.velocity_mps, handoff_tangent_unit),
+        outbound_cross_speed_mps: waypoint_cross(observation.velocity_mps, handoff_tangent_unit)
+            .abs(),
         speed_mps,
         vertical_speed_mps: observation.velocity_mps.y,
     })
@@ -7355,6 +7455,9 @@ fn batch_waypoint_handoff_metrics(
         contract_status: contract.status,
         contract_reasons: contract.reasons,
         capture_time_s: waypoint.capture_time_s,
+        window_entry: waypoint.window_entry.clone(),
+        resolution_reason: waypoint.resolution_reason.clone(),
+        window_duration_s: waypoint.window_duration_s,
         closest_distance_m: waypoint.closest_distance_m,
         distance_m: waypoint.distance_m,
         cross_track_m: waypoint.cross_track_m,
@@ -7629,9 +7732,9 @@ fn waypoint_contract_review_metrics(
     };
 
     match capture_status {
-        "tracking" => WaypointContractReviewMetrics {
+        "tracking" | "capture_window" => WaypointContractReviewMetrics {
             status: Some("incomplete".to_owned()),
-            reasons: vec!["tracking".to_owned()],
+            reasons: vec![capture_status.to_owned()],
         },
         "missed" => WaypointContractReviewMetrics {
             status: Some("spatial_miss".to_owned()),
@@ -11579,6 +11682,34 @@ mod tests {
                         TelemetryValue::from(replans),
                     ),
                     (
+                        metric::WAYPOINT_WINDOW_ENTRY_TIME_S.to_owned(),
+                        TelemetryValue::from(sim_time_s - 0.2),
+                    ),
+                    (
+                        metric::WAYPOINT_WINDOW_ENTRY_POSITION_X_M.to_owned(),
+                        TelemetryValue::from(10.0 + index as f64),
+                    ),
+                    (
+                        metric::WAYPOINT_WINDOW_ENTRY_POSITION_Y_M.to_owned(),
+                        TelemetryValue::from(20.0),
+                    ),
+                    (
+                        metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_PASS.to_owned(),
+                        TelemetryValue::from(false),
+                    ),
+                    (
+                        metric::WAYPOINT_WINDOW_ENTRY_CONTRACT_REASONS.to_owned(),
+                        TelemetryValue::from("heading"),
+                    ),
+                    (
+                        metric::WAYPOINT_HANDOFF_RESOLUTION_REASON.to_owned(),
+                        TelemetryValue::from("contract_pass"),
+                    ),
+                    (
+                        metric::WAYPOINT_HANDOFF_WINDOW_DURATION_S.to_owned(),
+                        TelemetryValue::from(0.2),
+                    ),
+                    (
                         metric::WAYPOINT_TARGET_VELOCITY_ERROR_MPS.to_owned(),
                         TelemetryValue::from(12.0 + index as f64),
                     ),
@@ -11624,6 +11755,25 @@ mod tests {
         assert_eq!(history[0].transition_continuation_contract_pass, Some(true));
         assert_eq!(history[0].joint_next_waypoint_index, Some(1));
         assert_eq!(history[0].joint_evaluated_candidate_count, Some(0));
+        assert_eq!(
+            history[0]
+                .window_entry
+                .as_ref()
+                .and_then(|entry| entry.contract_pass),
+            Some(false)
+        );
+        assert_eq!(
+            history[0]
+                .window_entry
+                .as_ref()
+                .map(|entry| entry.contract_reasons.as_slice()),
+            Some(["heading".to_owned()].as_slice())
+        );
+        assert_eq!(
+            history[0].resolution_reason.as_deref(),
+            Some("contract_pass")
+        );
+        assert_eq!(history[0].window_duration_s, Some(0.2));
         assert_eq!(history[1].active_index, Some(1));
         assert_eq!(history[1].guidance_replan_count, Some(3));
     }
@@ -11674,6 +11824,9 @@ mod tests {
         assert_eq!(handoff.continuation_contract_pass, Some(true));
         assert_eq!(handoff.transition_next_waypoint_index, None);
         assert_eq!(handoff.joint_next_waypoint_index, None);
+        assert!(handoff.window_entry.is_none());
+        assert_eq!(handoff.resolution_reason, None);
+        assert_eq!(handoff.window_duration_s, None);
     }
 
     #[test]

@@ -1248,6 +1248,11 @@ fn build_mission_details(scenario: &ScenarioSpec) -> ReportMissionDetails {
                         id: waypoint.id.clone(),
                         x_m: waypoint.position_m.x,
                         y_m: waypoint.position_m.y,
+                        handoff_tangent_x: waypoint.handoff_tangent_unit.map(|tangent| tangent.x),
+                        handoff_tangent_y: waypoint.handoff_tangent_unit.map(|tangent| tangent.y),
+                        handoff_tangent_heading_deg: waypoint
+                            .handoff_tangent_unit
+                            .map(|tangent| tangent.y.atan2(tangent.x).to_degrees()),
                         capture_radius_m: waypoint.capture_radius_m,
                         max_cross_track_m: waypoint.max_cross_track_m,
                         max_outbound_heading_error_deg: waypoint
@@ -1271,8 +1276,8 @@ fn build_mission_details(scenario: &ScenarioSpec) -> ReportMissionDetails {
 fn mission_evaluation_basis(goal: &EvaluationGoal) -> String {
     match goal {
         EvaluationGoal::LandingOnPad { .. } => "Landing success currently uses stable contact plus pad overlap, normal/tangential touchdown speed, attitude error, and angular rate. No force or impulse check is used yet.".to_owned(),
-        EvaluationGoal::WaypointHandoff { .. } => "Waypoint handoff success currently uses the selected transfer waypoint's spatial capture and outbound viability envelope at capture-radius entry or waypoint-plane crossing.".to_owned(),
-        EvaluationGoal::WaypointSequence { .. } => "Waypoint sequence success requires every transfer waypoint to satisfy its spatial capture and outbound viability envelope in route order.".to_owned(),
+        EvaluationGoal::WaypointHandoff { .. } => "Waypoint handoff success opens a capture window on radius entry, accepts the spatial and planned-tangent velocity envelope before crossing, and fails only at the waypoint-plane deadline.".to_owned(),
+        EvaluationGoal::WaypointSequence { .. } => "Waypoint sequence success requires every transfer waypoint to resolve its spatial and planned-tangent velocity envelope in route order before the corresponding waypoint-plane deadline.".to_owned(),
         EvaluationGoal::TimedCheckpoint { .. } => "Checkpoint success currently uses position, velocity, and attitude envelope checks at the configured end time.".to_owned(),
     }
 }
@@ -1627,6 +1632,9 @@ struct ReportWaypointDetails {
     id: String,
     x_m: f64,
     y_m: f64,
+    handoff_tangent_x: Option<f64>,
+    handoff_tangent_y: Option<f64>,
+    handoff_tangent_heading_deg: Option<f64>,
     capture_radius_m: f64,
     max_cross_track_m: f64,
     max_outbound_heading_error_deg: f64,
@@ -3220,9 +3228,10 @@ fn report_template() -> &'static str {
             Number(waypoint.maxSpeedMps),
             Number(waypoint.minVerticalSpeedMps),
             Number(waypoint.maxVerticalSpeedMps),
+            Number(waypoint.handoffTangentHeadingDeg),
           ]],
           hovertemplate:
-            "%{customdata[0]}<br>x=%{x:.1f} m<br>y=%{y:.1f} m<br>capture=%{customdata[1]:.1f} m<br>xtrack=%{customdata[2]:.1f} m<br>heading err <= %{customdata[3]:.1f} deg<br>outbound >= %{customdata[4]:.1f} m/s<br>speed %{customdata[5]:.1f}-%{customdata[6]:.1f} m/s<br>vy %{customdata[7]:.1f}-%{customdata[8]:.1f} m/s<extra></extra>",
+            "%{customdata[0]}<br>x=%{x:.1f} m<br>y=%{y:.1f} m<br>capture=%{customdata[1]:.1f} m<br>xtrack=%{customdata[2]:.1f} m<br>planned tangent=%{customdata[9]:.1f} deg<br>tangent err <= %{customdata[3]:.1f} deg<br>handoff progress >= %{customdata[4]:.1f} m/s<br>speed %{customdata[5]:.1f}-%{customdata[6]:.1f} m/s<br>vy %{customdata[7]:.1f}-%{customdata[8]:.1f} m/s<extra></extra>",
           marker: {
             size: 12,
             color: "#7a3d0f",
@@ -3297,11 +3306,15 @@ fn report_template() -> &'static str {
         const targetMode = metrics["waypoint.handoff_target_mode"];
         const feasible = metrics["waypoint.guidance_feasible"];
         const replans = Number(metrics["waypoint.guidance_replan_count"]);
+        const resolution = metrics["waypoint.handoff_resolution_reason"];
+        const windowDuration = Number(metrics["waypoint.handoff_window_duration_s"]);
         const parts = [
           `${metrics["waypoint.id"] || `waypoint ${Number.isFinite(index) ? index + 1 : "?"}`} · ${metrics["waypoint.capture_status"] || "handoff"}`,
         ];
         if (Number.isFinite(speed)) parts.push(`speed=${speed.toFixed(1)}m/s`);
-        if (Number.isFinite(heading)) parts.push(`heading=${(heading * 180 / Math.PI).toFixed(1)}deg`);
+        if (Number.isFinite(heading)) parts.push(`tangent error=${(heading * 180 / Math.PI).toFixed(1)}deg`);
+        if (resolution) parts.push(`resolution=${resolution}`);
+        if (Number.isFinite(windowDuration)) parts.push(`window=${windowDuration.toFixed(2)}s`);
         if (Number.isFinite(turnMargin)) parts.push(`turn margin=${turnMargin.toFixed(1)}m`);
         if (Number.isFinite(velocityError)) parts.push(`target Δv=${velocityError.toFixed(1)}m/s`);
         if (Number.isFinite(deadlineRemaining)) parts.push(`deadline=${deadlineRemaining.toFixed(2)}s`);
@@ -3386,6 +3399,42 @@ fn report_template() -> &'static str {
       const waypointRouteTraces = buildWaypointRouteTraces();
       const waypointEnvelopeTraces = buildWaypointEnvelopeTraces();
       const waypointMarkerTraces = buildWaypointMarkerTraces();
+      const waypointWindowEntries = markers
+        .filter((marker) => marker.id === "waypoint/handoff")
+        .map((marker) => {
+          const metrics = marker.metrics || {};
+          return {
+            x: Number(metrics["waypoint.window_entry_position_x_m"]),
+            y: Number(metrics["waypoint.window_entry_position_y_m"]),
+            time: Number(metrics["waypoint.window_entry_time_s"]),
+            pass: metrics["waypoint.window_entry_contract_pass"],
+            reasons: metrics["waypoint.window_entry_contract_reasons"] || "",
+            id: metrics["waypoint.id"] || "waypoint",
+          };
+        })
+        .filter((entry) => Number.isFinite(entry.x) && Number.isFinite(entry.y));
+      if (waypointWindowEntries.length) {
+        waypointMarkerTraces.push({
+          type: "scatter",
+          mode: "markers",
+          name: "waypoint window entry",
+          x: waypointWindowEntries.map((entry) => entry.x),
+          y: waypointWindowEntries.map((entry) => entry.y),
+          customdata: waypointWindowEntries.map((entry) => [
+            entry.id,
+            entry.time,
+            entry.pass === true ? "pass" : "pending",
+            entry.reasons,
+          ]),
+          hovertemplate: "%{customdata[0]} window entry<br>t=%{customdata[1]:.2f}s<br>entry contract=%{customdata[2]}<br>%{customdata[3]}<extra></extra>",
+          marker: {
+            size: 10,
+            color: waypointWindowEntries.map((entry) => entry.pass === true ? "#2f9e44" : "#d97706"),
+            symbol: "circle-open",
+            line: { width: 2.2 },
+          },
+        });
+      }
       const vectorAnnotations = buildVectorAnnotations();
       const spatialTraces = [
         terrainTrace,

@@ -2541,6 +2541,12 @@ struct WaypointSequenceCellSummary {
     planned_max_speed_mps: Option<crate::BatchMetricSummary>,
     continuation_stop_ratio_max: Option<f64>,
     capture_time_s: Option<crate::BatchMetricSummary>,
+    window_entry_time_s: Option<crate::BatchMetricSummary>,
+    window_duration_s: Option<crate::BatchMetricSummary>,
+    window_entry_observed: usize,
+    window_entry_pass_runs: usize,
+    window_recovery_runs: usize,
+    deadline_resolution_runs: usize,
     cross_track_m: Option<crate::BatchMetricSummary>,
     heading_error_deg: Option<crate::BatchMetricSummary>,
     speed_mps: Option<crate::BatchMetricSummary>,
@@ -2737,7 +2743,7 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
         r#"<details class="transfer-handoff-section waypoint-sequence-section">
   <summary class="section-head transfer-triage-summary">
     <h2>Waypoint Sequence</h2>
-    <div class="section-note">Current-lane ordered route result: {route_pass_runs}/{total_runs} pass · {route_failed_runs} failed · {route_incomplete_runs} incomplete. Expand for each waypoint contract.</div>
+    <div class="section-note">Current-lane ordered route result: {route_pass_runs}/{total_runs} pass · {route_failed_runs} failed · {route_incomplete_runs} incomplete. Each contract resolves on planned-tangent envelope pass or at the waypoint-plane deadline.</div>
   </summary>
   <div class="table-wrap">
     <table class="transfer-handoff-table waypoint-sequence-table">
@@ -2750,9 +2756,9 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
           <th>Plan</th>
           <th>Route Result</th>
           <th>Contract</th>
-          <th>Capture Time</th>
+          <th>Entry / Resolution</th>
           <th>Cross Track</th>
-          <th>Heading Error</th>
+          <th>Tangent Error</th>
           <th>Speed</th>
           <th>State Debt</th>
           <th>Replans</th>
@@ -2858,6 +2864,14 @@ fn waypoint_sequence_cell_summary(
             waypoint_sequence_handoff(record, waypoint_index).and_then(extractor)
         })
     };
+    let entry_metric =
+        |extractor: fn(&crate::BatchWaypointWindowEntryReviewMetrics) -> Option<f64>| {
+            transfer_shape_record_metric_summary(records, |record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.window_entry.as_ref())
+                    .and_then(extractor)
+            })
+        };
 
     WaypointSequenceCellSummary {
         key,
@@ -2897,6 +2911,45 @@ fn waypoint_sequence_cell_summary(
             "continuation_stop_ratio",
         ),
         capture_time_s: metric(|handoff| handoff.capture_time_s),
+        window_entry_time_s: entry_metric(|entry| entry.time_s),
+        window_duration_s: metric(|handoff| handoff.window_duration_s),
+        window_entry_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.window_entry.is_some())
+            })
+            .count(),
+        window_entry_pass_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.window_entry.as_ref())
+                    .and_then(|entry| entry.contract_pass)
+                    == Some(true)
+            })
+            .count(),
+        window_recovery_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index).is_some_and(|handoff| {
+                    handoff
+                        .window_entry
+                        .as_ref()
+                        .and_then(|entry| entry.contract_pass)
+                        == Some(false)
+                        && handoff.contract_status.as_deref() == Some("pass")
+                })
+            })
+            .count(),
+        deadline_resolution_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.resolution_reason.as_deref())
+                    == Some("plane_deadline")
+            })
+            .count(),
         cross_track_m: metric(|handoff| handoff.cross_track_m),
         heading_error_deg: metric(|handoff| {
             handoff.outbound_heading_error_rad.map(f64::to_degrees)
@@ -3239,7 +3292,7 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
     );
     let missing_runs = summary.total_runs.saturating_sub(summary.handoff_runs);
     let contract = format!(
-        r#"<div class="overview-stack"><div class="overview-main">{} / {} pass</div><div class="overview-sub">{} spatial · {} outbound · {} incomplete · {} missing</div></div>"#,
+        r#"<div class="overview-stack"><div class="overview-main">{} / {} pass</div><div class="overview-sub">{} spatial · {} handoff envelope · {} incomplete · {} missing</div></div>"#,
         summary.contract_pass_runs,
         summary.total_runs,
         summary.spatial_miss_runs,
@@ -3284,7 +3337,7 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
   <td>{plan}</td>
   <td>{route_result}</td>
   <td>{contract}</td>
-  <td>{capture_time}</td>
+  <td>{window}</td>
   <td>{cross_track}</td>
   <td>{heading_error}</td>
   <td>{speed}</td>
@@ -3294,11 +3347,7 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
         vehicle = escape_html(&summary.key.vehicle_variant),
         profile = profile,
         plan = plan,
-        capture_time = render_transfer_handoff_metric_cell(
-            summary.capture_time_s.as_ref(),
-            MetricDisplayKind::Seconds,
-            None,
-        ),
+        window = render_waypoint_window_cell(summary),
         cross_track = render_transfer_handoff_metric_cell(
             summary.cross_track_m.as_ref(),
             MetricDisplayKind::Meters,
@@ -3314,6 +3363,35 @@ fn render_waypoint_sequence_row(summary: &WaypointSequenceCellSummary) -> String
             MetricDisplayKind::Speed,
             None,
         ),
+    )
+}
+
+fn render_waypoint_window_cell(summary: &WaypointSequenceCellSummary) -> String {
+    if summary.window_entry_observed == 0 {
+        return format!(
+            r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">legacy resolution only</div></div>"#,
+            render_transfer_handoff_metric_cell(
+                summary.capture_time_s.as_ref(),
+                MetricDisplayKind::Seconds,
+                None,
+            ),
+        );
+    }
+    let mean = |metric: &Option<crate::BatchMetricSummary>| {
+        metric
+            .as_ref()
+            .map(|value| format!("{:.2}s", value.mean))
+            .unwrap_or_else(|| "-".to_owned())
+    };
+    format!(
+        r#"<div class="overview-stack"><div class="overview-main">{} / {} clean entry</div><div class="overview-sub">{} recovered · {} deadline</div><div class="overview-sub">{} entry · {} resolve · {} window</div></div>"#,
+        summary.window_entry_pass_runs,
+        summary.window_entry_observed,
+        summary.window_recovery_runs,
+        summary.deadline_resolution_runs,
+        mean(&summary.window_entry_time_s),
+        mean(&summary.capture_time_s),
+        mean(&summary.window_duration_s),
     )
 }
 
@@ -3731,8 +3809,8 @@ fn render_waypoint_triage_section(
           <th>Closest</th>
           <th>Cross Track</th>
           <th>Heading Error</th>
-          <th>Outbound Progress</th>
-          <th>Outbound Cross</th>
+          <th>Handoff Progress</th>
+          <th>Handoff Cross</th>
           <th>Worst Seed</th>
         </tr>
       </thead>
@@ -3897,7 +3975,10 @@ fn waypoint_cell_summary<'a>(
         .filter(|record| {
             record.review.waypoint_contract_status.as_deref() == Some("incomplete")
                 || (record.review.waypoint_contract_status.is_none()
-                    && record.review.waypoint_capture_status.as_deref() == Some("tracking"))
+                    && matches!(
+                        record.review.waypoint_capture_status.as_deref(),
+                        Some("tracking" | "capture_window")
+                    ))
         })
         .count();
     let unknown_contract_runs = records
@@ -3914,7 +3995,12 @@ fn waypoint_cell_summary<'a>(
         .count();
     let tracking_runs = records
         .iter()
-        .filter(|record| record.review.waypoint_capture_status.as_deref() == Some("tracking"))
+        .filter(|record| {
+            matches!(
+                record.review.waypoint_capture_status.as_deref(),
+                Some("tracking" | "capture_window")
+            )
+        })
         .count();
     let worst_record = records
         .iter()
@@ -4003,7 +4089,7 @@ fn waypoint_record_score(record: &crate::BatchRunRecord) -> f64 {
         Some("pass") => {}
         _ => match record.review.waypoint_capture_status.as_deref() {
             Some("missed") => score += 12_000.0,
-            Some("tracking") => score += 8_000.0,
+            Some("tracking" | "capture_window") => score += 8_000.0,
             Some("captured") => {}
             _ => score += 1_000.0,
         },
@@ -9816,7 +9902,7 @@ mod report_tests {
         assert!(html.contains("vmax 65.0m/s"));
         assert!(html.contains("stop max 0.52"));
         assert!(html.contains("Heading Error"));
-        assert!(html.contains("Outbound Progress"));
+        assert!(html.contains("Handoff Progress"));
         assert!(!html.contains(r#"data-kind="waypoint profile""#));
         assert!(!html.contains("<h2>Waypoint Sequence</h2>"));
     }
@@ -9860,6 +9946,14 @@ mod report_tests {
                     capture_status: Some("captured".to_owned()),
                     contract_status: Some("pass".to_owned()),
                     capture_time_s: Some(8.0 + index as f64),
+                    window_entry: Some(crate::BatchWaypointWindowEntryReviewMetrics {
+                        time_s: Some(7.5 + index as f64),
+                        contract_pass: Some(false),
+                        contract_reasons: vec!["heading".to_owned()],
+                        ..crate::BatchWaypointWindowEntryReviewMetrics::default()
+                    }),
+                    resolution_reason: Some("contract_pass".to_owned()),
+                    window_duration_s: Some(0.5),
                     cross_track_m: Some(5.0),
                     outbound_heading_error_rad: Some(0.2),
                     speed_mps: Some(42.0),
@@ -9934,6 +10028,20 @@ mod report_tests {
                         if route_pass { "pass" } else { "spatial_miss" }.to_owned(),
                     ),
                     capture_time_s: Some(14.0 + index as f64),
+                    window_entry: Some(crate::BatchWaypointWindowEntryReviewMetrics {
+                        time_s: Some(13.5 + index as f64),
+                        contract_pass: Some(route_pass),
+                        ..crate::BatchWaypointWindowEntryReviewMetrics::default()
+                    }),
+                    resolution_reason: Some(
+                        if route_pass {
+                            "contract_pass"
+                        } else {
+                            "plane_deadline"
+                        }
+                        .to_owned(),
+                    ),
+                    window_duration_s: Some(0.5),
                     cross_track_m: Some(if route_pass { 6.0 } else { 55.0 }),
                     outbound_heading_error_rad: Some(0.3),
                     speed_mps: Some(38.0),
@@ -10001,6 +10109,10 @@ mod report_tests {
         assert!(html.contains("turn -31.2deg"));
         assert!(html.contains("stop max 0.65"));
         assert!(html.contains("1 spatial"));
+        assert!(html.contains("2 recovered"));
+        assert!(html.contains("1 deadline"));
+        assert!(html.contains("Entry / Resolution"));
+        assert!(html.contains("Tangent Error"));
         assert!(html.contains("<th>State Debt</th>"));
         assert!(html.contains("Δv 8.5m/s"));
         assert!(html.contains("feasible 2/2"));

@@ -1495,7 +1495,11 @@ impl TransferPdgController {
         let window_open = self.waypoint_window_entry.is_some();
         if handoff.resolved_in_window(window_open) {
             let contract_pass = handoff.contract_pass_in_window(window_open);
-            let status = if contract_pass { "captured" } else { "missed" };
+            let status = if handoff.spatial_pass {
+                "captured"
+            } else {
+                "missed"
+            };
             let target_state =
                 self.waypoint_guidance_target_state_for_current_plan(ctx, observation, guidance);
             let transition_audit = target_state
@@ -7514,6 +7518,46 @@ mod tests {
         assert_eq!(geometry.handoff_tangent_unit, Vec2::new(0.0, 1.0));
         assert!(stats.outbound_heading_error_rad < 1.0e-9);
         assert!((stats.outbound_progress_mps - 30.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn transfer_waypoint_deadline_preserves_spatial_capture_status() {
+        let ctx = context_with_waypoint();
+        let mut config = TransferPdgControllerConfig::default();
+        config.waypoint_guidance_enabled = true;
+        let mut controller = TransferPdgController::new(config);
+        let geometry = controller.waypoint_leg_geometry(&ctx).unwrap();
+        let entry = waypoint_transfer_observation(
+            &ctx,
+            geometry.target_m - (geometry.leg_unit * 5.0),
+            geometry.handoff_tangent_unit * -30.0,
+            10.0,
+        );
+        controller.update(&ctx, &entry);
+        let deadline = waypoint_transfer_observation(
+            &ctx,
+            geometry.target_m + geometry.leg_unit,
+            geometry.handoff_tangent_unit * -30.0,
+            10.5,
+        );
+
+        let frame = controller.update(&ctx, &deadline);
+
+        assert_eq!(
+            frame.metrics.get(metric::WAYPOINT_CAPTURE_STATUS),
+            Some(&TelemetryValue::from("captured"))
+        );
+        let handoff = frame
+            .markers
+            .iter()
+            .find(|marker| marker.id == crate::kit::marker::WAYPOINT_HANDOFF)
+            .unwrap();
+        assert_eq!(
+            handoff
+                .metadata
+                .get(metric::WAYPOINT_HANDOFF_RESOLUTION_REASON),
+            Some(&TelemetryValue::from("plane_deadline"))
+        );
     }
 
     #[test]
