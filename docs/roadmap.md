@@ -370,10 +370,10 @@ Status:
     time-to-go candidates, and bounded path correction remain free of sim-time,
     route-angle, and profile branches
 - current route-wide waypoint checkpoint:
-  - turn contract is `135 / 135`; turn landing is `127 / 135`
-  - ordered contract is `45 / 45`; ordered landing is `42 / 45`
-  - all `11` failed landings are full-payload outer-route cells whose waypoint
-    contracts pass, so final-leg recovery is the next controller frontier
+  - turn contract and landing are both `135 / 135`
+  - ordered contract and landing are both `45 / 45`
+  - final-waypoint states are ranked by terrain-blind terminal recoverability;
+    direct transfer remains `297 / 297`
   - short-radius waypoint coverage remains deferred until capture and sequence
     energy envelopes are rescaled without weakening their physical bounds
 - current ordered waypoint-sequence checkpoint:
@@ -388,10 +388,12 @@ Status:
   - the full `late_bend_v1` matrix is parked as a 27-run diagnostic: it lands
     `27 / 27`, with `27 / 54` initially bad entries recovering in-window
   - ordered-contract compute remains within budget at `434us` p99
-- next transfer slice should improve guidance against the corrected corpus:
+- next transfer slice should expand the corrected corpus deliberately:
   - keep waypoints preplanned and terrain avoidance encoded in the plan
   - treat the maintained contract reset as the new behavior baseline rather
     than reviving route/profile-specific recovery experiments
+  - add radius tiers only after waypoint placement and energy contracts are
+    scaled without asymmetric holes
   - keep future mechanisms independent of route/profile labels and mission
     timeout; use planned geometry, state, authority, and envelope margins
   - use handoff packs as guidance targets and paired landing packs as

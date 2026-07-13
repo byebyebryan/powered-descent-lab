@@ -468,13 +468,14 @@ Transfer route-angle checkpoint:
   - `current`: `135 / 135` handoff successes over
     `r-60 | r-30 | r00 | r+30 | r+60`
 - `transfer_waypoint_turn_route_angle_smoke`
-  - `current`: `127 / 135` final landings with `0` invalidations
-  - all `8` crashes are full-payload outer-route cells after a passing handoff
+  - `current`: `135 / 135` final landings with `0` invalidations
+  - final-waypoint states are ranked by terrain-blind terminal recoverability
+    after satisfying the waypoint contract
 - `transfer_waypoint_sequence_contract_route_angle_smoke`
   - `current`: `45 / 45` ordered sequence successes
 - `transfer_waypoint_sequence_route_angle_smoke`
-  - `current`: `42 / 45` final landings with `0` invalidations
-  - the `3` crashes are full-payload `r-60` cells after both handoffs pass
+  - `current`: `45 / 45` final landings with `0` invalidations
+  - all `90` ordered handoffs and all `45` final landings complete cleanly
 - `transfer_waypoint_sequence_late_bend_diagnostic`
   - `current`: `27 / 27` final landings and complete route telemetry
   - `27 / 54` handoffs enter the capture radius outside the envelope, then
@@ -493,9 +494,10 @@ exceeds `0.75`. Schema `32` reports the immutable plan tangent, window-entry
 snapshot, final resolution reason, and window duration separately. The reset
 preserves `81 / 81` balanced waypoint landings, `27 / 27` maintained ordered
 landings/contracts, and `297 / 297` direct transfers. The separate route-wide
-packs show that waypoint contracts remain clean through `+/-60deg`; their `11`
-landing crashes isolate full-payload final-leg recovery as the next frontier.
-Controller compute remains `434us` p99 on the ordered contract pack.
+packs now preserve both contracts and final landings through `+/-60deg`:
+`135 / 135` single-turn and `45 / 45` ordered landings. Final-state ranking is
+terrain-blind and uses terminal braking authority rather than route/profile
+labels. Controller compute remains below the `1ms` p99 budget.
 
 The old `single_dogleg_v1` packs and the full-matrix `late_bend_v1` pack remain
 parked diagnostic history rather than acceptance gates.

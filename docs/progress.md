@@ -2,6 +2,42 @@
 
 ## 2026-07-13
 
+### Waypoint final-leg recovery checkpoint
+
+- Closed the route-wide post-handoff landing frontier without changing the
+  waypoint contracts or adding route/profile branches.
+- Fixed two transfer phase leaks found in failed traces:
+  - completed waypoint routes keep terminal ownership after final handoff
+  - waypoint boost scoring cannot cut thrust while its local corridor is active
+    or terminal braking reserve is already exhausted
+- Preserved standalone direct-transfer behavior: direct routes may reacquire
+  source clearance after a premature terminal entry and retain their existing
+  coast-cut policy outside an active corridor.
+- Replaced the fixed `12mm` safe-contact penetration edge with the larger of
+  `12mm` and one physics step of measured normal plus rotational closing
+  motion. Existing speed, attitude, angular-rate, and pad limits remain hard;
+  the former `3.286m/s` impact still classifies as a crash.
+- Final-waypoint plan creation now evaluates contract-valid actuated handoff
+  states against terrain-blind terminal dynamics. Recoverable states rank
+  ahead of over-authority states, then by required acceleration ratio, before
+  the existing waypoint rollout ordering. If no recoverable alternative
+  exists, the original selection is preserved.
+- Fresh eight-worker, `--no-reuse`, no-comparison evidence:
+  - route-wide turn landing/contract: `135 / 135` for both, `0` invalidations
+  - route-wide ordered landing/contract: `45 / 45` for both, `0` invalidations
+  - balanced turn landing/contract: `81 / 81` for both
+  - maintained ordered landing/contract: `27 / 27` for both
+  - direct route-angle/radius transfer: `297 / 297`, `0` invalidations
+- Route-wide turn landing mean/max simulated time is `56.63s / 79.64s`;
+  ordered landing is `56.06s / 74.36s`. Aggregate turn-pack controller compute
+  is `267us` mean, `432us` p95, and `635us` p99 over `463,272` updates.
+- The maintained terminal smoke checkpoint is unchanged: its current lane has
+  `168 / 168` core scored successes, plus `3 / 12` frontier successes and `9`
+  analytically impossible cases.
+- The next waypoint slice is corpus expansion, especially deliberate radius
+  tiers or waypoint planning. The former full-payload outer-angle final-leg
+  failures are no longer the active controller frontier.
+
 ### Waypoint route-angle coverage checkpoint
 
 - Added separate route-wide landing and contract packs while preserving the

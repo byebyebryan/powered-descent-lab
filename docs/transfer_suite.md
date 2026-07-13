@@ -549,29 +549,30 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-13:
 - `transfer_waypoint_sequence_contract_smoke`: `27 / 27` complete routes; all
   `54` handoffs pass at window entry and resolve as `contract_pass`
 - `transfer_waypoint_turn_contract_route_angle_smoke`: `135 / 135` handoff
-  successes, `0` invalidations, and `10.73s` wall clock
-- `transfer_waypoint_turn_route_angle_smoke`: `127 / 135` landings, `8`
-  crashes, `0` invalidations, and `26.27s` wall clock
+  successes, `0` invalidations, and `11.35s` wall clock
+- `transfer_waypoint_turn_route_angle_smoke`: `135 / 135` landings, `0`
+  invalidations, and `32.20s` wall clock
 - `transfer_waypoint_sequence_contract_route_angle_smoke`: `45 / 45` complete
-  routes, `0` invalidations, and `2.85s` wall clock
-- `transfer_waypoint_sequence_route_angle_smoke`: `42 / 45` landings, `3`
-  crashes, `0` invalidations, and `11.34s` wall clock
-- every route-wide landing failure completes its waypoint contract. The turn
-  failures are full-payload `single_gentle_bend_v1/r-60` seeds `0-1` and
-  both `single_medium_bend_v1/r+60` and `single_sharp_bend_v1/r+60` seeds
-  `0-2`; the sequence failures are full-payload `double_bend_v1/r-60` seeds
-  `0-2`.
-- This separates the active frontier from waypoint acceptance: route contracts
-  remain clean, while final-leg boost/terminal recovery fails at the outer
-  route angles under full payload.
+  routes, `0` invalidations, and `3.29s` wall clock
+- `transfer_waypoint_sequence_route_angle_smoke`: `45 / 45` landings, `0`
+  invalidations, and `10.69s` wall clock
+- final-waypoint candidate ranking uses only the planned handoff contract and
+  terrain-blind terminal dynamics. It prefers states within terminal thrust
+  authority, then lower required acceleration, before the existing actuated
+  rollout ordering. Intermediate waypoint selection remains unchanged.
+- completed waypoint routes retain terminal ownership; direct routes can still
+  reacquire source clearance. Reserve-aware zero-throttle admission is scoped
+  to waypoint guidance, while an active local corridor forbids a cut for every
+  transfer controller.
 - `transfer_waypoint_sequence_late_bend_diagnostic`: `27 / 27` landings and
   complete route telemetry; `27 / 54` handoffs enter outside the contract and
   recover before the waypoint plane
 - Batch schema `32` separates the immutable planned tangent, first window-entry
   snapshot, final resolution reason, and window duration. Detailed plots render
   entry and resolution as different events.
-- Ordered-contract controller compute is `434us` p99 across `28,930` updates;
-  the isolated maximum is `11.6ms`.
+- Route-wide turn controller compute is `267us` mean, `432us` p95, and `635us`
+  p99 across `463,272` updates. The maintained controller remains below its
+  `1ms` p99 budget.
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
