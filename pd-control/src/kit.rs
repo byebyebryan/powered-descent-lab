@@ -145,6 +145,16 @@ pub mod metric {
         "waypoint.reachable_handoff_thrust_saturated_time_s";
     pub const WAYPOINT_REACHABLE_HANDOFF_TILT_SATURATED_TIME_S: &str =
         "waypoint.reachable_handoff_tilt_saturated_time_s";
+    pub const WAYPOINT_CONTINUATION_NEXT_INDEX: &str = "waypoint.continuation_next_index";
+    pub const WAYPOINT_CONTINUATION_CONTRACT_PASS: &str = "waypoint.continuation_contract_pass";
+    pub const WAYPOINT_CONTINUATION_CONTRACT_REASONS: &str =
+        "waypoint.continuation_contract_reasons";
+    pub const WAYPOINT_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD: &str =
+        "waypoint.continuation_outbound_heading_error_rad";
+    pub const WAYPOINT_CONTINUATION_REQUIRED_ACCEL_RATIO_MAX: &str =
+        "waypoint.continuation_required_accel_ratio_max";
+    pub const WAYPOINT_CONTINUATION_PASSING_CANDIDATE_COUNT: &str =
+        "waypoint.continuation_passing_candidate_count";
     pub const WAYPOINT_TARGET_DEADLINE_REMAINING_S: &str = "waypoint.target_deadline_remaining_s";
     pub const WAYPOINT_TARGET_VELOCITY_ERROR_MPS: &str = "waypoint.target_velocity_error_mps";
     pub const WAYPOINT_PREDICTED_HANDOFF_TIME_TO_GO_S: &str =

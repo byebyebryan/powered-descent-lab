@@ -26,7 +26,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 29;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 30;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -226,6 +226,18 @@ pub struct BatchWaypointHandoffReviewMetrics {
     pub reachable_thrust_saturated_time_max_s: Option<f64>,
     #[serde(default)]
     pub reachable_tilt_saturated_time_max_s: Option<f64>,
+    #[serde(default)]
+    pub continuation_next_waypoint_index: Option<usize>,
+    #[serde(default)]
+    pub continuation_contract_pass: Option<bool>,
+    #[serde(default)]
+    pub continuation_contract_reasons: Vec<String>,
+    #[serde(default)]
+    pub continuation_outbound_heading_error_rad: Option<f64>,
+    #[serde(default)]
+    pub continuation_required_accel_ratio_max: Option<f64>,
+    #[serde(default)]
+    pub continuation_passing_candidate_count: Option<usize>,
     #[serde(default)]
     pub plan_reference_position_error_max_m: Option<f64>,
     #[serde(default)]
@@ -6155,6 +6167,12 @@ struct WaypointReviewMetrics {
     reachable_required_accel_ratio_max: Option<f64>,
     reachable_thrust_saturated_time_max_s: Option<f64>,
     reachable_tilt_saturated_time_max_s: Option<f64>,
+    continuation_next_waypoint_index: Option<usize>,
+    continuation_contract_pass: Option<bool>,
+    continuation_contract_reasons: Vec<String>,
+    continuation_outbound_heading_error_rad: Option<f64>,
+    continuation_required_accel_ratio_max: Option<f64>,
+    continuation_passing_candidate_count: Option<usize>,
     plan_reference_position_error_max_m: Option<f64>,
     plan_reference_cross_error_max_abs_m: Option<f64>,
     plan_reference_velocity_error_max_mps: Option<f64>,
@@ -6298,6 +6316,13 @@ fn enrich_waypoint_candidate_history(
         let mut reachable_required_accel_ratio_max: Option<f64> = None;
         let mut reachable_thrust_saturated_time_max_s: Option<f64> = None;
         let mut reachable_tilt_saturated_time_max_s: Option<f64> = None;
+        let mut continuation_observed = false;
+        let mut continuation_next_waypoint_index = None;
+        let mut continuation_contract_pass = None;
+        let mut continuation_contract_reasons = Vec::new();
+        let mut continuation_outbound_heading_error_rad = None;
+        let mut continuation_required_accel_ratio_max = None;
+        let mut continuation_passing_candidate_count = None;
 
         for (update_index, update) in updates.iter().enumerate() {
             let metrics = &update.frame.metrics;
@@ -6356,6 +6381,38 @@ fn enrich_waypoint_candidate_history(
                 metric::WAYPOINT_REACHABLE_HANDOFF_TILT_SATURATED_TIME_S,
             ) {
                 update_optional_max(&mut reachable_tilt_saturated_time_max_s, value);
+            }
+            if let Some(passed) =
+                telemetry_bool(metrics, metric::WAYPOINT_CONTINUATION_CONTRACT_PASS)
+            {
+                continuation_observed = true;
+                continuation_contract_pass = Some(passed);
+                continuation_next_waypoint_index =
+                    telemetry_integer(metrics, metric::WAYPOINT_CONTINUATION_NEXT_INDEX)
+                        .and_then(|index| usize::try_from(index).ok());
+                continuation_contract_reasons =
+                    telemetry_text(metrics, metric::WAYPOINT_CONTINUATION_CONTRACT_REASONS)
+                        .map(|reasons| {
+                            reasons
+                                .split(',')
+                                .filter(|reason| !reason.is_empty())
+                                .map(ToOwned::to_owned)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                continuation_outbound_heading_error_rad = telemetry_float(
+                    metrics,
+                    metric::WAYPOINT_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD,
+                );
+                continuation_required_accel_ratio_max = telemetry_float(
+                    metrics,
+                    metric::WAYPOINT_CONTINUATION_REQUIRED_ACCEL_RATIO_MAX,
+                );
+                continuation_passing_candidate_count = telemetry_integer(
+                    metrics,
+                    metric::WAYPOINT_CONTINUATION_PASSING_CANDIDATE_COUNT,
+                )
+                .and_then(|count| usize::try_from(count).ok());
             }
             if let Some(passed) =
                 telemetry_bool(metrics, metric::WAYPOINT_REACHABLE_HANDOFF_CONTRACT_PASS)
@@ -6449,6 +6506,15 @@ fn enrich_waypoint_candidate_history(
             handoff.reachable_thrust_saturated_time_max_s = reachable_thrust_saturated_time_max_s;
             handoff.reachable_tilt_saturated_time_max_s = reachable_tilt_saturated_time_max_s;
         }
+        if continuation_observed {
+            handoff.continuation_next_waypoint_index = continuation_next_waypoint_index;
+            handoff.continuation_contract_pass = continuation_contract_pass;
+            handoff.continuation_contract_reasons = continuation_contract_reasons;
+            handoff.continuation_outbound_heading_error_rad =
+                continuation_outbound_heading_error_rad;
+            handoff.continuation_required_accel_ratio_max = continuation_required_accel_ratio_max;
+            handoff.continuation_passing_candidate_count = continuation_passing_candidate_count;
+        }
         if trackability_observed {
             handoff.plan_reference_position_error_max_m = reference_position_error_max_m;
             handoff.plan_reference_cross_error_max_abs_m = reference_cross_error_max_abs_m;
@@ -6499,8 +6565,22 @@ fn waypoint_review_metrics_from_update(
         telemetry_bool(preferred_metrics, key)
             .or_else(|| telemetry_bool(&update.frame.metrics, key))
     };
+    let preferred_integer = |key| {
+        telemetry_integer(preferred_metrics, key)
+            .or_else(|| telemetry_integer(&update.frame.metrics, key))
+    };
     let predicted_handoff_contract_reasons =
         preferred_text(metric::WAYPOINT_PREDICTED_HANDOFF_CONTRACT_REASONS)
+            .map(|reasons| {
+                reasons
+                    .split(',')
+                    .filter(|reason| !reason.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+    let continuation_contract_reasons =
+        preferred_text(metric::WAYPOINT_CONTINUATION_CONTRACT_REASONS)
             .map(|reasons| {
                 reasons
                     .split(',')
@@ -6633,6 +6713,22 @@ fn waypoint_review_metrics_from_update(
         reachable_required_accel_ratio_max: None,
         reachable_thrust_saturated_time_max_s: None,
         reachable_tilt_saturated_time_max_s: None,
+        continuation_next_waypoint_index: preferred_integer(
+            metric::WAYPOINT_CONTINUATION_NEXT_INDEX,
+        )
+        .and_then(|index| usize::try_from(index).ok()),
+        continuation_contract_pass: preferred_bool(metric::WAYPOINT_CONTINUATION_CONTRACT_PASS),
+        continuation_contract_reasons,
+        continuation_outbound_heading_error_rad: preferred_float(
+            metric::WAYPOINT_CONTINUATION_OUTBOUND_HEADING_ERROR_RAD,
+        ),
+        continuation_required_accel_ratio_max: preferred_float(
+            metric::WAYPOINT_CONTINUATION_REQUIRED_ACCEL_RATIO_MAX,
+        ),
+        continuation_passing_candidate_count: preferred_integer(
+            metric::WAYPOINT_CONTINUATION_PASSING_CANDIDATE_COUNT,
+        )
+        .and_then(|count| usize::try_from(count).ok()),
         plan_reference_position_error_max_m: None,
         plan_reference_cross_error_max_abs_m: None,
         plan_reference_velocity_error_max_mps: None,
@@ -6812,6 +6908,12 @@ fn terminal_waypoint_review_metrics(
         reachable_required_accel_ratio_max: None,
         reachable_thrust_saturated_time_max_s: None,
         reachable_tilt_saturated_time_max_s: None,
+        continuation_next_waypoint_index: guidance.continuation_next_waypoint_index,
+        continuation_contract_pass: guidance.continuation_contract_pass,
+        continuation_contract_reasons: guidance.continuation_contract_reasons,
+        continuation_outbound_heading_error_rad: guidance.continuation_outbound_heading_error_rad,
+        continuation_required_accel_ratio_max: guidance.continuation_required_accel_ratio_max,
+        continuation_passing_candidate_count: guidance.continuation_passing_candidate_count,
         plan_reference_position_error_max_m: None,
         plan_reference_cross_error_max_abs_m: None,
         plan_reference_velocity_error_max_mps: None,
@@ -6914,6 +7016,8 @@ fn batch_waypoint_handoff_metrics(
         .as_ref()
         .and_then(|route| route.waypoints.get(waypoint_index))
         .map(|spec| spec.id.clone());
+    let continuation_matches_handoff =
+        waypoint.continuation_next_waypoint_index == waypoint_index.checked_add(1);
     Some(BatchWaypointHandoffReviewMetrics {
         waypoint_index,
         waypoint_id,
@@ -6977,6 +7081,24 @@ fn batch_waypoint_handoff_metrics(
         reachable_required_accel_ratio_max: waypoint.reachable_required_accel_ratio_max,
         reachable_thrust_saturated_time_max_s: waypoint.reachable_thrust_saturated_time_max_s,
         reachable_tilt_saturated_time_max_s: waypoint.reachable_tilt_saturated_time_max_s,
+        continuation_next_waypoint_index: continuation_matches_handoff
+            .then_some(waypoint.continuation_next_waypoint_index)
+            .flatten(),
+        continuation_contract_pass: continuation_matches_handoff
+            .then_some(waypoint.continuation_contract_pass)
+            .flatten(),
+        continuation_contract_reasons: continuation_matches_handoff
+            .then_some(waypoint.continuation_contract_reasons.clone())
+            .unwrap_or_default(),
+        continuation_outbound_heading_error_rad: continuation_matches_handoff
+            .then_some(waypoint.continuation_outbound_heading_error_rad)
+            .flatten(),
+        continuation_required_accel_ratio_max: continuation_matches_handoff
+            .then_some(waypoint.continuation_required_accel_ratio_max)
+            .flatten(),
+        continuation_passing_candidate_count: continuation_matches_handoff
+            .then_some(waypoint.continuation_passing_candidate_count)
+            .flatten(),
         plan_reference_position_error_max_m: waypoint.plan_reference_position_error_max_m,
         plan_reference_cross_error_max_abs_m: waypoint.plan_reference_cross_error_max_abs_m,
         plan_reference_velocity_error_max_mps: waypoint.plan_reference_velocity_error_max_mps,

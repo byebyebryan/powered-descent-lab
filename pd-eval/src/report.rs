@@ -2564,6 +2564,11 @@ struct WaypointSequenceCellSummary {
     reachable_required_accel_ratio_max: Option<crate::BatchMetricSummary>,
     reachable_thrust_saturated_time_max_s: Option<crate::BatchMetricSummary>,
     reachable_tilt_saturated_time_max_s: Option<crate::BatchMetricSummary>,
+    continuation_contract_pass_runs: usize,
+    continuation_contract_observed: usize,
+    continuation_outbound_heading_error_deg: Option<crate::BatchMetricSummary>,
+    continuation_required_accel_ratio_max: Option<crate::BatchMetricSummary>,
+    continuation_passing_candidate_count: Option<crate::BatchMetricSummary>,
     plan_reference_position_error_max_m: Option<crate::BatchMetricSummary>,
     plan_reference_cross_error_max_abs_m: Option<crate::BatchMetricSummary>,
     plan_reference_velocity_error_max_mps: Option<crate::BatchMetricSummary>,
@@ -2653,7 +2658,7 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
   </summary>
   <div class="table-wrap">
     <table class="transfer-handoff-table waypoint-trackability-table">
-      <thead><tr><th>Route</th><th>Vehicle</th><th>Waypoint</th><th>Reference Max</th><th>Reachable Forecast</th><th>Authority</th><th>Last Pass</th><th>Plans</th></tr></thead>
+      <thead><tr><th>Route</th><th>Vehicle</th><th>Waypoint</th><th>Reference Max</th><th>Reachable Forecast</th><th>Continuation</th><th>Authority</th><th>Last Pass</th><th>Plans</th></tr></thead>
       <tbody>{trackability_row_html}</tbody>
     </table>
   </div>
@@ -2927,6 +2932,34 @@ fn waypoint_sequence_cell_summary(
         reachable_tilt_saturated_time_max_s: metric(|handoff| {
             handoff.reachable_tilt_saturated_time_max_s
         }),
+        continuation_contract_pass_runs: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .and_then(|handoff| handoff.continuation_contract_pass)
+                    == Some(true)
+            })
+            .count(),
+        continuation_contract_observed: records
+            .iter()
+            .filter(|record| {
+                waypoint_sequence_handoff(record, waypoint_index)
+                    .is_some_and(|handoff| handoff.continuation_contract_pass.is_some())
+            })
+            .count(),
+        continuation_outbound_heading_error_deg: metric(|handoff| {
+            handoff
+                .continuation_outbound_heading_error_rad
+                .map(f64::to_degrees)
+        }),
+        continuation_required_accel_ratio_max: metric(|handoff| {
+            handoff.continuation_required_accel_ratio_max
+        }),
+        continuation_passing_candidate_count: metric(|handoff| {
+            handoff
+                .continuation_passing_candidate_count
+                .map(|count| count as f64)
+        }),
         plan_reference_position_error_max_m: metric(|handoff| {
             handoff.plan_reference_position_error_max_m
         }),
@@ -3185,6 +3218,18 @@ fn render_waypoint_trackability_row(summary: &WaypointSequenceCellSummary) -> St
             mean(&summary.reachable_tilt_saturated_time_max_s, "s"),
         )
     };
+    let continuation = if summary.continuation_contract_observed == 0 {
+        r#"<span class="muted">not observed</span>"#.to_owned()
+    } else {
+        format!(
+            r#"<div class="overview-stack"><div class="overview-main">pass {}/{}</div><div class="overview-sub">heading {} · peak {}</div><div class="overview-sub">passing candidates {}</div></div>"#,
+            summary.continuation_contract_pass_runs,
+            summary.continuation_contract_observed,
+            mean(&summary.continuation_outbound_heading_error_deg, "deg"),
+            mean(&summary.continuation_required_accel_ratio_max, "x"),
+            mean(&summary.continuation_passing_candidate_count, ""),
+        )
+    };
     let authority = format!(
         r#"<div class="overview-stack"><div class="overview-main">peak {:.2}x</div><div class="overview-sub">thrust {} · tilt {}</div><div class="overview-sub">first lead {}</div></div>"#,
         summary
@@ -3217,7 +3262,7 @@ fn render_waypoint_trackability_row(summary: &WaypointSequenceCellSummary) -> St
         escape_html(&summary.guidance_plan_reasons.join(", ")),
     );
     format!(
-        r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{waypoint}</td><td>{reference}</td><td>{reachable}</td><td>{authority}</td><td>{last_pass}</td><td>{plans}</td></tr>"#,
+        r#"<tr><td><code>{}</code></td><td><code>{}</code></td><td>{waypoint}</td><td>{reference}</td><td>{reachable}</td><td>{continuation}</td><td>{authority}</td><td>{last_pass}</td><td>{plans}</td></tr>"#,
         escape_html(&summary.key.route_angle),
         escape_html(&summary.key.vehicle_variant),
     )
@@ -9492,6 +9537,11 @@ mod report_tests {
                     candidate_pass_lost_before_capture: Some(false),
                     candidate_best_heading_margin_rad: Some(0.1),
                     candidate_best_cross_speed_margin_mps: Some(3.0),
+                    continuation_next_waypoint_index: Some(1),
+                    continuation_contract_pass: Some(true),
+                    continuation_outbound_heading_error_rad: Some(0.18),
+                    continuation_required_accel_ratio_max: Some(0.82),
+                    continuation_passing_candidate_count: Some(4),
                     plan_reference_position_error_max_m: Some(18.0 + index as f64),
                     plan_reference_cross_error_max_abs_m: Some(7.0),
                     plan_reference_velocity_error_max_mps: Some(5.0),
@@ -9594,6 +9644,8 @@ mod report_tests {
         assert!(html.contains("best margins heading"));
         assert!(html.contains("<h2>Waypoint Plan Trackability</h2>"));
         assert!(html.contains("actuated reachable forecast"));
+        assert!(html.contains("<th>Continuation</th>"));
+        assert!(html.contains("passing candidates 4.00"));
         assert!(html.contains("pass 0/2"));
         assert!(html.contains("disagree 1"));
         assert!(html.contains("peak 1.20x"));
