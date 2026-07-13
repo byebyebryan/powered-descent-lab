@@ -63,6 +63,8 @@ const WAYPOINT_GUIDANCE_TRIGGER_BISECTION_STEPS: usize = 12;
 const WAYPOINT_GUIDANCE_CONTRACT_FAILURE_HYSTERESIS_TICKS: u32 = 2;
 const WAYPOINT_GUIDANCE_REPLAN_MATERIALITY_RATIO: f64 = 0.1;
 const WAYPOINT_GUIDANCE_PREDICTION_HORIZON_S: f64 = 12.0;
+const WAYPOINT_TAKEOFF_SPEED_RESPONSE_TIME_S: f64 = 1.0;
+const WAYPOINT_TAKEOFF_SPEED_PER_INBOUND_DISTANCE_HZ: f64 = 0.08;
 const WAYPOINT_JOINT_MAX_CURRENT_CANDIDATES: usize = 4;
 const WAYPOINT_VIOLATION_HEADING: u8 = 1 << 0;
 const WAYPOINT_VIOLATION_OUTBOUND_PROGRESS: u8 = 1 << 1;
@@ -1933,6 +1935,43 @@ impl TransferPdgController {
             && self.source_clearance_hold_needed(ctx, &endpoint_observation)
     }
 
+    fn waypoint_takeoff_target_vertical_speed_mps(
+        &self,
+        ctx: &RunContext,
+        guidance: WaypointGuidanceFrame,
+    ) -> f64 {
+        let planned_inbound_length_m = ctx
+            .mission
+            .transfer_route
+            .as_ref()
+            .and_then(|route| ctx.world.landing_pad(&route.source_pad_id))
+            .map(|source_pad| {
+                let source_m = Vec2::new(source_pad.center_x_m, source_pad.surface_y_m);
+                vec_dot(guidance.center_m - source_m, guidance.leg_unit).max(0.0)
+            })
+            .unwrap_or(guidance.approach.remaining_to_plane_m);
+        (planned_inbound_length_m * WAYPOINT_TAKEOFF_SPEED_PER_INBOUND_DISTANCE_HZ)
+            .max(self.config.takeoff_min_vertical_speed_mps)
+    }
+
+    fn waypoint_takeoff_command(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        guidance: WaypointGuidanceFrame,
+    ) -> Command {
+        let max_thrust_accel_mps2 = ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0);
+        let speed_error_mps = self.waypoint_takeoff_target_vertical_speed_mps(ctx, guidance)
+            - observation.velocity_mps.y;
+        let required_thrust_accel_mps2 =
+            observation.gravity_mps2 + (speed_error_mps / WAYPOINT_TAKEOFF_SPEED_RESPONSE_TIME_S);
+        Command {
+            throttle_frac: (required_thrust_accel_mps2 / max_thrust_accel_mps2.max(1.0e-6))
+                .clamp(0.0, 1.0),
+            target_attitude_rad: 0.0,
+        }
+    }
+
     fn waypoint_target_velocity_is_valid(
         &self,
         guidance: WaypointGuidanceFrame,
@@ -3482,11 +3521,8 @@ impl TransferPdgController {
                 route_dy_m: -endpoint_observation.height_above_target_m,
             });
         }
-        let command = command_state.map_or(
-            Command {
-                throttle_frac: 1.0,
-                target_attitude_rad: 0.0,
-            },
+        let command = command_state.map_or_else(
+            || self.waypoint_takeoff_command(ctx, observation, guidance),
             |state| state.command,
         );
         let status = if takeoff {
@@ -7645,6 +7681,45 @@ mod tests {
 
         assert_eq!(short.target_velocity_mps, long.target_velocity_mps);
         assert_eq!(short.time_to_go_s, long.time_to_go_s);
+    }
+
+    #[test]
+    fn transfer_waypoint_takeoff_regulates_geometry_scaled_vertical_speed() {
+        let ctx = context_with_waypoint();
+        let controller = TransferPdgController::new(TransferPdgControllerConfig::default());
+        let mut guidance = straight_waypoint_guidance();
+        let route = ctx.mission.transfer_route.as_ref().unwrap();
+        let source_pad = ctx.world.landing_pad(&route.source_pad_id).unwrap();
+        guidance.center_m = Vec2::new(source_pad.center_x_m + 225.0, source_pad.surface_y_m);
+        guidance.leg_unit = Vec2::new(1.0, 0.0);
+        let target_vertical_speed_mps =
+            controller.waypoint_takeoff_target_vertical_speed_mps(&ctx, guidance);
+        let mut observation = waypoint_transfer_observation(
+            &ctx,
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, target_vertical_speed_mps),
+            1.0,
+        );
+        let hover_throttle =
+            observation.mass_kg * observation.gravity_mps2 / ctx.vehicle.max_thrust_n;
+
+        let on_target = controller.waypoint_takeoff_command(&ctx, &observation, guidance);
+        observation.velocity_mps.y -= 1.0;
+        let below_target = controller.waypoint_takeoff_command(&ctx, &observation, guidance);
+        observation.velocity_mps.y += 2.0;
+        let above_target = controller.waypoint_takeoff_command(&ctx, &observation, guidance);
+
+        assert!((target_vertical_speed_mps - 18.0).abs() < 1.0e-9);
+        assert!((on_target.throttle_frac - hover_throttle).abs() < 1.0e-9);
+        assert!(below_target.throttle_frac > on_target.throttle_frac);
+        assert!(above_target.throttle_frac < on_target.throttle_frac);
+        assert_eq!(on_target.target_attitude_rad, 0.0);
+
+        guidance.center_m = Vec2::new(source_pad.center_x_m + 50.0, source_pad.surface_y_m);
+        assert_eq!(
+            controller.waypoint_takeoff_target_vertical_speed_mps(&ctx, guidance),
+            controller.config.takeoff_min_vertical_speed_mps
+        );
     }
 
     #[test]
