@@ -200,6 +200,7 @@ fn render_batch_report_with_cache(
       margin: 0 0 6px;
       font-size: 2rem;
       line-height: 1.05;
+      overflow-wrap: anywhere;
     }}
     .subtitle {{
       margin: 0;
@@ -222,10 +223,19 @@ fn render_batch_report_with_cache(
       padding: 5px 10px;
       font-size: 0.82rem;
       color: var(--muted);
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }}
     .chip strong {{
       color: var(--ink);
       font-weight: 700;
+      flex: none;
+      white-space: nowrap;
+    }}
+    .chip .mono {{
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-all;
     }}
     .hero-actions {{
       display: flex;
@@ -252,6 +262,30 @@ fn render_batch_report_with_cache(
     }}
     .header-context {{
       margin-bottom: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,253,248,0.72);
+      padding: 10px 12px;
+    }}
+    .header-context > summary {{
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+    .header-context > summary::-webkit-details-marker {{ display: none; }}
+    .header-context > summary::after {{
+      content: "+";
+      color: var(--accent);
+      font-weight: 800;
+    }}
+    .header-context[open] > summary::after {{ content: "−"; }}
+    .header-context[open] > summary {{ margin-bottom: 10px; }}
+    .header-context.attention {{
+      border-color: rgba(181,93,45,0.42);
+      background: rgba(243,214,198,0.24);
     }}
     .section-head {{
       display: flex;
@@ -272,7 +306,7 @@ fn render_batch_report_with_cache(
       color: var(--ink);
     }}
     .header-context .table-wrap {{
-      overflow-x: visible;
+      overflow-x: auto;
     }}
     .context-table {{
       width: 100%;
@@ -361,6 +395,71 @@ fn render_batch_report_with_cache(
       width: 100%;
       min-width: 1040px;
     }}
+    .coverage-section {{
+      margin-bottom: 18px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,253,248,0.9);
+      box-shadow: 0 10px 30px rgba(39,28,18,0.05);
+    }}
+    .coverage-section h2 {{ margin: 0; font-size: 1rem; }}
+    .coverage-filters {{ display: flex; flex-wrap: wrap; gap: 9px; }}
+    .coverage-filters label {{
+      display: grid;
+      gap: 3px;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }}
+    .coverage-filters select {{
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 6px 9px;
+      font: inherit;
+      font-size: 0.82rem;
+      text-transform: none;
+    }}
+    .coverage-table {{ min-width: 680px; table-layout: fixed; }}
+    .coverage-table th:first-child {{ width: 112px; }}
+    .coverage-cell {{
+      cursor: pointer;
+      border: 1px solid rgba(215,205,189,0.76);
+      border-radius: 9px;
+      background: rgba(47,125,74,0.08);
+      padding: 7px 8px;
+      min-height: 52px;
+    }}
+    .coverage-cell:hover {{ border-color: var(--accent); }}
+    .coverage-target,
+    .coverage-target > td {{ animation: coverage-flash 1.4s ease-out; }}
+    @keyframes coverage-flash {{
+      0%, 35% {{ background: rgba(181,93,45,0.24); }}
+      100% {{ background: inherit; }}
+    }}
+    .coverage-cell.has-failure {{ background: rgba(182,66,52,0.1); }}
+    .coverage-cell.invalid-only {{ background: rgba(143,101,29,0.1); }}
+    .coverage-cell strong {{ display: block; font-size: 0.92rem; }}
+    .coverage-cell span {{ color: var(--muted); font-size: 0.72rem; }}
+    .coverage-cell .coverage-delta {{ color: var(--bad); }}
+    .coverage-cell .coverage-delta.improved {{ color: var(--good); }}
+    .guidance-diagnostics {{
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,253,248,0.62);
+      padding: 11px 13px;
+    }}
+    .guidance-diagnostics > summary {{ cursor: pointer; list-style: none; }}
+    .guidance-diagnostics > summary::-webkit-details-marker {{ display: none; }}
+    .guidance-diagnostics > summary h2 {{ margin: 0; font-size: 1rem; }}
+    .guidance-diagnostics > summary h2::before {{ content: "[+]"; margin-right: 8px; color: var(--muted); }}
+    .guidance-diagnostics[open] > summary h2::before {{ content: "[-]"; }}
+    .guidance-diagnostics[open] > summary {{ margin-bottom: 14px; }}
     .summary-table tbody td {{
       vertical-align: top;
     }}
@@ -608,6 +707,17 @@ fn render_batch_report_with_cache(
       top: 0;
       z-index: 1;
     }}
+    .scenario-table th:first-child,
+    .scenario-table td:first-child {{
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      background: #fffaf1;
+      box-shadow: 1px 0 0 rgba(215,205,189,0.9);
+    }}
+    .scenario-table thead th:first-child {{ z-index: 3; background: #f8f3ea; }}
+    .scenario-table .current-row td:first-child {{ background: #f0f7f2; }}
+    .scenario-table .baseline-row td:first-child {{ background: #f7eee4; }}
     .summary-row {{
       cursor: pointer;
     }}
@@ -950,6 +1060,23 @@ fn render_batch_report_with_cache(
       .page {{
         padding-inline: 14px;
       }}
+      .context-table {{ min-width: 860px; }}
+      .coverage-section {{ padding-inline: 10px; }}
+      .summary-table {{ min-width: 0; table-layout: fixed; }}
+      .summary-table th:nth-child(2),
+      .summary-table td:nth-child(2),
+      .summary-table th:nth-child(3),
+      .summary-table td:nth-child(3),
+      .summary-table th:nth-child(5),
+      .summary-table td:nth-child(5),
+      .summary-table th:nth-child(6),
+      .summary-table td:nth-child(6),
+      .summary-table th:nth-child(7),
+      .summary-table td:nth-child(7) {{ display: none; }}
+      .summary-table th:first-child,
+      .summary-table td:first-child {{ width: 66%; overflow-wrap: anywhere; }}
+      .summary-table th:nth-child(4),
+      .summary-table td:nth-child(4) {{ width: 34%; }}
     }}
   </style>
 </head>
@@ -976,17 +1103,13 @@ fn render_batch_report_with_cache(
       </div>
     </header>
 
-    {context_html}
-
     {overview_html}
 
-    {waypoint_sequence_html}
+    {coverage_html}
 
-    {waypoint_triage_html}
+    {context_html}
 
-    {transfer_handoff_triage_html}
-
-    {transfer_shape_triage_html}
+    {guidance_diagnostics_html}
 
     <section class="review-tree-section">
       <div class="section-head">
@@ -1124,6 +1247,17 @@ fn render_batch_report_with_cache(
       const collapseAll = (table) => {{
         applyExpansionState(table, 0, false);
       }};
+      const selectorToken = (value) => {{
+        let output = "";
+        let lastDash = false;
+        for (const raw of value.toLowerCase()) {{
+          if (/[a-z0-9]/.test(raw)) {{ output += raw; lastDash = false; }}
+          else if (raw === "+") {{ output += "plus"; lastDash = false; }}
+          else if (raw === "-") {{ output += "minus"; lastDash = false; }}
+          else if (!lastDash) {{ output += "-"; lastDash = true; }}
+        }}
+        return output.replace(/^-+|-+$/g, "") || "x";
+      }};
       tables().forEach((table) => {{
         expandGroups(table);
         summaryRows(table)
@@ -1178,6 +1312,43 @@ fn render_batch_report_with_cache(
         }});
       }});
       setViewMode("compare");
+      const coverageFilters = Array.from(document.querySelectorAll("[data-coverage-filter]"));
+      const updateCoverage = () => {{
+        document.querySelectorAll("[data-coverage-pane]").forEach((pane) => {{
+          pane.hidden = coverageFilters.some((filter) =>
+            pane.dataset[filter.dataset.coverageFilter] !== filter.value
+          );
+        }});
+      }};
+      coverageFilters.forEach((filter) => filter.addEventListener("change", updateCoverage));
+      updateCoverage();
+      document.querySelectorAll("[data-tree-tokens]").forEach((cell) => {{
+        const inspectCoverageCell = () => {{
+          const tokens = cell.dataset.treeTokens.split("|").filter(Boolean).map(selectorToken);
+          let target = null;
+          tables().forEach((table) => {{
+            expandGroups(table);
+            summaryRows(table).forEach((row) => {{
+              const parts = (row.dataset.group || "").split("--");
+              if (tokens.every((token) => parts.includes(token)) &&
+                  (!target || (row.dataset.group || "").length > (target.dataset.group || "").length)) {{
+                target = row;
+              }}
+            }});
+          }});
+          if (target) {{
+            target.scrollIntoView({{behavior: "smooth", block: "center"}});
+            target.classList.add("coverage-target");
+            window.setTimeout(() => target.classList.remove("coverage-target"), 1400);
+          }}
+        }};
+        cell.addEventListener("click", inspectCoverageCell);
+        cell.addEventListener("keydown", (event) => {{
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          inspectCoverageCell();
+        }});
+      }});
     }})();
   </script>
 </body>
@@ -1213,20 +1384,19 @@ fn render_batch_report_with_cache(
             comparison,
             render_view_controls(has_compare_view).as_str(),
         ),
-        transfer_handoff_triage_html = render_transfer_handoff_triage_section(
-            candidate,
-            &output_dir,
-            &candidate_record_links,
-        ),
-        waypoint_triage_html =
+        coverage_html =
+            render_coverage_matrix(candidate, baseline.map(|(_, report)| report), comparison,),
+        guidance_diagnostics_html = render_guidance_diagnostics(
+            render_waypoint_sequence_section(candidate),
             render_waypoint_triage_section(candidate, &output_dir, &candidate_record_links),
-        waypoint_sequence_html = render_waypoint_sequence_section(candidate),
-        transfer_shape_triage_html = render_transfer_shape_triage_section(
-            candidate,
-            baseline.map(|(_, report)| report),
-            comparison,
-            &output_dir,
-            &candidate_record_links,
+            render_transfer_handoff_triage_section(candidate, &output_dir, &candidate_record_links,),
+            render_transfer_shape_triage_section(
+                candidate,
+                baseline.map(|(_, report)| report),
+                comparison,
+                &output_dir,
+                &candidate_record_links,
+            ),
         ),
         tree_controls = render_tree_controls(comparison.is_some()),
         review_tree = render_review_tree(
@@ -1895,10 +2065,11 @@ fn render_context_table(
         escape_html(compare_status_label),
         escape_html(compare_status_note),
     );
+    let needs_attention = context_requires_attention(candidate, comparison);
 
     format!(
-        r#"<section class="header-context">
-  <h2>Context</h2>
+        r#"<details class="header-context{attention_class}"{open_attr}>
+  <summary><h2>Context</h2><span class="status-chip {compare_status_class}">{compare_status_label}</span></summary>
   <div class="table-wrap">
     <table class="context-table">
       <thead>
@@ -1925,7 +2096,7 @@ fn render_context_table(
       </tbody>
     </table>
   </div>
-</section>"#,
+</details>"#,
         report_mode_html,
         current_source,
         baseline_source,
@@ -1936,7 +2107,30 @@ fn render_context_table(
             candidate.provenance.cache.as_ref(),
             baseline.and_then(|report| report.provenance.cache.as_ref())
         ),
+        attention_class = if needs_attention { " attention" } else { "" },
+        open_attr = if needs_attention { " open" } else { "" },
+        compare_status_class = compare_status_class,
+        compare_status_label = escape_html(compare_status_label),
     )
+}
+
+fn context_requires_attention(
+    candidate: &BatchReport,
+    comparison: Option<&BatchComparison>,
+) -> bool {
+    if let Some(comparison) = comparison {
+        return comparison.policy.status == BatchRegressionPolicyStatus::Fail
+            || comparison.basis.shared_runs == 0
+            || comparison.basis.candidate_only_runs > 0
+            || comparison.basis.baseline_only_runs > 0;
+    }
+    let provenance = &candidate.provenance.compare;
+    provenance.status == BatchCompareResolutionStatus::Missing
+        && (provenance.source == crate::BatchCompareSource::ExplicitDir
+            || provenance
+                .requested_ref
+                .as_deref()
+                .is_some_and(|requested| requested != "auto"))
 }
 
 fn render_cache_context(
@@ -2441,12 +2635,12 @@ fn render_overview_table(
       <thead>
         <tr>
           <th>Pack</th>
-          <th>Ref</th>
+          <th>Reference</th>
           <th>Scope</th>
           <th>Result</th>
           <th>Timing</th>
           <th>Efficiency</th>
-          <th>Tracking</th>
+          <th>Reference / recovery</th>
         </tr>
       </thead>
       <tbody>{}</tbody>
@@ -2455,6 +2649,398 @@ fn render_overview_table(
 </section>"#,
         rows.join(""),
         view_controls = view_controls,
+    )
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CoveragePaneKey {
+    mission: String,
+    condition: String,
+    vehicle: String,
+    profile: String,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct CoverageCellKey {
+    pane: CoveragePaneKey,
+    row: String,
+    column: String,
+}
+
+#[derive(Clone, Copy, Default)]
+struct CoverageCellSummary {
+    scored_success: usize,
+    scored_failure: usize,
+    invalidated: usize,
+    frontier: usize,
+}
+
+impl CoverageCellSummary {
+    fn scored_runs(self) -> usize {
+        self.scored_success + self.scored_failure
+    }
+
+    fn success_rate(self) -> Option<f64> {
+        (self.scored_runs() > 0).then(|| self.scored_success as f64 / self.scored_runs() as f64)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CoverageMode {
+    Terminal,
+    Transfer,
+}
+
+fn render_coverage_matrix(
+    candidate: &BatchReport,
+    baseline: Option<&BatchReport>,
+    comparison: Option<&BatchComparison>,
+) -> String {
+    let Some(candidate_focus) = preferred_current_lane_focus(candidate) else {
+        return String::new();
+    };
+    let candidate_records = candidate_focus.records;
+    let mode = if candidate_records
+        .iter()
+        .any(|record| meaningful_selector_value(&record.resolved.selector.route_angle).is_some())
+    {
+        CoverageMode::Transfer
+    } else {
+        CoverageMode::Terminal
+    };
+    let candidate_cells = coverage_cells(candidate_records.as_slice(), mode);
+    if candidate_cells.is_empty() {
+        return String::new();
+    }
+    let baseline_cells = if comparison.is_some() {
+        baseline
+            .and_then(preferred_current_lane_focus)
+            .map(|focus| coverage_cells(focus.records.as_slice(), mode))
+            .unwrap_or_default()
+    } else {
+        BTreeMap::new()
+    };
+    let panes = candidate_cells
+        .keys()
+        .map(|key| key.pane.clone())
+        .collect::<BTreeSet<_>>();
+    let mut rows = candidate_cells
+        .keys()
+        .map(|key| key.row.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut columns = candidate_cells
+        .keys()
+        .map(|key| key.column.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    sort_selector_keys(&mut rows);
+    sort_selector_keys(&mut columns);
+
+    let controls = render_coverage_filters(&panes);
+    let pane_html = panes
+        .iter()
+        .map(|pane| {
+            render_coverage_pane(
+                pane,
+                rows.as_slice(),
+                columns.as_slice(),
+                &candidate_cells,
+                &baseline_cells,
+                comparison.is_some(),
+                mode,
+            )
+        })
+        .collect::<String>();
+    let axis_note = match mode {
+        CoverageMode::Terminal => "Energy band by arrival arc",
+        CoverageMode::Transfer => "Travel radius by route angle",
+    };
+    format!(
+        r#"<section class="coverage-section"><div class="section-head"><div><h2>Coverage</h2><span class="section-note">{axis_note}; click a cell to inspect its review-tree branch.</span></div>{controls}</div>{pane_html}</section>"#,
+        axis_note = axis_note,
+        controls = controls,
+        pane_html = pane_html,
+    )
+}
+
+fn coverage_cells(
+    records: &[&crate::BatchRunRecord],
+    mode: CoverageMode,
+) -> BTreeMap<CoverageCellKey, CoverageCellSummary> {
+    let mut cells = BTreeMap::<CoverageCellKey, CoverageCellSummary>::new();
+    for record in records {
+        let selector = &record.resolved.selector;
+        let (row, column) = match mode {
+            CoverageMode::Terminal => (&selector.velocity_band, &selector.arc_point),
+            CoverageMode::Transfer => (&selector.radius_tier, &selector.route_angle),
+        };
+        let (Some(row), Some(column)) = (
+            meaningful_selector_value(row),
+            meaningful_selector_value(column),
+        ) else {
+            continue;
+        };
+        let key = CoverageCellKey {
+            pane: CoveragePaneKey {
+                mission: coverage_filter_value(&selector.mission),
+                condition: coverage_filter_value(&selector.condition_set),
+                vehicle: coverage_filter_value(&selector.vehicle_variant),
+                profile: coverage_filter_value(&selector.waypoint_profile),
+            },
+            row: row.to_owned(),
+            column: column.to_owned(),
+        };
+        let cell = cells.entry(key).or_default();
+        match record.analytic.class {
+            crate::BatchRunAnalyticClass::Impossible => cell.invalidated += 1,
+            crate::BatchRunAnalyticClass::Frontier => {
+                cell.frontier += 1;
+                if matches!(
+                    record.manifest.mission_outcome,
+                    pd_core::MissionOutcome::Success
+                ) {
+                    cell.scored_success += 1;
+                } else {
+                    cell.scored_failure += 1;
+                }
+            }
+            crate::BatchRunAnalyticClass::Scored => {
+                if matches!(
+                    record.manifest.mission_outcome,
+                    pd_core::MissionOutcome::Success
+                ) {
+                    cell.scored_success += 1;
+                } else {
+                    cell.scored_failure += 1;
+                }
+            }
+        }
+    }
+    cells
+}
+
+fn meaningful_selector_value(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty() && value != UNSPECIFIED_SELECTOR_VALUE).then_some(value)
+}
+
+fn coverage_filter_value(value: &str) -> String {
+    meaningful_selector_value(value).unwrap_or("all").to_owned()
+}
+
+fn render_coverage_filters(panes: &BTreeSet<CoveragePaneKey>) -> String {
+    let dimensions = [
+        (
+            "mission",
+            "Mission",
+            panes
+                .iter()
+                .map(|pane| pane.mission.clone())
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "condition",
+            "Condition",
+            panes
+                .iter()
+                .map(|pane| pane.condition.clone())
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "vehicle",
+            "Payload",
+            panes
+                .iter()
+                .map(|pane| pane.vehicle.clone())
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "profile",
+            "Waypoint profile",
+            panes
+                .iter()
+                .map(|pane| pane.profile.clone())
+                .collect::<Vec<_>>(),
+        ),
+    ];
+    let controls = dimensions
+        .into_iter()
+        .filter_map(|(id, label, values)| {
+            let mut values = values
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            sort_selector_keys(&mut values);
+            (values.len() > 1).then(|| {
+                let options = values
+                    .iter()
+                    .map(|value| {
+                        format!(
+                            r#"<option value="{}">{}</option>"#,
+                            escape_html(value),
+                            escape_html(&selector_display_label(value))
+                        )
+                    })
+                    .collect::<String>();
+                format!(
+                    r#"<label>{label}<select data-coverage-filter="{id}">{options}</select></label>"#
+                )
+            })
+        })
+        .collect::<String>();
+    (!controls.is_empty())
+        .then(|| format!(r#"<div class="coverage-filters">{controls}</div>"#))
+        .unwrap_or_default()
+}
+
+fn render_coverage_pane(
+    pane: &CoveragePaneKey,
+    rows: &[String],
+    columns: &[String],
+    candidate_cells: &BTreeMap<CoverageCellKey, CoverageCellSummary>,
+    baseline_cells: &BTreeMap<CoverageCellKey, CoverageCellSummary>,
+    show_compare: bool,
+    mode: CoverageMode,
+) -> String {
+    let header = columns
+        .iter()
+        .map(|column| format!("<th>{}</th>", escape_html(&selector_display_label(column))))
+        .collect::<String>();
+    let body = rows
+        .iter()
+        .map(|row| {
+            let cells = columns
+                .iter()
+                .map(|column| {
+                    let key = CoverageCellKey {
+                        pane: pane.clone(),
+                        row: row.clone(),
+                        column: column.clone(),
+                    };
+                    render_coverage_cell(
+                        candidate_cells.get(&key).copied(),
+                        baseline_cells.get(&key).copied(),
+                        &key,
+                        show_compare,
+                    )
+                })
+                .collect::<String>();
+            format!(
+                "<tr><th>{}</th>{cells}</tr>",
+                escape_html(&selector_display_label(row))
+            )
+        })
+        .collect::<String>();
+    let corner = match mode {
+        CoverageMode::Terminal => "Band / arc",
+        CoverageMode::Transfer => "Radius / route",
+    };
+    format!(
+        r#"<div class="coverage-pane table-wrap" data-coverage-pane data-mission="{mission}" data-condition="{condition}" data-vehicle="{vehicle}" data-profile="{profile}"><table class="coverage-table"><thead><tr><th>{corner}</th>{header}</tr></thead><tbody>{body}</tbody></table></div>"#,
+        mission = escape_html(&pane.mission),
+        condition = escape_html(&pane.condition),
+        vehicle = escape_html(&pane.vehicle),
+        profile = escape_html(&pane.profile),
+        corner = corner,
+        header = header,
+        body = body,
+    )
+}
+
+fn render_coverage_cell(
+    current: Option<CoverageCellSummary>,
+    baseline: Option<CoverageCellSummary>,
+    key: &CoverageCellKey,
+    show_compare: bool,
+) -> String {
+    let Some(current) = current else {
+        return r#"<td><div class="coverage-cell invalid-only"><strong>—</strong><span>not covered</span></div></td>"#.to_owned();
+    };
+    let class = if current.scored_failure > 0 {
+        " has-failure"
+    } else if current.scored_runs() == 0 && current.invalidated > 0 {
+        " invalid-only"
+    } else {
+        ""
+    };
+    let annotations = match (current.invalidated, current.frontier) {
+        (0, 0) => String::new(),
+        (invalidated, 0) => format!(" · {invalidated} invalid"),
+        (0, frontier) => format!(" · {frontier} frontier"),
+        (invalidated, frontier) => format!(" · {invalidated} invalid · {frontier} frontier"),
+    };
+    let delta = if show_compare {
+        current
+            .success_rate()
+            .zip(baseline.and_then(CoverageCellSummary::success_rate))
+            .map(|(current, baseline)| current - baseline)
+            .filter(|delta| delta.abs() > 1e-9)
+            .map(|delta| {
+                format!(
+                    r#"<span class="coverage-delta compare-toggle-target{}"> · {:+.1} pp</span>"#,
+                    if delta > 0.0 { " improved" } else { "" },
+                    delta * 100.0,
+                )
+            })
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let tokens = [
+        key.pane.mission.as_str(),
+        key.pane.condition.as_str(),
+        key.pane.vehicle.as_str(),
+        key.pane.profile.as_str(),
+        key.column.as_str(),
+        key.row.as_str(),
+    ]
+    .into_iter()
+    .filter(|value| *value != "all")
+    .collect::<Vec<_>>()
+    .join("|");
+    format!(
+        r#"<td><div class="coverage-cell{class}" data-tree-tokens="{tokens}" tabindex="0"><strong>{success}/{scored} success</strong><span>{failure} fail{annotations}{delta}</span></div></td>"#,
+        class = class,
+        tokens = escape_html(&tokens),
+        success = current.scored_success,
+        scored = current.scored_runs(),
+        failure = current.scored_failure,
+        annotations = escape_html(&annotations),
+        delta = delta,
+    )
+}
+
+fn selector_display_label(value: &str) -> String {
+    if value == "all" {
+        return "All".to_owned();
+    }
+    value.strip_suffix("_v1").unwrap_or(value).replace('_', " ")
+}
+
+fn render_guidance_diagnostics(
+    waypoint_sequence: String,
+    waypoint_triage: String,
+    transfer_handoff: String,
+    transfer_shape: String,
+) -> String {
+    let contents = [
+        waypoint_sequence,
+        waypoint_triage,
+        transfer_handoff,
+        transfer_shape,
+    ]
+    .into_iter()
+    .filter(|section| !section.trim().is_empty())
+    .collect::<String>();
+    if contents.is_empty() {
+        return String::new();
+    }
+    format!(
+        r#"<details class="guidance-diagnostics"><summary><h2>Guidance Diagnostics</h2></summary>{contents}</details>"#
     )
 }
 
@@ -5732,7 +6318,7 @@ fn render_mission_review_section(
           <th>Fuel Used</th>
           <th>Flight Time</th>
           <th>Landing Offset</th>
-          <th>Ref Dev</th>
+          <th>Reference deviation</th>
           <th>Preview</th>
         </tr>
       </thead>
@@ -10054,7 +10640,7 @@ mod report_tests {
             ],
         };
 
-        let report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
+        let mut report = run_pack_with_workers(&pack, &fixtures_root(), None, 1).unwrap();
         let html = render_batch_report(
             Path::new("outputs/eval/lane_compare_unit"),
             &report,
@@ -10063,6 +10649,8 @@ mod report_tests {
         );
 
         assert!(html.contains("<h2>Context</h2>"));
+        assert!(html.contains(r#"<details class="header-context">"#));
+        assert!(!html.contains(r#"<details class="header-context attention" open>"#));
         assert!(html.contains("Report Mode"));
         assert!(html.contains("standalone"));
         assert!(html.contains("current controller lane <code>staged</code>"));
@@ -10082,6 +10670,16 @@ mod report_tests {
         assert!(!html.contains(
             r#"selector-inline">lane</span> <span class="selector-code">baseline</span>"#
         ));
+
+        report.provenance.compare.source = crate::BatchCompareSource::ExplicitDir;
+        report.provenance.compare.status = crate::BatchCompareResolutionStatus::Missing;
+        let attention_html = render_batch_report(
+            Path::new("outputs/eval/lane_compare_unit"),
+            &report,
+            None,
+            None,
+        );
+        assert!(attention_html.contains(r#"<details class="header-context attention" open>"#));
     }
 
     #[test]
@@ -10200,6 +10798,9 @@ mod report_tests {
         assert!(html.contains("selector-inline\">band</span>"));
         assert!(html.contains("selector-code\">a00</span>"));
         assert!(html.contains("selector-code\">low</span>"));
+        assert!(html.contains("<h2>Coverage</h2>"));
+        assert!(html.contains("Energy band by arrival arc"));
+        assert!(html.contains(r#"data-tree-tokens="terminal_guidance|clean|nominal|a00|low""#));
 
         let condition_pos = html
             .find(r#"selector-inline">condition</span> <span class="selector-code">clean</span>"#)
@@ -10264,6 +10865,9 @@ mod report_tests {
         assert!(html.contains("selector-inline\">radius</span>"));
         assert!(html.contains("selector-code\">r00</span>"));
         assert!(html.contains("selector-code\">nominal</span>"));
+        assert!(html.contains("<h2>Coverage</h2>"));
+        assert!(html.contains("Travel radius by route angle"));
+        assert!(html.contains(r#"data-tree-tokens="transfer_guidance|clean|nominal|r00|nominal""#));
         assert!(html.contains(r#"case "route": return 3;"#));
         assert!(html.contains(r#"case "radius": return 4;"#));
         assert!(html.contains("transfer terminal"));
@@ -10282,6 +10886,7 @@ mod report_tests {
         );
 
         assert!(html.contains("<h2>Transfer Shape Triage</h2>"));
+        assert!(html.contains("<h2>Guidance Diagnostics</h2>"));
         assert!(html.contains(r#"<details class="transfer-shape-section">"#));
         assert!(!html.contains(r#"<details class="transfer-shape-section" open"#));
         assert!(html.contains("Visual-shape diagnostic"));
