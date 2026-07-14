@@ -1,5 +1,34 @@
 # Progress
 
+## 2026-07-14
+
+### Report information architecture checkpoint
+
+- Centralized stable report-site generation in `pd-report::site` so
+  `pd-cli` and `pd-eval` publish through the same path, latest-link, and
+  index rules.
+- Added a curated guidance scorecard for terminal, direct-transfer, and
+  waypoint responsibilities. Primary smoke evidence is distinct from
+  supporting full-seed evidence; the complete eval index groups maintained,
+  diagnostic, and fixture reports without treating them as one verdict.
+- Reorganized batch pages around outcomes and selector coverage. Context and
+  guidance diagnostics are collapsed by default, comparison state remains
+  explicit, and dense review trees keep a sticky selector column with
+  horizontal containment on narrow screens.
+- Polished single-run reports with readable mission titles, batch/run
+  breadcrumbs, mission-first outcome cards, phase bands, and separate
+  `Mission | Guidance | Speed | Throttle | Vectors` trajectory modes.
+  Waypoint geometry remains available without obscuring the default actual
+  trajectory.
+- Added `pd-eval refresh-reports [--all]` to regenerate existing batch and run
+  HTML without simulation. The catalog refresh rebuilt 15 batch pages and
+  9,675 run pages in parallel; before/after hashes confirmed every captured
+  `summary.json` remained unchanged.
+- Browser checks covered terminal and direct-transfer desktop pages plus a
+  narrow waypoint page. This slice changes report organization and
+  presentation only, not controller, scenario, evaluation, or persisted
+  evidence semantics.
+
 ## 2026-07-13
 
 ### Documentation alignment checkpoint

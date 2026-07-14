@@ -233,8 +233,8 @@ Status:
     - valid approach-corridor checks for target/route selection
     - collision-course warnings for co-pilot use
     - waypoint/path planning for pure bots
-  - deeper report polish that depends on real matrix scenarios and controller
-    signal rather than the old provisional corpus
+  - optional report refinements driven by new planner evidence rather than
+    speculative UI work
 
 ### Phase 3: Transfer guidance
 
@@ -468,6 +468,21 @@ workflow polish after the scenario corpus is more mature.
 Exit criteria:
 
 - captured runs are easy to inspect without turning the browser into a runtime
+
+Status:
+
+- the guidance overview now provides separate terminal, direct-transfer, and
+  waypoint scorecards over a declarative report catalog
+- the complete eval index groups maintained evidence separately from
+  diagnostics and fixtures
+- batch reports lead with outcomes and selector coverage, while context and
+  guidance diagnostics remain available without dominating the page
+- single-run reports provide mission-first summaries, readable selectors,
+  phase context, and explicit trajectory inspection modes
+- existing captures can be rerendered without simulation through
+  `pd-eval refresh-reports`; authoritative summary artifacts remain unchanged
+- the current corpus meets the Phase 5 inspection goal. Further report work
+  should respond to concrete waypoint-planning evidence rather than block it.
 
 ## 4. Migration Strategy From `pylander`
 

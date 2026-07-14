@@ -392,9 +392,14 @@ late polish.
 The current split is:
 
 - `pd-report` owns reusable single-run static report and trajectory rendering
+- `pd-report::site` owns stable report paths, latest links, and shared site
+  index generation
 - `pd-cli` invokes that path for targeted one-run inspection
 - `pd-eval` owns aggregate batch pages, review trees, comparisons, and report
   indexes over the same captured artifacts
+- `fixtures/reports/guidance_catalog.json` declares the curated terminal,
+  direct-transfer, and waypoint evidence scorecards without making generated
+  outputs source-controlled truth
 
 Responsibilities:
 
@@ -418,6 +423,26 @@ requiring raw JSON inspection:
 - how altitude, clearance, velocity, attitude, and throttle evolved
 - where discrete events and controller phase/status changes happened
 - how a candidate batch changed relative to a known baseline over shared runs
+
+Report information architecture is evidence-first:
+
+- `outputs/reports/guidance/` is the primary cross-guidance scorecard
+- each guidance group separates primary smoke evidence from supporting
+  full-seed evidence
+- `outputs/reports/eval/` is the complete fixture-backed report inventory,
+  including diagnostics and experiments
+- batch pages lead with outcome totals and selector coverage, while provenance,
+  context, and guidance-specific diagnostics remain available in collapsed
+  sections
+- run pages lead with mission outcome and trajectory evidence; controller
+  guides, scalar overlays, and vectors are explicit plot modes rather than
+  default clutter
+
+`pd-eval refresh-reports` is a presentation-only operation. It deserializes
+captured run bundles and batch summaries, regenerates static HTML in parallel,
+and reuses a recorded comparison only when that comparison directory remains
+readable. It must not execute controllers or rewrite authoritative batch
+summaries.
 
 ### 5.6 Telemetry and reporting stack
 

@@ -110,6 +110,19 @@ and serves `outputs/` on `0.0.0.0:8000` by default. The root URL now lands on a
 generated `outputs/index.html` page, and `/reports/` remains the clean
 report-only subtree. The printed LAN URL resolves automatically when available.
 
+Use the report site in this order:
+
+- `/reports/guidance/` is the primary evidence overview.
+- `/reports/guidance/terminal/`, `transfer/`, and `waypoint/` are the
+  responsibility-specific scorecards.
+- `/reports/eval/` is the complete fixture-backed batch index, including
+  supporting and diagnostic captures.
+
+The guidance catalog treats smoke matrices as the primary controller-iteration
+surface. Full-seed packs are supporting reliability evidence; focused frontier
+and experimental packs remain visible in the all-reports index without
+overstating them as the project scorecard.
+
 Useful commands:
 
 ```bash
@@ -133,12 +146,30 @@ under `outputs/` when written through the project CLIs, for example:
 Stable HTML entrypoints also live under `outputs/reports/`, for example:
 
 - `outputs/reports/index.html`
+- `outputs/reports/guidance/index.html`
+- `outputs/reports/guidance/terminal/index.html`
+- `outputs/reports/guidance/transfer/index.html`
+- `outputs/reports/guidance/waypoint/index.html`
+- `outputs/reports/eval/index.html`
 - `outputs/reports/runs/latest/`
 - `outputs/reports/eval/latest/`
 
 The root landing page is:
 
 - `outputs/index.html`
+
+To apply the current report templates to existing captures without running
+simulations:
+
+```bash
+cargo run -p pd-eval -- refresh-reports
+cargo run -p pd-eval -- refresh-reports --all
+```
+
+The default refresh covers packs in the guidance catalog. `--all` covers every
+captured fixture-backed pack. Both rebuild batch and per-run HTML from existing
+JSON bundles, preserve a recorded comparison when its basis is still readable,
+and leave `summary.json` evidence unchanged.
 
 ## Batch Eval
 
