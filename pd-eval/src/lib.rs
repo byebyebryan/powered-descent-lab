@@ -20,6 +20,7 @@ use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
 pub mod report;
+pub mod report_catalog;
 
 #[cfg(unix)]
 use std::os::unix::fs as platform_fs;

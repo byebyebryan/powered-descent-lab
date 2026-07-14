@@ -100,6 +100,7 @@ pub(crate) fn write_batch_report_artifacts_with_cache(
             )
         })?;
         report_site().update_indexes_for_file(&site_output)?;
+        crate::report_catalog::write_report_catalog(&crate::repo_root())?;
     }
 
     Ok(comparison)

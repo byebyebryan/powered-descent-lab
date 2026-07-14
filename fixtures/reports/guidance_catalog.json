@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "groups": [
+    {
+      "id": "terminal",
+      "title": "Terminal guidance",
+      "description": "Arrival and landing evidence across approach geometry, energy, payload, and reference-error conditions.",
+      "reports": [
+        {"pack_id": "terminal_bot_lab_suite", "label": "Clean terminal matrix", "role": "primary", "evidence": "landing"},
+        {"pack_id": "terminal_traj_err_suite", "label": "Reference-error matrix", "role": "primary", "evidence": "landing"},
+        {"pack_id": "terminal_bot_lab_full", "label": "Clean terminal full seeds", "role": "supporting", "evidence": "landing"},
+        {"pack_id": "terminal_traj_err_full", "label": "Reference-error full seeds", "role": "supporting", "evidence": "landing"}
+      ]
+    },
+    {
+      "id": "transfer",
+      "title": "Direct transfer",
+      "description": "Point-to-point transfer evidence across route angle, travel radius, and payload without intermediate waypoints.",
+      "reports": [
+        {"pack_id": "transfer_route_angle_radius_suite", "label": "Route and radius matrix", "role": "primary", "evidence": "landing"},
+        {"pack_id": "transfer_route_angle_radius_full_solved", "label": "Solved full-seed region", "role": "supporting", "evidence": "landing"},
+        {"pack_id": "transfer_route_angle_radius_frontier_full", "label": "Near-vertical frontier", "role": "supporting", "evidence": "frontier"}
+      ]
+    },
+    {
+      "id": "waypoint",
+      "title": "Waypoint guidance",
+      "description": "Pass-through waypoint evidence keeps route-contract and final-touchdown outcomes explicit and separate.",
+      "reports": [
+        {"pack_id": "transfer_waypoint_turn_route_angle_radius_smoke", "label": "Turn routes · landing", "role": "primary", "evidence": "landing", "pair_id": "turn-radius"},
+        {"pack_id": "transfer_waypoint_turn_contract_route_angle_radius_smoke", "label": "Turn routes · contract", "role": "primary", "evidence": "contract", "pair_id": "turn-radius"},
+        {"pack_id": "transfer_waypoint_sequence_route_angle_radius_smoke", "label": "Ordered routes · landing", "role": "primary", "evidence": "landing", "pair_id": "sequence-radius"},
+        {"pack_id": "transfer_waypoint_sequence_contract_route_angle_radius_smoke", "label": "Ordered routes · contract", "role": "primary", "evidence": "contract", "pair_id": "sequence-radius"},
+        {"pack_id": "transfer_waypoint_turn_route_angle_full", "label": "Turn routes full seeds · landing", "role": "supporting", "evidence": "landing", "pair_id": "turn-full"},
+        {"pack_id": "transfer_waypoint_turn_contract_route_angle_full", "label": "Turn routes full seeds · contract", "role": "supporting", "evidence": "contract", "pair_id": "turn-full"},
+        {"pack_id": "transfer_waypoint_sequence_route_angle_full", "label": "Ordered routes full seeds · landing", "role": "supporting", "evidence": "landing", "pair_id": "sequence-full"},
+        {"pack_id": "transfer_waypoint_sequence_contract_route_angle_full", "label": "Ordered routes full seeds · contract", "role": "supporting", "evidence": "contract", "pair_id": "sequence-full"}
+      ]
+    }
+  ]
+}

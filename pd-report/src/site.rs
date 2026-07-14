@@ -80,6 +80,11 @@ impl ReportSite {
         self.write_outputs_index()
     }
 
+    pub fn refresh_home(&self) -> Result<()> {
+        self.write_home_index()?;
+        self.write_outputs_index()
+    }
+
     pub fn update_latest_link(&self, target_dir: &Path) -> Result<()> {
         let resolved_target = self.resolve_repo_relative(target_dir);
         if !resolved_target.starts_with(&self.outputs_root) {
