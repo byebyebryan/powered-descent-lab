@@ -65,12 +65,18 @@ The current `pd-control` layout follows those ownership boundaries:
   staged controllers
 - `guidance.rs` owns shared state-target acceleration and command allocation
 - `terminal/` owns terminal guidance; `terminal/terrain.rs` isolates its local
-  candidate-clearance estimator
+  candidate-clearance estimator, while `terminal/tests.rs` keeps controller
+  tests out of the production module
 - `transfer/mod.rs` owns direct-transfer and waypoint lifecycle state
+- `transfer/telemetry.rs` owns transfer and waypoint metric emission plus
+  waypoint handoff-marker assembly; it receives already-computed guidance
+  products and does not recompute control decisions
 - `transfer/waypoint.rs` owns pure waypoint geometry, capture prediction, and
   handoff kinematics
 - `transfer/experimental.rs` owns the frozen boost-scoring mode gates and
   weights retained for diagnostic reproducibility
+- `transfer/tests.rs` owns the transfer and waypoint controller tests without
+  changing their access to module-private fixtures
 
 This split is internal. Public controller exports still resolve through
 `pd-control`, and persisted controller, phase, telemetry, and artifact contracts

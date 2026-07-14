@@ -2,6 +2,40 @@
 
 ## 2026-07-13
 
+### Guidance structural cleanup checkpoint
+
+- Added a transfer telemetry characterization test that locks the exact base
+  metric set, boost-only metric set, selected scoring label, and maintained
+  `legacy_endpoint` fallback before moving production code.
+- Moved terminal and transfer controller tests into sibling test modules. Test
+  names, fixtures, private access, and focused Clippy allowances are unchanged;
+  current controller coverage is `146 / 146`.
+- Isolated transfer and waypoint metric emission, prediction/audit
+  serialization, and waypoint handoff markers in `transfer/telemetry.rs`.
+  Direct-transfer diagnostics, waypoint snapshots, lifecycle state, phase
+  selection, scoring, thresholds, and candidate ordering remain in
+  `transfer/mod.rs`.
+- Replaced the duplicate open-loop builder and terminal-handoff metric writers
+  with one module-private sink over already-computed guidance products. No
+  public controller, config, phase, telemetry, marker, schema, or artifact
+  contract changed.
+- Fresh eight-worker `--no-reuse` evidence preserves:
+  - terminal clean and trajectory-error records exactly after excluding bundle
+    paths
+  - direct route-angle/radius transfer at `297 / 297`
+  - route-wide turn landing/contract at `135 / 135` for both
+  - route-wide ordered landing/contract at `45 / 45` for both
+  - full nominal turn landing/contract at `540 / 540` for both
+  - full nominal ordered landing/contract at `180 / 180` for both
+  - all-radius turn contract at `405 / 405` and landing at `404 / 405`
+  - all-radius ordered landing/contract at `135 / 135` for both
+- On the exact all-radius turn workload, update count remains `1,368,932`.
+  Controller compute changes from `285.17us` mean and `784us` p99 at `739a0c4`
+  to `271.18us` mean and `719us` p99 at `e0854c0`.
+- This finishes the focused cleanup. Further state-machine or terminal API
+  decomposition is deferred until waypoint planning establishes a concrete
+  shared seam.
+
 ### Guidance consolidation checkpoint
 
 - Added an explicit compatibility contract for controller JSON, built-in
