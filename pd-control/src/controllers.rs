@@ -1,8 +1,8 @@
-use crate::guidance::{allocate_accel_command, required_control_accel};
+use crate::guidance::{StateTargetRequest, allocate_accel_command, required_control_accel};
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
 use crate::terminal_pdg::{
-    TerminalPdgController, TerminalPdgControllerConfig, TransferGateReadiness,
-    TransferGateReadinessMode,
+    TerminalEntryAssessment, TerminalEntryMode, TerminalEntryRequest,
+    TerminalEntryTerrainPolicy, TerminalPdgController, TerminalPdgControllerConfig,
 };
 use crate::{Controller, ControllerFrame, TelemetryValue};
 use pd_core::{
@@ -1185,7 +1185,7 @@ struct WaypointReachableCandidate {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct WaypointFinalCandidate {
     reachable: WaypointReachableCandidate,
-    terminal_gate: TransferGateReadiness,
+    terminal_gate: TerminalEntryAssessment,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1193,7 +1193,7 @@ struct WaypointGuidancePlanSelection {
     candidate: WaypointGuidanceCandidate,
     endpoint_m: Vec2,
     target_mode: &'static str,
-    terminal_gate: Option<TransferGateReadiness>,
+    terminal_gate: Option<TerminalEntryAssessment>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1315,6 +1315,53 @@ struct TransferCorridorState {
     margin_m: f64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TransferGuidanceMode {
+    Direct,
+    Waypoint,
+}
+
+impl TransferGuidanceMode {
+    fn from_config(config: &TransferPdgControllerConfig) -> Self {
+        if config.waypoint_guidance_enabled {
+            Self::Waypoint
+        } else {
+            Self::Direct
+        }
+    }
+
+    fn uses_waypoints(self) -> bool {
+        self == Self::Waypoint
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TransferBoostScoringMode {
+    Endpoint,
+    ExperimentalPathwise,
+    ExperimentalRecoverability,
+}
+
+impl TransferBoostScoringMode {
+    fn from_config(config: &TransferPdgControllerConfig) -> Self {
+        if config.boost_recoverability_scoring_enabled {
+            Self::ExperimentalRecoverability
+        } else if config.boost_pathwise_scoring_enabled {
+            Self::ExperimentalPathwise
+        } else {
+            Self::Endpoint
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Endpoint => "legacy_endpoint",
+            Self::ExperimentalPathwise => "pathwise_geometry",
+            Self::ExperimentalRecoverability => "recoverability",
+        }
+    }
+}
+
 impl TransferCorridorState {
     fn inactive() -> Self {
         Self {
@@ -1329,11 +1376,13 @@ impl TransferCorridorState {
 #[derive(Debug)]
 pub struct TransferPdgController {
     config: TransferPdgControllerConfig,
+    guidance_mode: TransferGuidanceMode,
+    boost_scoring_mode: TransferBoostScoringMode,
     terminal: TerminalPdgController,
     phase: TransferPhase,
     boost_anchor: Option<TransferBoostAnchor>,
     transfer_gate_ready_ticks: u32,
-    last_transfer_gate: Option<TransferGateReadiness>,
+    last_transfer_gate: Option<TerminalEntryAssessment>,
     last_corridor: TransferCorridorState,
     last_phase: Option<String>,
     waypoint_active_index: usize,
@@ -1357,10 +1406,14 @@ impl Default for TransferPdgController {
 
 impl TransferPdgController {
     pub fn new(config: TransferPdgControllerConfig) -> Self {
+        let guidance_mode = TransferGuidanceMode::from_config(&config);
+        let boost_scoring_mode = TransferBoostScoringMode::from_config(&config);
         let mut terminal = TerminalPdgController::new(config.terminal.clone());
-        terminal.set_guidance_plan_retention_enabled(config.waypoint_guidance_enabled);
+        terminal.set_guidance_plan_retention_enabled(guidance_mode.uses_waypoints());
         Self {
             config,
+            guidance_mode,
+            boost_scoring_mode,
             terminal,
             phase: TransferPhase::Takeoff,
             boost_anchor: None,
@@ -1503,7 +1556,7 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
     ) -> Option<WaypointUpdateContext> {
-        if !self.config.waypoint_guidance_enabled {
+        if !self.guidance_mode.uses_waypoints() {
             return None;
         }
         let route = ctx.mission.transfer_route.as_ref()?;
@@ -2013,23 +2066,20 @@ impl TransferPdgController {
         time_to_go_s: f64,
         target_envelope_feasible: bool,
     ) -> WaypointGuidanceCandidate {
-        let (ax, ay) = required_control_accel(
-            guidance.endpoint_m.x - observation.position_m.x,
-            guidance.endpoint_m.y - observation.position_m.y,
-            observation.velocity_mps.x,
-            observation.velocity_mps.y,
-            target_velocity_mps.x,
-            target_velocity_mps.y,
+        let required_accel_mps2 = required_control_accel(StateTargetRequest {
+            position_error_m: guidance.endpoint_m - observation.position_m,
+            velocity_mps: observation.velocity_mps,
+            target_velocity_mps,
             time_to_go_s,
-            observation.gravity_mps2,
-        );
-        let required_accel_mps2 = Vec2::new(ax, ay);
+            gravity_mps2: observation.gravity_mps2,
+        });
         let max_thrust_accel_mps2 = ctx.vehicle.max_thrust_n / observation.mass_kg.max(1.0);
         let max_tilt_rad = self
             .config
             .boost_tilt_rad
             .max(self.config.uphill_boost_tilt_rad);
-        let tilt_feasible = ay > 0.0 && ax.abs() <= max_tilt_rad.tan() * ay;
+        let tilt_feasible = required_accel_mps2.y > 0.0
+            && required_accel_mps2.x.abs() <= max_tilt_rad.tan() * required_accel_mps2.y;
         let prediction =
             waypoint_guidance_prediction(observation, guidance, target_velocity_mps, time_to_go_s);
         WaypointGuidanceCandidate {
@@ -2564,10 +2614,14 @@ impl TransferPdgController {
             .unwrap_or(diagnostics.route_dx_m);
         Some(WaypointFinalCandidate {
             reachable,
-            terminal_gate: self.terminal.evaluate_transfer_dynamics(
+            terminal_gate: self.terminal.assess_terminal_entry(
                 ctx,
                 &terminal_observation,
+                TerminalEntryRequest {
                 lateral_dx_m,
+                    ready_ticks: 0,
+                    terrain_policy: TerminalEntryTerrainPolicy::Ignore,
+                },
             ),
         })
     }
@@ -2783,17 +2837,13 @@ impl TransferPdgController {
         while elapsed_s + 1.0e-9 < horizon_s {
             let step_s = (horizon_s - elapsed_s).min(dt_s);
             let remaining_s = (time_to_go_s - elapsed_s).max(WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S);
-            let (ax, ay) = required_control_accel(
-                endpoint_m.x - state.position_m.x,
-                endpoint_m.y - state.position_m.y,
-                state.velocity_mps.x,
-                state.velocity_mps.y,
-                target_velocity_mps.x,
-                target_velocity_mps.y,
-                remaining_s,
-                observation.gravity_mps2,
-            );
-            let state_target_accel_mps2 = Vec2::new(ax, ay);
+            let state_target_accel_mps2 = required_control_accel(StateTargetRequest {
+                position_error_m: endpoint_m - state.position_m,
+                velocity_mps: state.velocity_mps,
+                target_velocity_mps,
+                time_to_go_s: remaining_s,
+                gravity_mps2: observation.gravity_mps2,
+            });
             let mut simulated_observation = observation.clone();
             simulated_observation.position_m = state.position_m;
             simulated_observation.velocity_mps = state.velocity_mps;
@@ -2822,8 +2872,7 @@ impl TransferPdgController {
             }
 
             let command = allocate_accel_command(
-                required_accel_mps2.x,
-                required_accel_mps2.y,
+                required_accel_mps2,
                 max_thrust_accel_mps2,
                 max_tilt_rad,
             );
@@ -3444,8 +3493,7 @@ impl TransferPdgController {
         );
         WaypointGuidanceCommandState {
             command: allocate_accel_command(
-                required_accel_mps2.x,
-                required_accel_mps2.y,
+                required_accel_mps2,
                 max_thrust_accel_mps2,
                 max_tilt_rad,
             ),
@@ -3474,9 +3522,9 @@ impl TransferPdgController {
     fn waypoint_pending_gate(
         &self,
         command_state: Option<WaypointGuidanceCommandState>,
-    ) -> TransferGateReadiness {
-        TransferGateReadiness {
-            mode: TransferGateReadinessMode::Pending,
+    ) -> TerminalEntryAssessment {
+        TerminalEntryAssessment {
+            mode: TerminalEntryMode::Pending,
             ready_ticks: 0,
             burn_time_s: command_state.map_or(0.0, |state| state.time_to_go_s),
             latest_safe_margin_s: -1.0,
@@ -3652,20 +3700,14 @@ impl TransferPdgController {
     }
 
     fn boost_scoring_mode(&self) -> &'static str {
-        if self.config.boost_recoverability_scoring_enabled {
-            "recoverability"
-        } else if self.config.boost_pathwise_scoring_enabled {
-            "pathwise_geometry"
-        } else {
-            "legacy_endpoint"
-        }
+        self.boost_scoring_mode.label()
     }
 
     fn transfer_metrics_builder(
         &self,
         builder: ControllerFrameBuilder,
         diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
         corridor: TransferCorridorState,
         boost_selection: Option<TransferBoostCommandSelection>,
     ) -> ControllerFrameBuilder {
@@ -3766,7 +3808,7 @@ impl TransferPdgController {
         &self,
         frame: &mut ControllerFrame,
         diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
         corridor: TransferCorridorState,
     ) {
         frame.metrics.insert(
@@ -3867,17 +3909,20 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
-    ) -> TransferGateReadiness {
+    ) -> TerminalEntryAssessment {
         let lateral_dx_m = diagnostics
             .projection
             .projected_dx_m
             .filter(|_| diagnostics.projection.has_target_y_solution)
             .unwrap_or(diagnostics.route_dx_m);
-        let gate = self.terminal.evaluate_transfer_gate(
+        let gate = self.terminal.assess_terminal_entry(
             ctx,
             observation,
-            lateral_dx_m,
-            self.transfer_gate_ready_ticks,
+            TerminalEntryRequest {
+                lateral_dx_m,
+                ready_ticks: self.transfer_gate_ready_ticks,
+                terrain_policy: TerminalEntryTerrainPolicy::Configured,
+            },
         );
 
         if !diagnostics.projection.has_target_y_solution || observation.height_above_target_m <= 0.0
@@ -3897,9 +3942,9 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
     ) -> bool {
-        if gate.mode != TransferGateReadinessMode::LatestSafe {
+        if gate.mode != TerminalEntryMode::LatestSafe {
             return false;
         }
         if gate.latest_safe_margin_s < TRANSFER_GATE_DEFER_MAX_NEGATIVE_MARGIN_S {
@@ -3950,11 +3995,11 @@ impl TransferPdgController {
             if !future_gate.terrain_clearance_safe {
                 return false;
             }
-            if future_gate.mode == TransferGateReadinessMode::NominalReady {
+            if future_gate.mode == TerminalEntryMode::NominalReady {
                 return true;
             }
             let ratio_improvement = gate.required_accel_ratio - future_gate.required_accel_ratio;
-            if future_gate.mode == TransferGateReadinessMode::LatestSafe
+            if future_gate.mode == TerminalEntryMode::LatestSafe
                 && ratio_improvement >= self.config.transfer_gate_defer_min_ratio_improvement
             {
                 return true;
@@ -3971,15 +4016,21 @@ impl TransferPdgController {
         observation: &Observation,
         diagnostics: TransferDiagnostics,
         ready_ticks: u32,
-    ) -> TransferGateReadiness {
+    ) -> TerminalEntryAssessment {
         let lateral_dx_m = diagnostics
             .projection
             .projected_dx_m
             .filter(|_| diagnostics.projection.has_target_y_solution)
             .unwrap_or(diagnostics.route_dx_m);
-        let gate =
-            self.terminal
-                .evaluate_transfer_gate(ctx, observation, lateral_dx_m, ready_ticks);
+        let gate = self.terminal.assess_terminal_entry(
+            ctx,
+            observation,
+            TerminalEntryRequest {
+                lateral_dx_m,
+                ready_ticks,
+                terrain_policy: TerminalEntryTerrainPolicy::Configured,
+            },
+        );
         if !diagnostics.projection.has_target_y_solution || observation.height_above_target_m <= 0.0
         {
             gate.forced_pending()
@@ -4089,7 +4140,7 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
         corridor: TransferCorridorState,
     ) -> TransferPhase {
         let Some(route) = ctx.mission.transfer_route.as_ref() else {
@@ -4172,7 +4223,7 @@ impl TransferPdgController {
         &self,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
     ) -> bool {
         if diagnostics.route_dy_m < self.config.uphill_boost_dy_min_m {
             return false;
@@ -4443,7 +4494,7 @@ impl TransferPdgController {
         ctx: &RunContext,
         observation: &Observation,
         diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
         corridor: TransferCorridorState,
     ) -> TransferBoostCommandSelection {
         let base_attitude = self.boost_attitude_rad(observation, diagnostics, corridor);
@@ -4521,11 +4572,11 @@ impl TransferPdgController {
 
     fn boost_cut_admissible(
         &self,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
         corridor: TransferCorridorState,
     ) -> bool {
         !corridor.active
-            && (!self.config.waypoint_guidance_enabled
+            && (!self.guidance_mode.uses_waypoints()
                 || (gate.terrain_clearance_safe
                     && gate.latest_safe_margin_s > 0.0
                     && gate.required_accel_ratio <= 1.0))
@@ -4539,18 +4590,26 @@ impl TransferPdgController {
         corridor: TransferCorridorState,
         command: Command,
     ) -> TransferBoostCandidateScore {
-        if self.config.boost_recoverability_scoring_enabled {
-            self.score_boost_candidate_recoverability(
+        match self.boost_scoring_mode {
+            TransferBoostScoringMode::ExperimentalRecoverability => self
+                .score_boost_candidate_recoverability(
                 ctx,
                 observation,
                 diagnostics,
                 corridor,
                 command,
-            )
-        } else if self.config.boost_pathwise_scoring_enabled {
-            self.score_boost_candidate_pathwise(ctx, observation, diagnostics, corridor, command)
-        } else {
-            self.score_boost_candidate_endpoint(ctx, observation, corridor, command)
+            ),
+            TransferBoostScoringMode::ExperimentalPathwise => self
+                .score_boost_candidate_pathwise(
+                    ctx,
+                    observation,
+                    diagnostics,
+                    corridor,
+                    command,
+                ),
+            TransferBoostScoringMode::Endpoint => {
+                self.score_boost_candidate_endpoint(ctx, observation, corridor, command)
+            }
         }
     }
 
@@ -4907,7 +4966,7 @@ impl TransferPdgController {
         &self,
         predicted: &Observation,
         predicted_diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
         dx_limit_m: f64,
     ) -> f64 {
         let mut score = 0.0;
@@ -4930,7 +4989,7 @@ impl TransferPdgController {
             TRANSFER_BOOST_RECOVERY_SCORE_ACCEL_RATIO * accel_excess_ratio * accel_excess_ratio;
 
         if predicted_diagnostics.boost_quality.passed
-            && gate.mode != TransferGateReadinessMode::NominalReady
+            && gate.mode != TerminalEntryMode::NominalReady
         {
             let projected_dx_ratio = predicted_diagnostics
                 .projection
@@ -5132,7 +5191,7 @@ impl TransferPdgController {
         command: Command,
         status: &'static str,
         diagnostics: TransferDiagnostics,
-        gate: TransferGateReadiness,
+        gate: TerminalEntryAssessment,
         corridor: TransferCorridorState,
         boost_selection: Option<TransferBoostCommandSelection>,
     ) -> ControllerFrame {
@@ -5959,14 +6018,16 @@ fn shortest_angle_delta(from_rad: f64, to_rad: f64) -> f64 {
 
 impl Controller for TransferPdgController {
     fn id(&self) -> &str {
-        if self.config.waypoint_guidance_enabled {
+        if self.guidance_mode.uses_waypoints() {
             "transfer_waypoint_pdg_v1"
-        } else if self.config.boost_recoverability_scoring_enabled {
-            "transfer_pdg_recoverability_v1"
-        } else if self.config.boost_pathwise_scoring_enabled {
-            "transfer_pdg_pathwise_v1"
         } else {
-            "transfer_pdg_v1"
+            match self.boost_scoring_mode {
+                TransferBoostScoringMode::Endpoint => "transfer_pdg_v1",
+                TransferBoostScoringMode::ExperimentalPathwise => "transfer_pdg_pathwise_v1",
+                TransferBoostScoringMode::ExperimentalRecoverability => {
+                    "transfer_pdg_recoverability_v1"
+                }
+            }
         }
     }
 
@@ -6230,7 +6291,7 @@ fn waypoint_handoff_marker(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::terminal_pdg::TransferGateReadinessMode;
+    use crate::terminal_pdg::TerminalEntryMode;
     use pd_core::{
         EvaluationGoal, LandingPadSpec, MissionSpec, RunContext, ScenarioSpec, SimConfig,
         TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleGeometry,
@@ -6267,9 +6328,9 @@ mod tests {
         latest_safe_margin_s: f64,
         required_accel_ratio: f64,
         terrain_clearance_safe: bool,
-    ) -> TransferGateReadiness {
-        TransferGateReadiness {
-            mode: TransferGateReadinessMode::Pending,
+    ) -> TerminalEntryAssessment {
+        TerminalEntryAssessment {
+            mode: TerminalEntryMode::Pending,
             ready_ticks: 0,
             burn_time_s: 5.0,
             latest_safe_margin_s,
@@ -8485,8 +8546,8 @@ mod tests {
             route_dy_m: 780.0,
         });
         controller.transfer_gate_ready_ticks = 3;
-        controller.last_transfer_gate = Some(TransferGateReadiness {
-            mode: TransferGateReadinessMode::NominalReady,
+        controller.last_transfer_gate = Some(TerminalEntryAssessment {
+            mode: TerminalEntryMode::NominalReady,
             ready_ticks: 3,
             burn_time_s: 5.0,
             latest_safe_margin_s: 2.0,
@@ -8532,7 +8593,7 @@ mod tests {
         let gate = controller.transfer_gate_readiness(&ctx, &observation, diagnostics);
 
         assert!(!diagnostics.projection.has_target_y_solution);
-        assert_eq!(gate.mode, TransferGateReadinessMode::Pending);
+        assert_eq!(gate.mode, TerminalEntryMode::Pending);
         assert_eq!(gate.ready_ticks, 0);
     }
 
@@ -8818,8 +8879,8 @@ mod tests {
         let controller = TransferPdgController::default();
         let observation = transfer_observation(220.0, 80.0, Vec2::new(35.0, -18.0), 6.0);
         let diagnostics = controller.transfer_diagnostics(&observation);
-        let ready = TransferGateReadiness {
-            mode: TransferGateReadinessMode::NominalReady,
+        let ready = TerminalEntryAssessment {
+            mode: TerminalEntryMode::NominalReady,
             ready_ticks: 2,
             burn_time_s: 2.0,
             latest_safe_margin_s: 0.5,
@@ -8828,8 +8889,8 @@ mod tests {
             terrain_clearance_safe: true,
             deferred: false,
         };
-        let overdue = TransferGateReadiness {
-            mode: TransferGateReadinessMode::LatestSafe,
+        let overdue = TerminalEntryAssessment {
+            mode: TerminalEntryMode::LatestSafe,
             ready_ticks: 0,
             burn_time_s: 2.0,
             latest_safe_margin_s: -4.0,
@@ -8860,8 +8921,8 @@ mod tests {
         let controller = TransferPdgController::default();
         let observation = transfer_observation(220.0, 80.0, Vec2::new(35.0, -18.0), 6.0);
         let diagnostics = controller.transfer_diagnostics(&observation);
-        let better_margin = TransferGateReadiness {
-            mode: TransferGateReadinessMode::LatestSafe,
+        let better_margin = TerminalEntryAssessment {
+            mode: TerminalEntryMode::LatestSafe,
             ready_ticks: 0,
             burn_time_s: 2.0,
             latest_safe_margin_s: -2.0,
@@ -8870,8 +8931,8 @@ mod tests {
             terrain_clearance_safe: true,
             deferred: false,
         };
-        let lower_accel = TransferGateReadiness {
-            mode: TransferGateReadinessMode::LatestSafe,
+        let lower_accel = TerminalEntryAssessment {
+            mode: TerminalEntryMode::LatestSafe,
             ready_ticks: 0,
             burn_time_s: 2.0,
             latest_safe_margin_s: -4.0,
@@ -9000,8 +9061,8 @@ mod tests {
     fn transfer_latest_safe_deferral_respects_guard_conditions() {
         let ctx = uphill_transfer_context();
         let controller = TransferPdgController::default();
-        let gate = TransferGateReadiness {
-            mode: TransferGateReadinessMode::LatestSafe,
+        let gate = TerminalEntryAssessment {
+            mode: TerminalEntryMode::LatestSafe,
             ready_ticks: 0,
             burn_time_s: 5.0,
             latest_safe_margin_s: 0.0,
@@ -9150,7 +9211,7 @@ mod tests {
         let diagnostics = controller.transfer_diagnostics(&observation);
         let gate = controller.transfer_gate_readiness(&ctx, &observation, diagnostics);
 
-        assert_eq!(gate.mode, TransferGateReadinessMode::Pending);
+        assert_eq!(gate.mode, TerminalEntryMode::Pending);
         assert!(diagnostics.boost_quality.passed);
         assert!(
             controller
@@ -9204,8 +9265,8 @@ mod tests {
         });
         let observation = transfer_observation(120.0, -20.0, Vec2::new(20.0, 5.0), 6.0);
         let diagnostics = controller.transfer_diagnostics(&observation);
-        let gate = TransferGateReadiness {
-            mode: TransferGateReadinessMode::Pending,
+        let gate = TerminalEntryAssessment {
+            mode: TerminalEntryMode::Pending,
             ready_ticks: 0,
             burn_time_s: 5.0,
             latest_safe_margin_s: 2.0,

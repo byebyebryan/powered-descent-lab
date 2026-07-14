@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use pd_core::{Command, Observation, RunContext};
 use serde::{Deserialize, Serialize};
 
-use crate::guidance::{allocate_accel_command, required_control_accel};
+use crate::guidance::{StateTargetRequest, allocate_accel_command, required_control_accel};
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
 use crate::{Controller, ControllerFrame, TelemetryValue};
 
@@ -165,13 +165,26 @@ impl GuidanceMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum TransferGateReadinessMode {
+pub(crate) enum TerminalEntryMode {
     Pending,
     NominalReady,
     LatestSafe,
 }
 
-impl TransferGateReadinessMode {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TerminalEntryTerrainPolicy {
+    Configured,
+    Ignore,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TerminalEntryRequest {
+    pub(crate) lateral_dx_m: f64,
+    pub(crate) ready_ticks: u32,
+    pub(crate) terrain_policy: TerminalEntryTerrainPolicy,
+}
+
+impl TerminalEntryMode {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -251,8 +264,8 @@ struct TerminalCommandState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TransferGateReadiness {
-    pub(crate) mode: TransferGateReadinessMode,
+pub(crate) struct TerminalEntryAssessment {
+    pub(crate) mode: TerminalEntryMode,
     pub(crate) ready_ticks: u32,
     pub(crate) burn_time_s: f64,
     pub(crate) latest_safe_margin_s: f64,
@@ -262,19 +275,19 @@ pub(crate) struct TransferGateReadiness {
     pub(crate) deferred: bool,
 }
 
-impl TransferGateReadiness {
+impl TerminalEntryAssessment {
     pub(crate) fn is_ready(self) -> bool {
         self.mode.is_ready()
     }
 
     pub(crate) fn forced_pending(mut self) -> Self {
-        self.mode = TransferGateReadinessMode::Pending;
+        self.mode = TerminalEntryMode::Pending;
         self.ready_ticks = 0;
         self
     }
 
     pub(crate) fn deferred_pending(mut self) -> Self {
-        self.mode = TransferGateReadinessMode::Pending;
+        self.mode = TerminalEntryMode::Pending;
         self.ready_ticks = 0;
         self.deferred = true;
         self
@@ -325,13 +338,20 @@ impl TerminalPdgController {
         }
     }
 
-    pub(crate) fn evaluate_transfer_gate(
+    pub(crate) fn assess_terminal_entry(
         &self,
         ctx: &RunContext,
         observation: &Observation,
-        lateral_dx_m: f64,
-        current_ready_ticks: u32,
-    ) -> TransferGateReadiness {
+        request: TerminalEntryRequest,
+    ) -> TerminalEntryAssessment {
+        if request.terrain_policy == TerminalEntryTerrainPolicy::Ignore
+            && self.config.terrain_clearance_enabled
+        {
+            let mut dynamics_config = self.config.clone();
+            dynamics_config.terrain_clearance_enabled = false;
+            return Self::new(dynamics_config).assess_terminal_entry(ctx, observation, request);
+        }
+
         let view = ControllerView::new(ctx, observation);
         let dx_m = view.target_dx_m();
         let height_above_target_m = view.height_above_target_m().max(0.0);
@@ -353,7 +373,7 @@ impl TerminalPdgController {
             dx_m,
             dy_m,
             touchdown_clearance_m,
-            lateral_dx_m,
+            request.lateral_dx_m,
             vx_mps,
             vy_up_mps,
             max_thrust_accel_mps2,
@@ -366,7 +386,7 @@ impl TerminalPdgController {
             dx_m,
             dy_m,
             touchdown_clearance_m,
-            lateral_dx_m,
+            request.lateral_dx_m,
             vx_mps,
             vy_up_mps,
             max_thrust_accel_mps2,
@@ -377,32 +397,32 @@ impl TerminalPdgController {
         );
 
         let nominal_ready_ticks = if nominal.ready {
-            current_ready_ticks.saturating_add(1)
+            request.ready_ticks.saturating_add(1)
         } else {
             0
         };
         let (mode, ready_ticks, selected) = if latest_safe.latest_safe_margin_s <= 0.0 {
             (
-                TransferGateReadinessMode::LatestSafe,
+                TerminalEntryMode::LatestSafe,
                 0,
                 latest_safe.best_candidate,
             )
         } else if nominal.ready && nominal_ready_ticks >= self.config.terminal_gate_hysteresis_ticks
         {
             (
-                TransferGateReadinessMode::NominalReady,
+                TerminalEntryMode::NominalReady,
                 nominal_ready_ticks,
                 nominal.best_candidate,
             )
         } else {
             (
-                TransferGateReadinessMode::Pending,
+                TerminalEntryMode::Pending,
                 nominal_ready_ticks,
                 nominal.best_candidate,
             )
         };
 
-        TransferGateReadiness {
+        TerminalEntryAssessment {
             mode,
             ready_ticks,
             burn_time_s: selected.burn_time_s,
@@ -412,17 +432,6 @@ impl TerminalPdgController {
             terrain_clearance_safe: selected.terrain_clearance_safe,
             deferred: false,
         }
-    }
-
-    pub(crate) fn evaluate_transfer_dynamics(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        lateral_dx_m: f64,
-    ) -> TransferGateReadiness {
-        let mut dynamics_config = self.config.clone();
-        dynamics_config.terrain_clearance_enabled = false;
-        Self::new(dynamics_config).evaluate_transfer_gate(ctx, observation, lateral_dx_m, 0)
     }
 
     pub(crate) fn set_guidance_plan_retention_enabled(&mut self, enabled: bool) {
@@ -643,17 +652,15 @@ impl TerminalPdgController {
         } else {
             dy_m
         };
-        let (ax_req, ay_req) = required_control_accel(
-            dx_m,
-            guidance_dy_m,
-            vx_mps,
-            vy_up_mps,
-            0.0,
-            desired_vertical_speed_mps,
-            active_candidate.burn_time_s,
-            view.observation.gravity_mps2,
-        );
-        let command = allocate_accel_command(ax_req, ay_req, max_thrust_accel_mps2, max_tilt_rad);
+        let requested_accel_mps2 = required_control_accel(StateTargetRequest {
+            position_error_m: pd_core::Vec2::new(dx_m, guidance_dy_m),
+            velocity_mps: pd_core::Vec2::new(vx_mps, vy_up_mps),
+            target_velocity_mps: pd_core::Vec2::new(0.0, desired_vertical_speed_mps),
+            time_to_go_s: active_candidate.burn_time_s,
+            gravity_mps2: view.observation.gravity_mps2,
+        });
+        let command =
+            allocate_accel_command(requested_accel_mps2, max_thrust_accel_mps2, max_tilt_rad);
 
         TerminalCommandState {
             mode: guidance_mode,
@@ -1192,17 +1199,16 @@ impl TerminalPdgController {
         } else {
             dy_m
         };
-        let (ax_req, ay_req) = required_control_accel(
-            dx_m,
-            guidance_dy_m,
-            vx_mps,
-            vy_up_mps,
-            0.0,
-            target_vy_up_mps,
-            burn_time_s,
+        let requested_accel_mps2 = required_control_accel(StateTargetRequest {
+            position_error_m: pd_core::Vec2::new(dx_m, guidance_dy_m),
+            velocity_mps: pd_core::Vec2::new(vx_mps, vy_up_mps),
+            target_velocity_mps: pd_core::Vec2::new(0.0, target_vy_up_mps),
+            time_to_go_s: burn_time_s,
             gravity_mps2,
-        );
-        let required_norm = (ax_req * ax_req + ay_req * ay_req).sqrt();
+        });
+        let ax_req = requested_accel_mps2.x;
+        let ay_req = requested_accel_mps2.y;
+        let required_norm = requested_accel_mps2.length();
         let required_ratio = required_norm / thrust_accel_mps2.max(1e-6);
         let tilt_tan = max_tilt_rad.max(0.02).tan();
         let tilt_feasible = ay_req > 0.0 && ax_req.abs() <= (tilt_tan * ay_req);
@@ -2661,16 +2667,15 @@ fn estimate_candidate_terrain_clearance(
     gravity_mps2: f64,
 ) -> TerrainClearanceEstimate {
     let touchdown_center_dy_m = dy_m + view.ctx.vehicle.geometry.touchdown_base_offset_m;
-    let (ax_req, ay_req) = required_control_accel(
-        dx_m,
-        touchdown_center_dy_m,
-        vx_mps,
-        vy_up_mps,
-        0.0,
-        target_vy_up_mps,
-        burn_time_s,
+    let requested_accel_mps2 = required_control_accel(StateTargetRequest {
+        position_error_m: pd_core::Vec2::new(dx_m, touchdown_center_dy_m),
+        velocity_mps: pd_core::Vec2::new(vx_mps, vy_up_mps),
+        target_velocity_mps: pd_core::Vec2::new(0.0, target_vy_up_mps),
+        time_to_go_s: burn_time_s,
         gravity_mps2,
-    );
+    });
+    let ax_req = requested_accel_mps2.x;
+    let ay_req = requested_accel_mps2.y;
     let mut min_clearance_m = TERRAIN_CLEARANCE_UNCONSTRAINED_M;
     let mut first_violation_time_s = None;
     let sample_count = terrain_clearance_sample_count(vx_mps, ax_req, burn_time_s);
