@@ -5666,6 +5666,132 @@ mod tests {
         assert_eq!(crate::kit::marker::WAYPOINT_HANDOFF, "waypoint/handoff");
     }
 
+    fn transfer_metric_keys(frame: &ControllerFrame) -> Vec<&str> {
+        frame
+            .metrics
+            .keys()
+            .filter(|key| key.starts_with("transfer."))
+            .map(String::as_str)
+            .collect()
+    }
+
+    fn expected_transfer_metric_keys(include_boost_selection: bool) -> Vec<&'static str> {
+        let mut keys = vec![
+            metric::TRANSFER_APEX_OVER_TARGET_M,
+            metric::TRANSFER_BOOST_APEX_TARGET_M,
+            metric::TRANSFER_BOOST_QUALITY,
+            metric::TRANSFER_BOOST_QUALITY_PASS,
+            metric::TRANSFER_BOOST_SCORING_MODE,
+            metric::TRANSFER_CORRIDOR_MARGIN_M,
+            metric::TRANSFER_CORRIDOR_MODE,
+            metric::TRANSFER_IMPACT_ANGLE_DEG,
+            metric::TRANSFER_PROJECTED_DX_M,
+            metric::TRANSFER_PROJECTED_TIME_S,
+            metric::TRANSFER_ROUTE_DX_M,
+            metric::TRANSFER_ROUTE_DY_M,
+            metric::TRANSFER_SHAPE_ANCHOR_DX_M,
+            metric::TRANSFER_SHAPE_ANCHOR_DY_M,
+            metric::TRANSFER_TARGET_Y_SOLUTION,
+            metric::TRANSFER_TERMINAL_GATE_DEFERRED,
+            metric::TRANSFER_TERMINAL_GATE_LATEST_SAFE_MARGIN_S,
+            metric::TRANSFER_TERMINAL_GATE_MODE,
+            metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO,
+        ];
+        if include_boost_selection {
+            keys.extend([
+                metric::TRANSFER_BOOST_SELECTED_SCORE,
+                metric::TRANSFER_BOOST_SETTLED_PROJECTED_DX_M,
+                metric::TRANSFER_BOOST_SETTLED_QUALITY,
+            ]);
+        }
+        keys.sort_unstable();
+        keys
+    }
+
+    #[test]
+    fn transfer_metric_paths_emit_stable_base_and_boost_keys() {
+        let controller = TransferPdgController::default();
+        let diagnostics = TransferDiagnostics {
+            route_dx_m: 120.0,
+            route_dy_m: 40.0,
+            anchor: Some(TransferBoostAnchor {
+                route_dx_m: 140.0,
+                route_dy_m: 60.0,
+            }),
+            projection: TransferBallisticProjection {
+                has_target_y_solution: true,
+                projected_time_s: Some(4.0),
+                projected_dx_m: Some(12.0),
+                impact_angle_deg: Some(52.0),
+                apex_over_target_m: 80.0,
+            },
+            boost_quality: TransferBoostQuality {
+                verdict: "pass",
+                passed: true,
+                apex_target_over_target_m: 72.0,
+            },
+        };
+        let gate = TerminalEntryAssessment {
+            mode: TerminalEntryMode::NominalReady,
+            ready_ticks: 2,
+            burn_time_s: 5.0,
+            latest_safe_margin_s: 1.5,
+            required_accel_ratio: 0.7,
+            terrain_min_clearance_m: 100.0,
+            terrain_clearance_safe: true,
+            deferred: false,
+        };
+        let corridor = TransferCorridorState {
+            mode: "clear",
+            active: false,
+            tilt_limited: false,
+            margin_m: 44.0,
+        };
+        let selection = TransferBoostCommandSelection {
+            command: Command {
+                throttle_frac: 0.8,
+                target_attitude_rad: 0.2,
+            },
+            scoring_mode: "selected_mode",
+            selected_score: 3.25,
+            settled_projection: diagnostics.projection,
+            settled_quality: diagnostics.boost_quality,
+        };
+
+        let open_loop_frame = controller
+            .transfer_metrics_builder(
+                ControllerFrameBuilder::new(selection.command),
+                diagnostics,
+                gate,
+                corridor,
+                Some(selection),
+            )
+            .build();
+        assert_eq!(
+            transfer_metric_keys(&open_loop_frame),
+            expected_transfer_metric_keys(true)
+        );
+        assert_eq!(
+            open_loop_frame
+                .metrics
+                .get(metric::TRANSFER_BOOST_SCORING_MODE),
+            Some(&TelemetryValue::from("selected_mode"))
+        );
+
+        let mut terminal_frame = ControllerFrame::command_only(selection.command);
+        controller.insert_transfer_metrics(&mut terminal_frame, diagnostics, gate, corridor);
+        assert_eq!(
+            transfer_metric_keys(&terminal_frame),
+            expected_transfer_metric_keys(false)
+        );
+        assert_eq!(
+            terminal_frame
+                .metrics
+                .get(metric::TRANSFER_BOOST_SCORING_MODE),
+            Some(&TelemetryValue::from("legacy_endpoint"))
+        );
+    }
+
     #[test]
     fn transfer_enables_retained_terminal_plans_only_for_waypoint_guidance() {
         let direct = TransferPdgController::default();
