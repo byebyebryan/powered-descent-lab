@@ -737,12 +737,12 @@ Focused `full/r-80` radius triage:
   - long-radius high direct descents are covered by transfer-scoped terminal
     gate horizon tuning, leaving standalone terminal defaults unchanged
 
-Pathwise boost-scoring experiment:
+Frozen pathwise boost-scoring diagnostic:
 
 - added gated `transfer_pdg_pathwise` as a Pylander-lite candidate scorer that
   keeps the current Rust candidate grid but scores simulated boost samples
   across the candidate horizon
-- the first compare packs intentionally keep legacy endpoint scoring as
+- the archived compare packs intentionally keep legacy endpoint scoring as
   `baseline` and pathwise scoring as `current`:
   - `transfer_bot_lab_pathwise_compare`
   - `transfer_route_angle_pathwise_compare`
@@ -752,11 +752,11 @@ Pathwise boost-scoring experiment:
   - route-angle compare: both lanes landed `90 / 99`, with only the existing
     `r+80` frontier crashes, but pathwise worsened aggregate shape for `empty`
     and `half` and only helped scattered full-payload downhill cells
-- keep `transfer_pdg` on legacy endpoint scoring by default; use the pathwise
-  alias only for follow-up experiments until the pathwise objective can improve
-  shape without degrading solved cells
+- keep `transfer_pdg` on endpoint scoring. The pathwise alias is retained only
+  to reproduce this result; reopen it only with a new objective and hypothesis
+  that address the measured shape regressions
 
-Recoverability boost-scoring experiment:
+Frozen recoverability boost-scoring diagnostic:
 
 - added gated `transfer_pdg_recoverability` as a safer follow-up to pathwise
   scoring. It preserves the legacy endpoint objective and only uses terminal
@@ -772,10 +772,10 @@ Recoverability boost-scoring experiment:
     `r+80` frontier crashes; successful-run mean shape RMSE stayed neutral at
     `94.48m` baseline vs `94.60m` current, and mean touchdown offset improved
     slightly from `0.486m` to `0.484m`
-- this is a useful diagnostic/tie-breaker experiment but not a default-promotion
-  candidate yet. The original strong recoverability weighting preserved
-  landings but badly distorted uphill shapes, which reinforces that recoverable
-  terminal handoff cannot replace the boost shape objective.
+- this is retained as a diagnostic, not a promotion candidate. The original
+  strong recoverability weighting preserved landings but badly distorted
+  uphill shapes, which reinforces that recoverable terminal handoff cannot
+  replace the boost shape objective.
 
 ## Deferred Work
 

@@ -1,7 +1,7 @@
 {
   "id": "transfer_route_angle_pathwise_compare",
   "name": "Transfer route-angle pathwise compare",
-  "description": "Full signed route-angle transfer guidance matrix comparing legacy endpoint boost scoring against gated pathwise boost scoring at the nominal 800m radius.",
+  "description": "Archived diagnostic comparing legacy endpoint boost scoring against rejected pathwise boost scoring on the nominal-radius route-angle matrix.",
   "entries": [
     {
       "id": "transfer_guidance_route_angles_empty",
@@ -19,7 +19,7 @@
       ],
       "seed_tier": "smoke",
       "vehicle_variant": "empty",
-      "expectation_tier": "reference",
+      "expectation_tier": "diagnostic",
       "route_angles": [
         "r-80",
         "r-60",
@@ -40,7 +40,8 @@
         "empty",
         "route_angle_sweep",
         "pathwise_compare",
-        "reference"
+        "experimental",
+        "diagnostic"
       ],
       "metadata": {
         "difficulty": "empty"
@@ -62,7 +63,7 @@
       ],
       "seed_tier": "smoke",
       "vehicle_variant": "half",
-      "expectation_tier": "core",
+      "expectation_tier": "diagnostic",
       "route_angles": [
         "r-80",
         "r-60",
@@ -90,7 +91,8 @@
         "half",
         "route_angle_sweep",
         "pathwise_compare",
-        "core"
+        "experimental",
+        "diagnostic"
       ],
       "metadata": {
         "difficulty": "half"
@@ -112,7 +114,7 @@
       ],
       "seed_tier": "smoke",
       "vehicle_variant": "full",
-      "expectation_tier": "stress",
+      "expectation_tier": "diagnostic",
       "route_angles": [
         "r-80",
         "r-60",
@@ -140,7 +142,8 @@
         "full",
         "route_angle_sweep",
         "pathwise_compare",
-        "stress"
+        "experimental",
+        "diagnostic"
       ],
       "metadata": {
         "difficulty": "full"
