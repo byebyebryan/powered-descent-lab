@@ -25,7 +25,7 @@ impl SimConfig {
         if self.controller_hz > self.physics_hz {
             return Err("controller_hz cannot exceed physics_hz".to_owned());
         }
-        if self.physics_hz % self.controller_hz != 0 {
+        if !self.physics_hz.is_multiple_of(self.controller_hz) {
             return Err("controller_hz must evenly divide physics_hz".to_owned());
         }
         if !self.max_time_s.is_finite() || self.max_time_s <= 0.0 {
@@ -38,7 +38,7 @@ impl SimConfig {
             if sample_hz > self.physics_hz {
                 return Err("sample_hz cannot exceed physics_hz".to_owned());
             }
-            if self.physics_hz % sample_hz != 0 {
+            if !self.physics_hz.is_multiple_of(sample_hz) {
                 return Err("sample_hz must evenly divide physics_hz".to_owned());
             }
         }
@@ -413,13 +413,13 @@ impl TransferWaypointSpec {
                     .to_owned(),
             );
         }
-        if let Some(max_cross_speed_mps) = self.max_outbound_cross_speed_mps {
-            if !max_cross_speed_mps.is_finite() || max_cross_speed_mps <= 0.0 {
-                return Err(
-                    "transfer_route waypoint max_outbound_cross_speed_mps must be positive and finite"
-                        .to_owned(),
-                );
-            }
+        if let Some(max_cross_speed_mps) = self.max_outbound_cross_speed_mps
+            && (!max_cross_speed_mps.is_finite() || max_cross_speed_mps <= 0.0)
+        {
+            return Err(
+                "transfer_route waypoint max_outbound_cross_speed_mps must be positive and finite"
+                    .to_owned(),
+            );
         }
         if self.min_speed_mps < 0.0 || self.max_speed_mps < self.min_speed_mps {
             return Err(

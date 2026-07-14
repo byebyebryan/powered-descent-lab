@@ -101,6 +101,9 @@ impl Default for StagedDescentControllerConfig {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+// Boxing a variant would change the public Rust construction API and is not
+// justified for this infrequently allocated serialized specification.
+#[allow(clippy::large_enum_variant)]
 pub enum ControllerSpec {
     Idle,
     BaselineV1 {
@@ -172,25 +175,33 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
             config: TransferPdgControllerConfig::default(),
         }),
         "transfer_waypoint_pdg" | "transfer_waypoint_pdg_v1" | "xpdg_waypoint" => {
-            let mut config = TransferPdgControllerConfig::default();
-            config.waypoint_guidance_enabled = true;
+            let config = TransferPdgControllerConfig {
+                waypoint_guidance_enabled: true,
+                ..Default::default()
+            };
             Some(ControllerSpec::TransferPdgV1 { config })
         }
         "transfer_pdg_pathwise" | "transfer_pdg_pathwise_v1" | "xpdg_pathwise" => {
-            let mut config = TransferPdgControllerConfig::default();
-            config.boost_pathwise_scoring_enabled = true;
+            let config = TransferPdgControllerConfig {
+                boost_pathwise_scoring_enabled: true,
+                ..Default::default()
+            };
             Some(ControllerSpec::TransferPdgV1 { config })
         }
         "transfer_pdg_recoverability"
         | "transfer_pdg_recoverability_v1"
         | "xpdg_recoverability" => {
-            let mut config = TransferPdgControllerConfig::default();
-            config.boost_recoverability_scoring_enabled = true;
+            let config = TransferPdgControllerConfig {
+                boost_recoverability_scoring_enabled: true,
+                ..Default::default()
+            };
             Some(ControllerSpec::TransferPdgV1 { config })
         }
         "terminal_pdg_no_terrain" | "tpdg_no_terrain" => {
-            let mut config = TerminalPdgControllerConfig::default();
-            config.terrain_clearance_enabled = false;
+            let config = TerminalPdgControllerConfig {
+                terrain_clearance_enabled: false,
+                ..Default::default()
+            };
             Some(ControllerSpec::TerminalPdgV1 { config })
         }
         _ => None,

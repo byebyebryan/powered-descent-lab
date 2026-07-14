@@ -199,9 +199,11 @@ pub struct TransferPdgControllerConfig {
 
 impl Default for TransferPdgControllerConfig {
     fn default() -> Self {
-        let mut terminal = TerminalPdgControllerConfig::default();
-        terminal.terminal_gate_burn_time_max_s = 22.0;
-        terminal.terminal_gate_burn_time_offset_long_s = 2.0;
+        let terminal = TerminalPdgControllerConfig {
+            terminal_gate_burn_time_max_s: 22.0,
+            terminal_gate_burn_time_offset_long_s: 2.0,
+            ..Default::default()
+        };
 
         Self {
             takeoff_clearance_m: 45.0,
@@ -1545,6 +1547,9 @@ impl TransferPdgController {
         }
     }
 
+    // Endpoint substitution is a narrow waypoint-search adapter; keep its
+    // typed state and envelope inputs explicit at the search call sites.
+    #[allow(clippy::too_many_arguments)]
     fn waypoint_guidance_candidate_at_endpoint(
         &self,
         ctx: &RunContext,
@@ -2275,9 +2280,7 @@ impl TransferPdgController {
             .boost_tilt_rad
             .max(self.config.uphill_boost_tilt_rad);
         let dt_s = 1.0 / f64::from(ctx.sim.controller_hz.max(1));
-        let horizon_s = time_to_go_s
-            .max(0.0)
-            .min(WAYPOINT_GUIDANCE_PREDICTION_HORIZON_S);
+        let horizon_s = time_to_go_s.clamp(0.0, WAYPOINT_GUIDANCE_PREDICTION_HORIZON_S);
         let mut state = initial_state;
         let mut elapsed_s = 0.0;
         let mut required_accel_ratio_max: f64 = 0.0;
@@ -4420,19 +4423,19 @@ impl TransferPdgController {
         let mut score = 0.0;
         if !gate.terrain_clearance_safe {
             score += TRANSFER_BOOST_RECOVERY_SCORE_TERRAIN_UNSAFE;
-            score += (-gate.terrain_min_clearance_m).max(0.0).min(200.0);
+            score += (-gate.terrain_min_clearance_m).clamp(0.0, 200.0);
         }
 
         if predicted.height_above_target_m <= 0.0 {
             score += 600.0 + (-predicted.height_above_target_m).min(200.0);
         }
 
-        let negative_margin_s = (-gate.latest_safe_margin_s).max(0.0).min(12.0);
+        let negative_margin_s = (-gate.latest_safe_margin_s).clamp(0.0, 12.0);
         score += TRANSFER_BOOST_RECOVERY_SCORE_LATEST_SAFE_MARGIN
             * negative_margin_s
             * negative_margin_s;
 
-        let accel_excess_ratio = (gate.required_accel_ratio - 1.0).max(0.0).min(12.0);
+        let accel_excess_ratio = (gate.required_accel_ratio - 1.0).clamp(0.0, 12.0);
         score +=
             TRANSFER_BOOST_RECOVERY_SCORE_ACCEL_RATIO * accel_excess_ratio * accel_excess_ratio;
 
@@ -4631,6 +4634,9 @@ impl TransferPdgController {
         }
     }
 
+    // Frame assembly intentionally receives the already-computed guidance
+    // products so telemetry cannot silently recompute divergent values.
+    #[allow(clippy::too_many_arguments)]
     fn frame_for_open_loop_phase(
         &mut self,
         ctx: &RunContext,
@@ -5400,6 +5406,9 @@ fn waypoint_handoff_marker(
 }
 
 #[cfg(test)]
+// Focused controller tests intentionally start from defaults and mutate only
+// the state relevant to the behavior under test.
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
     use crate::controllers::{ControllerSpec, built_in_controller_spec};

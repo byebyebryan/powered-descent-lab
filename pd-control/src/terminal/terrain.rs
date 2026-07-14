@@ -75,11 +75,10 @@ fn terrain_clearance_sample_count(vx_mps: f64, ax_mps2: f64, burn_time_s: f64) -
     let horizontal_samples = ((peak_horizontal_speed_mps * burn_time_s)
         / TERRAIN_CLEARANCE_MAX_HORIZONTAL_STEP_M)
         .ceil() as usize;
-    TERRAIN_CLEARANCE_MIN_SAMPLE_COUNT
-        .max(time_samples)
-        .max(horizontal_samples)
-        .min(TERRAIN_CLEARANCE_MAX_SAMPLE_COUNT)
-        .max(1)
+    time_samples.max(horizontal_samples).clamp(
+        TERRAIN_CLEARANCE_MIN_SAMPLE_COUNT,
+        TERRAIN_CLEARANCE_MAX_SAMPLE_COUNT,
+    )
 }
 
 fn planned_hull_clearance_m(

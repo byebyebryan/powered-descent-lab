@@ -108,7 +108,10 @@ fn apply_waypoint_sequence_progress(
     ctx: &RunContext,
     state: &mut SimulationState,
 ) -> Vec<EventRecord> {
-    if state.physics_step % ctx.sim.control_interval_steps() != 0 {
+    if !state
+        .physics_step
+        .is_multiple_of(ctx.sim.control_interval_steps())
+    {
         return Vec::new();
     }
 
@@ -189,7 +192,10 @@ fn apply_waypoint_handoff_progress(
     state: &mut SimulationState,
     waypoint_index: usize,
 ) -> Vec<EventRecord> {
-    if state.physics_step % ctx.sim.control_interval_steps() != 0 {
+    if !state
+        .physics_step
+        .is_multiple_of(ctx.sim.control_interval_steps())
+    {
         return Vec::new();
     }
     let Some(evaluation) = waypoint_handoff_evaluation(ctx, state, waypoint_index) else {

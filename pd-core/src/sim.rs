@@ -557,7 +557,11 @@ fn consume_replay_action(
             *next_action_index, state.sim_time_s, action.sim_time_s
         )));
     }
-    if state.physics_step != 0 && state.physics_step % ctx.sim.control_interval_steps() != 0 {
+    if state.physics_step != 0
+        && !state
+            .physics_step
+            .is_multiple_of(ctx.sim.control_interval_steps())
+    {
         return Err(SimulationError::InvalidContext(format!(
             "action {} occurs on invalid control step {}",
             *next_action_index, state.physics_step
@@ -734,7 +738,7 @@ fn maybe_push_sample(
     let Some(sample_interval_steps) = sample_interval_steps else {
         return;
     };
-    if state.physics_step % sample_interval_steps != 0 && !state.is_terminal() {
+    if !state.physics_step.is_multiple_of(sample_interval_steps) && !state.is_terminal() {
         return;
     }
     if samples

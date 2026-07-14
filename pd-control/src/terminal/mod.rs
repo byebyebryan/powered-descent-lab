@@ -861,6 +861,9 @@ impl TerminalPdgController {
         )
     }
 
+    // These scalar inputs mirror the terminal guidance equation and remain
+    // named to keep its physical terms reviewable at each call site.
+    #[allow(clippy::too_many_arguments)]
     fn desired_terminal_vertical_speed(
         &self,
         altitude_m: f64,
@@ -952,6 +955,9 @@ impl TerminalPdgController {
         }
     }
 
+    // Keep the recoverability state explicit rather than hiding units in a
+    // generic parameter bag during this behavior-preserving cleanup.
+    #[allow(clippy::too_many_arguments)]
     fn terminal_tilt_is_recoverable(
         &self,
         tilt_rad: f64,
@@ -1029,6 +1035,9 @@ impl TerminalPdgController {
         Some(base_cap + (severity * (overshoot_cap - base_cap)))
     }
 
+    // This composes static, overshoot, and recoverability inputs; named scalar
+    // arguments make the boundary conditions visible to reviewers.
+    #[allow(clippy::too_many_arguments)]
     fn resolve_max_tilt(
         &self,
         altitude_m: f64,
@@ -1100,6 +1109,9 @@ impl TerminalPdgController {
         lo
     }
 
+    // Candidate generation is the terminal solve boundary. Preserve explicit
+    // state and constraint inputs until it is redesigned as a typed solver.
+    #[allow(clippy::too_many_arguments)]
     fn candidate_times(
         &self,
         dx_m: f64,
@@ -2285,17 +2297,20 @@ impl Eq for OrderedF64 {}
 
 impl Ord for OrderedF64 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
+        self.0.total_cmp(&other.0)
     }
 }
 
 impl PartialOrd for OrderedF64 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
 #[cfg(test)]
+// Focused controller tests intentionally start from defaults and mutate only
+// the state relevant to the behavior under test.
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
 
@@ -2633,7 +2648,7 @@ mod tests {
         higher_clearance.terrain_first_violation_time_s = Some(4.0);
         higher_clearance.terrain_clearance_safe = false;
 
-        let mut candidates = vec![lower_clearance, higher_clearance];
+        let mut candidates = [lower_clearance, higher_clearance];
         candidates.sort_by(candidate_preference_order);
 
         assert_eq!(candidates[0], higher_clearance);
@@ -2647,7 +2662,7 @@ mod tests {
         unsafe_low_ratio.terrain_first_violation_time_s = Some(1.0);
         unsafe_low_ratio.terrain_clearance_safe = false;
 
-        let mut candidates = vec![unsafe_low_ratio, safe_high_ratio];
+        let mut candidates = [unsafe_low_ratio, safe_high_ratio];
         candidates.sort_by(latest_safe_preference_order);
 
         assert_eq!(candidates[0], safe_high_ratio);
