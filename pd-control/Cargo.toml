@@ -7,3 +7,6 @@ edition = "2024"
 libc.workspace = true
 pd-core = { path = "../pd-core" }
 serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

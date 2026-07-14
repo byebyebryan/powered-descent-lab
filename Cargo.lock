@@ -191,6 +191,7 @@ dependencies = [
  "libc",
  "pd-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

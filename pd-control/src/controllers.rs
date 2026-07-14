@@ -6426,6 +6426,65 @@ mod tests {
     }
 
     #[test]
+    fn built_in_guidance_aliases_preserve_canonical_ids() {
+        for (alias, expected_id) in [
+            ("terminal_pdg", "terminal_pdg_v1"),
+            ("tpdg", "terminal_pdg_v1"),
+            ("transfer_pdg", "transfer_pdg_v1"),
+            ("xpdg", "transfer_pdg_v1"),
+            ("transfer_waypoint_pdg", "transfer_waypoint_pdg_v1"),
+            ("xpdg_waypoint", "transfer_waypoint_pdg_v1"),
+            ("transfer_pdg_pathwise", "transfer_pdg_pathwise_v1"),
+            (
+                "transfer_pdg_recoverability",
+                "transfer_pdg_recoverability_v1",
+            ),
+        ] {
+            assert_eq!(
+                built_in_controller_spec(alias).map(|spec| spec.id()),
+                Some(expected_id),
+                "alias {alias}"
+            );
+        }
+    }
+
+    #[test]
+    fn guidance_controller_specs_preserve_serialized_mode_fields() {
+        let waypoint = serde_json::to_value(
+            built_in_controller_spec("transfer_waypoint_pdg").expect("waypoint spec"),
+        )
+        .expect("serialize waypoint spec");
+        assert_eq!(waypoint["kind"], "transfer_pdg_v1");
+        assert_eq!(waypoint["waypoint_guidance_enabled"], true);
+        assert_eq!(waypoint["boost_pathwise_scoring_enabled"], false);
+        assert_eq!(waypoint["boost_recoverability_scoring_enabled"], false);
+
+        let no_terrain = serde_json::to_value(
+            built_in_controller_spec("terminal_pdg_no_terrain").expect("no-terrain spec"),
+        )
+        .expect("serialize no-terrain spec");
+        assert_eq!(no_terrain["kind"], "terminal_pdg_v1");
+        assert_eq!(no_terrain["terrain_clearance_enabled"], false);
+    }
+
+    #[test]
+    fn guidance_telemetry_contract_keys_remain_stable() {
+        assert_eq!(metric::GUIDANCE_MODE, "guidance.mode");
+        assert_eq!(metric::TRANSFER_PHASE, "transfer.phase");
+        assert_eq!(
+            metric::TRANSFER_TERMINAL_GATE_REQUIRED_ACCEL_RATIO,
+            "transfer.terminal_gate_required_accel_ratio"
+        );
+        assert_eq!(metric::WAYPOINT_CAPTURE_STATUS, "waypoint.capture_status");
+        assert_eq!(
+            metric::WAYPOINT_FINAL_TERMINAL_RECOVERABLE,
+            "waypoint.final_terminal_recoverable"
+        );
+        assert_eq!(crate::kit::marker::TERMINAL_GATE, "gate/terminal_descent");
+        assert_eq!(crate::kit::marker::WAYPOINT_HANDOFF, "waypoint/handoff");
+    }
+
+    #[test]
     fn transfer_enables_retained_terminal_plans_only_for_waypoint_guidance() {
         let direct = TransferPdgController::default();
         let mut waypoint_config = TransferPdgControllerConfig::default();

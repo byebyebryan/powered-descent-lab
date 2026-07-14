@@ -90,6 +90,7 @@ without treating the old scenario files as fixtures to transliterate directly.
 ## Docs
 
 - [Architecture](docs/architecture.md)
+- [Guidance Architecture](docs/guidance.md)
 - [Roadmap](docs/roadmap.md)
 - [Progress](docs/progress.md)
 - [Terminal Suite Design](docs/terminal_suite.md)
