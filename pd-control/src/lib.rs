@@ -8,6 +8,7 @@ mod controllers;
 mod guidance;
 pub mod kit;
 mod terminal;
+mod transfer;
 
 pub use controllers::{
     BaselineController, BaselineControllerConfig, ControllerSpec, IdleController,
