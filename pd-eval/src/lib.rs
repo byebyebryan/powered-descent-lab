@@ -8,13 +8,13 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use pd_control::{
-    ControlledRunArtifacts, ControllerSpec, TelemetryValue, built_in_controller_spec, marker,
-    metric, run_controller_spec,
+    ControlledRunArtifacts, ControllerSpec, ControllerUpdateRecord, RunPerformanceStats,
+    TelemetryValue, built_in_controller_spec, marker, metric, run_controller_spec,
 };
 use pd_core::{
-    EndReason, EvaluationGoal, LandingPadSpec, MissionOutcome, Observation, RunContext,
-    RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec,
-    TransferWaypointSpec, Vec2, VehicleSpec, WaypointHandoffKinematics,
+    EndReason, EvaluationGoal, EventRecord, LandingPadSpec, MissionOutcome, Observation,
+    RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition,
+    TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleSpec, WaypointHandoffKinematics,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -1189,6 +1189,113 @@ pub fn load_batch_report(path: &Path) -> Result<BatchReport> {
         .with_context(|| format!("failed to read batch report {}", summary_path.display()))?;
     serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse batch report {}", summary_path.display()))
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct ReportRefreshSummary {
+    pub requested_packs: usize,
+    pub refreshed_batches: usize,
+    pub refreshed_runs: usize,
+    pub skipped_uncaptured_packs: usize,
+}
+
+pub fn refresh_report_outputs(all: bool) -> Result<ReportRefreshSummary> {
+    let root = repo_root();
+    let pack_ids = report_catalog::refresh_pack_ids(&root, all)?;
+    let mut summary = ReportRefreshSummary {
+        requested_packs: pack_ids.len(),
+        ..ReportRefreshSummary::default()
+    };
+
+    for pack_id in pack_ids {
+        let output_dir = root.join("outputs/eval").join(&pack_id);
+        if !output_dir.join("summary.json").is_file() {
+            summary.skipped_uncaptured_packs += 1;
+            continue;
+        }
+        let report = load_batch_report(&output_dir)?;
+        let baseline = refresh_baseline(&root, &report);
+        let mut render_report = report.clone();
+        if report.provenance.compare.status == BatchCompareResolutionStatus::Resolved
+            && baseline.is_none()
+        {
+            render_report.provenance.compare.status = BatchCompareResolutionStatus::Missing;
+            render_report.provenance.compare.note = Some(
+                "recorded comparison is no longer readable; refreshed as standalone evidence"
+                    .to_owned(),
+            );
+        }
+        report::write_batch_report_artifacts(
+            &output_dir,
+            &render_report,
+            baseline
+                .as_ref()
+                .map(|(baseline_dir, baseline_report)| (baseline_dir.as_path(), baseline_report)),
+        )?;
+        summary.refreshed_batches += 1;
+
+        summary.refreshed_runs += report
+            .records
+            .par_iter()
+            .map(|record| -> Result<usize> {
+                let Some(bundle_dir) = record.bundle_dir.as_deref() else {
+                    return Ok(0);
+                };
+                let bundle_dir = resolve_refresh_path(&root, bundle_dir);
+                refresh_run_report(&bundle_dir)?;
+                Ok(1)
+            })
+            .try_reduce(|| 0, |lhs, rhs| Ok(lhs + rhs))?;
+    }
+
+    report_catalog::write_report_catalog(&root)?;
+    Ok(summary)
+}
+
+fn refresh_baseline(repo_root: &Path, report: &BatchReport) -> Option<(PathBuf, BatchReport)> {
+    if report.provenance.compare.status != BatchCompareResolutionStatus::Resolved {
+        return None;
+    }
+    let baseline_dir = report.provenance.compare.baseline_dir.as_deref()?;
+    let baseline_dir = resolve_refresh_path(repo_root, baseline_dir);
+    load_batch_report(&baseline_dir)
+        .ok()
+        .map(|baseline| (baseline_dir, baseline))
+}
+
+fn resolve_refresh_path(repo_root: &Path, path: &str) -> PathBuf {
+    let path = PathBuf::from(path);
+    if path.is_absolute() {
+        path
+    } else {
+        repo_root.join(path)
+    }
+}
+
+fn refresh_run_report(bundle_dir: &Path) -> Result<()> {
+    let scenario = read_json::<ScenarioSpec>(&bundle_dir.join("scenario.json"))?;
+    let controller = read_json::<ControllerSpec>(&bundle_dir.join("controller.json"))?;
+    let manifest = read_json::<RunManifest>(&bundle_dir.join("manifest.json"))?;
+    let events = read_json::<Vec<EventRecord>>(&bundle_dir.join("events.json"))?;
+    let samples = read_json::<Vec<SampleRecord>>(&bundle_dir.join("samples.json"))?;
+    let controller_updates =
+        read_json::<Vec<ControllerUpdateRecord>>(&bundle_dir.join("controller_updates.json"))?;
+    let performance = read_json::<RunPerformanceStats>(&bundle_dir.join("performance.json"))?;
+    pd_report::write_run_report_with_context(
+        &bundle_dir.join("report.html"),
+        &scenario,
+        Some(&controller),
+        &manifest,
+        &events,
+        &samples,
+        &controller_updates,
+        Some(&performance),
+        Some(&pd_report::RunReportContext {
+            parent_report_href: Some("../../report.html".to_owned()),
+            parent_report_label: Some("Batch report".to_owned()),
+            run_index_href: Some("../".to_owned()),
+        }),
+    )
 }
 
 pub fn run_pack_file_cached(
@@ -8977,7 +9084,7 @@ fn write_artifact_bundle(
     write_json(&path.join("actions.json"), &artifacts.run.actions)?;
     write_json(&path.join("events.json"), &artifacts.run.events)?;
     write_json(&path.join("samples.json"), &artifacts.run.samples)?;
-    pd_report::write_run_report(
+    pd_report::write_run_report_with_context(
         &path.join("report.html"),
         scenario,
         Some(controller_spec),
@@ -8986,6 +9093,11 @@ fn write_artifact_bundle(
         &artifacts.run.samples,
         &artifacts.controller_updates,
         Some(&artifacts.performance),
+        Some(&pd_report::RunReportContext {
+            parent_report_href: Some("../../report.html".to_owned()),
+            parent_report_label: Some("Batch report".to_owned()),
+            run_index_href: Some("../".to_owned()),
+        }),
     )?;
     pd_report::write_run_preview_svg(
         &path.join("preview.svg"),

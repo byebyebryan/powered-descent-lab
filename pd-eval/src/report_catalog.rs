@@ -133,6 +133,31 @@ pub fn load_guidance_catalog(repo_root: &Path) -> Result<GuidanceCatalog> {
     Ok(catalog)
 }
 
+pub fn refresh_pack_ids(repo_root: &Path, all: bool) -> Result<Vec<String>> {
+    let mut pack_ids = BTreeSet::new();
+    if all {
+        let packs_dir = repo_root.join("fixtures/packs");
+        for entry in fs::read_dir(&packs_dir)
+            .with_context(|| format!("failed to read fixture packs {}", packs_dir.display()))?
+        {
+            let path = entry?.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                continue;
+            }
+            let raw = fs::read_to_string(&path)
+                .with_context(|| format!("failed to read fixture pack {}", path.display()))?;
+            let fixture = serde_json::from_str::<FixturePack>(&raw)
+                .with_context(|| format!("failed to parse fixture pack {}", path.display()))?;
+            pack_ids.insert(fixture.id);
+        }
+    } else {
+        for group in load_guidance_catalog(repo_root)?.groups {
+            pack_ids.extend(group.reports.into_iter().map(|report| report.pack_id));
+        }
+    }
+    Ok(pack_ids.into_iter().collect())
+}
+
 pub fn write_report_catalog(repo_root: &Path) -> Result<()> {
     let catalog = load_guidance_catalog(repo_root)?;
     let reports_root = repo_root.join("outputs/reports");
@@ -526,7 +551,7 @@ fn escape_html(value: &str) -> String {
 mod tests {
     use super::{
         EvalCategory, EvidenceSummary, classify_fixture, load_guidance_catalog,
-        preferred_lane_summary,
+        preferred_lane_summary, refresh_pack_ids,
     };
     use crate::load_batch_report;
     use std::path::PathBuf;
@@ -587,5 +612,20 @@ mod tests {
             }],
         };
         assert_eq!(classify_fixture(&fixture), EvalCategory::Waypoint);
+    }
+
+    #[test]
+    fn refresh_scope_defaults_to_catalog_and_all_uses_fixtures() {
+        let catalog = refresh_pack_ids(&repo_root(), false).unwrap();
+        assert!(catalog.contains(&"terminal_bot_lab_suite".to_owned()));
+        assert!(catalog.contains(&"transfer_route_angle_radius_suite".to_owned()));
+        assert!(
+            catalog.contains(&"transfer_waypoint_sequence_route_angle_radius_smoke".to_owned())
+        );
+        assert!(!catalog.contains(&"core_suite".to_owned()));
+
+        let all = refresh_pack_ids(&repo_root(), true).unwrap();
+        assert!(all.contains(&"core_suite".to_owned()));
+        assert!(all.len() > catalog.len());
     }
 }

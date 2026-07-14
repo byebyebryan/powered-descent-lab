@@ -4,8 +4,8 @@ use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
-    promote_pack_cache, report::write_batch_report_artifacts, resolve_pack_compare_baseline,
-    run_pack_file_cached,
+    promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
+    resolve_pack_compare_baseline, run_pack_file_cached,
 };
 
 #[derive(Debug, Parser)]
@@ -20,6 +20,7 @@ struct Cli {
 enum Commands {
     RunPack(RunPackArgs),
     Report(ReportArgs),
+    RefreshReports(RefreshReportsArgs),
     PromoteCache(PromoteCacheArgs),
 }
 
@@ -57,6 +58,12 @@ struct ReportArgs {
 
     #[arg(long, value_name = "BASELINE_DIR")]
     baseline_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct RefreshReportsArgs {
+    #[arg(long)]
+    all: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -131,6 +138,10 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&outcome.report.summary)?);
         }
         Commands::Report(args) => render_report(args)?,
+        Commands::RefreshReports(args) => {
+            let summary = refresh_report_outputs(args.all)?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
         Commands::PromoteCache(args) => {
             let promoted_dir = promote_pack_cache(
                 &args.pack,

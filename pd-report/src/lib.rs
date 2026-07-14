@@ -18,6 +18,14 @@ pub mod site;
 
 const PLOTLY_CDN_URL: &str = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";
 
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunReportContext {
+    pub parent_report_href: Option<String>,
+    pub parent_report_label: Option<String>,
+    pub run_index_href: Option<String>,
+}
+
 pub fn write_run_report(
     path: &Path,
     scenario: &ScenarioSpec,
@@ -28,6 +36,31 @@ pub fn write_run_report(
     controller_updates: &[ControllerUpdateRecord],
     performance: Option<&RunPerformanceStats>,
 ) -> Result<()> {
+    write_run_report_with_context(
+        path,
+        scenario,
+        controller_spec,
+        manifest,
+        events,
+        samples,
+        controller_updates,
+        performance,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn write_run_report_with_context(
+    path: &Path,
+    scenario: &ScenarioSpec,
+    controller_spec: Option<&ControllerSpec>,
+    manifest: &RunManifest,
+    events: &[EventRecord],
+    samples: &[SampleRecord],
+    controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
+    context: Option<&RunReportContext>,
+) -> Result<()> {
     let report_data = build_report_data(
         scenario,
         controller_spec,
@@ -36,11 +69,13 @@ pub fn write_run_report(
         samples,
         controller_updates,
         performance,
+        context,
     );
+    let display_title = friendly_report_title(scenario);
     let html = report_template()
         .replace(
             "__REPORT_TITLE__",
-            &escape_html(&format!("{} report", scenario.name)),
+            &escape_html(&format!("{display_title} report")),
         )
         .replace("__PLOTLY_HREF__", PLOTLY_CDN_URL)
         .replace("__REPORT_DATA__", &json_html(&report_data));
@@ -183,12 +218,16 @@ fn build_report_data(
     samples: &[SampleRecord],
     controller_updates: &[ControllerUpdateRecord],
     performance: Option<&RunPerformanceStats>,
+    context: Option<&RunReportContext>,
 ) -> ReportData {
     let report_samples = build_report_samples(samples, controller_updates);
     let report_markers = build_report_markers(&report_samples, controller_updates);
     let report_events = build_report_events(&report_samples, events);
 
     ReportData {
+        display_title: friendly_report_title(scenario),
+        display_subtitle: friendly_report_subtitle(scenario),
+        report_context: context.cloned().unwrap_or_default(),
         scenario_id: scenario.id.clone(),
         scenario_name: scenario.name.clone(),
         controller_id: manifest.controller_id.clone(),
@@ -245,6 +284,103 @@ fn build_report_data(
         bot_stats: build_bot_stats(manifest, controller_updates),
         mission_details: build_mission_details(scenario),
     }
+}
+
+fn friendly_report_title(scenario: &ScenarioSpec) -> String {
+    let metadata = &scenario.metadata;
+    let mission = metadata.get("mission").map(String::as_str).unwrap_or("");
+    let vehicle = metadata
+        .get("vehicle_variant")
+        .map(String::as_str)
+        .unwrap_or("vehicle");
+    match mission {
+        "terminal_guidance" => {
+            let arc = metadata
+                .get("arc_point")
+                .map(String::as_str)
+                .unwrap_or("arrival");
+            let band = metadata
+                .get("velocity_band")
+                .map(String::as_str)
+                .unwrap_or("energy");
+            format!(
+                "Terminal arrival · {} / {} / {}",
+                friendly_selector(arc),
+                friendly_selector(band),
+                friendly_selector(vehicle)
+            )
+        }
+        "transfer_guidance" => {
+            let route = metadata
+                .get("route_angle")
+                .or_else(|| metadata.get("arc_point"))
+                .map(String::as_str)
+                .unwrap_or("route");
+            let radius = metadata
+                .get("radius_tier")
+                .or_else(|| metadata.get("velocity_band"))
+                .map(String::as_str)
+                .unwrap_or("radius");
+            let profile = metadata
+                .get("waypoint_profile")
+                .map(String::as_str)
+                .filter(|profile| !profile.is_empty());
+            let responsibility = match profile {
+                Some(profile) if profile.starts_with("double_") => "Waypoint sequence",
+                Some("direct") | None => "Direct transfer",
+                Some(_) => "Waypoint turn",
+            };
+            let profile = profile
+                .filter(|profile| *profile != "direct")
+                .map(|value| format!("{} / ", friendly_waypoint_profile(value)))
+                .unwrap_or_default();
+            format!(
+                "{responsibility} · {profile}{} / {} / {}",
+                friendly_selector(route),
+                friendly_selector(radius),
+                friendly_selector(vehicle)
+            )
+        }
+        _ => scenario.name.clone(),
+    }
+}
+
+fn friendly_report_subtitle(scenario: &ScenarioSpec) -> String {
+    let mut selectors = [
+        scenario.metadata.get("condition_set"),
+        scenario.metadata.get("arrival_family"),
+        scenario.metadata.get("waypoint_handoff_envelope"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|value| !value.is_empty())
+    .cloned()
+    .collect::<Vec<_>>();
+    selectors.dedup();
+    if selectors.is_empty() {
+        scenario.id.clone()
+    } else {
+        format!("{} · {}", scenario.id, selectors.join(" · "))
+    }
+}
+
+fn friendly_selector(value: &str) -> String {
+    let mut chars = value.replace('_', " ").chars().collect::<Vec<_>>();
+    if let Some(first) = chars.first_mut() {
+        first.make_ascii_uppercase();
+    }
+    chars.into_iter().collect()
+}
+
+fn friendly_waypoint_profile(value: &str) -> String {
+    let profile = value
+        .strip_prefix("single_")
+        .or_else(|| value.strip_prefix("double_"))
+        .unwrap_or(value);
+    profile
+        .strip_suffix("_v1")
+        .unwrap_or(profile)
+        .replace('_', " ")
 }
 
 fn build_run_preview_svg(
@@ -1424,6 +1560,9 @@ impl HasPhysicsStep for ReportSample {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReportData {
+    display_title: String,
+    display_subtitle: String,
+    report_context: RunReportContext,
     scenario_id: String,
     scenario_name: String,
     controller_id: String,
@@ -1771,6 +1910,7 @@ fn report_template() -> &'static str {
       font-family: Georgia, "Times New Roman", serif;
       color: var(--ink);
       background: linear-gradient(180deg, #f7f4ec 0%, var(--bg) 100%);
+      overflow-x: hidden;
     }
     main {
       max-width: 1520px;
@@ -1787,6 +1927,25 @@ fn report_template() -> &'static str {
       padding: 14px 16px;
       margin-bottom: 12px;
     }
+    .breadcrumbs {
+      display: none;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-bottom: 11px;
+      font-family: "Trebuchet MS", sans-serif;
+      font-size: 0.82rem;
+    }
+    .breadcrumbs.visible { display: flex; }
+    .breadcrumbs a {
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid var(--chip-border);
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: var(--chip);
+    }
+    .breadcrumbs span { color: var(--muted); }
     h1, h2, h3 {
       margin: 0;
       font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
@@ -1801,6 +1960,7 @@ fn report_template() -> &'static str {
     .hero-main {
       display: grid;
       gap: 10px;
+      min-width: 0;
     }
     .eyebrow {
       font-size: 0.78rem;
@@ -1818,7 +1978,9 @@ fn report_template() -> &'static str {
     .title-row h1 {
       font-size: clamp(1.9rem, 4vw, 3rem);
       line-height: 0.98;
+      overflow-wrap: anywhere;
     }
+    #scenario-subtitle { overflow-wrap: anywhere; }
     .banner {
       display: inline-flex;
       align-items: center;
@@ -1848,6 +2010,7 @@ fn report_template() -> &'static str {
       border-radius: 12px;
       background: rgba(255, 255, 255, 0.45);
       padding: 9px 11px;
+      min-width: 0;
     }
     .stat .label {
       font-size: 0.78rem;
@@ -1859,6 +2022,7 @@ fn report_template() -> &'static str {
     .stat .value {
       font-size: 1.08rem;
       font-weight: 700;
+      overflow-wrap: anywhere;
     }
     .main-grid {
       display: grid;
@@ -1957,10 +2121,11 @@ fn report_template() -> &'static str {
     .summary-grid {
       display: grid;
       gap: 12px;
+      min-width: 0;
     }
     .key-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
     }
     .hero-main .key-grid {
@@ -2068,6 +2233,7 @@ fn report_template() -> &'static str {
       font-size: 0.98rem;
       line-height: 1.2;
       font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
     }
     .stack {
       display: grid;
@@ -2171,9 +2337,19 @@ fn report_template() -> &'static str {
       }
     }
     @media (max-width: 560px) {
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       .key-grid {
         grid-template-columns: 1fr;
       }
+      main { padding-inline: 10px; }
+      header, .panel { padding-inline: 11px; }
+      .title-row { align-items: flex-start; }
+      .banner { min-width: 0; width: 100%; }
+      .plot-toolbar { justify-content: flex-start; }
+      .chart { min-width: 0; }
+      pre { max-width: 100%; overflow-x: auto; }
     }
   </style>
   <script src="__PLOTLY_HREF__"></script>
@@ -2181,6 +2357,7 @@ fn report_template() -> &'static str {
 <body>
   <main>
     <header>
+      <nav class="breadcrumbs" id="report-breadcrumbs" aria-label="Report navigation"></nav>
       <div class="hero">
         <div class="hero-main">
           <div class="eyebrow">Powered Descent Lab</div>
@@ -2193,10 +2370,6 @@ fn report_template() -> &'static str {
           </div>
           <div class="stats">
             <div class="stat">
-              <div class="label">Controller</div>
-              <div class="value" id="controller-id"></div>
-            </div>
-            <div class="stat">
               <div class="label">Mission</div>
               <div class="value" id="mission-outcome"></div>
             </div>
@@ -2208,12 +2381,16 @@ fn report_template() -> &'static str {
               <div class="label">End Reason</div>
               <div class="value" id="end-reason"></div>
             </div>
+            <div class="stat">
+              <div class="label">Controller</div>
+              <div class="value" id="controller-id"></div>
+            </div>
           </div>
           <div class="key-grid">
             <div class="stat">
-              <div class="label">Fuel Used</div>
-              <div class="value" id="key-fuel-used"></div>
-              <div class="meta" id="key-fuel-meta"></div>
+              <div class="label" id="key-quality-label"></div>
+              <div class="value" id="key-quality-value"></div>
+              <div class="meta" id="key-quality-meta"></div>
             </div>
             <div class="stat">
               <div class="label">Flight Time</div>
@@ -2221,47 +2398,13 @@ fn report_template() -> &'static str {
               <div class="meta" id="key-flight-meta"></div>
             </div>
             <div class="stat">
-              <div class="label" id="key-quality-label"></div>
-              <div class="value" id="key-quality-value"></div>
-              <div class="meta" id="key-quality-meta"></div>
-            </div>
-            <div class="stat">
-              <div class="label">Bot Step</div>
-              <div class="value" id="key-bot-step"></div>
-              <div class="meta" id="key-bot-meta"></div>
+              <div class="label">Fuel Used</div>
+              <div class="value" id="key-fuel-used"></div>
+              <div class="meta" id="key-fuel-meta"></div>
             </div>
           </div>
         </div>
         <div class="summary-grid">
-          <div class="panel-block">
-            <div class="eyebrow">Run</div>
-            <div class="stats">
-              <div class="stat">
-                <div class="label">Sim Time</div>
-                <div class="value" id="sim-time"></div>
-              </div>
-              <div class="stat">
-                <div class="label">Physics Steps</div>
-                <div class="value" id="physics-steps"></div>
-              </div>
-              <div class="stat">
-                <div class="label">Control Updates</div>
-                <div class="value" id="controller-updates"></div>
-              </div>
-              <div class="stat">
-                <div class="label">Wall Time</div>
-                <div class="value" id="wall-time"></div>
-              </div>
-              <div class="stat">
-                <div class="label">CPU Time</div>
-                <div class="value" id="cpu-time"></div>
-              </div>
-              <div class="stat">
-                <div class="label">CPU / Tick</div>
-                <div class="value" id="cpu-per-tick"></div>
-              </div>
-            </div>
-          </div>
           <div class="panel-block">
             <div class="eyebrow">Phases</div>
             <div class="chip-row" id="phase-chips"></div>
@@ -2279,7 +2422,8 @@ fn report_template() -> &'static str {
               <h2>Trajectory</h2>
             </div>
             <div class="plot-toolbar" id="spatial-mode-toolbar">
-              <button type="button" data-mode="plain" class="active">Plain</button>
+              <button type="button" data-mode="mission" class="active">Mission</button>
+              <button type="button" data-mode="guidance">Guidance</button>
               <button type="button" data-mode="speed">Speed</button>
               <button type="button" data-mode="throttle">Throttle</button>
               <button type="button" data-mode="vectors">Vectors</button>
@@ -2293,7 +2437,7 @@ fn report_template() -> &'static str {
             <div class="panel-head">
               <div>
                 <div class="eyebrow">Time</div>
-                <h2>Velocity And Thrust Components</h2>
+                <h2>Velocity And Thrust</h2>
               </div>
             </div>
             <div id="chart-metrics" class="chart"></div>
@@ -2589,11 +2733,8 @@ fn report_template() -> &'static str {
     const fmtFuelPct = (fuelKg, digits = 1) => fmtOptional(fuelPercent(fuelKg), digits, " %");
 
     const summarizeOutcome = () => {
-      setText("scenario-title", reportData.scenarioName);
-      setText(
-        "scenario-subtitle",
-        `${reportData.scenarioId} · ${markers.length} controller markers`
-      );
+      setText("scenario-title", reportData.displayTitle || reportData.scenarioName);
+      setText("scenario-subtitle", reportData.displaySubtitle || reportData.scenarioId);
       setText("controller-id", reportData.controllerId);
       setText("mission-outcome", reportData.manifest.missionOutcome);
       setText("physical-outcome", reportData.manifest.physicalOutcome);
@@ -2609,6 +2750,29 @@ fn report_template() -> &'static str {
       const isFailure = String(reportData.manifest.missionOutcome || "").startsWith("failed");
       banner.textContent = `${reportData.manifest.missionOutcome} · ${reportData.manifest.endReason}`;
       banner.classList.toggle("failure", isFailure);
+    };
+
+    const renderBreadcrumbs = () => {
+      const root = document.getElementById("report-breadcrumbs");
+      const context = reportData.reportContext || {};
+      const links = [];
+      if (context.parentReportHref) {
+        links.push([context.parentReportLabel || "Batch report", context.parentReportHref]);
+      }
+      if (context.runIndexHref) links.push(["Run index", context.runIndexHref]);
+      if (!links.length) return;
+      links.forEach(([label, href], index) => {
+        if (index) {
+          const separator = document.createElement("span");
+          separator.textContent = "/";
+          root.appendChild(separator);
+        }
+        const anchor = document.createElement("a");
+        anchor.textContent = label;
+        anchor.href = href;
+        root.appendChild(anchor);
+      });
+      root.classList.add("visible");
     };
 
     const renderFacts = (targetId, rows) => {
@@ -2990,10 +3154,45 @@ fn report_template() -> &'static str {
             x1: timeValue,
             y0: 0,
             y1: 1,
+            layer: "above",
             line: { color: eventStyle(event.kind).color, width: 1.2, dash: "dot" },
           };
         })
         .filter(Boolean);
+
+    const buildPhaseBandShapes = () => {
+      if (!samples.length) return [];
+      const bands = [];
+      let start = 0;
+      const appendBand = (end, bandIndex) => {
+        const x0 = Number(samples[start]?.simTimeS);
+        const x1 = Number(samples[end]?.simTimeS);
+        if (!Number.isFinite(x0) || !Number.isFinite(x1) || x1 <= x0) return;
+        bands.push({
+          type: "rect",
+          xref: "x",
+          yref: "paper",
+          x0,
+          x1,
+          y0: 0,
+          y1: 1,
+          layer: "below",
+          line: { width: 0 },
+          fillcolor: bandIndex % 2 === 0
+            ? "rgba(14,107,96,0.055)"
+            : "rgba(217,119,6,0.045)",
+        });
+      };
+      let bandIndex = 0;
+      for (let index = 1; index < samples.length; index += 1) {
+        if ((samples[index]?.phase || "") === (samples[start]?.phase || "")) continue;
+        appendBand(index, bandIndex);
+        start = index;
+        bandIndex += 1;
+      }
+      appendBand(samples.length - 1, bandIndex);
+      return bands;
+    };
 
     const ballisticEndTime = ({ startY, targetY, vyMps, gravityMps2 }) => {
       const g = Math.max(1e-6, Math.abs(Number(gravityMps2)));
@@ -3215,8 +3414,8 @@ fn report_template() -> &'static str {
             name: legStyle.name,
             x: [previous.x, current.x],
             y: [previous.y, current.y],
-            line: { color: legStyle.color, width: 2.2, dash: legStyle.dash },
-            opacity: 0.74,
+            line: { color: legStyle.color, width: 1.5, dash: legStyle.dash },
+            opacity: 0.58,
             hoverinfo: "skip",
             showlegend: true,
           });
@@ -3242,7 +3441,7 @@ fn report_template() -> &'static str {
             name: "waypoint cross-track",
             x: circle.xs,
             y: circle.ys,
-            line: { color: "rgba(162,90,24,0.48)", width: 1.8, dash: "dot" },
+            line: { color: "rgba(162,90,24,0.44)", width: 1.2, dash: "dot" },
             hoverinfo: "skip",
             showlegend: index === 0,
           });
@@ -3255,9 +3454,9 @@ fn report_template() -> &'static str {
             name: "waypoint capture radius",
             x: circle.xs,
             y: circle.ys,
-            line: { color: "#a25a18", width: 2.4 },
+            line: { color: "#a25a18", width: 1.5 },
             fill: "toself",
-            fillcolor: "rgba(240,140,0,0.13)",
+            fillcolor: "rgba(240,140,0,0.07)",
             hoverinfo: "skip",
             showlegend: index === 0,
           });
@@ -3430,7 +3629,7 @@ fn report_template() -> &'static str {
         name: "start ballistic",
         x: ballisticCurve.xs,
         y: ballisticCurve.ys,
-        line: { color: "#cf7b00", width: 2.2, dash: "dot" },
+        line: { color: "#cf7b00", width: 1.5, dash: "dot" },
         hoverinfo: "skip",
       } : null;
       const referenceCurve = (initial && pad)
@@ -3448,7 +3647,7 @@ fn report_template() -> &'static str {
         name: "idealized reference",
         x: referenceCurve.xs,
         y: referenceCurve.ys,
-        line: { color: "#5b73c6", width: 2.4, dash: "dash" },
+        line: { color: "#5b73c6", width: 1.8, dash: "dash" },
         hoverinfo: "skip",
       } : null;
 
@@ -3525,40 +3724,39 @@ fn report_template() -> &'static str {
       const speedEnd = speedStart + speedTraces.length;
       const throttleStart = speedEnd;
       const throttleEnd = throttleStart + throttleTraces.length;
+      const ballisticIndex = ballisticTrace ? throttleEnd : -1;
+      const referenceIndex = referenceTrace ? throttleEnd + (ballisticTrace ? 1 : 0) : -1;
       const waypointRouteStart = throttleEnd + (ballisticTrace ? 1 : 0) + (referenceTrace ? 1 : 0);
       const waypointRouteEnd = waypointRouteStart + waypointRouteTraces.length;
       const waypointMarkerStart = waypointRouteEnd;
       const waypointMarkerEnd = waypointMarkerStart + waypointMarkerTraces.length;
       const eventIndex = spatialTraces.length - 2;
       const hoverIndex = spatialTraces.length - 1;
-      const alwaysVisible = new Set([0, eventIndex, hoverIndex]);
-      if (padTrace) alwaysVisible.add(1);
-      for (let index = waypointEnvelopeStart; index < waypointEnvelopeEnd; index += 1) {
-        alwaysVisible.add(index);
-      }
-      for (let index = waypointRouteStart; index < waypointRouteEnd; index += 1) {
-        alwaysVisible.add(index);
-      }
-      for (let index = waypointMarkerStart; index < waypointMarkerEnd; index += 1) {
-        alwaysVisible.add(index);
-      }
-      if (ballisticTrace) alwaysVisible.add(throttleEnd);
-      if (referenceTrace) alwaysVisible.add(throttleEnd + (ballisticTrace ? 1 : 0));
-
-      const visibilityForMode = (mode) =>
-        spatialTraces.map((_trace, index) => {
-          if (index === markerIndex) return mode !== "vectors";
-          if (alwaysVisible.has(index)) return true;
-          if (index === plainIndex) return true;
-          if (mode === "speed") return index >= speedStart && index < speedEnd;
-          if (mode === "throttle") return index >= throttleStart && index < throttleEnd;
-          return false;
-        });
+      const baseVisible = new Set([0, plainIndex, eventIndex, hoverIndex]);
+      if (padTrace) baseVisible.add(1);
+      const inRange = (index, start, end) => index >= start && index < end;
+      const visibilityForMode = (mode) => spatialTraces.map((_trace, index) => {
+        if (baseVisible.has(index)) return true;
+        if (mode === "mission") {
+          return index === referenceIndex || inRange(index, waypointMarkerStart, waypointMarkerEnd);
+        }
+        if (mode === "guidance") {
+          return inRange(index, waypointEnvelopeStart, waypointEnvelopeEnd)
+            || index === markerIndex
+            || index === ballisticIndex
+            || index === referenceIndex
+            || inRange(index, waypointRouteStart, waypointRouteEnd)
+            || inRange(index, waypointMarkerStart, waypointMarkerEnd);
+        }
+        if (mode === "speed") return inRange(index, speedStart, speedEnd);
+        if (mode === "throttle") return inRange(index, throttleStart, throttleEnd);
+        return false;
+      });
 
       const spatialElement = document.getElementById("chart-spatial");
       Plotly.newPlot(
         spatialElement,
-        spatialTraces.map((trace, index) => ({ ...trace, visible: visibilityForMode("plain")[index] })),
+        spatialTraces.map((trace, index) => ({ ...trace, visible: visibilityForMode("mission")[index] })),
         spatialLayout({
           hovermode: "closest",
           hoverdistance: 32,
@@ -3581,7 +3779,7 @@ fn report_template() -> &'static str {
         );
       };
       for (const button of toolbar.querySelectorAll("button[data-mode]")) {
-        button.addEventListener("click", () => applyMode(button.dataset.mode || "plain"));
+        button.addEventListener("click", () => applyMode(button.dataset.mode || "mission"));
       }
 
       spatialElement.on("plotly_hover", (eventData) => {
@@ -3593,7 +3791,7 @@ fn report_template() -> &'static str {
     };
 
     const buildMetricsPlot = () => {
-      const eventGuideShapes = buildEventGuideShapes();
+      const guideShapes = [...buildPhaseBandShapes(), ...buildEventGuideShapes()];
       Plotly.newPlot(
         "chart-metrics",
         [
@@ -3658,7 +3856,7 @@ fn report_template() -> &'static str {
           xaxis: axisStyle({ title: "Time (s)" }),
           yaxis: axisStyle({ title: "Velocity (m/s)", zeroline: true }),
           yaxis2: axisStyle({ title: "Thrust (0..1)", overlaying: "y", side: "right", zeroline: true }),
-          shapes: eventGuideShapes,
+          shapes: guideShapes,
         }),
         compactConfig,
       );
@@ -3707,6 +3905,7 @@ fn report_template() -> &'static str {
     };
 
     const init = () => {
+      renderBreadcrumbs();
       summarizeOutcome();
       renderKeyStats();
       renderCountChips("event-chips", reportData.eventCounts, "No key events recorded.");
@@ -3729,4 +3928,97 @@ fn report_template() -> &'static str {
 </body>
 </html>
 "####
+}
+
+#[cfg(test)]
+mod report_tests {
+    use super::*;
+
+    fn fixture_scenario() -> ScenarioSpec {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures/scenarios/flat_terminal_descent.json");
+        serde_json::from_slice(&fs::read(path).expect("scenario fixture should be readable"))
+            .expect("scenario fixture should parse")
+    }
+
+    #[test]
+    fn terminal_run_title_uses_readable_selectors() {
+        let mut scenario = fixture_scenario();
+        scenario
+            .metadata
+            .insert("mission".to_owned(), "terminal_guidance".to_owned());
+        scenario
+            .metadata
+            .insert("arc_point".to_owned(), "a80".to_owned());
+        scenario
+            .metadata
+            .insert("velocity_band".to_owned(), "high".to_owned());
+        scenario
+            .metadata
+            .insert("vehicle_variant".to_owned(), "full".to_owned());
+
+        assert_eq!(
+            friendly_report_title(&scenario),
+            "Terminal arrival · A80 / High / Full"
+        );
+    }
+
+    #[test]
+    fn waypoint_run_title_strips_profile_plumbing() {
+        let mut scenario = fixture_scenario();
+        scenario
+            .metadata
+            .insert("mission".to_owned(), "transfer_guidance".to_owned());
+        scenario
+            .metadata
+            .insert("route_angle".to_owned(), "r+30".to_owned());
+        scenario
+            .metadata
+            .insert("radius_tier".to_owned(), "nominal".to_owned());
+        scenario
+            .metadata
+            .insert("waypoint_profile".to_owned(), "double_bend_v1".to_owned());
+        scenario
+            .metadata
+            .insert("vehicle_variant".to_owned(), "empty".to_owned());
+
+        assert_eq!(
+            friendly_report_title(&scenario),
+            "Waypoint sequence · bend / R+30 / Nominal / Empty"
+        );
+    }
+
+    #[test]
+    fn direct_transfer_profile_is_not_labeled_as_a_waypoint() {
+        let mut scenario = fixture_scenario();
+        scenario
+            .metadata
+            .insert("mission".to_owned(), "transfer_guidance".to_owned());
+        scenario
+            .metadata
+            .insert("route_angle".to_owned(), "r-80".to_owned());
+        scenario
+            .metadata
+            .insert("radius_tier".to_owned(), "short".to_owned());
+        scenario
+            .metadata
+            .insert("waypoint_profile".to_owned(), "direct".to_owned());
+        scenario
+            .metadata
+            .insert("vehicle_variant".to_owned(), "empty".to_owned());
+
+        assert_eq!(
+            friendly_report_title(&scenario),
+            "Direct transfer · R-80 / Short / Empty"
+        );
+    }
+
+    #[test]
+    fn run_template_defaults_to_mission_evidence() {
+        let template = report_template();
+        assert!(template.contains("data-mode=\"mission\" class=\"active\""));
+        assert!(template.contains("const buildPhaseBandShapes"));
+        assert!(template.contains("visibilityForMode(\"mission\")"));
+        assert!(template.contains("data-mode=\"guidance\""));
+    }
 }
