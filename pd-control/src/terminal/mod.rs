@@ -7,6 +7,10 @@ use crate::guidance::{StateTargetRequest, allocate_accel_command, required_contr
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
 use crate::{Controller, ControllerFrame, TelemetryValue};
 
+mod terrain;
+
+use terrain::{TerrainClearanceRequest, estimate_candidate_terrain_clearance};
+
 const TERMINAL_GATE_LONG_CAPTURE_BURN_TIME_MAX_S: f64 = 30.0;
 const TERMINAL_GATE_CANDIDATE_TIME_EPS_S: f64 = 1e-6;
 const TERMINAL_GUIDANCE_TIME_FLOOR_S: f64 = 0.5;
@@ -402,11 +406,7 @@ impl TerminalPdgController {
             0
         };
         let (mode, ready_ticks, selected) = if latest_safe.latest_safe_margin_s <= 0.0 {
-            (
-                TerminalEntryMode::LatestSafe,
-                0,
-                latest_safe.best_candidate,
-            )
+            (TerminalEntryMode::LatestSafe, 0, latest_safe.best_candidate)
         } else if nominal.ready && nominal_ready_ticks >= self.config.terminal_gate_hysteresis_ticks
         {
             (
@@ -1220,14 +1220,14 @@ impl TerminalPdgController {
         let terrain_clearance = if self.config.terrain_clearance_enabled {
             estimate_candidate_terrain_clearance(
                 view,
-                dx_m,
-                dy_m,
-                vx_mps,
-                vy_up_mps,
-                burn_time_s,
-                target_vy_up_mps,
-                target_attitude_rad,
-                gravity_mps2,
+                TerrainClearanceRequest {
+                    position_error_m: pd_core::Vec2::new(dx_m, dy_m),
+                    velocity_mps: pd_core::Vec2::new(vx_mps, vy_up_mps),
+                    burn_time_s,
+                    target_vertical_speed_mps: target_vy_up_mps,
+                    target_attitude_rad,
+                    gravity_mps2,
+                },
             )
         } else {
             TerrainClearanceEstimate {
@@ -2652,108 +2652,6 @@ mod tests {
 
         assert_eq!(candidates[0], safe_high_ratio);
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn estimate_candidate_terrain_clearance(
-    view: &ControllerView<'_>,
-    dx_m: f64,
-    dy_m: f64,
-    vx_mps: f64,
-    vy_up_mps: f64,
-    burn_time_s: f64,
-    target_vy_up_mps: f64,
-    target_attitude_rad: f64,
-    gravity_mps2: f64,
-) -> TerrainClearanceEstimate {
-    let touchdown_center_dy_m = dy_m + view.ctx.vehicle.geometry.touchdown_base_offset_m;
-    let requested_accel_mps2 = required_control_accel(StateTargetRequest {
-        position_error_m: pd_core::Vec2::new(dx_m, touchdown_center_dy_m),
-        velocity_mps: pd_core::Vec2::new(vx_mps, vy_up_mps),
-        target_velocity_mps: pd_core::Vec2::new(0.0, target_vy_up_mps),
-        time_to_go_s: burn_time_s,
-        gravity_mps2,
-    });
-    let ax_req = requested_accel_mps2.x;
-    let ay_req = requested_accel_mps2.y;
-    let mut min_clearance_m = TERRAIN_CLEARANCE_UNCONSTRAINED_M;
-    let mut first_violation_time_s = None;
-    let sample_count = terrain_clearance_sample_count(vx_mps, ax_req, burn_time_s);
-    for sample_index in 0..=sample_count {
-        let ratio = sample_index as f64 / sample_count as f64;
-        let t = burn_time_s.max(0.0) * ratio;
-        let t2 = t * t;
-        let center_x_m = view.observation.position_m.x + (vx_mps * t) + (0.5 * ax_req * t2);
-        let center_y_m =
-            view.observation.position_m.y + (vy_up_mps * t) + (0.5 * (ay_req - gravity_mps2) * t2);
-        let Some(clearance_m) =
-            planned_hull_clearance_m(view, center_x_m, center_y_m, target_attitude_rad)
-        else {
-            continue;
-        };
-        min_clearance_m = min_clearance_m.min(clearance_m);
-        if first_violation_time_s.is_none() && clearance_m < TERRAIN_CLEARANCE_MARGIN_M {
-            first_violation_time_s = Some(t);
-        }
-    }
-
-    TerrainClearanceEstimate {
-        min_clearance_m,
-        first_violation_time_s,
-        safe: first_violation_time_s.is_none(),
-    }
-}
-
-fn terrain_clearance_sample_count(vx_mps: f64, ax_mps2: f64, burn_time_s: f64) -> usize {
-    let burn_time_s = burn_time_s.max(0.0);
-    let time_samples = (burn_time_s / TERRAIN_CLEARANCE_MAX_TIME_STEP_S).ceil() as usize;
-    let peak_horizontal_speed_mps = vx_mps.abs().max((vx_mps + (ax_mps2 * burn_time_s)).abs());
-    let horizontal_samples = ((peak_horizontal_speed_mps * burn_time_s)
-        / TERRAIN_CLEARANCE_MAX_HORIZONTAL_STEP_M)
-        .ceil() as usize;
-    TERRAIN_CLEARANCE_MIN_SAMPLE_COUNT
-        .max(time_samples)
-        .max(horizontal_samples)
-        .min(TERRAIN_CLEARANCE_MAX_SAMPLE_COUNT)
-        .max(1)
-}
-
-fn planned_hull_clearance_m(
-    view: &ControllerView<'_>,
-    center_x_m: f64,
-    center_y_m: f64,
-    attitude_rad: f64,
-) -> Option<f64> {
-    let geometry = &view.ctx.vehicle.geometry;
-    let half_width_m = geometry.hull_width_m * 0.5;
-    let half_height_m = geometry.hull_height_m * 0.5;
-    let cos_a = attitude_rad.cos();
-    let sin_a = attitude_rad.sin();
-    let mut min_clearance_m = f64::INFINITY;
-    let mut sampled_any = false;
-
-    for (local_x_m, local_y_m) in [
-        (-half_width_m, -half_height_m),
-        (half_width_m, -half_height_m),
-        (half_width_m, half_height_m),
-        (-half_width_m, half_height_m),
-    ] {
-        let point_x_m = center_x_m + (local_x_m * cos_a) - (local_y_m * sin_a);
-        let point_y_m = center_y_m + (local_x_m * sin_a) + (local_y_m * cos_a);
-        let terrain_y_m = view.terrain_height_at(point_x_m);
-        if !planned_terrain_obstacle_sample(view, terrain_y_m) {
-            continue;
-        }
-        let clearance_m = point_y_m - terrain_y_m;
-        min_clearance_m = min_clearance_m.min(clearance_m);
-        sampled_any = true;
-    }
-
-    sampled_any.then_some(min_clearance_m)
-}
-
-fn planned_terrain_obstacle_sample(view: &ControllerView<'_>, terrain_y_m: f64) -> bool {
-    terrain_y_m > view.ctx.target_pad.surface_y_m + TERRAIN_OBSTACLE_RELIEF_FLOOR_M
 }
 
 fn estimate_target_y_projection(

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 mod controllers;
 mod guidance;
 pub mod kit;
-mod terminal_pdg;
+mod terminal;
 
 pub use controllers::{
     BaselineController, BaselineControllerConfig, ControllerSpec, IdleController,
@@ -15,7 +15,7 @@ pub use controllers::{
     TransferPdgControllerConfig, built_in_controller_spec,
 };
 pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, standard_marker};
-pub use terminal_pdg::{TerminalPdgController, TerminalPdgControllerConfig};
+pub use terminal::{TerminalPdgController, TerminalPdgControllerConfig};
 
 pub trait Controller {
     fn id(&self) -> &str;

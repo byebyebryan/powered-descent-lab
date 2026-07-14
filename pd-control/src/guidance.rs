@@ -16,8 +16,7 @@ pub(crate) fn required_control_accel(request: StateTargetRequest) -> Vec2 {
     let zem_y = request.position_error_m.y - (request.velocity_mps.y * t)
         + (0.5 * request.gravity_mps2 * t2);
     let zev_x = request.target_velocity_mps.x - request.velocity_mps.x;
-    let zev_y = request.target_velocity_mps.y - request.velocity_mps.y
-        + (request.gravity_mps2 * t);
+    let zev_y = request.target_velocity_mps.y - request.velocity_mps.y + (request.gravity_mps2 * t);
     let ax = ((6.0 * zem_x) / t2) - ((2.0 * zev_x) / t);
     let ay = ((6.0 * zem_y) / t2) - ((2.0 * zev_y) / t);
     Vec2::new(ax, ay)
@@ -28,9 +27,7 @@ pub(crate) fn allocate_accel_command(
     max_thrust_accel_mps2: f64,
     max_tilt_rad: f64,
 ) -> Command {
-    let ay = requested_accel_mps2
-        .y
-        .clamp(0.0, max_thrust_accel_mps2);
+    let ay = requested_accel_mps2.y.clamp(0.0, max_thrust_accel_mps2);
     let tilt_tan = max_tilt_rad.tan();
     let ax = requested_accel_mps2
         .x

@@ -1,8 +1,8 @@
 use crate::guidance::{StateTargetRequest, allocate_accel_command, required_control_accel};
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
-use crate::terminal_pdg::{
-    TerminalEntryAssessment, TerminalEntryMode, TerminalEntryRequest,
-    TerminalEntryTerrainPolicy, TerminalPdgController, TerminalPdgControllerConfig,
+use crate::terminal::{
+    TerminalEntryAssessment, TerminalEntryMode, TerminalEntryRequest, TerminalEntryTerrainPolicy,
+    TerminalPdgController, TerminalPdgControllerConfig,
 };
 use crate::{Controller, ControllerFrame, TelemetryValue};
 use pd_core::{
@@ -2618,7 +2618,7 @@ impl TransferPdgController {
                 ctx,
                 &terminal_observation,
                 TerminalEntryRequest {
-                lateral_dx_m,
+                    lateral_dx_m,
                     ready_ticks: 0,
                     terrain_policy: TerminalEntryTerrainPolicy::Ignore,
                 },
@@ -2871,11 +2871,8 @@ impl TransferPdgController {
                 tilt_saturated_time_s += step_s;
             }
 
-            let command = allocate_accel_command(
-                required_accel_mps2,
-                max_thrust_accel_mps2,
-                max_tilt_rad,
-            );
+            let command =
+                allocate_accel_command(required_accel_mps2, max_thrust_accel_mps2, max_tilt_rad);
             let max_delta = ctx.vehicle.max_rotation_rate_radps.max(0.0) * step_s;
             let delta = shortest_angle_delta(state.attitude_rad, command.target_attitude_rad);
             state.attitude_rad += delta.clamp(-max_delta, max_delta);
@@ -4593,20 +4590,19 @@ impl TransferPdgController {
         match self.boost_scoring_mode {
             TransferBoostScoringMode::ExperimentalRecoverability => self
                 .score_boost_candidate_recoverability(
-                ctx,
-                observation,
-                diagnostics,
-                corridor,
-                command,
-            ),
-            TransferBoostScoringMode::ExperimentalPathwise => self
-                .score_boost_candidate_pathwise(
                     ctx,
                     observation,
                     diagnostics,
                     corridor,
                     command,
                 ),
+            TransferBoostScoringMode::ExperimentalPathwise => self.score_boost_candidate_pathwise(
+                ctx,
+                observation,
+                diagnostics,
+                corridor,
+                command,
+            ),
             TransferBoostScoringMode::Endpoint => {
                 self.score_boost_candidate_endpoint(ctx, observation, corridor, command)
             }
@@ -6291,7 +6287,7 @@ fn waypoint_handoff_marker(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::terminal_pdg::TerminalEntryMode;
+    use crate::terminal::TerminalEntryMode;
     use pd_core::{
         EvaluationGoal, LandingPadSpec, MissionSpec, RunContext, ScenarioSpec, SimConfig,
         TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleGeometry,
