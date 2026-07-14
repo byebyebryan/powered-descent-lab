@@ -618,6 +618,8 @@ fn render_batch_report_with_cache(
       background: rgba(255,253,248,0.9);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
       padding: 12px 12px 10px;
+      min-width: 0;
+      max-width: 100%;
     }}
     .table-heading {{
       display: flex;
@@ -10801,6 +10803,13 @@ mod report_tests {
         assert!(html.contains("<h2>Coverage</h2>"));
         assert!(html.contains("Energy band by arrival arc"));
         assert!(html.contains(r#"data-tree-tokens="terminal_guidance|clean|nominal|a00|low""#));
+        let tree_section_css = html
+            .split_once(".tree-table-section {")
+            .and_then(|(_, css)| css.split_once('}'))
+            .map(|(css, _)| css)
+            .expect("tree table section css should render");
+        assert!(tree_section_css.contains("min-width: 0"));
+        assert!(tree_section_css.contains("max-width: 100%"));
 
         let condition_pos = html
             .find(r#"selector-inline">condition</span> <span class="selector-code">clean</span>"#)
