@@ -346,15 +346,15 @@ fn transfer_metric_paths_emit_stable_base_and_boost_keys() {
         settled_quality: diagnostics.boost_quality,
     };
 
-    let open_loop_frame = controller
-        .transfer_metrics_builder(
-            ControllerFrameBuilder::new(selection.command),
-            diagnostics,
-            gate,
-            corridor,
-            Some(selection),
-        )
-        .build();
+    let mut open_loop_frame = ControllerFrameBuilder::new(selection.command).build();
+    insert_transfer_metrics(
+        &mut open_loop_frame,
+        diagnostics,
+        gate,
+        corridor,
+        Some(selection),
+        controller.boost_scoring_mode(),
+    );
     assert_eq!(
         transfer_metric_keys(&open_loop_frame),
         expected_transfer_metric_keys(true)
@@ -367,7 +367,14 @@ fn transfer_metric_paths_emit_stable_base_and_boost_keys() {
     );
 
     let mut terminal_frame = ControllerFrame::command_only(selection.command);
-    controller.insert_transfer_metrics(&mut terminal_frame, diagnostics, gate, corridor);
+    insert_transfer_metrics(
+        &mut terminal_frame,
+        diagnostics,
+        gate,
+        corridor,
+        None,
+        controller.boost_scoring_mode(),
+    );
     assert_eq!(
         transfer_metric_keys(&terminal_frame),
         expected_transfer_metric_keys(false)
