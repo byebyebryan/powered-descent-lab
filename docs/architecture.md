@@ -207,6 +207,14 @@ the observed route contract and final landing outcome. The planner still owns
 terrain-valid placement, leg ordering, and arrival-envelope design; guidance
 must not infer obstacle classes or repair a structurally bad route.
 
+The controller implementation mirrors this ownership. `pd-control` keeps the
+registry and legacy controllers in `controllers.rs`, shared state-target math in
+`guidance.rs`, terminal guidance under `terminal/`, and transfer guidance under
+`transfer/`. Pure waypoint geometry and contract prediction live in
+`transfer/waypoint.rs`; rejected boost-scoring experiments are quarantined in
+`transfer/experimental.rs`. These are internal module boundaries, not changes
+to controller JSON, IDs, telemetry, phase strings, or report artifacts.
+
 ## 4. Terrain Direction
 
 The canonical terrain model should remain a 1D piecewise-linear heightfield in

@@ -713,14 +713,17 @@ Trajectory-error report entrypoints:
 - `outputs/eval/terminal_traj_err_suite/summary.json`
 - `outputs/eval/terminal_traj_err_full/summary.json`
 
-The numeric checkpoint below is from fresh schema-32 local captures. Regenerate
-the ignored `outputs/eval` entrypoints after schema/report changes before
-treating the files in this checkout as authoritative.
+The smoke checkpoint below is from fresh schema-33 local captures. The full-pack
+counts remain the last complete maintained capture. Regenerate ignored
+`outputs/eval` entrypoints after schema/report changes before treating the files
+in this checkout as authoritative.
 
-Latest verified schema-32 wall-clock signal with `8` workers:
+Latest refreshed schema-33 smoke wall-clock signal:
 
-- `terminal_traj_err_suite`: `29.43s`
-- `terminal_traj_err_full`: `120.26s`
+- `terminal_traj_err_suite`: `40.77s` with `6` workers
+
+The full-pack counts below remain the maintained checkpoint; refresh the full
+pack before using its older wall-clock measurement for performance comparison.
 
 Current-lane trajectory-error results:
 
@@ -806,15 +809,16 @@ slice.
 
 ## Next Expansion Targets
 
-Now that the core matrix is real and the maintained vehicle baseline is
-aligned, the next concrete milestones are:
+Now that the core matrix and guidance ownership are stable, the next terminal
+milestones are:
 
-1. use the thresholded regression policy so future controller changes are
-   judged by explicit tolerances instead of ad hoc report reading
-2. deepen feasibility/frontier semantics:
+1. preserve the schema-33 smoke packs as the terminal no-regression gate while
+   waypoint planning is developed above guidance
+2. deepen feasibility/frontier semantics when a concrete authority-bound
+   hypothesis warrants it:
    - authority-limited full-payload annotations
    - broader coupled stop bounds beyond the current invalidation rules
-3. define the future terrain boundary above terminal guidance:
+3. keep the terrain boundary above terminal guidance:
    - approach-corridor validity checks
    - collision-course warnings for co-pilot use
    - waypoint/path planning for pure bots

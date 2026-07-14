@@ -777,6 +777,14 @@ Frozen recoverability boost-scoring diagnostic:
   uphill shapes, which reinforces that recoverable terminal handoff cannot
   replace the boost shape objective.
 
+## Implementation Boundary
+
+Direct and stateful waypoint lifecycle remain in
+`pd-control/src/transfer/mod.rs`, pure waypoint geometry and capture prediction
+live in `transfer/waypoint.rs`, and rejected boost scorers are quarantined in
+`transfer/experimental.rs`. This layout does not change controller IDs,
+configuration JSON, telemetry, or phase strings.
+
 ## Deferred Work
 
 - terminal climbing-arrival suite extension

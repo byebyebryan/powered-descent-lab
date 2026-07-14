@@ -526,5 +526,9 @@ parked diagnostic history rather than acceptance gates.
 Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
 corpus. General terrain avoidance remains parked at the planning/collision-warning
 layer, and waypoint planning is the next transfer slice.
+The guidance implementation now follows the ownership boundaries in
+`docs/guidance.md`: terminal and transfer are separate modules, pure waypoint
+geometry is isolated from controller lifecycle state, and rejected boost
+scorers remain reproducible diagnostics rather than maintained modes.
 Detailed checkpoint history lives in `docs/progress.md`,
 `docs/transfer_suite.md`, and `docs/terminal_suite.md`.

@@ -2,6 +2,26 @@
 
 ## 2026-07-13
 
+### Guidance consolidation checkpoint
+
+- Added an explicit compatibility contract for controller JSON, built-in
+  aliases and IDs, phase strings, telemetry keys, markers, and schema `33`
+  artifacts before moving code.
+- Split terminal guidance into `terminal/` with a typed local terrain-clearance
+  request, and split transfer ownership out of the controller registry.
+- Isolated pure waypoint geometry/capture prediction in
+  `transfer/waypoint.rs`. Frozen pathwise and recoverability-weighted boost
+  experiments now live behind `transfer/experimental.rs`; their four compare
+  packs are diagnostic-only rather than reference/core/stress evidence.
+- Strict Clippy passes for all `pd-core` and `pd-control` targets. Unit coverage
+  remains `22 / 22` core and `145 / 145` controller tests.
+- Fresh regression-policy checks preserve terminal smoke outcomes, direct
+  transfer at `297 / 297`, balanced turn landing/contract at `81 / 81`, and
+  maintained ordered landing/contract at `27 / 27`.
+- Guidance v1 is now structurally reconciled. Waypoint planning remains the
+  next Phase 3 slice; controller tuning should resume only for a specific
+  general hypothesis against the maintained gates.
+
 ### Waypoint guidance v1 closure checkpoint
 
 - Added paired full-seed nominal closure packs for both final landing and the

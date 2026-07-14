@@ -57,6 +57,25 @@ Internal Rust types and module paths are not compatibility surfaces. They may
 be reorganized to make ownership explicit as long as the persisted contracts
 above remain unchanged.
 
+## Implementation Layout
+
+The current `pd-control` layout follows those ownership boundaries:
+
+- `controllers.rs` owns the controller registry plus the legacy baseline and
+  staged controllers
+- `guidance.rs` owns shared state-target acceleration and command allocation
+- `terminal/` owns terminal guidance; `terminal/terrain.rs` isolates its local
+  candidate-clearance estimator
+- `transfer/mod.rs` owns direct-transfer and waypoint lifecycle state
+- `transfer/waypoint.rs` owns pure waypoint geometry, capture prediction, and
+  handoff kinematics
+- `transfer/experimental.rs` owns the frozen boost-scoring mode gates and
+  weights retained for diagnostic reproducibility
+
+This split is internal. Public controller exports still resolve through
+`pd-control`, and persisted controller, phase, telemetry, and artifact contracts
+remain unchanged.
+
 ## Maintained Gates
 
 The guidance regression set is:
@@ -76,12 +95,14 @@ contract passes, so it is not a waypoint-guidance failure.
 Pathwise boost scoring, recoverability-weighted boost scoring, and the
 no-terrain terminal alias remain reproducible diagnostics. They are not
 maintained guidance modes and must not influence default controller behavior.
-Their code and fixtures should remain isolated from the maintained path until a
-new hypothesis justifies reopening them.
+Their code is isolated from the maintained path, and their comparison packs use
+the `diagnostic` expectation tier plus `experimental` tags. Reopen them only
+when a new hypothesis justifies another experiment.
 
 ## Consolidation Rule
 
-Guidance cleanup is behavior-preserving. Do not change thresholds, candidate
-ordering, route geometry, or phase transition conditions while moving code.
-Any behavioral defect discovered during consolidation should be documented and
-handled in a separate controller change with fresh evaluation evidence.
+The 2026-07-13 guidance consolidation was behavior-preserving: it did not change
+thresholds, candidate ordering, route geometry, phase transition conditions,
+schema `33`, or artifact contracts. Future structural cleanup follows the same
+rule. Behavioral changes require a separate controller change with fresh
+evaluation evidence.

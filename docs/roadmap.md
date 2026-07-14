@@ -549,34 +549,33 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Keep Phase 2 terminal work conservative while using the new Phase 3 transfer
-workbench to expose launch, boost, coast, and terminal-handoff issues.
+Begin the waypoint-planning slice above the now-reconciled guidance stack.
+Terminal, direct-transfer, and waypoint-guidance behavior are maintained
+baselines rather than open-ended tuning work.
 
 The next useful work is:
 
-1. Treat the current terminal controller as the Phase 2 baseline unless a
-   specific, general controller hypothesis can clear a smoke-suite
-   no-regression gate.
-2. Use the thresholded regression policy so future controller changes have an
-   explicit pass/fail bar.
-3. Keep refining feasibility/frontier semantics where the vehicle is authority
-   limited, while keeping frontier cells scored so regressions do not disappear
-   into warning buckets.
-4. Keep terrain avoidance out of terminal-guidance pass/fail gates until the lab
-   has a higher-level approach-corridor or waypoint-planning layer.
-5. Keep a later terminal-arrival extension on the roadmap: a signed
+1. Define a deterministic planner input/output contract: immutable terrain,
+   source/target state, vehicle authority, and route policy in; ordered waypoint
+   positions, tangents, and arrival envelopes out.
+2. Add planner-side validation for terrain clearance, leg ordering, kinematic
+   feasibility, and compatibility with the existing waypoint handoff contract.
+   Invalid plans should fail before guidance simulation.
+3. Start with a small authored oracle corpus whose valid routes are already
+   understood, then compare generated plans against contract and final-landing
+   packs separately.
+4. Keep guidance terrain-blind and prohibit obstacle-name, route-profile,
+   payload, seed, or mission-time branches in the controller.
+5. Preserve `terminal_bot_lab_suite`, `terminal_traj_err_suite`,
+   `transfer_route_angle_radius_suite`, and the paired waypoint closure packs as
+   no-regression gates while planner code evolves.
+6. Keep a later terminal-arrival extension on the roadmap: a signed
    climb/descent arrival family that expands the current one-sided quarter-arc
    into a half-arc around the target and exercises climbing arrivals.
-6. Keep `transfer_bot_lab_suite` and `transfer_route_angle_radius_suite` as
-   direct-transfer regression gates. Preserve full-seed nominal waypoint
-   handoff/landing at `540 / 540` turn and `180 / 180` ordered runs, plus
-   all-radius contracts at `405 / 405` and `135 / 135`, before changing
-   waypoint planning or routing.
 
-The immediate controller direction should stay conservative. Direct transfer
-and waypoint contracts are clean across the maintained route-angle/radius
-matrix, while full-seed nominal contracts and landings are clean. Schema-33
-window and terminal-recovery evidence keeps contract quality separate from final
-touchdown reliability. Terrain-blind waypoint guidance v1 is therefore closed;
-the next meaningful expansion is waypoint planning, not more route-specific
-guidance recovery heuristics.
+Direct transfer and waypoint contracts are clean across the maintained
+route-angle/radius matrix, while full-seed nominal contracts and landings are
+clean. Schema-33 window and terminal-recovery evidence keeps contract quality
+separate from final touchdown reliability. The next meaningful expansion is
+therefore planner-generated route geometry, not route-specific guidance
+recovery heuristics.
