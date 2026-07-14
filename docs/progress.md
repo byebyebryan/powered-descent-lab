@@ -2,6 +2,21 @@
 
 ## 2026-07-13
 
+### Documentation alignment checkpoint
+
+- Reconciled the active README, architecture, roadmap, and suite docs with the
+  closed guidance baseline and focused structural cleanup.
+- Replaced the hypothetical report/repo layout with the implemented five-crate
+  workspace, explicit `pd-report` ownership, pack/scenario fixture split, and
+  generated-output boundary.
+- Updated controller module ownership to include telemetry emission and sibling
+  test modules without changing any public compatibility claims.
+- Refreshed smoke wall-clock provenance and the broader all-radius controller
+  compute checkpoint from the latest no-reuse runs. Outcome counts and the
+  single known post-contract landing residual remain unchanged.
+- Kept historical progress and tuning sections intact; only active status and
+  forward-looking statements were changed.
+
 ### Guidance structural cleanup checkpoint
 
 - Added a transfer telemetry characterization test that locks the exact base

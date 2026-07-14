@@ -528,7 +528,9 @@ corpus. General terrain avoidance remains parked at the planning/collision-warni
 layer, and waypoint planning is the next transfer slice.
 The guidance implementation now follows the ownership boundaries in
 `docs/guidance.md`: terminal and transfer are separate modules, pure waypoint
-geometry is isolated from controller lifecycle state, and rejected boost
-scorers remain reproducible diagnostics rather than maintained modes.
+geometry is isolated from controller lifecycle state, telemetry emission is
+separate from control decisions, controller tests live outside production
+modules, and rejected boost scorers remain reproducible diagnostics rather than
+maintained modes.
 Detailed checkpoint history lives in `docs/progress.md`,
 `docs/transfer_suite.md`, and `docs/terminal_suite.md`.

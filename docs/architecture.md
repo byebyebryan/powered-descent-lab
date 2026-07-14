@@ -57,22 +57,22 @@ scenario-family expansion, and randomized coverage belong in `pd-eval`.
 
 ### Concrete v1 stack
 
-The intended v1 stack is:
+The implemented stack is:
 
 - Rust cargo workspace
 - `clap` for native CLI entry points
 - `serde` for scenario, replay, trace, and report artifacts
-- `tracing` for structured native logs
-- optional native parallelism in eval only, not as a core contract assumption
+- `rayon` for bounded batch parallelism in `pd-eval`, not as a core simulation
+  contract assumption
 
 There is no frontend framework decision in v1 because there is no interactive
 frontend requirement in v1.
 
-Reporting should be static-output-first:
+Reporting is static-output-first:
 
 - machine-readable run artifacts
 - aggregate CSV/JSON summaries
-- optional generated static HTML reports
+- generated static HTML reports
 
 The browser is a report viewer, not an authoritative runtime.
 
@@ -146,7 +146,8 @@ Examples of scenario families:
 
 - terminal descent
 - point-to-point transfer
-- terrain-reactive transfer
+- preplanned waypoint transfer and ordered waypoint contracts
+- experimental terrain diagnostics outside maintained guidance gates
 - named regressions for past failures
 
 ### Transfer Missions
@@ -211,9 +212,11 @@ The controller implementation mirrors this ownership. `pd-control` keeps the
 registry and legacy controllers in `controllers.rs`, shared state-target math in
 `guidance.rs`, terminal guidance under `terminal/`, and transfer guidance under
 `transfer/`. Pure waypoint geometry and contract prediction live in
-`transfer/waypoint.rs`; rejected boost-scoring experiments are quarantined in
-`transfer/experimental.rs`. These are internal module boundaries, not changes
-to controller JSON, IDs, telemetry, phase strings, or report artifacts.
+`transfer/waypoint.rs`; transfer and waypoint metric/marker emission lives in
+`transfer/telemetry.rs`; rejected boost-scoring experiments are quarantined in
+`transfer/experimental.rs`. Terminal and transfer tests live in sibling test
+modules instead of production files. These are internal module boundaries, not
+changes to controller JSON, IDs, telemetry, phase strings, or report artifacts.
 
 ## 4. Terrain Direction
 
@@ -366,7 +369,7 @@ Responsibilities:
 - regression suites
 - telemetry aggregation
 - performance profiling hooks
-- report generation
+- batch summary and report orchestration
 
 The eval layer should orchestrate runs around the same core and controller
 contracts used by `pd-cli`.
@@ -381,12 +384,19 @@ Recommended parallelism boundary:
 - output ordering and aggregate reports should still be written in a stable,
   deterministic order
 
-### 5.5 Report generation and report viewer
+### 5.5 `pd-report` and the static report viewer
 
 A minimal inspection/report path is part of the core bot-lab workflow, not only
 late polish.
 
-Likely responsibilities:
+The current split is:
+
+- `pd-report` owns reusable single-run static report and trajectory rendering
+- `pd-cli` invokes that path for targeted one-run inspection
+- `pd-eval` owns aggregate batch pages, review trees, comparisons, and report
+  indexes over the same captured artifacts
+
+Responsibilities:
 
 - summary report generation
 - trace and replay inspection pages
@@ -401,8 +411,8 @@ They should not own:
 - controller execution
 - benchmark orchestration
 
-The first report milestone should be enough to answer basic controller
-questions without reading raw JSON:
+The implemented report baseline answers basic controller questions without
+requiring raw JSON inspection:
 
 - where the vehicle flew relative to terrain and target
 - how altitude, clearance, velocity, attitude, and throttle evolved
@@ -451,29 +461,35 @@ Practical sequencing rule:
 - invest in minimal inspection early
 - defer only the richer and more polished report UX
 
-## 6. Proposed Repo Shape
+## 6. Current Repo Shape
 
-The intended repo shape is:
+The implemented workspace shape is:
 
 ```text
-pd-lab/
+powered-descent-lab/
   README.md
   docs/
   fixtures/
+    packs/
     scenarios/
-    baselines/
   pd-core/
   pd-control/
+  pd-report/
   pd-cli/
   pd-eval/
-  report/       # later, only if report UX grows enough to justify it
+  scripts/
+  outputs/      # generated and ignored
 ```
 
 Notes:
 
-- `fixtures/scenarios` stores authored scenario definitions and pack manifests
-- `fixtures/baselines` stores known-good summaries or comparison references
-- `report/` is optional later report UX, not a browser runtime target
+- `fixtures/scenarios` stores authored concrete scenarios
+- `fixtures/packs` stores batch matrices, comparison fixtures, and maintained
+  regression gates
+- `pd-report` provides reusable per-run rendering; `pd-eval` owns batch report
+  assembly and comparison UX
+- `outputs/` stores generated run bundles, cache entries, stable report aliases,
+  and report indexes; it is not source-controlled truth
 
 ## 7. Contracts
 
@@ -956,7 +972,7 @@ Recommended split for report UX:
   is unique
 - avoid turning the report layer into a second simulation or analysis backend
 
-Near-term minimum:
+Current baseline:
 
 - a single-run view with terrain, trajectory, target, and event markers
 - time-series plots for the main state and control signals

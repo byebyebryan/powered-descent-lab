@@ -1,7 +1,8 @@
 # Powered Descent Lab Roadmap
 
-This roadmap is intentionally design-first. It describes the order of work after
-the reboot without committing to implementation in this pass.
+This roadmap began as the design-first reboot sequence. It now tracks the
+implemented phase boundaries, maintained evidence, and the next work above the
+closed guidance baseline.
 
 ## 1. Reboot Goals
 
@@ -144,9 +145,10 @@ Exit criteria:
 
 Status:
 
-- late in the phase, but not closed yet
-- the tooling/reporting side is largely in place now; the remaining work is
-  mostly controller robustness, corpus expansion, and evaluation policy
+- the maintained terminal-guidance baseline is closed, while the broader phase
+  remains open for targeted frontier semantics and report/evaluation policy
+- tooling and reporting are in place; additional terminal-controller tuning is
+  optional, hypothesis-driven work and does not block waypoint planning
 - current implementation includes:
   - a real named pack runner and summary path in `pd-eval`
   - controller config/spec plumbing for built-in controllers
@@ -223,9 +225,8 @@ Status:
     reframed as approach-corridor validation, collision warning, or waypoint
     planning
 - still missing:
-  - optional targeted controller robustness work on the two remaining
-    half-payload trajectory-error outliers, but this should not block Phase 2
-    corpus/evaluation progress
+  - optional targeted controller robustness work on sparse half-payload
+    trajectory-error outliers, but this does not block the planner slice
   - broader feasibility/frontier classification while keeping
     authority-frontier cells scored
   - future terrain boundary definition above terminal guidance:

@@ -525,7 +525,7 @@ Current direct-transfer checkpoint, refreshed on 2026-07-13 with `8` workers,
 
 - `transfer_route_angle_radius_suite`: `297 / 297` successes, `0` crashes, and
   `0` invalidations across every route angle, radius, payload, and smoke seed;
-  wall clock is `46.29s`
+  wall clock is `46.22s`
 - `transfer_route_angle_radius_frontier_full`: `108 / 108` successes and `0`
   invalidations across the full-seed `r+80` partition
 - the focused uphill-corridor brake closes the former direct `r+80` failure
@@ -579,9 +579,9 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-13:
   final-handoff required acceleration ratio and recoverable-run count as a
   kinematic estimate. Detailed plots render entry and resolution as different
   events.
-- Route-wide turn controller compute is `267us` mean, `432us` p95, and `635us`
-  p99 across `463,272` updates. The maintained controller remains below its
-  `1ms` p99 budget.
+- The broader all-radius turn workload records `271.18us` mean and `719us` p99
+  across `1,368,932` updates after guidance cleanup. The maintained controller
+  remains below its `1ms` p99 budget.
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
@@ -781,9 +781,11 @@ Frozen recoverability boost-scoring diagnostic:
 
 Direct and stateful waypoint lifecycle remain in
 `pd-control/src/transfer/mod.rs`, pure waypoint geometry and capture prediction
-live in `transfer/waypoint.rs`, and rejected boost scorers are quarantined in
-`transfer/experimental.rs`. This layout does not change controller IDs,
-configuration JSON, telemetry, or phase strings.
+live in `transfer/waypoint.rs`, metric and marker assembly lives in
+`transfer/telemetry.rs`, and rejected boost scorers are quarantined in
+`transfer/experimental.rs`. Controller tests live in `transfer/tests.rs`. This
+layout does not change controller IDs, configuration JSON, telemetry, or phase
+strings.
 
 ## Deferred Work
 

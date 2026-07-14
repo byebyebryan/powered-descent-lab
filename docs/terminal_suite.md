@@ -685,7 +685,7 @@ Clean matrix report entrypoints:
 
 Latest recorded wall-clock signal with `8` workers:
 
-- `terminal_bot_lab_suite`: `11.84s`
+- `terminal_bot_lab_suite`: `12.76s`
 - `terminal_bot_lab_full`: `47.01s`
 
 Current-lane clean results:
@@ -720,7 +720,7 @@ in this checkout as authoritative.
 
 Latest refreshed schema-33 smoke wall-clock signal:
 
-- `terminal_traj_err_suite`: `40.77s` with `6` workers
+- `terminal_traj_err_suite`: `29.79s` with `8` workers
 
 The full-pack counts below remain the maintained checkpoint; refresh the full
 pack before using its older wall-clock measurement for performance comparison.
