@@ -25,6 +25,70 @@ const TERRAIN_CLEARANCE_MARGIN_M: f64 = 10.0;
 const TERRAIN_OBSTACLE_RELIEF_FLOOR_M: f64 = TERRAIN_CLEARANCE_MARGIN_M;
 const TERRAIN_CLEARANCE_UNCONSTRAINED_M: f64 = 1.0e6;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct TouchdownRescueLateralTarget {
+    sign: f64,
+    weight: f64,
+}
+
+fn touchdown_rescue_lateral_target(
+    dx_m: f64,
+    vx_mps: f64,
+    inside_pad: bool,
+    outside_closing_target_mps: f64,
+    inside_pad_safe_vx_mps: f64,
+    full_tilt_vx_mps: f64,
+    zero_vx_mps: f64,
+) -> TouchdownRescueLateralTarget {
+    if inside_pad {
+        if vx_mps.abs() <= zero_vx_mps {
+            return TouchdownRescueLateralTarget::default();
+        }
+        let vx_excess_mps = (vx_mps.abs() - inside_pad_safe_vx_mps).max(0.0);
+        let full_tilt_excess_mps = (full_tilt_vx_mps - inside_pad_safe_vx_mps).max(1e-3);
+        return TouchdownRescueLateralTarget {
+            sign: -vx_mps.signum(),
+            weight: (vx_excess_mps / full_tilt_excess_mps).clamp(0.0, 1.0),
+        };
+    }
+
+    if dx_m.abs() <= 1e-3 {
+        return TouchdownRescueLateralTarget::default();
+    }
+    let target_vx_mps = dx_m.signum() * outside_closing_target_mps.max(0.0);
+    let vx_error_mps = target_vx_mps - vx_mps;
+    if vx_error_mps.abs() <= 1e-3 {
+        return TouchdownRescueLateralTarget::default();
+    }
+    TouchdownRescueLateralTarget {
+        sign: vx_error_mps.signum(),
+        weight: (vx_error_mps.abs() / full_tilt_vx_mps.max(1e-3)).clamp(0.0, 1.0),
+    }
+}
+
+fn required_braking_accel_mps2(
+    current_down_speed_mps: f64,
+    target_down_speed_mps: f64,
+    braking_distance_m: f64,
+) -> f64 {
+    let speed_delta_sq_m2ps2 = ((current_down_speed_mps * current_down_speed_mps)
+        - (target_down_speed_mps * target_down_speed_mps))
+        .max(0.0);
+    speed_delta_sq_m2ps2 / (2.0 * braking_distance_m.max(1e-6))
+}
+
+fn vertical_authority_tilt_limit_rad(
+    required_upward_accel_mps2: f64,
+    max_thrust_accel_mps2: f64,
+    configured_tilt_limit_rad: f64,
+) -> f64 {
+    let required_thrust_ratio =
+        (required_upward_accel_mps2.max(0.0) / max_thrust_accel_mps2.max(1e-6)).clamp(0.0, 1.0);
+    required_thrust_ratio
+        .acos()
+        .min(configured_tilt_limit_rad.max(0.0))
+}
+
 fn default_terrain_clearance_enabled() -> bool {
     true
 }
@@ -69,7 +133,6 @@ pub struct TerminalPdgControllerConfig {
     pub touchdown_rescue_vy_ratio: f64,
     pub touchdown_rescue_tilt_rad: f64,
     pub touchdown_rescue_vx_full_tilt_mps: f64,
-    pub touchdown_rescue_dx_full_tilt_m: f64,
     pub touchdown_rescue_vx_margin_mps: f64,
     pub touchdown_rescue_alt_floor_m: f64,
     pub terminal_gate_nominal_ratio: f64,
@@ -126,7 +189,6 @@ impl Default for TerminalPdgControllerConfig {
             touchdown_rescue_vy_ratio: 1.8,
             touchdown_rescue_tilt_rad: 0.42,
             touchdown_rescue_vx_full_tilt_mps: 3.0,
-            touchdown_rescue_dx_full_tilt_m: 8.0,
             touchdown_rescue_vx_margin_mps: 0.15,
             touchdown_rescue_alt_floor_m: 0.25,
             terminal_gate_nominal_ratio: 0.92,
@@ -1650,7 +1712,11 @@ impl TerminalPdgController {
                 .max_tilt_rad
                 .min(self.config.touchdown_rescue_tilt_rad),
         );
-        let lateral_closing_too_fast = self.lateral_closing_too_fast_for_touchdown(view);
+        let lateral_closing_speed_limit_mps = self.lateral_closing_speed_limit_for_touchdown(view);
+        let moving_toward_target = (dx_m * vx_mps) > 0.0;
+        let lateral_closing_too_fast = moving_toward_target
+            && vx_mps.abs()
+                > lateral_closing_speed_limit_mps + self.config.touchdown_rescue_vx_margin_mps;
         let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
             - view.ctx.vehicle.geometry.touchdown_half_span_m)
             .max(0.0);
@@ -1676,67 +1742,62 @@ impl TerminalPdgController {
                 self.config.touchdown_rescue_tilt_rad
             };
             let rescue_tilt_limit = current_state.max_tilt_rad.min(rescue_tilt_cap_rad).max(0.0);
-            let moving_toward_target = (dx_m * vx_mps) > 0.0;
             let inside_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
-            let vx_term = if inside_pad {
-                let vx_excess = (vx_mps.abs() - inside_pad_safe_vx_mps).max(0.0);
-                let vx_full_tilt_excess = (self.config.touchdown_rescue_vx_full_tilt_mps
-                    - inside_pad_safe_vx_mps)
-                    .max(1e-3);
-                (vx_excess / vx_full_tilt_excess).clamp(0.0, 1.0)
-            } else {
-                (vx_mps.abs() / self.config.touchdown_rescue_vx_full_tilt_mps.max(1e-3))
-                    .clamp(0.0, 1.0)
-            };
-            let dx_term = if inside_pad {
-                0.0
-            } else {
-                (dx_m.abs() / self.config.touchdown_rescue_dx_full_tilt_m.max(1e-3)).clamp(0.0, 1.0)
-            };
-            let rescue_sign = if vx_mps.abs() > self.config.touchdown_zero_vx_mps
-                && (moving_toward_target || inside_pad)
-            {
-                -vx_mps.signum()
-            } else if !inside_pad && dx_m.abs() > 1e-3 {
-                dx_m.signum()
-            } else if vx_mps.abs() > self.config.touchdown_zero_vx_mps {
-                -vx_mps.signum()
-            } else {
-                0.0
-            };
-            let rescue_weight = if rescue_sign == -vx_mps.signum() {
-                vx_term.max(0.5 * dx_term)
-            } else {
-                dx_term.max(0.25 * vx_term)
-            };
-            let rescue_angle_target = if rescue_sign == 0.0 {
+            let outside_closing_target_mps = (lateral_closing_speed_limit_mps
+                - self.config.touchdown_rescue_vx_margin_mps)
+                .max(0.0);
+            let lateral_target = touchdown_rescue_lateral_target(
+                dx_m,
+                vx_mps,
+                inside_pad,
+                outside_closing_target_mps,
+                inside_pad_safe_vx_mps,
+                self.config.touchdown_rescue_vx_full_tilt_mps,
+                self.config.touchdown_zero_vx_mps,
+            );
+            let requested_rescue_angle = if lateral_target.sign == 0.0 {
                 let keep_tilt_limit = rescue_tilt_limit.min(0.06);
                 current_state
                     .target_attitude_rad
                     .clamp(-keep_tilt_limit, keep_tilt_limit)
             } else {
-                rescue_sign * rescue_tilt_limit * rescue_weight
+                lateral_target.sign * rescue_tilt_limit * lateral_target.weight
             };
             let mass = view.observation.mass_kg.max(0.5);
-            let alt_eff = if low_clearance {
+            let alt_eff = if early_lateral_rescue {
+                (touchdown_clearance_m - self.config.touchdown_rescue_clearance_m)
+                    .max(self.config.touchdown_rescue_alt_floor_m)
+            } else if low_clearance {
                 touchdown_clearance_m.max(self.config.touchdown_rescue_alt_floor_m)
             } else {
                 (touchdown_clearance_m - self.config.touchdown_idle_clearance_m)
                     .max(self.config.touchdown_rescue_alt_floor_m)
             };
-            let target_down_speed = if low_clearance {
+            let target_down_speed = if early_lateral_rescue {
+                0.0
+            } else if low_clearance {
                 self.config.touchdown_zero_vy_mps
-            } else if early_lateral_rescue {
-                self.config.braking_min_speed_mps
             } else {
                 self.config.vy_touch_cap_mps
             };
-            let v_excess = (down_speed - target_down_speed).max(0.0);
-            let required_net_brake = (v_excess * v_excess) / (2.0 * alt_eff.max(1e-6));
+            let required_net_brake =
+                required_braking_accel_mps2(down_speed, target_down_speed, alt_eff);
             let required_ay = view.observation.gravity_mps2 + required_net_brake;
+            let max_thrust_accel_mps2 = view.ctx.vehicle.max_thrust_n / mass;
+            let authority_tilt_limit = vertical_authority_tilt_limit_rad(
+                required_ay,
+                max_thrust_accel_mps2,
+                rescue_tilt_limit,
+            );
+            let rescue_angle_target =
+                requested_rescue_angle.clamp(-authority_tilt_limit, authority_tilt_limit);
             let required_accel = required_ay / rescue_angle_target.cos().max(0.2);
-            let throttle_frac =
-                (required_accel / (view.ctx.vehicle.max_thrust_n / mass).max(1e-6)).clamp(0.0, 1.0);
+            let applied_throttle_frac =
+                (required_accel / max_thrust_accel_mps2.max(1e-6)).clamp(0.0, 1.0);
+            let throttle_frac = command_throttle_for_applied_throttle(
+                applied_throttle_frac,
+                view.ctx.vehicle.min_throttle_frac,
+            );
             return Some(Command {
                 throttle_frac,
                 target_attitude_rad: rescue_angle_target,
@@ -1773,14 +1834,9 @@ impl TerminalPdgController {
         unsafe_center || unsafe_speed
     }
 
-    fn lateral_closing_too_fast_for_touchdown(&self, view: &ControllerView<'_>) -> bool {
+    fn lateral_closing_speed_limit_for_touchdown(&self, view: &ControllerView<'_>) -> f64 {
         let touchdown_clearance_m = view.touchdown_clearance_m();
         let dx_m = view.target_dx_m();
-        let vx_mps = view.observation.velocity_mps.x;
-        if dx_m * vx_mps <= 0.0 {
-            return false;
-        }
-
         let down_speed_mps = (-view.observation.velocity_mps.y)
             .max(self.config.vy_touch_cap_mps)
             .max(0.25);
@@ -1788,10 +1844,8 @@ impl TerminalPdgController {
         let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
             - view.ctx.vehicle.geometry.touchdown_half_span_m)
             .max(0.0);
-        let max_closing_speed_mps = (0.75
-            * ((dx_m.abs() - touchdown_center_limit_m).max(0.0) / time_to_touchdown_s.max(0.25)))
-        .max(view.ctx.vehicle.safe_touchdown_tangential_speed_mps);
-        vx_mps.abs() > max_closing_speed_mps + self.config.touchdown_rescue_vx_margin_mps
+        (0.75 * ((dx_m.abs() - touchdown_center_limit_m).max(0.0) / time_to_touchdown_s.max(0.25)))
+            .max(view.ctx.vehicle.safe_touchdown_tangential_speed_mps)
     }
 
     fn touchdown_settle_command(&self, view: &ControllerView<'_>) -> Command {
@@ -1807,8 +1861,8 @@ impl TerminalPdgController {
 
         let mass = view.observation.mass_kg.max(0.5);
         let alt_eff = touchdown_clearance_m.max(self.config.touchdown_rescue_alt_floor_m);
-        let v_excess = down_speed - target_down_speed;
-        let required_net_brake = (v_excess * v_excess) / (2.0 * alt_eff.max(1e-6));
+        let required_net_brake =
+            required_braking_accel_mps2(down_speed, target_down_speed, alt_eff);
         let required_ay = view.observation.gravity_mps2 + required_net_brake;
         let applied_throttle_frac =
             (required_ay / (view.ctx.vehicle.max_thrust_n / mass).max(1e-6)).clamp(0.0, 1.0);
@@ -1832,9 +1886,9 @@ impl TerminalPdgController {
         let touchdown_clearance_m = view.touchdown_clearance_m();
         let down_speed = (-view.observation.velocity_mps.y).max(0.0);
         let target_down_speed = target_down_speed.max(0.0);
-        let v_excess = (down_speed - target_down_speed).max(0.0);
         let alt_eff = touchdown_clearance_m.max(self.config.touchdown_rescue_alt_floor_m);
-        let required_net_brake = (v_excess * v_excess) / (2.0 * alt_eff.max(1e-6));
+        let required_net_brake =
+            required_braking_accel_mps2(down_speed, target_down_speed, alt_eff);
         let target_up_accel_mps2 = view.observation.gravity_mps2 + required_net_brake;
         let applied_throttle_frac = (target_up_accel_mps2
             / (view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(0.5)).max(1e-6))

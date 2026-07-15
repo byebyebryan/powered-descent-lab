@@ -353,3 +353,86 @@ fn terrain_constrained_order_keeps_safe_candidates_ahead_of_unsafe_candidates() 
 
     assert_eq!(candidates[0], safe_high_ratio);
 }
+
+#[test]
+fn touchdown_rescue_preserves_safe_targetward_closing_outside_pad() {
+    for side in [-1.0, 1.0] {
+        let target =
+            touchdown_rescue_lateral_target(24.0 * side, 0.8 * side, false, 1.85, 1.85, 3.0, 0.55);
+        assert_eq!(target.sign, side);
+        assert!((target.weight - 0.35).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn touchdown_rescue_brakes_excessive_targetward_closing_outside_pad() {
+    for side in [-1.0, 1.0] {
+        let target =
+            touchdown_rescue_lateral_target(24.0 * side, 3.0 * side, false, 1.85, 1.85, 3.0, 0.55);
+        assert_eq!(target.sign, -side);
+        assert!((target.weight - (1.15 / 3.0)).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn touchdown_rescue_reverses_motion_away_from_pad() {
+    for side in [-1.0, 1.0] {
+        let target =
+            touchdown_rescue_lateral_target(24.0 * side, -0.8 * side, false, 1.85, 1.85, 3.0, 0.55);
+        assert_eq!(target.sign, side);
+        assert!((target.weight - (2.65 / 3.0)).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn touchdown_rescue_brakes_meaningful_motion_inside_pad() {
+    for side in [-1.0, 1.0] {
+        let braking =
+            touchdown_rescue_lateral_target(10.0 * side, 2.4 * side, true, 1.85, 1.85, 3.0, 0.55);
+        assert_eq!(braking.sign, -side);
+        assert!(braking.weight > 0.0);
+
+        let holding =
+            touchdown_rescue_lateral_target(10.0 * side, 0.4 * side, true, 1.85, 1.85, 3.0, 0.55);
+        assert_eq!(holding, TouchdownRescueLateralTarget::default());
+    }
+}
+
+#[test]
+fn command_throttle_conversion_inverts_minimum_throttle_mapping() {
+    let min_throttle_frac = 0.25;
+    let applied_throttle_frac = 0.60;
+
+    let command = command_throttle_for_applied_throttle(applied_throttle_frac, min_throttle_frac);
+    let reconstructed_applied = min_throttle_frac + command * (1.0 - min_throttle_frac);
+
+    assert!((reconstructed_applied - applied_throttle_frac).abs() < 1e-9);
+}
+
+#[test]
+fn braking_acceleration_uses_velocity_squared_energy_difference() {
+    let braking_accel_mps2 = required_braking_accel_mps2(4.0, 2.0, 6.0);
+
+    assert!((braking_accel_mps2 - 1.0).abs() < 1e-9);
+    assert_eq!(required_braking_accel_mps2(1.0, 2.0, 6.0), 0.0);
+}
+
+#[test]
+fn vertical_authority_caps_rescue_tilt_to_preserve_required_lift() {
+    let limit = vertical_authority_tilt_limit_rad(10.0, 12.0, 0.8);
+
+    assert!((limit - (10.0_f64 / 12.0).acos()).abs() < 1e-12);
+}
+
+#[test]
+fn vertical_authority_keeps_configured_tilt_when_lift_margin_is_available() {
+    let limit = vertical_authority_tilt_limit_rad(8.0, 20.0, 0.6);
+
+    assert_eq!(limit, 0.6);
+}
+
+#[test]
+fn vertical_authority_requires_upright_thrust_when_fully_saturated() {
+    assert_eq!(vertical_authority_tilt_limit_rad(12.0, 12.0, 0.8), 0.0);
+    assert_eq!(vertical_authority_tilt_limit_rad(14.0, 12.0, 0.8), 0.0);
+}
