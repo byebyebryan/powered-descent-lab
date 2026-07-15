@@ -525,10 +525,10 @@ Transfer route-angle checkpoint:
   - turn landing and contract: `540 / 540` for both goals
   - ordered landing and contract: `180 / 180` for both goals
 - all-radius waypoint closure:
-  - turn contract: `405 / 405`; paired landing: `404 / 405`
+  - turn contract and paired landing: `405 / 405` for both goals
   - ordered contract and landing: `135 / 135` for both goals
-  - the one residual is `single_gentle_bend_v1/full/r-30/short/seed 02`, which
-    passes its waypoint contract before crashing during final recovery
+  - bounded final authority-recovery search closes the former
+    `single_gentle_bend_v1/full/r-30/short/seed 02` landing residual
 - `transfer_waypoint_sequence_late_bend_diagnostic`
   - `current`: `27 / 27` final landings and complete route telemetry
   - `27 / 54` handoffs enter the capture radius outside the envelope, then
@@ -543,12 +543,12 @@ tangent: the normalized inbound/outbound angle bisector. Spatial radius entry
 opens an acceptance window; guidance keeps the active leg until the contract
 passes or the craft reaches the waypoint plane. Maintained handoff envelopes
 also cap energy and reject fixtures whose optimistic stopping-distance ratio
-exceeds `0.75`. Schema `33` reports the immutable plan tangent, window-entry
+exceeds `0.75`. Schema `34` reports the immutable plan tangent, window-entry
 snapshot, final resolution reason, window duration, and final-terminal
 recoverability separately. Full-seed nominal closure is `540 / 540` for turn
 landing/contracts and `180 / 180` for ordered landing/contracts. All-radius
 contracts are `405 / 405` turn and `135 / 135` ordered; paired landings are
-`404 / 405` and `135 / 135`. Final-state ranking is terrain-blind and uses
+`405 / 405` and `135 / 135`. Final-state ranking is terrain-blind and uses
 terminal braking authority rather than route/profile labels. Controller compute
 remains below the `1ms` p99 budget.
 

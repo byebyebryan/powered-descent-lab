@@ -92,9 +92,10 @@ The guidance regression set is:
 - paired full-seed nominal waypoint landing/contract packs
 - paired all-radius waypoint landing/contract packs
 
-The all-radius turn landing pack intentionally retains one final-recovery
-frontier at `single_gentle_bend_v1/full/r-30/short/seed 02`. Its waypoint
-contract passes, so it is not a waypoint-guidance failure.
+The all-radius turn contract and landing packs both pass `405 / 405`. Bounded
+final authority-recovery search closes the former
+`single_gentle_bend_v1/full/r-30/short/seed 02` landing residual without
+changing waypoint contracts or adding route/profile branches.
 
 ## Experimental Boundary
 

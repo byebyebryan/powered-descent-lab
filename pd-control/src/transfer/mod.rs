@@ -615,6 +615,12 @@ struct WaypointGuidancePlan {
     final_terminal_recoverable: Option<bool>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WaypointFinalRecoverySearchAttempt {
+    plan_revision: u32,
+    time_to_event_s: f64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WaypointGuidancePlanReason {
     Initial,
@@ -851,6 +857,7 @@ pub struct TransferPdgController {
     waypoint_guidance_replan_count: u32,
     waypoint_guidance_contract_failure_ticks: u32,
     waypoint_reachable_search_attempted_revision: Option<u32>,
+    waypoint_final_recovery_search_attempt: Option<WaypointFinalRecoverySearchAttempt>,
     waypoint_reference_contract_pass_ever: bool,
     waypoint_continuation_snapshot: Option<(u32, WaypointContinuationPrediction)>,
     waypoint_joint_snapshot: Option<(u32, WaypointJointSearchPrediction)>,
@@ -887,6 +894,7 @@ impl TransferPdgController {
             waypoint_guidance_replan_count: 0,
             waypoint_guidance_contract_failure_ticks: 0,
             waypoint_reachable_search_attempted_revision: None,
+            waypoint_final_recovery_search_attempt: None,
             waypoint_reference_contract_pass_ever: false,
             waypoint_continuation_snapshot: None,
             waypoint_joint_snapshot: None,
@@ -1118,6 +1126,7 @@ impl TransferPdgController {
             self.waypoint_guidance_replan_count = 0;
             self.waypoint_guidance_contract_failure_ticks = 0;
             self.waypoint_reachable_search_attempted_revision = None;
+            self.waypoint_final_recovery_search_attempt = None;
             self.waypoint_reference_contract_pass_ever = false;
             self.waypoint_continuation_snapshot = None;
             self.waypoint_joint_snapshot = None;
@@ -1489,6 +1498,25 @@ impl TransferPdgController {
         candidate: WaypointGuidanceCandidate,
     ) -> bool {
         candidate.tilt_feasible && candidate.required_accel_ratio <= 1.0
+    }
+
+    fn waypoint_final_recovery_search_is_actionable(
+        final_waypoint: bool,
+        plan: WaypointGuidancePlan,
+        candidate: WaypointGuidanceCandidate,
+        previous_attempt: Option<WaypointFinalRecoverySearchAttempt>,
+    ) -> bool {
+        let material_progress = previous_attempt.is_none_or(|attempt| {
+            attempt.plan_revision != plan.revision
+                || candidate.prediction.time_to_event_s
+                    < attempt.time_to_event_s * (1.0 - WAYPOINT_GUIDANCE_REPLAN_MATERIALITY_RATIO)
+        });
+        final_waypoint
+            && plan.reason == WaypointGuidancePlanReason::AuthorityRecovery
+            && plan.final_terminal_recoverable == Some(false)
+            && Self::waypoint_guidance_candidate_has_control_authority(candidate)
+            && candidate.prediction.assessment.contract_pass()
+            && material_progress
     }
 
     fn waypoint_guidance_contract_failure_is_actionable(
@@ -2568,6 +2596,7 @@ impl TransferPdgController {
             self.waypoint_guidance_plan = None;
             self.waypoint_guidance_contract_failure_ticks = 0;
             self.waypoint_reachable_search_attempted_revision = None;
+            self.waypoint_final_recovery_search_attempt = None;
             self.waypoint_continuation_snapshot = None;
             self.waypoint_joint_snapshot = None;
         }
@@ -2662,6 +2691,53 @@ impl TransferPdgController {
             }
         }
 
+        if let Some(plan) = self.waypoint_guidance_plan {
+            let planned_candidate =
+                self.waypoint_guidance_candidate_for_plan(ctx, observation, guidance, plan);
+            if Self::waypoint_final_recovery_search_is_actionable(
+                Self::waypoint_is_final(ctx, guidance),
+                plan,
+                planned_candidate,
+                self.waypoint_final_recovery_search_attempt,
+            ) {
+                self.waypoint_final_recovery_search_attempt =
+                    Some(WaypointFinalRecoverySearchAttempt {
+                        plan_revision: plan.revision,
+                        time_to_event_s: planned_candidate.prediction.time_to_event_s,
+                    });
+                if let Some(replacement) = self
+                    .select_final_waypoint_event_candidate(ctx, observation, guidance)
+                    .filter(|candidate| candidate.terminal_gate.required_accel_ratio <= 1.0)
+                {
+                    self.waypoint_guidance_replan_count =
+                        self.waypoint_guidance_replan_count.saturating_add(1);
+                    self.waypoint_guidance_plan = Some(WaypointGuidancePlan {
+                        waypoint_index: guidance.active_index,
+                        revision: self.waypoint_guidance_replan_count,
+                        reason: WaypointGuidancePlanReason::ReachableRecovery,
+                        created_time_s: observation.sim_time_s,
+                        start_position_m: observation.position_m,
+                        start_velocity_mps: observation.velocity_mps,
+                        endpoint_m: replacement.reachable.endpoint_m,
+                        target_mode: replacement.reachable.target_mode,
+                        target_velocity_mps: replacement.reachable.candidate.target_velocity_mps,
+                        arrival_time_s: observation.sim_time_s
+                            + replacement.reachable.candidate.time_to_go_s,
+                        target_envelope_feasible: replacement
+                            .reachable
+                            .candidate
+                            .target_envelope_feasible,
+                        final_terminal_required_accel_ratio: Some(
+                            replacement.terminal_gate.required_accel_ratio,
+                        ),
+                        final_terminal_recoverable: Some(true),
+                    });
+                    self.waypoint_guidance_contract_failure_ticks = 0;
+                    self.waypoint_final_recovery_search_attempt = None;
+                }
+            }
+        }
+
         let plan = self
             .waypoint_guidance_plan
             .expect("active waypoint guidance always has a plan");
@@ -2712,6 +2788,7 @@ impl TransferPdgController {
                 });
                 self.waypoint_guidance_contract_failure_ticks = 0;
                 self.waypoint_reachable_search_attempted_revision = None;
+                self.waypoint_final_recovery_search_attempt = None;
             }
         }
 
@@ -4431,6 +4508,7 @@ impl Controller for TransferPdgController {
         self.waypoint_guidance_replan_count = 0;
         self.waypoint_guidance_contract_failure_ticks = 0;
         self.waypoint_reachable_search_attempted_revision = None;
+        self.waypoint_final_recovery_search_attempt = None;
         self.waypoint_reference_contract_pass_ever = false;
         self.waypoint_continuation_snapshot = None;
         self.waypoint_joint_snapshot = None;

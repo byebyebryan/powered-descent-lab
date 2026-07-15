@@ -893,6 +893,95 @@ fn waypoint_final_candidate_order_prefers_lower_terminal_accel_ratio() {
 }
 
 #[test]
+fn waypoint_final_recovery_search_waits_for_authority_and_material_progress() {
+    let mut candidate = waypoint_candidate_fixture(true, 0.8, 4.0);
+    let mut plan = WaypointGuidancePlan {
+        waypoint_index: 0,
+        revision: 3,
+        reason: WaypointGuidancePlanReason::AuthorityRecovery,
+        created_time_s: 1.0,
+        start_position_m: Vec2::new(0.0, 0.0),
+        start_velocity_mps: Vec2::new(0.0, 0.0),
+        endpoint_m: Vec2::new(100.0, 0.0),
+        target_mode: "waypoint_center",
+        target_velocity_mps: Vec2::new(10.0, 0.0),
+        arrival_time_s: 5.0,
+        target_envelope_feasible: true,
+        final_terminal_required_accel_ratio: Some(1.1),
+        final_terminal_recoverable: Some(false),
+    };
+
+    assert!(
+        TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            true, plan, candidate, None,
+        )
+    );
+    let previous_attempt = WaypointFinalRecoverySearchAttempt {
+        plan_revision: plan.revision,
+        time_to_event_s: candidate.prediction.time_to_event_s,
+    };
+    assert!(
+        !TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            true,
+            plan,
+            candidate,
+            Some(previous_attempt),
+        )
+    );
+
+    candidate.prediction.time_to_event_s = previous_attempt.time_to_event_s * 0.89;
+    assert!(
+        TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            true,
+            plan,
+            candidate,
+            Some(previous_attempt),
+        )
+    );
+
+    plan.revision += 1;
+    assert!(
+        TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            true,
+            plan,
+            candidate,
+            Some(previous_attempt),
+        )
+    );
+
+    plan.reason = WaypointGuidancePlanReason::Initial;
+    assert!(
+        !TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            true, plan, candidate, None,
+        )
+    );
+    plan.reason = WaypointGuidancePlanReason::AuthorityRecovery;
+
+    candidate.prediction.assessment.violation_mask = WAYPOINT_VIOLATION_HEADING;
+    assert!(
+        !TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            true, plan, candidate, None,
+        )
+    );
+    candidate.prediction.assessment.violation_mask = 0;
+
+    candidate.required_accel_ratio = 1.01;
+    assert!(
+        !TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            true, plan, candidate, None,
+        )
+    );
+    assert!(
+        !TransferPdgController::waypoint_final_recovery_search_is_actionable(
+            false,
+            plan,
+            waypoint_candidate_fixture(true, 0.8, 4.0),
+            None,
+        )
+    );
+}
+
+#[test]
 fn waypoint_recoverable_final_capture_enters_terminal_guidance() {
     assert_eq!(
         waypoint_post_capture_phase(true, true, Some(true), true),

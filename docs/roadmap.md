@@ -51,9 +51,10 @@ Current implementation status:
   - full-seed nominal waypoint contracts and landings are clean at `540 / 540`
     turn runs and `180 / 180` ordered runs
   - all-radius waypoint contracts are clean at `405 / 405` turn runs and
-    `135 / 135` ordered runs; paired landings are `404 / 405` and `135 / 135`
-  - the one retained short-radius landing crash passes its waypoint contract,
-    leaving waypoint planning as the next Phase 3 slice
+    `135 / 135` ordered runs; paired landings are also `405 / 405` and
+    `135 / 135`
+  - bounded final authority-recovery search closes the former short-radius
+    landing residual, leaving waypoint planning as the next Phase 3 slice
 
 ## 2. What Not To Build First
 
@@ -391,12 +392,12 @@ Status:
 - current route-wide waypoint checkpoint:
   - full-seed nominal turn contract and landing are both `540 / 540`
   - full-seed nominal ordered contract and landing are both `180 / 180`
-  - all-radius turn contract is `405 / 405`; landing is `404 / 405`
+  - all-radius turn contract and landing are both `405 / 405`
   - all-radius ordered contract and landing are both `135 / 135`
   - final-waypoint states are ranked by terrain-blind terminal recoverability;
     direct transfer remains `297 / 297`
-  - the sole residual is a post-contract final-recovery crash at
-    `single_gentle_bend_v1/full/r-30/short/seed 02`
+  - final authority-recovery plans retry reachable-state selection only after
+    material progress, closing the former post-contract landing residual
 - current ordered waypoint-sequence checkpoint:
   - maintained double-bend landing and ordered contract are both `27 / 27`
   - each planned waypoint carries the normalized inbound/outbound angle-bisector
@@ -419,8 +420,8 @@ Status:
     timeout; use planned geometry, state, authority, and envelope margins
   - use handoff packs as guidance targets and paired landing packs as
     recovery/reliability regression gates
-  - retain the one short-radius post-contract crash as a final-recovery watch,
-    not a reason to weaken waypoint contracts
+  - retain the former short-radius post-contract crash as a final-recovery
+    regression watch without weakening waypoint contracts
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 

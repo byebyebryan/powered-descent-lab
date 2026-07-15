@@ -1,5 +1,30 @@
 # Progress
 
+## 2026-07-15
+
+### Waypoint final-recovery closure checkpoint
+
+- Traced the sole all-radius waypoint landing crash to a contract-valid but
+  terminal-unrecoverable final plan. Early authority-recovery replans extended
+  that plan's arrival horizon until the `52.5m/s` target reached the capture
+  window before the normal expiry-driven energy correction.
+- Final authority-recovery plans now retry the existing reachable endpoint
+  search only after regaining control authority and making another `10%`
+  material reduction in predicted time to the waypoint. A retry can replace
+  the plan only with a contract-valid terminal-recoverable state; initial and
+  intermediate waypoint plans are unchanged.
+- The all-radius turn landing and contract packs are now both `405 / 405`.
+  Ordered all-radius landing and contract remain `135 / 135`, and direct
+  route-angle/radius transfer remains `297 / 297`.
+- The former `single_gentle_bend_v1/full/r-30/short/seed 02` crash now hands
+  off at `19.90m/s` with a `0.769` final terminal acceleration ratio and lands
+  on target. Only four of the `405` landing trajectories change relative to
+  the prior capture; the other three were already-successful full-payload
+  `r-30/short` authority-recovery cases.
+- The recovered run records `243us` mean, `342us` p95, and `848us` p99
+  controller compute. Material-progress retries avoid the high-frequency
+  search and horizon churn rejected during earlier waypoint tuning.
+
 ## 2026-07-14
 
 ### Low-altitude terminal rescue checkpoint

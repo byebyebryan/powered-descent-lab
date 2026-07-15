@@ -540,7 +540,7 @@ Current direct-transfer checkpoint, refreshed on 2026-07-13 with `8` workers,
 - `near_vertical_transfer_route` remains useful as a stress annotation, but it
   no longer describes a failing direct-transfer region
 
-Current normalized waypoint checkpoint, refreshed on 2026-07-14:
+Current normalized waypoint checkpoint, refreshed on 2026-07-15:
 
 - `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes; worst
   continuation ratio `0.529`
@@ -566,10 +566,10 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-14:
   handoff successes across all three radius tiers
 - `transfer_waypoint_sequence_contract_route_angle_radius_smoke`: `135 / 135`
   complete routes; paired all-radius landing is also `135 / 135`
-- `transfer_waypoint_turn_route_angle_radius_smoke`: `404 / 405` landings with
-  `0` invalidations. The only residual is
-  `single_gentle_bend_v1/full/r-30/short/seed 02`; it passes the handoff contract
-  before crashing during final recovery.
+- `transfer_waypoint_turn_route_angle_radius_smoke`: `405 / 405` landings with
+  `0` invalidations. The former
+  `single_gentle_bend_v1/full/r-30/short/seed 02` residual now reaches a
+  terminal-recoverable handoff and lands on target.
 - The visually pathological but successful
   `single_gentle_bend_v1/half/r-30/short/seed 02` now lands in `33.77s` using
   `1067.88kg` of fuel with `0m` measured low-altitude rebound. Continuous
@@ -578,7 +578,10 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-14:
 - final-waypoint candidate ranking uses only the planned handoff contract and
   terrain-blind terminal dynamics. It prefers states within terminal thrust
   authority, then lower required acceleration, before the existing actuated
-  rollout ordering. Intermediate waypoint selection remains unchanged.
+  rollout ordering. An unrecoverable final plan created by authority recovery
+  retries that search only after regaining control authority and making
+  another material reduction in predicted time to the waypoint. Initial and
+  intermediate waypoint selection remains unchanged.
 - completed waypoint routes retain terminal ownership; direct routes can still
   reacquire source clearance. Reserve-aware zero-throttle admission is scoped
   to waypoint guidance, while an active local corridor forbids a cut for every
@@ -591,9 +594,10 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-14:
   final-handoff required acceleration ratio, recoverable-run count, and
   low-altitude rebound diagnostics. Detailed plots render entry and resolution
   as different events.
-- The broader all-radius turn workload records `271.18us` mean and `719us` p99
-  across `1,368,932` updates after guidance cleanup. The maintained controller
-  remains below its `1ms` p99 budget.
+- The prior guidance-cleanup capture recorded `271.18us` mean and `719us` p99
+  across `1,368,932` updates. In the refreshed former-failure run, sparse final
+  recovery retries record `243us` mean and `848us` p99, remaining below the
+  maintained `1ms` p99 budget.
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
@@ -607,8 +611,8 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-14:
   inbound-leg length. This closes the short-radius handoff failures without
   route, profile, payload, seed, terrain, or mission-time branches.
 - Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
-  corpus. Future route quality and terrain clearance belong to waypoint
-  planning; the single retained landing crash remains a final-recovery watch.
+  corpus, including all-radius landing and contract parity at `405 / 405`.
+  Future route quality and terrain clearance belong to waypoint planning.
 - Generalized terrain avoidance remains out of scope; waypoint planning still
   owns terrain-valid placement.
 
