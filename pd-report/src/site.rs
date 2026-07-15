@@ -383,11 +383,14 @@ fn report_rows(entries: &[ScopeEntry], relative_dir: &Path) -> String {
 }
 
 fn home_card(href: &str, title: &str, description: &str, eyebrow: &str) -> String {
+    let featured = if eyebrow == "recommended" {
+        " featured"
+    } else {
+        ""
+    };
     format!(
         r#"<a class="card{featured}" href="{href}"><span class="eyebrow">{eyebrow}</span><strong>{title}</strong><span>{description}</span></a>"#,
-        featured = (eyebrow == "recommended")
-            .then_some(" featured")
-            .unwrap_or(""),
+        featured = featured,
         href = escape_html(href),
         eyebrow = escape_html(eyebrow),
         title = escape_html(title),

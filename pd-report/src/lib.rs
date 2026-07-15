@@ -26,6 +26,7 @@ pub struct RunReportContext {
     pub run_index_href: Option<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn write_run_report(
     path: &Path,
     scenario: &ScenarioSpec,
@@ -210,6 +211,7 @@ pub fn build_multi_run_trajectory_preview_svg(series: &[AggregatePreviewSeries<'
     build_preview_svg(&render_series, PreviewOptions::aggregate_lane())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_report_data(
     scenario: &ScenarioSpec,
     controller_spec: Option<&ControllerSpec>,
@@ -629,21 +631,21 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
     };
 
     let terrain_points = polyline_points(&terrain);
-    let start_markers = (options.show_endpoint_markers && !multi_run)
-        .then(|| {
-            trajectories
-                .iter()
-                .filter_map(|(trajectory, _, _)| {
-                    trajectory.first().copied().map(|(x, y)| {
-                        let (px, py) = project(x, y);
-                        format!(
-                            r##"<circle cx="{px:.2}" cy="{py:.2}" r="2.3" fill="#fffaf2" stroke="#5d5143" stroke-width="1"/>"##
-                        )
-                    })
+    let start_markers = if options.show_endpoint_markers && !multi_run {
+        trajectories
+            .iter()
+            .filter_map(|(trajectory, _, _)| {
+                trajectory.first().copied().map(|(x, y)| {
+                    let (px, py) = project(x, y);
+                    format!(
+                        r##"<circle cx="{px:.2}" cy="{py:.2}" r="2.3" fill="#fffaf2" stroke="#5d5143" stroke-width="1"/>"##
+                    )
                 })
-                .collect::<String>()
-        })
-        .unwrap_or_default();
+            })
+            .collect::<String>()
+    } else {
+        String::new()
+    };
     let end_markers = if options.show_endpoint_markers {
         trajectories
             .iter()
