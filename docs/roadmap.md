@@ -598,7 +598,7 @@ The next useful work is:
 
 Direct transfer and waypoint contracts are clean across the maintained
 route-angle/radius matrix, while full-seed nominal contracts and landings are
-clean. Schema-33 window and terminal-recovery evidence keeps contract quality
+clean. Schema-34 window and terminal-recovery evidence keeps contract quality
 separate from final touchdown reliability. The next meaningful expansion is
 therefore planner-generated route geometry, not route-specific guidance
 recovery heuristics.

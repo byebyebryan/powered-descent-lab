@@ -440,36 +440,36 @@ Current checkpoint on the maintained Earth payload tiers:
   - `current`: `171 / 180` scored successes, `9` scored failures,
     `9` impossible warnings, `12` frontier annotations
 - `terminal_bot_lab_full`
-  - `current`: `684 / 720` scored successes, `36` scored failures,
+  - `current`: `686 / 720` scored successes, `34` scored failures,
     `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `252 / 252`
     - `half`: `252 / 252`
-    - `full`: `180 / 216` scored, `36` fail, `36` impossible warnings,
+    - `full`: `182 / 216` scored, `34` fail, `36` impossible warnings,
       `48` frontier annotations
 
 Trajectory-error checkpoint:
 
 - `terminal_traj_err_suite`
-  - `current`: `689 / 720` scored successes, `31` scored failures,
-    `36` impossible warnings, `48` frontier annotations
+  - `current`: `694 / 720` scored successes, `26` frontier failures,
+    `0` core failures, `36` impossible warnings, `48` frontier annotations
 - `terminal_traj_err_full`
-  - `current`: `2751 / 2880` scored successes, `129` scored failures,
-    `144` impossible warnings, `192` frontier annotations
+  - `current`: `2772 / 2880` scored successes, `107` frontier failures,
+    `1` core failure, `144` impossible warnings, `192` frontier annotations
   - by condition:
-    - `traj_undershoot_small`: `693 / 720` scored, `27` fail,
+    - `traj_undershoot_small`: `698 / 720` scored, `22` frontier failures,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_undershoot_large`: `705 / 720` scored, `15` fail,
+    - `traj_undershoot_large`: `708 / 720` scored, `12` frontier failures,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_overshoot_small`: `683 / 720` scored, `37` fail,
+    - `traj_overshoot_small`: `684 / 720` scored, `36` frontier failures,
       `36` impossible warnings, `48` frontier annotations
-    - `traj_overshoot_large`: `670 / 720` scored, `50` fail,
-      `36` impossible warnings, `48` frontier annotations
+    - `traj_overshoot_large`: `682 / 720` scored, `37` frontier failures,
+      `1` core failure, `36` impossible warnings, `48` frontier annotations
   - by vehicle tier:
     - `empty`: `1008 / 1008`
-    - `half`: `1005 / 1008`, `3` fail
-    - `full`: `738 / 864` scored, `126` fail, `144` impossible warnings,
-      `192` frontier annotations
+    - `half`: `1007 / 1008`, `1` core failure
+    - `full`: `757 / 864` scored, `107` frontier failures,
+      `144` impossible warnings, `192` frontier annotations
 
 Experimental terrain diagnostic snapshot:
 

@@ -16,6 +16,9 @@
 - The all-radius turn landing and contract packs are now both `405 / 405`.
   Ordered all-radius landing and contract remain `135 / 135`, and direct
   route-angle/radius transfer remains `297 / 297`.
+- Clean schema-34 captures on the committed controller preserve full-seed
+  nominal turn landing/contract at `540 / 540` and ordered landing/contract at
+  `180 / 180`, with zero invalidations in all four packs.
 - The former `single_gentle_bend_v1/full/r-30/short/seed 02` crash now hands
   off at `19.90m/s` with a `0.769` final terminal acceleration ratio and lands
   on target. Only four of the `405` landing trajectories change relative to
