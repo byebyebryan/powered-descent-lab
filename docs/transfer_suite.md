@@ -421,6 +421,9 @@ changing controller behavior:
 - `transfer_terminal_post_handoff_apex_gain_m`
 - `transfer_terminal_post_handoff_time_to_apex_s`
 - `transfer_terminal_post_handoff_apex_dx_abs_m`
+- `transfer_terminal_low_altitude_rebound_gain_m`
+- `transfer_terminal_low_altitude_rebound_origin_dx_abs_m`
+- `transfer_terminal_low_altitude_rebound_near_pad`
 - `transfer_boost_projected_dx_m`
 - `transfer_boost_impact_angle_deg`
 - `transfer_boost_apex_over_target_m`
@@ -450,6 +453,10 @@ These appear in `summary.json` per-run review records and in seed-row details
 for transfer batch reports. The shape fields are Pylander-inspired diagnostics:
 they freeze the first boost-window route to the target, compare the actual path
 against a parabolic reference, and keep final touchdown as the scored goal.
+The rebound diagnostic arms only after terminal handoff, below `25m`, and while
+descending. It measures later altitude gain from the running low point and
+classifies the origin as near-pad only within three target-pad half-widths, so
+distant recovery climbs do not masquerade as touchdown chatter.
 
 Terminal guidance telemetry separates the fresh selector result from an active
 retained plan with `guidance.candidate_burn_time_s`, `guidance.plan_active`,
@@ -462,10 +469,10 @@ Batch reports render transfer-specific triage sections before the Review Tree:
 
 - `Transfer Handoff Triage` is the primary controller-tuning view. It groups
   current-lane runs by condition, route, radius, and vehicle, then sorts by
-  failed/frontier status and post-handoff climb before handoff height, speed,
-  projected `dx`, and boost-cutoff projected `dx`. The climb cell includes
-  time-to-apex and apex lateral offset; worst-seed selection uses the same
-  signal.
+  failed/frontier status and near-pad terminal rebound before handoff height,
+  speed, projected `dx`, and boost-cutoff projected `dx`. The rebound cell
+  retains its origin `dx`; distant low-altitude recovery climbs remain visible
+  without receiving the near-pad risk treatment.
 - `Waypoint Handoff Triage` appears for waypoint packs and keeps profile plus
   envelope provenance beside spatial status, outbound heading/progress/cross
   speed, and the worst seed.
@@ -533,7 +540,7 @@ Current direct-transfer checkpoint, refreshed on 2026-07-13 with `8` workers,
 - `near_vertical_transfer_route` remains useful as a stress annotation, but it
   no longer describes a failing direct-transfer region
 
-Current normalized waypoint checkpoint, refreshed on 2026-07-13:
+Current normalized waypoint checkpoint, refreshed on 2026-07-14:
 
 - `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes; worst
   continuation ratio `0.529`
@@ -563,6 +570,11 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-13:
   `0` invalidations. The only residual is
   `single_gentle_bend_v1/full/r-30/short/seed 02`; it passes the handoff contract
   before crashing during final recovery.
+- The visually pathological but successful
+  `single_gentle_bend_v1/half/r-30/short/seed 02` now lands in `33.77s` using
+  `1067.88kg` of fuel with `0m` measured low-altitude rebound. Continuous
+  closing-speed targeting removes the old bang-bang terminal climb, while an
+  explicit vertical-authority tilt cap preserves the existing frontier cases.
 - final-waypoint candidate ranking uses only the planned handoff contract and
   terrain-blind terminal dynamics. It prefers states within terminal thrust
   authority, then lower required acceleration, before the existing actuated
@@ -574,11 +586,11 @@ Current normalized waypoint checkpoint, refreshed on 2026-07-13:
 - `transfer_waypoint_sequence_late_bend_diagnostic`: `27 / 27` landings and
   complete route telemetry; `27 / 54` handoffs enter outside the contract and
   recover before the waypoint plane
-- Batch schema `33` separates the immutable planned tangent, first window-entry
+- Batch schema `34` separates the immutable planned tangent, first window-entry
   snapshot, final resolution reason, and window duration. It also reports the
-  final-handoff required acceleration ratio and recoverable-run count as a
-  kinematic estimate. Detailed plots render entry and resolution as different
-  events.
+  final-handoff required acceleration ratio, recoverable-run count, and
+  low-altitude rebound diagnostics. Detailed plots render entry and resolution
+  as different events.
 - The broader all-radius turn workload records `271.18us` mean and `719us` p99
   across `1,368,932` updates after guidance cleanup. The maintained controller
   remains below its `1ms` p99 budget.

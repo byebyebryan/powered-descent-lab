@@ -713,14 +713,14 @@ Trajectory-error report entrypoints:
 - `outputs/eval/terminal_traj_err_suite/summary.json`
 - `outputs/eval/terminal_traj_err_full/summary.json`
 
-The smoke checkpoint below is from fresh schema-33 local captures. The full-pack
+The smoke checkpoint below is from fresh schema-34 local captures. The full-pack
 counts remain the last complete maintained capture. Regenerate ignored
 `outputs/eval` entrypoints after schema/report changes before treating the files
 in this checkout as authoritative.
 
-Latest refreshed schema-33 smoke wall-clock signal:
+Latest refreshed schema-34 smoke wall-clock signal:
 
-- `terminal_traj_err_suite`: `29.79s` with `8` workers
+- `terminal_traj_err_suite`: `35.70s` with `8` workers
 
 The full-pack counts below remain the maintained checkpoint; refresh the full
 pack before using its older wall-clock measurement for performance comparison.
@@ -812,7 +812,7 @@ slice.
 Now that the core matrix and guidance ownership are stable, the next terminal
 milestones are:
 
-1. preserve the schema-33 smoke packs as the terminal no-regression gate while
+1. preserve the schema-34 smoke packs as the terminal no-regression gate while
    waypoint planning is developed above guidance
 2. deepen feasibility/frontier semantics when a concrete authority-bound
    hypothesis warrants it:

@@ -340,17 +340,19 @@ Status:
   on controller observation boundaries
 - `EvaluationGoal::WaypointSequence` evaluates every route waypoint in order,
   stops at the first failed contract, and persists passed/total/first-failure
-  evidence. Batch schema `33` retains ordered handoff histories and route-level
+  evidence. Batch schema `34` retains ordered handoff histories and route-level
   status while separating the planned tangent, immutable window-entry state,
   and final handoff resolution. It also exposes final-handoff terminal
   recoverability evidence.
 - batch review metrics now capture transfer final phase, first terminal handoff,
   boost/cutoff quality, boost burn stats, and Pylander-inspired shape metrics
   per run, including post-handoff apex gain, time-to-apex, and apex lateral
-  offset
+  offset. Low-altitude rebound gain plus origin distance separates near-pad
+  terminal chatter from legitimate recovery climbs farther along the route.
 - batch reports now put `Transfer Handoff Triage` ahead of shape triage so
   controller tuning starts from entry kind, handoff gate, height/speed,
-  projected `dx`, cutoff quality, and worst seed before visual-shape RMSE
+  projected `dx`, cutoff quality, terminal rebound, and worst seed before
+  visual-shape RMSE
 - current direct-transfer checkpoint:
   - `transfer_route_angle_radius_suite`: `297 / 297` successes and `0`
     invalidations across all route angles, radii, payloads, and smoke seeds
@@ -399,8 +401,9 @@ Status:
   - capture-radius entry opens a window instead of resolving the handoff;
     guidance retains the active leg until contract pass or waypoint-plane
     deadline
-  - schema `33` separates plan tangent, window-entry state, final resolution,
-    and final-terminal recoverability in JSON and HTML reports
+  - schema `34` separates plan tangent, window-entry state, final resolution,
+    final-terminal recoverability, and low-altitude rebound in JSON and HTML
+    reports
   - the full `late_bend_v1` matrix is parked as a 27-run diagnostic: it lands
     `27 / 27`, with `27 / 54` initially bad entries recovering in-window
   - ordered-contract compute remains within budget at `434us` p99

@@ -27,7 +27,10 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 33;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 34;
+
+const TRANSFER_TERMINAL_REBOUND_ARM_HEIGHT_M: f64 = 25.0;
+const TRANSFER_TERMINAL_REBOUND_NEAR_PAD_HALF_WIDTHS: f64 = 3.0;
 const REGRESSION_POLICY_EPSILON: f64 = 1.0e-9;
 const REGRESSION_POLICY_MEAN_SIM_TIME_WARN_DELTA_S: f64 = 1.0;
 
@@ -421,6 +424,12 @@ pub struct BatchRunReviewMetrics {
     pub transfer_terminal_post_handoff_time_to_apex_s: Option<f64>,
     #[serde(default)]
     pub transfer_terminal_post_handoff_apex_dx_abs_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_low_altitude_rebound_gain_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_low_altitude_rebound_origin_dx_abs_m: Option<f64>,
+    #[serde(default)]
+    pub transfer_terminal_low_altitude_rebound_near_pad: Option<bool>,
     #[serde(default)]
     pub transfer_final_phase: Option<String>,
     #[serde(default)]
@@ -892,6 +901,10 @@ pub struct BatchGroupSummary {
     pub transfer_terminal_post_handoff_time_to_apex_s: Option<BatchMetricSummary>,
     #[serde(default)]
     pub transfer_terminal_post_handoff_apex_dx_abs_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_terminal_low_altitude_rebound_gain_m: Option<BatchMetricSummary>,
+    #[serde(default)]
+    pub transfer_terminal_low_altitude_rebound_origin_dx_abs_m: Option<BatchMetricSummary>,
     pub mission_outcomes: BTreeMap<String, usize>,
     pub end_reasons: BTreeMap<String, usize>,
     pub sample_run_ids: Vec<String>,
@@ -6154,6 +6167,8 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
     let mut success_transfer_terminal_post_handoff_apex_gain_m = Vec::new();
     let mut success_transfer_terminal_post_handoff_time_to_apex_s = Vec::new();
     let mut success_transfer_terminal_post_handoff_apex_dx_abs_m = Vec::new();
+    let mut success_transfer_terminal_low_altitude_rebound_gain_m = Vec::new();
+    let mut success_transfer_terminal_low_altitude_rebound_origin_dx_abs_m = Vec::new();
     let mut success_sim_time_s = Vec::new();
     let mut success_pointers = Vec::new();
     let mut failure_pointers = Vec::new();
@@ -6208,6 +6223,15 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
             if let Some(value) = record.review.transfer_terminal_post_handoff_apex_dx_abs_m {
                 success_transfer_terminal_post_handoff_apex_dx_abs_m.push(value);
             }
+            if let Some(value) = record.review.transfer_terminal_low_altitude_rebound_gain_m {
+                success_transfer_terminal_low_altitude_rebound_gain_m.push(value);
+            }
+            if let Some(value) = record
+                .review
+                .transfer_terminal_low_altitude_rebound_origin_dx_abs_m
+            {
+                success_transfer_terminal_low_altitude_rebound_origin_dx_abs_m.push(value);
+            }
             success_pointers.push(pointer);
         }
         if sample_run_ids.len() < 5 {
@@ -6257,6 +6281,12 @@ fn summarize_group(key: &str, records: &[&BatchRunRecord]) -> BatchGroupSummary 
         ),
         transfer_terminal_post_handoff_apex_dx_abs_m: metric_summary(
             &success_transfer_terminal_post_handoff_apex_dx_abs_m,
+        ),
+        transfer_terminal_low_altitude_rebound_gain_m: metric_summary(
+            &success_transfer_terminal_low_altitude_rebound_gain_m,
+        ),
+        transfer_terminal_low_altitude_rebound_origin_dx_abs_m: metric_summary(
+            &success_transfer_terminal_low_altitude_rebound_origin_dx_abs_m,
         ),
         mission_outcomes,
         end_reasons,
@@ -6442,6 +6472,12 @@ fn derive_run_review_metrics(
         transfer_terminal_post_handoff_time_to_apex_s: transfer
             .terminal_post_handoff_time_to_apex_s,
         transfer_terminal_post_handoff_apex_dx_abs_m: transfer.terminal_post_handoff_apex_dx_abs_m,
+        transfer_terminal_low_altitude_rebound_gain_m: transfer
+            .terminal_low_altitude_rebound_gain_m,
+        transfer_terminal_low_altitude_rebound_origin_dx_abs_m: transfer
+            .terminal_low_altitude_rebound_origin_dx_abs_m,
+        transfer_terminal_low_altitude_rebound_near_pad: transfer
+            .terminal_low_altitude_rebound_near_pad,
         transfer_final_phase: transfer.final_phase,
         transfer_boost_projected_dx_m: transfer.boost_projected_dx_m,
         transfer_boost_impact_angle_deg: transfer.boost_impact_angle_deg,
@@ -8055,6 +8091,9 @@ struct TransferReviewMetrics {
     terminal_post_handoff_apex_gain_m: Option<f64>,
     terminal_post_handoff_time_to_apex_s: Option<f64>,
     terminal_post_handoff_apex_dx_abs_m: Option<f64>,
+    terminal_low_altitude_rebound_gain_m: Option<f64>,
+    terminal_low_altitude_rebound_origin_dx_abs_m: Option<f64>,
+    terminal_low_altitude_rebound_near_pad: Option<bool>,
     final_phase: Option<String>,
     boost_projected_dx_m: Option<f64>,
     boost_impact_angle_deg: Option<f64>,
@@ -8077,6 +8116,52 @@ struct TransferReviewMetrics {
     terminal_gate_deferred: Option<bool>,
     corridor_mode: Option<String>,
     corridor_min_margin_m: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TerminalLowAltitudeRebound {
+    gain_m: f64,
+    origin_dx_abs_m: f64,
+    near_pad: bool,
+}
+
+fn terminal_low_altitude_rebound(
+    terminal_samples: &[&SampleRecord],
+) -> Option<TerminalLowAltitudeRebound> {
+    let mut minimum_height_m = None::<f64>;
+    let mut minimum_dx_abs_m = 0.0;
+    let mut minimum_pad_half_width_m = 0.0;
+    let mut best = None::<TerminalLowAltitudeRebound>;
+
+    for sample in terminal_samples {
+        let observation = &sample.observation;
+        if minimum_height_m.is_none()
+            && (observation.height_above_target_m > TRANSFER_TERMINAL_REBOUND_ARM_HEIGHT_M
+                || observation.velocity_mps.y > 0.0)
+        {
+            continue;
+        }
+
+        if minimum_height_m.is_none_or(|height_m| observation.height_above_target_m < height_m) {
+            minimum_height_m = Some(observation.height_above_target_m);
+            minimum_dx_abs_m = observation.target_dx_m.abs();
+            minimum_pad_half_width_m = observation.target_pad_half_width_m.max(0.0);
+        }
+
+        let gain_m = (observation.height_above_target_m - minimum_height_m?).max(0.0);
+        if best.is_none_or(|current| gain_m > current.gain_m) {
+            best = Some(TerminalLowAltitudeRebound {
+                gain_m,
+                origin_dx_abs_m: minimum_dx_abs_m,
+                near_pad: minimum_pad_half_width_m > 0.0
+                    && minimum_dx_abs_m
+                        <= TRANSFER_TERMINAL_REBOUND_NEAR_PAD_HALF_WIDTHS
+                            * minimum_pad_half_width_m,
+            });
+        }
+    }
+
+    best
 }
 
 fn transfer_review_metrics(
@@ -8157,6 +8242,7 @@ fn transfer_review_metrics(
         .map(|(entry, apex)| (apex.sim_time_s - entry.sim_time_s).max(0.0));
     let terminal_post_handoff_apex_dx_abs_m =
         terminal_apex.map(|apex| apex.observation.target_dx_m.abs());
+    let terminal_low_altitude_rebound = terminal_low_altitude_rebound(&terminal_samples);
     let mut metrics = transfer_review_metrics_without_handoff(controller_updates, samples);
     metrics.terminal_entry_kind = Some(terminal_entry_kind.to_owned());
     metrics.terminal_handoff_time_s = Some(handoff.sim_time_s);
@@ -8172,6 +8258,12 @@ fn transfer_review_metrics(
     metrics.terminal_post_handoff_apex_gain_m = terminal_post_handoff_apex_gain_m;
     metrics.terminal_post_handoff_time_to_apex_s = terminal_post_handoff_time_to_apex_s;
     metrics.terminal_post_handoff_apex_dx_abs_m = terminal_post_handoff_apex_dx_abs_m;
+    metrics.terminal_low_altitude_rebound_gain_m =
+        terminal_low_altitude_rebound.map(|rebound| rebound.gain_m);
+    metrics.terminal_low_altitude_rebound_origin_dx_abs_m =
+        terminal_low_altitude_rebound.map(|rebound| rebound.origin_dx_abs_m);
+    metrics.terminal_low_altitude_rebound_near_pad =
+        terminal_low_altitude_rebound.map(|rebound| rebound.near_pad);
     metrics.final_phase = final_phase;
     metrics
 }
@@ -13223,6 +13315,89 @@ mod tests {
         assert_eq!(metrics.terminal_post_handoff_apex_gain_m, Some(30.0));
         assert_eq!(metrics.terminal_post_handoff_time_to_apex_s, Some(1.0));
         assert_eq!(metrics.terminal_post_handoff_apex_dx_abs_m, Some(60.0));
+    }
+
+    #[test]
+    fn transfer_review_metrics_ignore_low_altitude_ascent_before_descent() {
+        let updates = vec![transfer_update(120, 1.0, "terminal", 30.0, 20.0, 0.8)];
+        let samples = vec![
+            transfer_sample(120, 1.0, Vec2::new(-30.0, 20.0), Vec2::new(5.0, 3.0), 95.0),
+            transfer_sample(240, 2.0, Vec2::new(-20.0, 24.0), Vec2::new(5.0, 2.0), 90.0),
+        ];
+
+        let metrics = transfer_review_metrics(&updates, &samples);
+
+        assert_eq!(metrics.terminal_low_altitude_rebound_gain_m, None);
+        assert_eq!(metrics.terminal_low_altitude_rebound_origin_dx_abs_m, None);
+        assert_eq!(metrics.terminal_low_altitude_rebound_near_pad, None);
+    }
+
+    #[test]
+    fn transfer_review_metrics_capture_near_pad_low_altitude_rebound() {
+        let updates = vec![transfer_update(120, 1.0, "terminal", 30.0, 24.0, 0.8)];
+        let samples = vec![
+            transfer_sample(120, 1.0, Vec2::new(-30.0, 24.0), Vec2::new(5.0, -4.0), 95.0),
+            transfer_sample(240, 2.0, Vec2::new(-20.0, 10.0), Vec2::new(3.0, -2.0), 90.0),
+            transfer_sample(360, 3.0, Vec2::new(-15.0, 16.0), Vec2::new(2.0, 2.0), 88.0),
+        ];
+
+        let metrics = transfer_review_metrics(&updates, &samples);
+
+        assert_eq!(metrics.terminal_low_altitude_rebound_gain_m, Some(6.0));
+        assert_eq!(
+            metrics.terminal_low_altitude_rebound_origin_dx_abs_m,
+            Some(20.0)
+        );
+        assert_eq!(metrics.terminal_low_altitude_rebound_near_pad, Some(true));
+    }
+
+    #[test]
+    fn transfer_review_metrics_distinguish_far_target_recovery_climb() {
+        let updates = vec![transfer_update(120, 1.0, "terminal", 220.0, 24.0, 0.8)];
+        let samples = vec![
+            transfer_sample(
+                120,
+                1.0,
+                Vec2::new(-220.0, 24.0),
+                Vec2::new(5.0, -4.0),
+                95.0,
+            ),
+            transfer_sample(
+                240,
+                2.0,
+                Vec2::new(-200.0, 10.0),
+                Vec2::new(3.0, -2.0),
+                90.0,
+            ),
+            transfer_sample(360, 3.0, Vec2::new(-180.0, 20.0), Vec2::new(2.0, 3.0), 88.0),
+        ];
+
+        let metrics = transfer_review_metrics(&updates, &samples);
+
+        assert_eq!(metrics.terminal_low_altitude_rebound_gain_m, Some(10.0));
+        assert_eq!(
+            metrics.terminal_low_altitude_rebound_origin_dx_abs_m,
+            Some(200.0)
+        );
+        assert_eq!(metrics.terminal_low_altitude_rebound_near_pad, Some(false));
+    }
+
+    #[test]
+    fn transfer_review_metrics_report_zero_for_monotonic_low_altitude_descent() {
+        let updates = vec![transfer_update(120, 1.0, "terminal", 30.0, 24.0, 0.8)];
+        let samples = vec![
+            transfer_sample(120, 1.0, Vec2::new(-30.0, 24.0), Vec2::new(5.0, -4.0), 95.0),
+            transfer_sample(240, 2.0, Vec2::new(-20.0, 10.0), Vec2::new(3.0, -2.0), 90.0),
+        ];
+
+        let metrics = transfer_review_metrics(&updates, &samples);
+
+        assert_eq!(metrics.terminal_low_altitude_rebound_gain_m, Some(0.0));
+        assert_eq!(
+            metrics.terminal_low_altitude_rebound_origin_dx_abs_m,
+            Some(30.0)
+        );
+        assert_eq!(metrics.terminal_low_altitude_rebound_near_pad, Some(true));
     }
 
     #[test]

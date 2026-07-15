@@ -2,6 +2,29 @@
 
 ## 2026-07-14
 
+### Low-altitude terminal rescue checkpoint
+
+- Replaced bang-bang touchdown rescue outside the pad with a continuous
+  closing-speed target. The controller now brakes with the velocity-squared
+  energy relation, converts desired applied thrust through the vehicle's
+  minimum-throttle mapping, and caps rescue tilt to preserve required vertical
+  authority.
+- The all-radius waypoint landing gate remains `404 / 405`; direct route-angle
+  transfer remains `99 / 99`, ordered all-radius waypoint landing remains
+  `135 / 135`, and the terminal current lane returns to its prior `171 / 189`
+  physical-success checkpoint. The remaining terminal failures retain their
+  existing frontier/impossible classification.
+- The successful
+  `single_gentle_bend_v1/half/r-30/short/seed 02` outlier improves to `33.77s`,
+  `1067.88kg` fuel used, and `0m` low-altitude rebound. The separate
+  `single_gentle_bend_v1/full/r-30/short/seed 02` crash remains the only
+  all-radius waypoint landing residual.
+- Batch schema `34` adds post-handoff low-altitude rebound gain, origin `dx`,
+  and near-pad classification. Transfer Handoff Triage uses rebounds above
+  `5m` as a risk signal only when they begin within three pad half-widths; the
+  nine larger recovery climbs in the current radius pack begin `209-286m` from
+  the pad and remain unflagged diagnostics.
+
 ### Report information architecture checkpoint
 
 - Centralized stable report-site generation in `pd-report::site` so

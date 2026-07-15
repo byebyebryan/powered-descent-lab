@@ -203,8 +203,9 @@ Waypoint guidance v1 is closed against a preplanned maintained corpus spanning
 turn and ordered routes, full nominal seeds, and route-radius tiers. Initial
 launch energy is regulated from immutable inbound-leg geometry, while final
 handoff selection and direct terminal entry use terrain-blind recoverability.
-Batch schema `33` reports that recoverability as a kinematic estimate alongside
-the observed route contract and final landing outcome. The planner still owns
+Batch schema `34` reports that recoverability and low-altitude rebound as
+kinematic diagnostics alongside the observed route contract and final landing
+outcome. The planner still owns
 terrain-valid placement, leg ordering, and arrival-envelope design; guidance
 must not infer obstacle classes or repair a structurally bad route.
 

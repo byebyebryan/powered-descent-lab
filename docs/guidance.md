@@ -50,7 +50,7 @@ during behavior-preserving refactors:
 - terminal and transfer configuration field names and defaults
 - controller phase strings
 - telemetry metric keys and marker IDs
-- batch schema `33` waypoint and terminal-recovery fields
+- batch schema `34` waypoint and terminal-recovery fields
 - deterministic mission outcomes, handoff evidence, and landing summaries
 
 Internal Rust types and module paths are not compatibility surfaces. They may
