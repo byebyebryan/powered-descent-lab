@@ -160,26 +160,32 @@ fn render_batch_report_with_cache(
   <style>
     :root {{
       color-scheme: light;
-      --bg: #f4f1ea;
+      --bg: #f1ede5;
       --surface: #fffdf8;
-      --surface-strong: #f8f3ea;
-      --ink: #1d1a16;
-      --muted: #665c4f;
-      --line: #d7cdbd;
-      --accent: #b55d2d;
-      --accent-soft: #f3d6c6;
-      --good: #2f7d4a;
-      --bad: #b64234;
-      --warn: #8f651d;
+      --surface-strong: #f8f2e8;
+      --ink: #20211e;
+      --muted: #6d665c;
+      --line: #d9cdbc;
+      --accent: #b95024;
+      --accent-soft: #f4ded1;
+      --good: #176b5c;
+      --bad: #a43a2c;
+      --warn: #966515;
+      --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
       --mono: "Iosevka Term", "SFMono-Regular", Consolas, monospace;
-      --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+      --sans: "Avenir Next", "IBM Plex Sans", "Trebuchet MS", sans-serif;
+      --shadow: 0 18px 44px rgba(45, 34, 23, 0.08);
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       background:
-        radial-gradient(circle at top left, rgba(181,93,45,0.09), transparent 28rem),
-        linear-gradient(180deg, #fbf8f2 0%, var(--bg) 100%);
+        linear-gradient(rgba(69, 58, 44, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(69, 58, 44, 0.025) 1px, transparent 1px),
+        radial-gradient(circle at 12% 0%, rgba(185,80,36,0.12), transparent 31rem),
+        linear-gradient(180deg, #faf7f0 0%, var(--bg) 100%);
+      background-size: 32px 32px, 32px 32px, auto, auto;
+      background-attachment: fixed;
       color: var(--ink);
       font-family: var(--sans);
       line-height: 1.45;
@@ -187,25 +193,61 @@ fn render_batch_report_with_cache(
     .page {{
       max-width: 1500px;
       margin: 0 auto;
-      padding: 24px 20px 40px;
+      padding: 20px 20px 52px;
     }}
     .hero {{
+      position: relative;
+      overflow: hidden;
       display: flex;
       justify-content: space-between;
       gap: 18px;
       align-items: flex-start;
-      margin-bottom: 18px;
+      margin-bottom: 20px;
+      padding: 20px 22px 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 90% 20%, rgba(185,80,36,0.09), transparent 18rem),
+        rgba(255,253,248,0.94);
+      box-shadow: var(--shadow);
+    }}
+    .hero::before {{
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent) 0 42%, var(--good) 42% 71%, #3568a8 71%);
+    }}
+    .hero::after {{
+      content: "";
+      position: absolute;
+      width: 250px;
+      height: 250px;
+      right: -92px;
+      top: -154px;
+      border: 1px solid rgba(185,80,36,0.2);
+      border-radius: 50%;
+      pointer-events: none;
+    }}
+    .hero > * {{
+      position: relative;
+      z-index: 1;
     }}
     .hero h1 {{
       margin: 0 0 6px;
-      font-size: 2rem;
-      line-height: 1.05;
+      max-width: 34ch;
+      font-family: var(--display);
+      font-size: clamp(1.9rem, 3.2vw, 2.7rem);
+      font-weight: 500;
+      letter-spacing: -0.035em;
+      line-height: 0.98;
       overflow-wrap: anywhere;
     }}
     .subtitle {{
       margin: 0;
       color: var(--muted);
-      max-width: 72ch;
+      max-width: 68ch;
+      font-size: 0.94rem;
     }}
     .chip-row {{
       display: flex;
@@ -220,8 +262,8 @@ fn render_batch_report_with_cache(
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.75);
-      padding: 5px 10px;
-      font-size: 0.82rem;
+      padding: 5px 9px;
+      font-size: 0.8rem;
       color: var(--muted);
       max-width: 100%;
       overflow-wrap: anywhere;
@@ -248,14 +290,17 @@ fn render_batch_report_with_cache(
       color: var(--ink);
       border: 1px solid var(--line);
       background: var(--surface);
-      padding: 7px 11px;
-      border-radius: 10px;
+      padding: 7px 12px;
+      border-radius: 999px;
       font-size: 0.84rem;
       white-space: nowrap;
+      box-shadow: 0 3px 10px rgba(45,34,23,0.04);
     }}
     .hero-actions a:hover {{
       border-color: var(--accent);
       color: var(--accent);
+      text-decoration: none;
+      transform: translateY(-1px);
     }}
     .header-overview {{
       margin-bottom: 16px;
@@ -301,8 +346,10 @@ fn render_batch_report_with_cache(
     .transfer-shape-section h2,
     .review-tree-section h2 {{
       margin: 0;
-      font-size: 1rem;
-      font-weight: 700;
+      font-family: var(--display);
+      font-size: 1.28rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
       color: var(--ink);
     }}
     .header-context .table-wrap {{
@@ -397,13 +444,19 @@ fn render_batch_report_with_cache(
     }}
     .coverage-section {{
       margin-bottom: 18px;
-      padding: 15px;
+      padding: 16px;
       border: 1px solid var(--line);
       border-radius: 18px;
-      background: rgba(255,253,248,0.9);
-      box-shadow: 0 10px 30px rgba(39,28,18,0.05);
+      background: rgba(255,253,248,0.88);
+      box-shadow: 0 12px 32px rgba(39,28,18,0.05);
     }}
-    .coverage-section h2 {{ margin: 0; font-size: 1rem; }}
+    .coverage-section h2 {{
+      margin: 0;
+      font-family: var(--display);
+      font-size: 1.28rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+    }}
     .coverage-filters {{ display: flex; flex-wrap: wrap; gap: 9px; }}
     .coverage-filters label {{
       display: grid;
@@ -429,20 +482,30 @@ fn render_batch_report_with_cache(
     .coverage-cell {{
       cursor: pointer;
       border: 1px solid rgba(215,205,189,0.76);
-      border-radius: 9px;
-      background: rgba(47,125,74,0.08);
+      border-radius: 10px;
+      background: rgba(23,107,92,0.065);
       padding: 7px 8px;
       min-height: 52px;
+      box-shadow: inset 3px 0 0 rgba(23,107,92,0.38);
     }}
-    .coverage-cell:hover {{ border-color: var(--accent); }}
+    .coverage-cell:hover {{
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }}
     .coverage-target,
     .coverage-target > td {{ animation: coverage-flash 1.4s ease-out; }}
     @keyframes coverage-flash {{
       0%, 35% {{ background: rgba(181,93,45,0.24); }}
       100% {{ background: inherit; }}
     }}
-    .coverage-cell.has-failure {{ background: rgba(182,66,52,0.1); }}
-    .coverage-cell.invalid-only {{ background: rgba(143,101,29,0.1); }}
+    .coverage-cell.has-failure {{
+      background: rgba(164,58,44,0.075);
+      box-shadow: inset 3px 0 0 rgba(164,58,44,0.48);
+    }}
+    .coverage-cell.invalid-only {{
+      background: rgba(150,101,21,0.07);
+      box-shadow: inset 3px 0 0 rgba(150,101,21,0.42);
+    }}
     .coverage-cell strong {{ display: block; font-size: 0.92rem; }}
     .coverage-cell span {{ color: var(--muted); font-size: 0.72rem; }}
     .coverage-cell .coverage-delta {{ color: var(--bad); }}
@@ -465,15 +528,15 @@ fn render_batch_report_with_cache(
     }}
     .current-summary-row,
     .current-summary-row > td {{
-      background: rgba(14, 107, 96, 0.09);
+      background: rgba(23, 107, 92, 0.045);
     }}
     .baseline-summary-row,
     .baseline-summary-row > td {{
-      background: rgba(181, 126, 80, 0.11);
+      background: rgba(185, 80, 36, 0.045);
     }}
     .diff-summary-row,
     .diff-summary-row > td {{
-      background: rgba(199, 160, 84, 0.12);
+      background: rgba(150, 101, 21, 0.045);
     }}
     .summary-table code {{
       font-size: 0.82rem;
@@ -497,7 +560,7 @@ fn render_batch_report_with_cache(
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 14px 15px;
-      box-shadow: 0 10px 30px rgba(39,28,18,0.06);
+      box-shadow: 0 12px 32px rgba(39,28,18,0.055);
       min-width: 0;
     }}
     .card h2 {{
@@ -533,7 +596,7 @@ fn render_batch_report_with_cache(
       border: 1px solid var(--line);
       border-radius: 18px;
       padding: 14px 15px;
-      box-shadow: 0 10px 30px rgba(39,28,18,0.05);
+      box-shadow: 0 12px 32px rgba(39,28,18,0.05);
       min-width: 0;
     }}
     .panel h2 {{
@@ -555,7 +618,7 @@ fn render_batch_report_with_cache(
     th, td {{
       text-align: left;
       padding: 8px 10px;
-      border-bottom: 1px solid rgba(215,205,189,0.82);
+      border-bottom: 1px solid rgba(217,205,188,0.72);
       vertical-align: top;
     }}
     th {{
@@ -593,7 +656,7 @@ fn render_batch_report_with_cache(
     .rate-fill {{
       height: 100%;
       border-radius: 999px;
-      background: linear-gradient(90deg, var(--accent), #d98955);
+      background: linear-gradient(90deg, var(--good), #4e9c82);
     }}
     .seed-list {{
       color: var(--muted);
@@ -615,8 +678,8 @@ fn render_batch_report_with_cache(
     .tree-table-section {{
       border: 1px solid var(--line);
       border-radius: 16px;
-      background: rgba(255,253,248,0.9);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+      background: rgba(255,253,248,0.86);
+      box-shadow: 0 10px 28px rgba(39,28,18,0.045);
       padding: 12px 12px 10px;
       min-width: 0;
       max-width: 100%;
@@ -647,7 +710,7 @@ fn render_batch_report_with_cache(
     }}
     .tree-controls button {{
       border: 1px solid var(--line);
-      background: rgba(248,243,234,0.92);
+      background: rgba(255,253,248,0.92);
       color: var(--ink);
       border-radius: 999px;
       padding: 7px 11px;
@@ -658,6 +721,7 @@ fn render_batch_report_with_cache(
     .tree-controls button:hover {{
       border-color: var(--accent);
       color: var(--accent);
+      transform: translateY(-1px);
     }}
     .view-mode-controls {{
       display: flex;
@@ -666,7 +730,7 @@ fn render_batch_report_with_cache(
     }}
     .view-mode-controls button {{
       border: 1px solid var(--line);
-      background: rgba(248,243,234,0.92);
+      background: rgba(255,253,248,0.92);
       color: var(--ink);
       border-radius: 999px;
       padding: 7px 11px;
@@ -677,10 +741,12 @@ fn render_batch_report_with_cache(
     .view-mode-controls button:hover {{
       border-color: var(--accent);
       color: var(--accent);
+      transform: translateY(-1px);
     }}
     .view-mode-controls button.active {{
-      border-color: rgba(14, 107, 96, 0.38);
-      background: rgba(14, 107, 96, 0.12);
+      border-color: rgba(23, 107, 92, 0.34);
+      background: rgba(23, 107, 92, 0.1);
+      color: var(--good);
     }}
     .standalone-toggle-target {{
       display: none;
@@ -714,12 +780,12 @@ fn render_batch_report_with_cache(
       position: sticky;
       left: 0;
       z-index: 2;
-      background: #fffaf1;
-      box-shadow: 1px 0 0 rgba(215,205,189,0.9);
+      background: #fffdf8;
+      box-shadow: 1px 0 0 rgba(217,205,188,0.82);
     }}
     .scenario-table thead th:first-child {{ z-index: 3; background: #f8f3ea; }}
     .scenario-table .current-row td:first-child {{ background: #f0f7f2; }}
-    .scenario-table .baseline-row td:first-child {{ background: #f7eee4; }}
+    .scenario-table .baseline-row td:first-child {{ background: #faf3ed; }}
     .summary-row {{
       cursor: pointer;
     }}
@@ -737,35 +803,35 @@ fn render_batch_report_with_cache(
     }}
     .scenario-row,
     .scenario-row > td {{
-      background: rgba(14, 107, 96, 0.11);
+      background: rgba(23, 107, 92, 0.045);
     }}
     .scenario-row:hover,
     .scenario-row:hover > td {{
-      background: rgba(14, 107, 96, 0.17);
+      background: rgba(23, 107, 92, 0.09);
     }}
     .baseline-scenario-row,
     .baseline-scenario-row > td {{
-      background: rgba(181, 126, 80, 0.12);
+      background: rgba(185, 80, 36, 0.045);
     }}
     .baseline-scenario-row:hover,
     .baseline-scenario-row:hover > td {{
-      background: rgba(181, 126, 80, 0.18);
+      background: rgba(185, 80, 36, 0.09);
     }}
     .summary-row.lane-controller-current,
     .summary-row.lane-controller-current > td {{
-      background: rgba(47, 125, 74, 0.10);
+      background: rgba(23, 107, 92, 0.055);
     }}
     .summary-row.lane-controller-current:hover,
     .summary-row.lane-controller-current:hover > td {{
-      background: rgba(47, 125, 74, 0.16);
+      background: rgba(23, 107, 92, 0.1);
     }}
     .summary-row.lane-controller-baseline,
     .summary-row.lane-controller-baseline > td {{
-      background: rgba(181, 126, 80, 0.12);
+      background: rgba(185, 80, 36, 0.055);
     }}
     .summary-row.lane-controller-baseline:hover,
     .summary-row.lane-controller-baseline:hover > td {{
-      background: rgba(181, 126, 80, 0.18);
+      background: rgba(185, 80, 36, 0.1);
     }}
     .summary-row td:first-child {{
       font-weight: 700;
@@ -784,35 +850,35 @@ fn render_batch_report_with_cache(
     }}
     .seed-row,
     .seed-row > td {{
-      background: rgba(255, 249, 238, 0.92);
+      background: rgba(255, 253, 248, 0.86);
     }}
     .seed-row:hover,
     .seed-row:hover > td {{
-      background: rgba(255, 245, 230, 0.96);
+      background: rgba(248, 242, 232, 0.92);
     }}
     .baseline-seed-row,
     .baseline-seed-row > td {{
-      background: rgba(245, 236, 226, 0.84);
+      background: rgba(250, 246, 239, 0.86);
     }}
     .baseline-seed-row:hover,
     .baseline-seed-row:hover > td {{
-      background: rgba(242, 230, 216, 0.92);
+      background: rgba(246, 237, 226, 0.94);
     }}
     .seed-row.lane-controller-current,
     .seed-row.lane-controller-current > td {{
-      background: rgba(248, 252, 248, 0.94);
+      background: rgba(248, 252, 249, 0.88);
     }}
     .seed-row.lane-controller-current:hover,
     .seed-row.lane-controller-current:hover > td {{
-      background: rgba(239, 247, 239, 0.98);
+      background: rgba(238, 247, 243, 0.95);
     }}
     .seed-row.lane-controller-baseline,
     .seed-row.lane-controller-baseline > td {{
-      background: rgba(247, 239, 230, 0.92);
+      background: rgba(252, 247, 241, 0.9);
     }}
     .seed-row.lane-controller-baseline:hover,
     .seed-row.lane-controller-baseline:hover > td {{
-      background: rgba(243, 232, 219, 0.96);
+      background: rgba(247, 238, 228, 0.96);
     }}
     .summary-row.current-row.changed {{
       box-shadow: inset 7px 0 0 rgba(181,93,45,0.72);

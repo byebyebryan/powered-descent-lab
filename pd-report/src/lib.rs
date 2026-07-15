@@ -1892,40 +1892,79 @@ fn report_template() -> &'static str {
   <style>
     :root {
       color-scheme: light;
-      --bg: #f4f1e8;
-      --panel: #fffaf0;
-      --ink: #1d1f24;
-      --muted: #575f66;
-      --accent: #0e6b60;
-      --warn: #8e3b2e;
-      --success: #2f9e44;
-      --line: #d8cfbf;
-      --shadow: rgba(29, 31, 36, 0.08);
-      --chip: rgba(14, 107, 96, 0.08);
-      --chip-border: rgba(14, 107, 96, 0.18);
+      --bg: #f1ede5;
+      --panel: #fffdf8;
+      --panel-strong: #f8f2e8;
+      --ink: #20211e;
+      --muted: #6d665c;
+      --accent: #176b5c;
+      --rust: #b95024;
+      --warn: #a43a2c;
+      --success: #176b5c;
+      --line: #d9cdbc;
+      --shadow: rgba(45, 34, 23, 0.08);
+      --chip: rgba(23, 107, 92, 0.075);
+      --chip-border: rgba(23, 107, 92, 0.18);
+      --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+      --sans: "Avenir Next", "IBM Plex Sans", "Trebuchet MS", sans-serif;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: var(--sans);
       color: var(--ink);
-      background: linear-gradient(180deg, #f7f4ec 0%, var(--bg) 100%);
+      background:
+        linear-gradient(rgba(69, 58, 44, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(69, 58, 44, 0.025) 1px, transparent 1px),
+        radial-gradient(circle at 12% 0%, rgba(185, 80, 36, 0.12), transparent 31rem),
+        linear-gradient(180deg, #faf7f0 0%, var(--bg) 100%);
+      background-size: 32px 32px, 32px 32px, auto, auto;
+      background-attachment: fixed;
       overflow-x: hidden;
     }
     main {
       max-width: 1520px;
       margin: 0 auto;
-      padding: 18px 16px 24px;
+      padding: 18px 16px 40px;
     }
     section, header {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 16px;
-      box-shadow: 0 6px 18px var(--shadow);
+      border-radius: 18px;
+      box-shadow: 0 12px 34px var(--shadow);
     }
     header {
-      padding: 14px 16px;
-      margin-bottom: 12px;
+      position: relative;
+      overflow: hidden;
+      padding: 17px 19px 19px;
+      margin-bottom: 14px;
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 91% 15%, rgba(185,80,36,0.09), transparent 18rem),
+        rgba(255,253,248,0.95);
+      box-shadow: 0 18px 44px var(--shadow);
+    }
+    header::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 4px;
+      background: linear-gradient(90deg, var(--rust) 0 42%, var(--accent) 42% 71%, #3568a8 71%);
+    }
+    header::after {
+      content: "";
+      position: absolute;
+      width: 250px;
+      height: 250px;
+      right: -92px;
+      top: -154px;
+      border: 1px solid rgba(185,80,36,0.2);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    header > * {
+      position: relative;
+      z-index: 1;
     }
     .breadcrumbs {
       display: none;
@@ -1933,7 +1972,7 @@ fn report_template() -> &'static str {
       flex-wrap: wrap;
       gap: 7px;
       margin-bottom: 11px;
-      font-family: "Trebuchet MS", sans-serif;
+      font-family: var(--sans);
       font-size: 0.82rem;
     }
     .breadcrumbs.visible { display: flex; }
@@ -1948,13 +1987,13 @@ fn report_template() -> &'static str {
     .breadcrumbs span { color: var(--muted); }
     h1, h2, h3 {
       margin: 0;
-      font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+      font-family: var(--display);
     }
     p { margin: 0; }
     .hero {
       display: grid;
-      grid-template-columns: 1.6fr 1fr;
-      gap: 14px;
+      grid-template-columns: 1fr;
+      gap: 12px;
       align-items: start;
     }
     .hero-main {
@@ -1976,7 +2015,10 @@ fn report_template() -> &'static str {
       flex-wrap: wrap;
     }
     .title-row h1 {
-      font-size: clamp(1.9rem, 4vw, 3rem);
+      max-width: 24ch;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      font-weight: 500;
+      letter-spacing: -0.035em;
       line-height: 0.98;
       overflow-wrap: anywhere;
     }
@@ -1986,13 +2028,13 @@ fn report_template() -> &'static str {
       align-items: center;
       justify-content: center;
       min-width: 12rem;
-      padding: 0.7rem 1rem;
+      padding: 0.62rem 1rem;
       border-radius: 999px;
       font-weight: 700;
       text-align: center;
-      background: rgba(14, 107, 96, 0.11);
+      background: rgba(23, 107, 92, 0.1);
       color: var(--accent);
-      border: 1px solid rgba(14, 107, 96, 0.18);
+      border: 1px solid rgba(23, 107, 92, 0.2);
     }
     .banner.failure {
       background: rgba(142, 59, 46, 0.12);
@@ -2007,10 +2049,13 @@ fn report_template() -> &'static str {
     }
     .stat, .panel-block {
       border: 1px solid var(--line);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.45);
+      border-radius: 13px;
+      background: rgba(255, 255, 255, 0.52);
       padding: 9px 11px;
       min-width: 0;
+    }
+    .stat {
+      box-shadow: inset 0 2px 0 rgba(23,107,92,0.18);
     }
     .stat .label {
       font-size: 0.78rem;
@@ -2022,6 +2067,7 @@ fn report_template() -> &'static str {
     .stat .value {
       font-size: 1.08rem;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
       overflow-wrap: anywhere;
     }
     .main-grid {
@@ -2041,6 +2087,7 @@ fn report_template() -> &'static str {
     .panel {
       padding: 12px 14px 14px;
       overflow: hidden;
+      background: rgba(255,253,248,0.94);
     }
     .panel-head {
       display: flex;
@@ -2050,7 +2097,9 @@ fn report_template() -> &'static str {
       margin-bottom: 8px;
     }
     .panel-head h2 {
-      font-size: 1.18rem;
+      font-size: 1.3rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
     }
     .plot-toolbar {
       display: flex;
@@ -2060,24 +2109,30 @@ fn report_template() -> &'static str {
     }
     .plot-toolbar button {
       border: 1px solid var(--line);
-      background: #f7f1e4;
+      background: var(--panel-strong);
       color: var(--ink);
       border-radius: 999px;
       padding: 4px 10px;
       cursor: pointer;
       font: inherit;
+      transition: transform 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+    .plot-toolbar button:hover {
+      border-color: var(--rust);
+      color: var(--rust);
+      transform: translateY(-1px);
     }
     .plot-toolbar button.active {
       background: var(--accent);
-      color: #fffaf0;
+      color: #fffdf8;
       border-color: var(--accent);
     }
     .chart {
       width: 100%;
       height: 408px;
       border: 1px solid var(--line);
-      border-radius: 12px;
-      background: #fbf8f1;
+      border-radius: 13px;
+      background: #fcfaf5;
     }
     .metric-grid {
       display: grid;
@@ -2123,6 +2178,22 @@ fn report_template() -> &'static str {
       gap: 12px;
       min-width: 0;
     }
+    .summary-grid .panel-block {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 10px 16px;
+      padding: 9px 11px;
+      border-radius: 13px;
+      background: rgba(248,242,232,0.62);
+    }
+    .summary-grid .eyebrow {
+      color: var(--ink);
+      font-weight: 700;
+    }
+    #phase-chips {
+      margin-top: 0;
+    }
     .key-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2134,6 +2205,7 @@ fn report_template() -> &'static str {
     .key-grid .stat {
       min-width: 0;
       padding: 8px 10px;
+      box-shadow: inset 0 2px 0 rgba(185,80,36,0.18);
     }
     .key-grid .stat .value {
       font-size: 1rem;
@@ -2157,7 +2229,7 @@ fn report_template() -> &'static str {
       gap: 8px 10px;
       align-items: start;
       padding: 8px 0;
-      border-bottom: 1px solid rgba(216, 207, 191, 0.75);
+      border-bottom: 1px solid rgba(217, 205, 188, 0.68);
       font-size: 0.93rem;
     }
     .compact-item:last-child {
@@ -2186,7 +2258,8 @@ fn report_template() -> &'static str {
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 8px 10px;
-      background: rgba(255, 255, 255, 0.58);
+      background: rgba(255, 255, 255, 0.62);
+      box-shadow: inset 3px 0 0 rgba(23,107,92,0.24);
     }
     .inspect-card .label {
       font-size: 0.74rem;
@@ -2219,7 +2292,7 @@ fn report_template() -> &'static str {
       border: 1px solid var(--line);
       border-radius: 10px;
       padding: 8px 10px;
-      background: rgba(255, 255, 255, 0.58);
+      background: rgba(255, 255, 255, 0.62);
     }
     .fact .label {
       font-size: 0.74rem;
@@ -2249,7 +2322,8 @@ fn report_template() -> &'static str {
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 10px 11px;
-      background: rgba(255, 255, 255, 0.52);
+      background: rgba(255, 255, 255, 0.6);
+      box-shadow: inset 3px 0 0 rgba(185,80,36,0.25);
       min-width: 0;
     }
     .mission-card h3 {
@@ -2347,6 +2421,9 @@ fn report_template() -> &'static str {
       header, .panel { padding-inline: 11px; }
       .title-row { align-items: flex-start; }
       .banner { min-width: 0; width: 100%; }
+      .summary-grid .panel-block {
+        grid-template-columns: 1fr;
+      }
       .plot-toolbar { justify-content: flex-start; }
       .chart { min-width: 0; }
       pre { max-width: 100%; overflow-x: auto; }
@@ -2561,8 +2638,8 @@ fn report_template() -> &'static str {
 
   <script>
     const reportData = __REPORT_DATA__;
-    const paperBg = "#fffaf0";
-    const plotBg = "#fbf8f1";
+    const paperBg = "#fffdf8";
+    const plotBg = "#fcfaf5";
     const sharedConfig = {
       responsive: true,
       displaylogo: false,
@@ -2668,9 +2745,9 @@ fn report_template() -> &'static str {
 
     const axisStyle = (extra = {}) => Object.assign({
       automargin: true,
-      gridcolor: "rgba(216, 207, 191, 0.5)",
-      zerolinecolor: "rgba(108, 97, 77, 0.45)",
-      linecolor: "rgba(108, 97, 77, 0.35)",
+      gridcolor: "rgba(217, 205, 188, 0.46)",
+      zerolinecolor: "rgba(109, 102, 92, 0.42)",
+      linecolor: "rgba(109, 102, 92, 0.32)",
     }, extra);
 
     const layoutBase = (extra = {}) => Object.assign({
@@ -2683,18 +2760,18 @@ fn report_template() -> &'static str {
         y: 1.03,
         xanchor: "left",
         x: 0,
-        bgcolor: "rgba(255,250,240,0.92)",
+        bgcolor: "rgba(255,253,248,0.9)",
         font: { size: 11 },
       },
       font: {
-        family: "Georgia, Times New Roman, serif",
+        family: "Avenir Next, IBM Plex Sans, Trebuchet MS, sans-serif",
         size: 12,
-        color: "#1d1f24",
+        color: "#20211e",
       },
       hoverlabel: {
-        bgcolor: "#fffaf0",
-        bordercolor: "#d8cfbf",
-        font: { family: "Georgia, serif", size: 12, color: "#1d1f24" },
+        bgcolor: "#fffdf8",
+        bordercolor: "#d9cdbc",
+        font: { family: "Avenir Next, IBM Plex Sans, Trebuchet MS, sans-serif", size: 12, color: "#20211e" },
       },
     }, extra);
 
@@ -2706,7 +2783,7 @@ fn report_template() -> &'static str {
         y: 1.02,
         xanchor: "left",
         x: 0,
-        bgcolor: "rgba(255,250,240,0.92)",
+        bgcolor: "rgba(255,253,248,0.9)",
         font: { size: 11 },
       },
     }, extra));
@@ -2719,7 +2796,7 @@ fn report_template() -> &'static str {
         y: 1.02,
         xanchor: "left",
         x: 0,
-        bgcolor: "rgba(255,250,240,0.92)",
+        bgcolor: "rgba(255,253,248,0.9)",
         font: { size: 11 },
       },
     }, extra));
