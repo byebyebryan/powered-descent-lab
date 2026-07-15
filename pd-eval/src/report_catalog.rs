@@ -57,10 +57,30 @@ impl GuidanceRole {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct EvidenceSummary {
     total: usize,
-    scored_success: usize,
-    scored_failure: usize,
+    core_success: usize,
+    core_failure: usize,
+    frontier_success: usize,
+    frontier_failure: usize,
     impossible: usize,
-    frontier: usize,
+}
+
+impl EvidenceSummary {
+    fn include(&mut self, other: &Self) {
+        self.total += other.total;
+        self.core_success += other.core_success;
+        self.core_failure += other.core_failure;
+        self.frontier_success += other.frontier_success;
+        self.frontier_failure += other.frontier_failure;
+        self.impossible += other.impossible;
+    }
+
+    fn core_total(&self) -> usize {
+        self.core_success + self.core_failure
+    }
+
+    fn frontier_total(&self) -> usize {
+        self.frontier_success + self.frontier_failure
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -202,36 +222,25 @@ fn render_guidance_overview(repo_root: &Path, catalog: &GuidanceCatalog) -> Stri
                 .map(|report| load_evidence(repo_root, report))
                 .collect::<Vec<_>>();
             let captured = primary.iter().filter(|item| item.batch.is_some()).count();
-            let total_runs = primary
-                .iter()
-                .map(|item| item.summary.scored_success + item.summary.scored_failure)
-                .sum::<usize>();
-            let successes = primary
-                .iter()
-                .map(|item| item.summary.scored_success)
-                .sum::<usize>();
-            let failures = primary
-                .iter()
-                .map(|item| item.summary.scored_failure)
-                .sum::<usize>();
+            let summary = primary.iter().fold(EvidenceSummary::default(), |mut total, item| {
+                total.include(&item.summary);
+                total
+            });
             format!(
-                r#"<a class="guidance-card" href="{id}/"><span class="eyebrow">{captured}/{count} primary reports captured</span><h2>{title}</h2><p>{description}</p><dl><div><dt>Scored</dt><dd>{total_runs}</dd></div><div><dt>Success</dt><dd>{successes}</dd></div><div><dt>Failure</dt><dd class="{failure_class}">{failures}</dd></div></dl></a>"#,
+                r#"<a class="guidance-card" href="{id}/"><span class="eyebrow">{captured}/{count} primary reports captured</span><h2>{title}</h2><p>{description}</p>{metrics}</a>"#,
                 id = escape_html(&group.id),
                 captured = captured,
                 count = primary.len(),
                 title = escape_html(&group.title),
                 description = escape_html(&group.description),
-                total_runs = total_runs,
-                successes = successes,
-                failures = failures,
-                failure_class = if failures > 0 { "bad" } else { "" },
+                metrics = render_guidance_metrics(&summary),
             )
         })
         .collect::<String>();
     page(
         "Guidance Overview",
         "Guidance Overview",
-        "Curated evidence for the three maintained guidance responsibilities. Counts describe captured runs; they are not a synthesized project verdict.",
+        "Curated evidence for the three maintained guidance responsibilities. Core outcomes are separated from scored frontier annotations and analytic impossibilities.",
         r#"<a href="../">reports/</a><a href="../eval/">all batch reports</a>"#,
         &format!(r#"<section class="guidance-grid">{sections}</section>"#),
     )
@@ -244,7 +253,7 @@ fn render_group_page(repo_root: &Path, group: &GuidanceGroup) -> String {
         .map(|report| render_evidence_row(&load_evidence(repo_root, report)))
         .collect::<String>();
     let body = format!(
-        r#"<section class="scorecard"><div class="score-head"><span>Evidence</span><span>Scored outcomes</span><span>Annotations</span><span>Capture</span></div>{rows}</section>"#
+        r#"<p class="score-note">Core outcomes exclude analytic frontier and impossible cases. Frontier failures remain scored by the regression policy, but are shown separately here so stress-boundary evidence does not read as ordinary guidance failure.</p><section class="scorecard"><div class="score-head"><span>Evidence</span><span>Core outcomes</span><span>Frontier / invalid</span><span>Capture</span></div>{rows}</section>"#
     );
     page(
         &group.title,
@@ -292,25 +301,48 @@ fn render_evidence_row(item: &CatalogEvidence) -> String {
         .map(|cache| cache.commit_key.as_str())
         .unwrap_or("unknown");
     format!(
-        r#"<a class="score-row" href="../../eval/{pack}/"><div><span class="eyebrow">{role} · {evidence}</span><h3>{label}</h3>{pair}<code>{pack}</code></div><div><strong>{success}</strong> success <span class="separator">/</span> <strong class="{failure_class}">{failure}</strong> failure<div class="muted">{scored} scored runs</div></div><div><strong>{impossible}</strong> invalidated <span class="separator">/</span> <strong>{frontier}</strong> frontier<div class="muted">invalidated cases are analytic impossibilities</div></div><div><span class="status captured">captured</span>{comparison}<div class="muted">{wall:.2}s wall · {commit}</div></div></a>"#,
+        r#"<a class="score-row" href="../../eval/{pack}/"><div><span class="eyebrow">{role} · {evidence}</span><h3>{label}</h3>{pair}<code>{pack}</code></div>{outcomes}<div><span class="status captured">captured</span>{comparison}<div class="muted">{wall:.2}s wall · {commit}</div></div></a>"#,
         pack = escape_html(&item.report.pack_id),
         role = role,
         evidence = escape_html(&item.report.evidence),
         label = escape_html(&item.report.label),
         pair = pair,
-        success = item.summary.scored_success,
-        failure = item.summary.scored_failure,
-        scored = item.summary.scored_success + item.summary.scored_failure,
-        failure_class = if item.summary.scored_failure > 0 {
-            "bad"
-        } else {
-            ""
-        },
-        impossible = item.summary.impossible,
-        frontier = item.summary.frontier,
+        outcomes = render_evidence_outcomes(&item.summary),
         comparison = comparison,
         wall = batch.wall_clock_s,
         commit = escape_html(commit),
+    )
+}
+
+fn render_guidance_metrics(summary: &EvidenceSummary) -> String {
+    let failure_class = if summary.core_failure > 0 { "bad" } else { "" };
+    format!(
+        r#"<dl><div><dt>Core</dt><dd>{core_total}</dd></div><div><dt>Pass</dt><dd>{core_success}</dd></div><div><dt>Fail</dt><dd class="{failure_class}">{core_failure}</dd></div></dl><div class="guidance-card-note"><strong>{frontier_success}</strong> frontier pass <span class="separator">/</span> <strong class="frontier-bad">{frontier_failure}</strong> fail · {impossible} impossible</div>"#,
+        core_total = summary.core_total(),
+        core_success = summary.core_success,
+        core_failure = summary.core_failure,
+        frontier_success = summary.frontier_success,
+        frontier_failure = summary.frontier_failure,
+        impossible = summary.impossible,
+    )
+}
+
+fn render_evidence_outcomes(summary: &EvidenceSummary) -> String {
+    let core_failure_class = if summary.core_failure > 0 { "bad" } else { "" };
+    let frontier_failure_class = if summary.frontier_failure > 0 {
+        "frontier-bad"
+    } else {
+        ""
+    };
+    format!(
+        r#"<div><strong>{core_success}</strong> pass <span class="separator">/</span> <strong class="{core_failure_class}">{core_failure}</strong> fail<div class="muted">{core_total} core runs</div></div><div><strong>{frontier_success}</strong> pass <span class="separator">/</span> <strong class="{frontier_failure_class}">{frontier_failure}</strong> fail<div class="muted">{frontier_total} frontier · {impossible} impossible</div></div>"#,
+        core_success = summary.core_success,
+        core_failure = summary.core_failure,
+        core_total = summary.core_total(),
+        frontier_success = summary.frontier_success,
+        frontier_failure = summary.frontier_failure,
+        frontier_total = summary.frontier_total(),
+        impossible = summary.impossible,
     )
 }
 
@@ -359,18 +391,17 @@ fn summarize_records<'a>(records: impl Iterator<Item = &'a BatchRunRecord>) -> E
         match record.analytic.class {
             BatchRunAnalyticClass::Impossible => summary.impossible += 1,
             BatchRunAnalyticClass::Frontier => {
-                summary.frontier += 1;
                 if record.manifest.mission_outcome == MissionOutcome::Success {
-                    summary.scored_success += 1;
+                    summary.frontier_success += 1;
                 } else {
-                    summary.scored_failure += 1;
+                    summary.frontier_failure += 1;
                 }
             }
             BatchRunAnalyticClass::Scored => {
                 if record.manifest.mission_outcome == MissionOutcome::Success {
-                    summary.scored_success += 1;
+                    summary.core_success += 1;
                 } else {
-                    summary.scored_failure += 1;
+                    summary.core_failure += 1;
                 }
             }
         }
@@ -728,6 +759,19 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   font-size: 1.28rem;
   font-weight: 800;
 }
+.guidance-card-note {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+.guidance-card-note strong { color: var(--green); }
+.guidance-card-note strong.frontier-bad { color: var(--amber); }
+.score-note {
+  max-width: none;
+  margin: 0 2px 12px;
+  font-size: 0.84rem;
+}
 .scorecard {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -792,6 +836,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 .separator { color: var(--line); }
 .bad { color: var(--red); }
+.frontier-bad { color: var(--amber); }
 .pair, .status {
   display: inline-block;
   border: 1px solid var(--line);
@@ -930,7 +975,8 @@ fn escape_html(value: &str) -> String {
 mod tests {
     use super::{
         EvalCategory, EvidenceSummary, classify_fixture, load_guidance_catalog,
-        preferred_lane_summary, refresh_pack_ids,
+        preferred_lane_summary, refresh_pack_ids, render_evidence_outcomes,
+        render_guidance_metrics,
     };
     use crate::load_batch_report;
     use std::path::PathBuf;
@@ -968,12 +1014,45 @@ mod tests {
             summary,
             EvidenceSummary {
                 total: 189,
-                scored_success: 171,
-                scored_failure: 9,
+                core_success: 168,
+                core_failure: 0,
+                frontier_success: 3,
+                frontier_failure: 9,
                 impossible: 9,
-                frontier: 12,
             }
         );
+    }
+
+    #[test]
+    fn terminal_catalog_separates_core_failures_from_frontier_failures() {
+        let clean_smoke = EvidenceSummary {
+            total: 189,
+            core_success: 168,
+            core_failure: 0,
+            frontier_success: 3,
+            frontier_failure: 9,
+            impossible: 9,
+        };
+        let outcomes_html = render_evidence_outcomes(&clean_smoke);
+        assert!(outcomes_html.contains("<strong>168</strong> pass"));
+        assert!(outcomes_html.contains("<strong class=\"\">0</strong> fail"));
+        assert!(outcomes_html.contains("<strong class=\"frontier-bad\">9</strong> fail"));
+        assert!(outcomes_html.contains("12 frontier · 9 impossible"));
+
+        let mut aggregate = clean_smoke;
+        aggregate.include(&EvidenceSummary {
+            total: 756,
+            core_success: 672,
+            core_failure: 0,
+            frontier_success: 22,
+            frontier_failure: 26,
+            impossible: 36,
+        });
+        let overview_html = render_guidance_metrics(&aggregate);
+        assert!(overview_html.contains("<dt>Core</dt><dd>840</dd>"));
+        assert!(overview_html.contains("<dt>Fail</dt><dd class=\"\">0</dd>"));
+        assert!(overview_html.contains("<strong>25</strong> frontier pass"));
+        assert!(overview_html.contains("<strong class=\"frontier-bad\">35</strong> fail"));
     }
 
     #[test]

@@ -176,6 +176,8 @@ Status:
   - a real Earth `half_arc_terminal_v1` bot-lab corpus:
     - `terminal_bot_lab_suite` as the smoke matrix
     - `terminal_bot_lab_full` as the full-seed matrix
+    - current-controller-only execution, with historical comparison supplied
+      by cached result packs
     - maintained payload tiers:
       - `empty`
       - `half`
@@ -205,16 +207,17 @@ Status:
     `171 / 180` scored successes, `9` scored failures,
     `9` impossible warnings, `12` frontier annotations
   - clean full-pack current lane:
-    `684 / 720` scored successes, `36` scored failures,
+    `686 / 720` scored successes, `34` scored failures,
     `36` impossible warnings, `48` frontier annotations
   - clean full-pack `empty` and `half` tiers are solved on the maintained
     Earth corpus; clean full-payload issues are scored frontier failures plus
     analytically impossible warnings
   - trajectory-error full current lane:
-    `2751 / 2880` scored successes, `129` scored failures,
+    `2772 / 2880` scored successes, `107` frontier failures and `1` core
+    failure,
     `144` impossible warnings, `192` frontier annotations
-  - trajectory-error `empty` is solved; `half` has only three high-energy
-    overshoot-large outliers; `full` is represented as the main scored
+  - trajectory-error `empty` is solved; `half` has one high-energy
+    overshoot-large core outlier; `full` is represented as the main scored
     authority-frontier tier
   - terrain avoidance is parked outside the maintained terminal guidance
     scorecard; the latest experimental backstop full snapshot was

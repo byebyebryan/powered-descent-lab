@@ -9912,6 +9912,24 @@ mod tests {
         report
     }
 
+    #[test]
+    fn maintained_clean_terminal_packs_expand_only_the_current_controller_lane() {
+        let packs_dir = fixtures_root().join("packs");
+        for (filename, expected_runs) in [
+            ("terminal_bot_lab_suite.json", 189),
+            ("terminal_bot_lab_full.json", 756),
+        ] {
+            let pack = load_pack(&packs_dir.join(filename)).unwrap();
+            let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
+
+            assert_eq!(runs.len(), expected_runs, "unexpected size for {filename}");
+            assert!(runs.iter().all(|run| {
+                run.descriptor.lane_id == "current"
+                    && run.descriptor.controller_id == "terminal_pdg_v1"
+            }));
+        }
+    }
+
     fn easy_landing_scenario() -> ScenarioSpec {
         ScenarioSpec {
             id: "unit_flat_landing".to_owned(),

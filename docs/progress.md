@@ -27,6 +27,25 @@
 
 ### Report information architecture checkpoint
 
+- Removed the legacy `baseline_v1` execution lane from the clean terminal
+  smoke and full packs. Maintained packs now execute only the current
+  controller; report comparison lanes come from cached result packs.
+- Recaptured all seven primary guidance reports at schema `34` against the
+  pre-rescue cached current-controller results. Every comparison has exact
+  run coverage and passes the regression policy: clean terminal remains
+  `171 / 189`, trajectory-error terminal improves to `694 / 756`, direct
+  transfer remains `297 / 297`, and waypoint landing/contract outcomes remain
+  `404 / 405`, `405 / 405`, `135 / 135`, and `135 / 135`.
+- The supporting clean full-seed pack is current-only as well and improves from
+  `684 / 720` to `686 / 720` scored successes, with `34` scored failures and
+  `36` analytic invalidations.
+- Guidance scorecards now separate core outcomes from frontier pass/fail and
+  impossible annotations. Frontier failures remain scored by regression
+  policy, but no longer read as ordinary controller failures in the overview.
+- A fresh schema-34 trajectory-error full capture improves `21` runs with no
+  regressions: core guidance is `2687 / 2688`, the frontier is `85 / 192`, and
+  `144` runs are analytically impossible. The sole core failure is
+  `traj_overshoot_large/half/a60/high/seed 02`.
 - Centralized stable report-site generation in `pd-report::site` so
   `pd-cli` and `pd-eval` publish through the same path, latest-link, and
   index rules.
