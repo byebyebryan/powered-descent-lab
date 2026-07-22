@@ -69,7 +69,7 @@ pub(crate) fn write_batch_report_artifacts_with_cache(
     let html = render_batch_report_with_cache(
         output_dir,
         candidate,
-        baseline.map(|(dir, report)| (dir, report)),
+        baseline,
         comparison.as_ref(),
         render_cache,
     );
@@ -1475,8 +1475,6 @@ fn render_batch_report_with_cache(
             comparison,
             &output_dir,
             render_cache,
-            &candidate_record_links,
-            &baseline_record_map,
         ),
         comparison_sections = comparison
             .map(|comparison| {
@@ -1608,8 +1606,8 @@ fn short_digest(value: &str) -> String {
     value.chars().take(8).collect()
 }
 
-fn render_overview_row(
-    row_class: &str,
+struct OverviewRow {
+    row_class: &'static str,
     pack_html: String,
     ref_html: String,
     scope_html: String,
@@ -1617,7 +1615,19 @@ fn render_overview_row(
     timing_html: String,
     efficiency_html: String,
     tracking_html: String,
-) -> String {
+}
+
+fn render_overview_row(row: OverviewRow) -> String {
+    let OverviewRow {
+        row_class,
+        pack_html,
+        ref_html,
+        scope_html,
+        result_html,
+        timing_html,
+        efficiency_html,
+        tracking_html,
+    } = row;
     format!(
         r#"<tr class="{row_class}">
   <td>{pack_html}</td>
@@ -2393,33 +2403,33 @@ fn render_overview_table(
         );
 
         vec![
-            render_overview_row(
-                "current-summary-row",
-                format!(
+            render_overview_row(OverviewRow {
+                row_class: "current-summary-row",
+                pack_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
                     escape_html(&candidate.pack_id),
                     escape_html(&candidate.pack_name),
                     candidate_summary.controller_html,
                 ),
-                format!(
+                ref_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code> · lane <code>{}</code></div></div>"#,
                     escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
                     escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
                     escape_html(candidate_summary.lane_id),
                 ),
-                render_overview_scope_cell(
+                scope_html: render_overview_scope_cell(
                     &candidate_summary.scope,
                     candidate.workers_used,
                     Some(&basis),
                 ),
-                render_overview_result_cell(
+                result_html: render_overview_result_cell(
                     candidate_summary.review.success_runs,
                     candidate_summary.review.total_runs,
                     candidate_summary.review.failure_runs,
                     candidate_summary.review.invalidated_runs,
                     Some(success_rate_delta),
                 ),
-                render_overview_timing_cell(
+                timing_html: render_overview_timing_cell(
                     candidate_summary.mean_sim_time_s,
                     candidate_summary.max_sim_time_s,
                     Some((
@@ -2427,73 +2437,77 @@ fn render_overview_table(
                         candidate_summary.max_sim_time_s - baseline_summary.max_sim_time_s,
                     )),
                 ),
-                render_overview_efficiency_cell(
+                efficiency_html: render_overview_efficiency_cell(
                     &candidate_summary.review,
                     Some(&baseline_summary.review),
                     true,
                 ),
-                render_overview_tracking_cell(
+                tracking_html: render_overview_tracking_cell(
                     &candidate_summary.review,
                     Some(&baseline_summary.review),
                     true,
                 ),
-            ),
-            render_overview_row(
-                "baseline-summary-row baseline-row",
-                format!(
+            }),
+            render_overview_row(OverviewRow {
+                row_class: "baseline-summary-row baseline-row",
+                pack_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag baseline">baseline</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
                     escape_html(&baseline_report.pack_id),
                     escape_html(&baseline_report.pack_name),
                     baseline_summary.controller_html,
                 ),
-                format!(
+                ref_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code> · lane <code>{}</code></div></div>"#,
                     escape_html(&short_digest(&baseline_report.identity.pack_spec_digest)),
                     escape_html(&short_digest(&baseline_report.identity.resolved_run_digest)),
                     escape_html(baseline_summary.lane_id),
                 ),
-                render_overview_scope_cell(
+                scope_html: render_overview_scope_cell(
                     &baseline_summary.scope,
                     baseline_report.workers_used,
                     None,
                 ),
-                render_overview_result_cell(
+                result_html: render_overview_result_cell(
                     baseline_summary.review.success_runs,
                     baseline_summary.review.total_runs,
                     baseline_summary.review.failure_runs,
                     baseline_summary.review.invalidated_runs,
                     None,
                 ),
-                render_overview_timing_cell(
+                timing_html: render_overview_timing_cell(
                     baseline_summary.mean_sim_time_s,
                     baseline_summary.max_sim_time_s,
                     None,
                 ),
-                render_overview_efficiency_cell(&baseline_summary.review, None, false),
-                render_overview_tracking_cell(&baseline_summary.review, None, false),
-            ),
-            render_overview_row(
-                "diff-summary-row",
-                format!(
+                efficiency_html: render_overview_efficiency_cell(
+                    &baseline_summary.review,
+                    None,
+                    false,
+                ),
+                tracking_html: render_overview_tracking_cell(&baseline_summary.review, None, false),
+            }),
+            render_overview_row(OverviewRow {
+                row_class: "diff-summary-row",
+                pack_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>current-lane history compare</div><div class="overview-sub">shared {} · current-only {} · baseline-only {} · {}</div></div>"#,
                     basis.shared_runs,
                     basis.candidate_only_runs,
                     basis.baseline_only_runs,
                     render_policy_status_chip(comparison.policy.status)
                 ),
-                format!(
+                ref_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub"><code>{}</code> -> <code>{}</code></div></div>"#,
                     escape_html(&baseline_report.pack_id),
                     escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
                     escape_html(&short_digest(&baseline_report.identity.pack_spec_digest))
                 ),
-                format!(
+                scope_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">current results lane <code>{}</code> -> compare baseline lane <code>{}</code></div></div>"#,
                     escape_html(&format!("shared {}", basis.shared_runs)),
                     escape_html(candidate_summary.lane_id),
                     escape_html(baseline_summary.lane_id),
                 ),
-                format!(
+                result_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub {}">{}</div></div>"#,
                     delta_class(-success_rate_delta),
                     escape_html(&format_percent_delta(success_rate_delta)),
@@ -2507,7 +2521,7 @@ fn render_overview_table(
                             - baseline_summary.review.failure_runs as i64
                     ))
                 ),
-                format!(
+                timing_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub">{}</div></div>"#,
                     delta_class(
                         candidate_summary.mean_sim_time_s - baseline_summary.mean_sim_time_s
@@ -2522,74 +2536,82 @@ fn render_overview_table(
                         )
                     ))
                 ),
-                render_overview_efficiency_diff_cell(
+                efficiency_html: render_overview_efficiency_diff_cell(
                     &candidate_summary.review,
                     Some(&baseline_summary.review),
                 ),
-                render_overview_tracking_diff_cell(
+                tracking_html: render_overview_tracking_diff_cell(
                     &candidate_summary.review,
                     Some(&baseline_summary.review),
                 ),
-            ),
+            }),
         ]
     } else if let Some(candidate_focus) = preferred_current_lane_focus(candidate) {
         let candidate_summary = summarize_lane_focus(&candidate_focus);
-        vec![render_overview_row(
-            "current-summary-row",
-            format!(
+        vec![render_overview_row(OverviewRow {
+            row_class: "current-summary-row",
+            pack_html: format!(
                 r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{} · {}</div></div>"#,
                 escape_html(&candidate.pack_id),
                 escape_html(&candidate.pack_name),
                 candidate_summary.controller_html
             ),
-            format!(
+            ref_html: format!(
                 r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code> · lane <code>{}</code></div></div>"#,
                 escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
                 escape_html(&short_digest(&candidate.identity.resolved_run_digest)),
                 escape_html(candidate_summary.lane_id)
             ),
-            render_overview_scope_cell(&candidate_summary.scope, candidate.workers_used, None),
-            render_overview_result_cell(
+            scope_html: render_overview_scope_cell(
+                &candidate_summary.scope,
+                candidate.workers_used,
+                None,
+            ),
+            result_html: render_overview_result_cell(
                 candidate_summary.review.success_runs,
                 candidate_summary.review.total_runs,
                 candidate_summary.review.failure_runs,
                 candidate_summary.review.invalidated_runs,
                 None,
             ),
-            render_overview_timing_cell(
+            timing_html: render_overview_timing_cell(
                 candidate_summary.mean_sim_time_s,
                 candidate_summary.max_sim_time_s,
                 None,
             ),
-            render_overview_efficiency_cell(&candidate_summary.review, None, false),
-            render_overview_tracking_cell(&candidate_summary.review, None, false),
-        )]
+            efficiency_html: render_overview_efficiency_cell(
+                &candidate_summary.review,
+                None,
+                false,
+            ),
+            tracking_html: render_overview_tracking_cell(&candidate_summary.review, None, false),
+        })]
     } else {
-        let mut rows = vec![render_overview_row(
-            "current-summary-row",
-            format!(
+        let mut rows = vec![render_overview_row(OverviewRow {
+            row_class: "current-summary-row",
+            pack_html: format!(
                 r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag current">current</span><code>{}</code></div><div class="overview-sub">{}</div></div>"#,
                 escape_html(&candidate.pack_id),
                 escape_html(&candidate.pack_name)
             ),
-            format!(
+            ref_html: format!(
                 r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
                 escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
                 escape_html(&short_digest(&candidate.identity.resolved_run_digest))
             ),
-            render_overview_scope_cell(
+            scope_html: render_overview_scope_cell(
                 &candidate_scope,
                 candidate.workers_used,
                 comparison.map(|cmp| &cmp.basis),
             ),
-            render_overview_result_cell(
+            result_html: render_overview_result_cell(
                 candidate.summary.success_runs,
                 candidate.summary.total_runs,
                 candidate.summary.failure_runs,
                 candidate.summary.invalidated_runs,
                 comparison.map(|cmp| cmp.summary.success_rate_delta),
             ),
-            render_overview_timing_cell(
+            timing_html: render_overview_timing_cell(
                 candidate.summary.mean_sim_time_s,
                 candidate.summary.max_sim_time_s,
                 comparison.map(|cmp| {
@@ -2599,55 +2621,59 @@ fn render_overview_table(
                     )
                 }),
             ),
-            render_overview_efficiency_cell(
+            efficiency_html: render_overview_efficiency_cell(
                 &candidate_review,
                 baseline_review.as_ref(),
                 comparison.is_some(),
             ),
-            render_overview_tracking_cell(
+            tracking_html: render_overview_tracking_cell(
                 &candidate_review,
                 baseline_review.as_ref(),
                 comparison.is_some(),
             ),
-        )];
+        })];
 
         if let Some(baseline) = baseline {
             let baseline_scope = baseline_scope.expect("baseline scope");
             let baseline_review = baseline_review.as_ref().expect("baseline review");
-            rows.push(render_overview_row(
-                "baseline-summary-row baseline-row",
-                format!(
+            rows.push(render_overview_row(OverviewRow {
+                row_class: "baseline-summary-row baseline-row",
+                pack_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag baseline">baseline</span><code>{}</code></div><div class="overview-sub">{}</div></div>"#,
                     escape_html(&baseline.pack_id),
                     escape_html(&baseline.pack_name)
                 ),
-                format!(
+                ref_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main">spec <code>{}</code></div><div class="overview-sub">resolved <code>{}</code></div></div>"#,
                     escape_html(&short_digest(&baseline.identity.pack_spec_digest)),
                     escape_html(&short_digest(&baseline.identity.resolved_run_digest))
                 ),
-                render_overview_scope_cell(&baseline_scope, baseline.workers_used, None),
-                render_overview_result_cell(
+                scope_html: render_overview_scope_cell(
+                    &baseline_scope,
+                    baseline.workers_used,
+                    None,
+                ),
+                result_html: render_overview_result_cell(
                     baseline.summary.success_runs,
                     baseline.summary.total_runs,
                     baseline.summary.failure_runs,
                     baseline.summary.invalidated_runs,
                     None,
                 ),
-                render_overview_timing_cell(
+                timing_html: render_overview_timing_cell(
                     baseline.summary.mean_sim_time_s,
                     baseline.summary.max_sim_time_s,
                     None,
                 ),
-                render_overview_efficiency_cell(baseline_review, None, false),
-                render_overview_tracking_cell(baseline_review, None, false),
-            ));
+                efficiency_html: render_overview_efficiency_cell(baseline_review, None, false),
+                tracking_html: render_overview_tracking_cell(baseline_review, None, false),
+            }));
         }
 
         if let Some(comparison) = comparison {
-            rows.push(render_overview_row(
-                "diff-summary-row",
-                format!(
+            rows.push(render_overview_row(OverviewRow {
+                row_class: "diff-summary-row",
+                pack_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main"><span class="row-tag diff">diff</span>{}</div><div class="overview-sub">shared {} · current-only {} · baseline-only {} · {}</div></div>"#,
                     escape_html(&comparison.basis.mode),
                     comparison.basis.shared_runs,
@@ -2655,7 +2681,7 @@ fn render_overview_table(
                     comparison.basis.baseline_only_runs,
                     render_policy_status_chip(comparison.policy.status)
                 ),
-                format!(
+                ref_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main"><code>{}</code></div><div class="overview-sub"><code>{}</code> -> <code>{}</code></div></div>"#,
                     escape_html(&comparison.baseline_pack_id),
                     escape_html(&short_digest(&candidate.identity.pack_spec_digest)),
@@ -2665,20 +2691,20 @@ fn render_overview_table(
                             .unwrap_or_else(|| "-".to_owned())
                     )
                 ),
-                format!(
+                scope_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main">{}</div><div class="overview-sub">candidate-only {} · baseline-only {}</div></div>"#,
                     escape_html(&format!("shared {}", comparison.basis.shared_runs)),
                     comparison.basis.candidate_only_runs,
                     comparison.basis.baseline_only_runs
                 ),
-                format!(
+                result_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub {}">{}</div></div>"#,
                     delta_class(-comparison.summary.success_rate_delta),
                     escape_html(&format_percent_delta(comparison.summary.success_rate_delta)),
                     delta_class(comparison.summary.failure_runs_delta as f64),
                     escape_html(&format_signed_i64(comparison.summary.failure_runs_delta))
                 ),
-                format!(
+                timing_html: format!(
                     r#"<div class="overview-stack"><div class="overview-main {}">{}</div><div class="overview-sub">{}</div></div>"#,
                     delta_class(comparison.summary.mean_sim_time_delta_s),
                     escape_html(&format_signed_seconds(comparison.summary.mean_sim_time_delta_s)),
@@ -2687,9 +2713,15 @@ fn render_overview_table(
                         format_signed_seconds(comparison.summary.max_sim_time_delta_s)
                     ))
                 ),
-                render_overview_efficiency_diff_cell(&candidate_review, baseline_review.as_ref()),
-                render_overview_tracking_diff_cell(&candidate_review, baseline_review.as_ref()),
-            ));
+                efficiency_html: render_overview_efficiency_diff_cell(
+                    &candidate_review,
+                    baseline_review.as_ref(),
+                ),
+                tracking_html: render_overview_tracking_diff_cell(
+                    &candidate_review,
+                    baseline_review.as_ref(),
+                ),
+            }));
         }
         rows
     };
@@ -2962,9 +2994,11 @@ fn render_coverage_filters(panes: &BTreeSet<CoveragePaneKey>) -> String {
             })
         })
         .collect::<String>();
-    (!controls.is_empty())
-        .then(|| format!(r#"<div class="coverage-filters">{controls}</div>"#))
-        .unwrap_or_default()
+    if controls.is_empty() {
+        String::new()
+    } else {
+        format!(r#"<div class="coverage-filters">{controls}</div>"#)
+    }
 }
 
 fn render_coverage_pane(
@@ -3380,10 +3414,11 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
         .filter(|summary| summary.plan_reference_position_error_max_m.is_some())
         .map(render_waypoint_trackability_row)
         .collect::<String>();
-    let trackability_html = (!trackability_row_html.is_empty())
-        .then(|| {
-            format!(
-                r#"<details class="transfer-handoff-section waypoint-trackability-section">
+    let trackability_html = if trackability_row_html.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<details class="transfer-handoff-section waypoint-trackability-section">
   <summary class="section-head transfer-triage-summary">
     <h2>Waypoint Plan Trackability</h2>
     <div class="section-note">Hermite reference drift, actuated reachable forecast, control saturation, and state at the last reference-pass prediction.</div>
@@ -3395,9 +3430,8 @@ fn render_waypoint_sequence_section(candidate: &BatchReport) -> String {
     </table>
   </div>
 </details>"#,
-            )
-        })
-        .unwrap_or_default();
+        )
+    };
     let continuation_audit_row_html = rows
         .iter()
         .filter(|summary| {
@@ -6246,14 +6280,73 @@ type VelocityVehicleRecordGroups<'a> = BTreeMap<String, VehicleLaneRecordGroups<
 type ArcVelocityVehicleRecordGroups<'a> = BTreeMap<String, VelocityVehicleRecordGroups<'a>>;
 type WaypointProfileRecordGroups<'a> = BTreeMap<String, Vec<&'a crate::BatchRunRecord>>;
 
+#[derive(Clone, Copy)]
+struct ConditionReviewPath<'a> {
+    mission: &'a str,
+    arrival_family: &'a str,
+    condition_set: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct MatrixReviewPath<'a> {
+    condition: ConditionReviewPath<'a>,
+    waypoint_profile: Option<&'a str>,
+    vehicle_variant: Option<&'a str>,
+    arc_point: Option<&'a str>,
+    velocity_band: Option<&'a str>,
+}
+
+impl<'a> MatrixReviewPath<'a> {
+    fn new(condition: ConditionReviewPath<'a>) -> Self {
+        Self {
+            condition,
+            waypoint_profile: None,
+            vehicle_variant: None,
+            arc_point: None,
+            velocity_band: None,
+        }
+    }
+
+    fn with_waypoint_profile(self, waypoint_profile: Option<&'a str>) -> Self {
+        Self {
+            waypoint_profile,
+            ..self
+        }
+    }
+
+    fn with_vehicle(self, vehicle_variant: &'a str) -> Self {
+        Self {
+            vehicle_variant: Some(vehicle_variant),
+            ..self
+        }
+    }
+
+    fn with_arc(self, arc_point: Option<&'a str>) -> Self {
+        Self { arc_point, ..self }
+    }
+
+    fn with_velocity(self, velocity_band: Option<&'a str>) -> Self {
+        Self {
+            velocity_band,
+            ..self
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ReviewTreeRenderContext<'a> {
+    run_change_map: &'a BTreeMap<String, (&'static str, &'static str)>,
+    comparison: Option<&'a BatchComparison>,
+    output_dir: &'a Path,
+    render_cache: &'a BatchReportRenderCache,
+}
+
 fn render_review_tree(
     candidate: &BatchReport,
     baseline: Option<&BatchReport>,
     comparison: Option<&BatchComparison>,
     output_dir: &Path,
     render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
     let (candidate_tree, baseline_tree) = if comparison.is_some() {
         if let (Some(candidate_focus), Some(baseline_report)) =
@@ -6297,6 +6390,12 @@ fn render_review_tree(
         return r#"<p class="muted">No batch records available.</p>"#.to_owned();
     }
     let run_change_map = comparison_change_map(comparison);
+    let context = ReviewTreeRenderContext {
+        run_change_map: &run_change_map,
+        comparison,
+        output_dir,
+        render_cache,
+    };
 
     let mission_keys = merged_map_keys(&candidate_tree, Some(&baseline_tree));
     let sections = mission_keys
@@ -6306,12 +6405,7 @@ fn render_review_tree(
                 mission,
                 candidate_tree.get(mission),
                 baseline_tree.get(mission),
-                &run_change_map,
-                comparison,
-                output_dir,
-                render_cache,
-                candidate_record_map,
-                baseline_record_map,
+                &context,
             )
         })
         .collect::<Vec<_>>()
@@ -6335,13 +6429,9 @@ fn render_mission_review_section(
     mission: &str,
     candidate_arrivals: Option<&ArrivalRecordGroups<'_>>,
     baseline_arrivals: Option<&ArrivalRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
 ) -> String {
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_arrival_records(candidate_arrivals);
     let baseline_records = flatten_arrival_records(baseline_arrivals);
     let aggregate = (!candidate_records.is_empty())
@@ -6383,12 +6473,7 @@ fn render_mission_review_section(
                 arrival_family,
                 candidate_arrivals.get(arrival_family),
                 baseline_arrivals.get(arrival_family),
-                run_change_map,
-                comparison,
-                output_dir,
-                render_cache,
-                candidate_record_map,
-                baseline_record_map,
+                context,
                 1,
                 Some(group_id.as_str()),
             )
@@ -6404,20 +6489,19 @@ fn render_mission_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        mission,
-        0,
-        None,
-        (!arrival_keys.is_empty()).then_some(group_id.as_str()),
-        "mission",
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: mission,
+        depth: 0,
+        parent_group_id: None,
+        group_id: (!arrival_keys.is_empty()).then_some(group_id.as_str()),
+        kind: "mission",
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&arrival_rows);
 
     format!(
@@ -6490,15 +6574,11 @@ fn render_arrival_review_section(
     arrival_family: &str,
     candidate_conditions: Option<&ConditionRecordGroups<'_>>,
     baseline_conditions: Option<&ConditionRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_condition_records(candidate_conditions);
     let baseline_records = flatten_condition_records(baseline_conditions);
     let aggregate = (!candidate_records.is_empty())
@@ -6538,17 +6618,14 @@ fn render_arrival_review_section(
         .iter()
         .map(|condition_set| {
             render_condition_review_section(
-                mission,
-                arrival_family,
-                condition_set,
+                ConditionReviewPath {
+                    mission,
+                    arrival_family,
+                    condition_set,
+                },
                 candidate_conditions.get(condition_set),
                 baseline_conditions.get(condition_set),
-                run_change_map,
-                comparison,
-                output_dir,
-                render_cache,
-                candidate_record_map,
-                baseline_record_map,
+                context,
                 depth + 1,
                 Some(group_id.as_str()),
             )
@@ -6564,39 +6641,37 @@ fn render_arrival_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        arrival_family,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: arrival_family,
         depth,
         parent_group_id,
-        (!condition_keys.is_empty()).then_some(group_id.as_str()),
-        "arrival",
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: (!condition_keys.is_empty()).then_some(group_id.as_str()),
+        kind: "arrival",
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&condition_rows);
     rows
 }
 
 fn render_condition_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
+    path: ConditionReviewPath<'_>,
     candidate_vehicles: Option<&VehicleRecordGroups<'_>>,
     baseline_vehicles: Option<&VehicleRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path;
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_vehicle_records(candidate_vehicles);
     let baseline_records = flatten_vehicle_records(baseline_vehicles);
     let aggregate = (!candidate_records.is_empty())
@@ -6652,18 +6727,10 @@ fn render_condition_review_section(
             .iter()
             .map(|waypoint_profile| {
                 render_waypoint_profile_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    waypoint_profile,
+                    MatrixReviewPath::new(path).with_waypoint_profile(Some(waypoint_profile)),
                     candidate_profiles.get(waypoint_profile),
                     baseline_profiles.get(waypoint_profile),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -6675,19 +6742,10 @@ fn render_condition_review_section(
             .iter()
             .map(|arc_point| {
                 render_condition_arc_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    None,
-                    arc_point,
+                    MatrixReviewPath::new(path).with_arc(Some(arc_point)),
                     candidate_arcs.get(arc_point),
                     baseline_arcs.get(arc_point),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -6699,18 +6757,10 @@ fn render_condition_review_section(
             .iter()
             .map(|vehicle_variant| {
                 render_vehicle_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    vehicle_variant,
+                    MatrixReviewPath::new(path).with_vehicle(vehicle_variant),
                     candidate_vehicles.get(vehicle_variant),
                     baseline_vehicles.get(vehicle_variant),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -6727,40 +6777,40 @@ fn render_condition_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        condition_set,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: condition_set,
         depth,
         parent_group_id,
-        (!child_rows.is_empty()).then_some(group_id.as_str()),
-        "condition",
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: (!child_rows.is_empty()).then_some(group_id.as_str()),
+        kind: "condition",
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&child_rows);
     rows
 }
 
 fn render_waypoint_profile_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    waypoint_profile: &str,
+    path: MatrixReviewPath<'_>,
     candidate_records: Option<&Vec<&crate::BatchRunRecord>>,
     baseline_records: Option<&Vec<&crate::BatchRunRecord>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let waypoint_profile = path
+        .waypoint_profile
+        .expect("waypoint profile rows require a profile");
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = candidate_records.cloned().unwrap_or_default();
     let baseline_records = baseline_records.cloned().unwrap_or_default();
     let aggregate = (!candidate_records.is_empty())
@@ -6791,19 +6841,10 @@ fn render_waypoint_profile_review_section(
             .iter()
             .map(|arc_point| {
                 render_condition_arc_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    Some(waypoint_profile),
-                    arc_point,
+                    path.with_arc(Some(arc_point)),
                     candidate_arcs.get(arc_point),
                     baseline_arcs.get(arc_point),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -6817,21 +6858,10 @@ fn render_waypoint_profile_review_section(
             .iter()
             .map(|vehicle_variant| {
                 render_deep_vehicle_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    Some(waypoint_profile),
-                    vehicle_variant,
-                    None,
-                    None,
+                    path.with_vehicle(vehicle_variant),
                     candidate_vehicles.get(vehicle_variant),
                     baseline_vehicles.get(vehicle_variant),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -6847,41 +6877,39 @@ fn render_waypoint_profile_review_section(
         aggregate.is_some(),
         baseline_aggregate.is_some(),
     );
-    let mut rows = render_summary_row(
-        waypoint_profile,
+    let mut rows = render_summary_row(SummaryRow {
+        label: waypoint_profile,
         depth,
         parent_group_id,
-        (!child_rows.is_empty()).then_some(group_id.as_str()),
-        "waypoint profile",
-        aggregate.as_ref(),
-        baseline_aggregate.as_ref(),
-        SummaryMetricStyle::MeanDelta,
+        group_id: (!child_rows.is_empty()).then_some(group_id.as_str()),
+        kind: "waypoint profile",
+        aggregate: aggregate.as_ref(),
+        secondary_aggregate: baseline_aggregate.as_ref(),
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    );
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    });
     rows.push_str(&child_rows);
     rows
 }
 
 fn render_condition_arc_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    waypoint_profile: Option<&str>,
-    arc_point: &str,
+    path: MatrixReviewPath<'_>,
     candidate_velocities: Option<&VelocityVehicleRecordGroups<'_>>,
     baseline_velocities: Option<&VelocityVehicleRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let waypoint_profile = path.waypoint_profile;
+    let arc_point = path.arc_point.expect("arc rows require an arc point");
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_velocity_vehicle_records(candidate_velocities);
     let baseline_records = flatten_velocity_vehicle_records(baseline_velocities);
     let aggregate =
@@ -6934,20 +6962,10 @@ fn render_condition_arc_review_section(
             .iter()
             .map(|velocity_band| {
                 render_condition_velocity_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    waypoint_profile,
-                    arc_point,
-                    velocity_band,
+                    path.with_velocity(Some(velocity_band)),
                     candidate_velocities.get(velocity_band),
                     baseline_velocities.get(velocity_band),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -6968,21 +6986,10 @@ fn render_condition_arc_review_section(
             .iter()
             .map(|vehicle_variant| {
                 render_deep_vehicle_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    waypoint_profile,
-                    vehicle_variant,
-                    Some(arc_point),
-                    None,
+                    path.with_vehicle(vehicle_variant),
                     candidate_vehicles.get(vehicle_variant),
                     baseline_vehicles.get(vehicle_variant),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -6999,42 +7006,42 @@ fn render_condition_arc_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        arc_point,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: arc_point,
         depth,
         parent_group_id,
-        (!child_rows.is_empty()).then_some(group_id.as_str()),
-        matrix_route_level_kind(mission),
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: (!child_rows.is_empty()).then_some(group_id.as_str()),
+        kind: matrix_route_level_kind(mission),
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&child_rows);
     rows
 }
 
 fn render_condition_velocity_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    waypoint_profile: Option<&str>,
-    arc_point: &str,
-    velocity_band: &str,
+    path: MatrixReviewPath<'_>,
     candidate_vehicles: Option<&VehicleLaneRecordGroups<'_>>,
     baseline_vehicles: Option<&VehicleLaneRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let waypoint_profile = path.waypoint_profile;
+    let arc_point = path.arc_point.expect("velocity rows require an arc point");
+    let velocity_band = path
+        .velocity_band
+        .expect("velocity rows require a velocity band");
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_vehicle_lane_records(candidate_vehicles);
     let baseline_records = flatten_vehicle_lane_records(baseline_vehicles);
     let aggregate =
@@ -7086,21 +7093,10 @@ fn render_condition_velocity_review_section(
         .iter()
         .map(|vehicle_variant| {
             render_deep_vehicle_review_section(
-                mission,
-                arrival_family,
-                condition_set,
-                waypoint_profile,
-                vehicle_variant,
-                Some(arc_point),
-                Some(velocity_band),
+                path.with_vehicle(vehicle_variant),
                 candidate_vehicles.get(vehicle_variant),
                 baseline_vehicles.get(vehicle_variant),
-                run_change_map,
-                comparison,
-                output_dir,
-                render_cache,
-                candidate_record_map,
-                baseline_record_map,
+                context,
                 depth + 1,
                 Some(group_id.as_str()),
             )
@@ -7116,43 +7112,43 @@ fn render_condition_velocity_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        velocity_band,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: velocity_band,
         depth,
         parent_group_id,
-        (!vehicle_rows.is_empty()).then_some(group_id.as_str()),
-        matrix_radius_level_kind(mission),
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: (!vehicle_rows.is_empty()).then_some(group_id.as_str()),
+        kind: matrix_radius_level_kind(mission),
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&vehicle_rows);
     rows
 }
 
 fn render_deep_vehicle_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    waypoint_profile: Option<&str>,
-    vehicle_variant: &str,
-    arc_point: Option<&str>,
-    velocity_band: Option<&str>,
+    path: MatrixReviewPath<'_>,
     candidate_lanes: Option<&LaneRecordGroups<'_>>,
     baseline_lanes: Option<&LaneRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let waypoint_profile = path.waypoint_profile;
+    let vehicle_variant = path
+        .vehicle_variant
+        .expect("vehicle rows require a vehicle variant");
+    let arc_point = path.arc_point;
+    let velocity_band = path.velocity_band;
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_lane_records(candidate_lanes);
     let baseline_records = flatten_lane_records(baseline_lanes);
     let aggregate =
@@ -7220,22 +7216,11 @@ fn render_deep_vehicle_review_section(
         .iter()
         .map(|lane_id| {
             render_lane_review_section(
-                mission,
-                arrival_family,
-                condition_set,
-                waypoint_profile,
-                vehicle_variant,
-                arc_point,
-                velocity_band,
+                path,
                 lane_id,
                 candidate_lanes.get(lane_id),
                 baseline_lanes.get(lane_id),
-                run_change_map,
-                comparison,
-                output_dir,
-                render_cache,
-                candidate_record_map,
-                baseline_record_map,
+                context,
                 depth + 1,
                 Some(group_id.as_str()),
             )
@@ -7251,40 +7236,40 @@ fn render_deep_vehicle_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        vehicle_variant,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: vehicle_variant,
         depth,
         parent_group_id,
-        (!lane_rows.is_empty()).then_some(group_id.as_str()),
-        "vehicle",
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: (!lane_rows.is_empty()).then_some(group_id.as_str()),
+        kind: "vehicle",
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&lane_rows);
     rows
 }
 
 fn render_vehicle_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    vehicle_variant: &str,
+    path: MatrixReviewPath<'_>,
     candidate_arcs: Option<&ArcRecordGroups<'_>>,
     baseline_arcs: Option<&ArcRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let vehicle_variant = path
+        .vehicle_variant
+        .expect("vehicle rows require a vehicle variant");
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_arc_records(candidate_arcs);
     let baseline_records = flatten_arc_records(baseline_arcs);
     let aggregate = (!candidate_records.is_empty())
@@ -7339,19 +7324,10 @@ fn render_vehicle_review_section(
             .iter()
             .map(|arc_point| {
                 render_arc_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    vehicle_variant,
-                    arc_point,
+                    path.with_arc(Some(arc_point)),
                     candidate_arcs.get(arc_point),
                     baseline_arcs.get(arc_point),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -7371,22 +7347,11 @@ fn render_vehicle_review_section(
             .iter()
             .map(|lane_id| {
                 render_lane_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    None,
-                    vehicle_variant,
-                    None,
-                    None,
+                    path,
                     lane_id,
                     candidate_lanes.get(lane_id),
                     baseline_lanes.get(lane_id),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -7403,41 +7368,41 @@ fn render_vehicle_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        vehicle_variant,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: vehicle_variant,
         depth,
         parent_group_id,
-        ((!arc_keys.is_empty()) || !child_rows.is_empty()).then_some(group_id.as_str()),
-        "vehicle",
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: ((!arc_keys.is_empty()) || !child_rows.is_empty()).then_some(group_id.as_str()),
+        kind: "vehicle",
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&child_rows);
     rows
 }
 
 fn render_arc_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    vehicle_variant: &str,
-    arc_point: &str,
+    path: MatrixReviewPath<'_>,
     candidate_velocities: Option<&VelocityRecordGroups<'_>>,
     baseline_velocities: Option<&VelocityRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let vehicle_variant = path
+        .vehicle_variant
+        .expect("arc rows require a vehicle variant");
+    let arc_point = path.arc_point.expect("arc rows require an arc point");
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_velocity_records(candidate_velocities);
     let baseline_records = flatten_velocity_records(baseline_velocities);
     let aggregate = (!candidate_records.is_empty())
@@ -7490,20 +7455,10 @@ fn render_arc_review_section(
             .iter()
             .map(|velocity_band| {
                 render_velocity_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    vehicle_variant,
-                    arc_point,
-                    velocity_band,
+                    path.with_velocity(Some(velocity_band)),
                     candidate_velocities.get(velocity_band),
                     baseline_velocities.get(velocity_band),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -7525,22 +7480,11 @@ fn render_arc_review_section(
             .iter()
             .map(|lane_id| {
                 render_lane_review_section(
-                    mission,
-                    arrival_family,
-                    condition_set,
-                    None,
-                    vehicle_variant,
-                    Some(arc_point),
-                    None,
+                    path,
                     lane_id,
                     candidate_lanes.get(lane_id),
                     baseline_lanes.get(lane_id),
-                    run_change_map,
-                    comparison,
-                    output_dir,
-                    render_cache,
-                    candidate_record_map,
-                    baseline_record_map,
+                    context,
                     depth + 1,
                     Some(group_id.as_str()),
                 )
@@ -7557,42 +7501,45 @@ fn render_arc_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        arc_point,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: arc_point,
         depth,
         parent_group_id,
-        ((!velocity_keys.is_empty()) || !child_rows.is_empty()).then_some(group_id.as_str()),
-        matrix_route_level_kind(mission),
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: ((!velocity_keys.is_empty()) || !child_rows.is_empty())
+            .then_some(group_id.as_str()),
+        kind: matrix_route_level_kind(mission),
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&child_rows);
     rows
 }
 
 fn render_velocity_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    vehicle_variant: &str,
-    arc_point: &str,
-    velocity_band: &str,
+    path: MatrixReviewPath<'_>,
     candidate_lanes: Option<&LaneRecordGroups<'_>>,
     baseline_lanes: Option<&LaneRecordGroups<'_>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let vehicle_variant = path
+        .vehicle_variant
+        .expect("velocity rows require a vehicle variant");
+    let arc_point = path.arc_point.expect("velocity rows require an arc point");
+    let velocity_band = path
+        .velocity_band
+        .expect("velocity rows require a velocity band");
+    let ReviewTreeRenderContext { comparison, .. } = *context;
     let candidate_records = flatten_lane_records(candidate_lanes);
     let baseline_records = flatten_lane_records(baseline_lanes);
     let aggregate = (!candidate_records.is_empty())
@@ -7646,22 +7593,11 @@ fn render_velocity_review_section(
         .iter()
         .map(|lane_id| {
             render_lane_review_section(
-                mission,
-                arrival_family,
-                condition_set,
-                None,
-                vehicle_variant,
-                Some(arc_point),
-                Some(velocity_band),
+                path,
                 lane_id,
                 candidate_lanes.get(lane_id),
                 baseline_lanes.get(lane_id),
-                run_change_map,
-                comparison,
-                output_dir,
-                render_cache,
-                candidate_record_map,
-                baseline_record_map,
+                context,
                 depth + 1,
                 Some(group_id.as_str()),
             )
@@ -7677,44 +7613,49 @@ fn render_velocity_review_section(
         current_row_aggregate.is_some(),
         baseline_row_aggregate.is_some(),
     );
-    rows.push_str(&render_summary_row(
-        velocity_band,
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: velocity_band,
         depth,
         parent_group_id,
-        (!lane_keys.is_empty()).then_some(group_id.as_str()),
-        matrix_radius_level_kind(mission),
-        current_row_aggregate,
-        baseline_row_aggregate,
-        SummaryMetricStyle::MeanDelta,
+        group_id: (!lane_keys.is_empty()).then_some(group_id.as_str()),
+        kind: matrix_radius_level_kind(mission),
+        aggregate: current_row_aggregate,
+        secondary_aggregate: baseline_row_aggregate,
+        metric_style: SummaryMetricStyle::MeanDelta,
         changed,
-        current_note.as_str(),
-        baseline_row_aggregate.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     rows.push_str(&lane_rows);
     rows
 }
 
 fn render_lane_review_section(
-    mission: &str,
-    arrival_family: &str,
-    condition_set: &str,
-    waypoint_profile: Option<&str>,
-    vehicle_variant: &str,
-    arc_point: Option<&str>,
-    velocity_band: Option<&str>,
+    path: MatrixReviewPath<'_>,
     lane_id: &str,
     candidate_records: Option<&Vec<&crate::BatchRunRecord>>,
     baseline_records: Option<&Vec<&crate::BatchRunRecord>>,
-    run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
-    comparison: Option<&BatchComparison>,
-    output_dir: &Path,
-    render_cache: &BatchReportRenderCache,
-    candidate_record_map: &BTreeMap<String, String>,
-    baseline_record_map: &BTreeMap<String, String>,
+    context: &ReviewTreeRenderContext<'_>,
     depth: usize,
     parent_group_id: Option<&str>,
 ) -> String {
+    let ConditionReviewPath {
+        mission,
+        arrival_family,
+        condition_set,
+    } = path.condition;
+    let waypoint_profile = path.waypoint_profile;
+    let vehicle_variant = path
+        .vehicle_variant
+        .expect("lane rows require a vehicle variant");
+    let arc_point = path.arc_point;
+    let velocity_band = path.velocity_band;
+    let ReviewTreeRenderContext {
+        run_change_map,
+        comparison,
+        output_dir,
+        render_cache,
+    } = *context;
     let candidate_records = candidate_records.cloned().unwrap_or_default();
     let baseline_records = baseline_records.cloned().unwrap_or_default();
     let aggregate = (!candidate_records.is_empty())
@@ -7759,8 +7700,6 @@ fn render_lane_review_section(
         group_id.as_str(),
         run_change_map,
         output_dir,
-        candidate_record_map,
-        baseline_record_map,
     );
     let mut rows = String::new();
     let current_lane_label =
@@ -7777,20 +7716,19 @@ fn render_lane_review_section(
         current_note.as_str(),
         render_lane_preview(candidate_records.as_slice(), render_cache).as_deref(),
     );
-    rows.push_str(&render_summary_row(
-        current_lane_label.as_str(),
+    rows.push_str(&render_summary_row(SummaryRow {
+        label: current_lane_label.as_str(),
         depth,
         parent_group_id,
-        (!candidate_records.is_empty()).then_some(group_id.as_str()),
-        "lane",
-        aggregate.as_ref(),
-        None,
-        SummaryMetricStyle::MeanStddev,
+        group_id: (!candidate_records.is_empty()).then_some(group_id.as_str()),
+        kind: "lane",
+        aggregate: aggregate.as_ref(),
+        secondary_aggregate: None,
+        metric_style: SummaryMetricStyle::MeanStddev,
         changed,
-        current_note.as_str(),
-        comparison.is_some().then_some("cur"),
-        TreeRowTone::Current,
-    ));
+        note_html: current_note.as_str(),
+        tone: TreeRowTone::Current,
+    }));
     if comparison.is_some() && baseline_aggregate.is_some() {
         let baseline_lane_label = display_compare_role_label(true, lane_id, TreeRowTone::Baseline);
         let baseline_group = (candidate_records.is_empty() && !baseline_records.is_empty())
@@ -7807,20 +7745,19 @@ fn render_lane_review_section(
             baseline_note.as_str(),
             render_lane_preview(baseline_records.as_slice(), render_cache).as_deref(),
         );
-        rows.push_str(&render_summary_row(
-            baseline_lane_label.as_str(),
+        rows.push_str(&render_summary_row(SummaryRow {
+            label: baseline_lane_label.as_str(),
             depth,
             parent_group_id,
-            baseline_group,
-            "lane",
-            baseline_aggregate.as_ref(),
-            None,
-            SummaryMetricStyle::MeanStddev,
+            group_id: baseline_group,
+            kind: "lane",
+            aggregate: baseline_aggregate.as_ref(),
+            secondary_aggregate: None,
+            metric_style: SummaryMetricStyle::MeanStddev,
             changed,
-            baseline_note.as_str(),
-            Some("base"),
-            TreeRowTone::Baseline,
-        ));
+            note_html: baseline_note.as_str(),
+            tone: TreeRowTone::Baseline,
+        }));
     }
     rows.push_str(&run_rows);
     rows
@@ -7834,8 +7771,6 @@ fn render_entry_run_table(
     parent_group_id: &str,
     run_change_map: &BTreeMap<String, (&'static str, &'static str)>,
     output_dir: &Path,
-    _candidate_record_map: &BTreeMap<String, String>,
-    _baseline_record_map: &BTreeMap<String, String>,
 ) -> String {
     if candidate_records.is_empty() && baseline_records.is_empty() {
         return String::new();
@@ -7978,20 +7913,34 @@ fn render_summary_note(
     format!(r#"<span class="row-note">{}</span>"#, items.join(" · "))
 }
 
-fn render_summary_row(
-    label: &str,
+struct SummaryRow<'a> {
+    label: &'a str,
     depth: usize,
-    parent_group_id: Option<&str>,
-    group_id: Option<&str>,
-    kind: &str,
-    aggregate: Option<&ReviewAggregate>,
-    secondary_aggregate: Option<&ReviewAggregate>,
+    parent_group_id: Option<&'a str>,
+    group_id: Option<&'a str>,
+    kind: &'a str,
+    aggregate: Option<&'a ReviewAggregate>,
+    secondary_aggregate: Option<&'a ReviewAggregate>,
     metric_style: SummaryMetricStyle,
     changed: bool,
-    note_html: &str,
-    _compare_tag: Option<&str>,
+    note_html: &'a str,
     tone: TreeRowTone,
-) -> String {
+}
+
+fn render_summary_row(row: SummaryRow<'_>) -> String {
+    let SummaryRow {
+        label,
+        depth,
+        parent_group_id,
+        group_id,
+        kind,
+        aggregate,
+        secondary_aggregate,
+        metric_style,
+        changed,
+        note_html,
+        tone,
+    } = row;
     let mut row_classes = vec!["summary-row"];
     let lane_identity_class = if kind == "lane" {
         match label {
@@ -8125,7 +8074,7 @@ fn render_seed_run_row(
     let outcome_label = enum_label(&record.manifest.mission_outcome);
     let analytic_note = analytic_reason_note(&record.analytic);
     let outcome = if !record.analytic.is_scored() {
-        let label = if let Some(note) = analytic_note.as_deref() {
+        let label = if let Some(note) = analytic_note {
             format!("{outcome_label} · {note}")
         } else {
             format!("{outcome_label} · impossible")
@@ -8135,13 +8084,13 @@ fn render_seed_run_row(
         record.manifest.mission_outcome,
         pd_core::MissionOutcome::Success
     ) {
-        if let Some(note) = analytic_note.as_deref() {
+        if let Some(note) = analytic_note {
             escape_html(&format!("{outcome_label} · {note}"))
         } else {
             escape_html(&outcome_label)
         }
     } else {
-        let label = if let Some(note) = analytic_note.as_deref() {
+        let label = if let Some(note) = analytic_note {
             format!("{outcome_label} · {note}")
         } else {
             outcome_label
@@ -8190,7 +8139,7 @@ fn render_seed_run_row(
             )
         })
         .unwrap_or_default();
-    let detail_note = match (change_note.is_empty(), analytic_note.as_deref()) {
+    let detail_note = match (change_note.is_empty(), analytic_note) {
         (false, Some(analytic_note)) => format!(
             r#"<span class="row-note">{change_note} · <span class="warn">{}</span></span>"#,
             escape_html(analytic_note)
@@ -9649,7 +9598,7 @@ fn render_lane_preview_uncached(records: &[&crate::BatchRunRecord]) -> Option<St
         .map(
             |(scenario, trajectory_positions_m, manifest)| AggregatePreviewSeries {
                 scenario,
-                manifest: *manifest,
+                manifest,
                 trajectory_positions_m,
             },
         )
@@ -9714,7 +9663,7 @@ fn render_link_row_for_bundle(label: &str, bundle_dir: &str, output_dir: &Path) 
 }
 
 fn best_bundle_href(bundle_dir: &Path, output_dir: &Path) -> String {
-    let site_report_path = report_site_output_for_batch_run(&bundle_dir);
+    let site_report_path = report_site_output_for_batch_run(bundle_dir);
     let report_path = bundle_dir.join("report.html");
     let manifest_path = bundle_dir.join("manifest.json");
     if site_report_path.as_ref().is_some_and(|path| path.is_file()) {

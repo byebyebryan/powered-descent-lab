@@ -165,10 +165,7 @@ fn render_report(args: ReportArgs) -> Result<()> {
     write_batch_report_artifacts(
         &args.dir,
         &report,
-        args.baseline_dir
-            .as_deref()
-            .zip(baseline_report.as_ref())
-            .map(|(dir, report)| (dir, report)),
+        args.baseline_dir.as_deref().zip(baseline_report.as_ref()),
     )?;
     Ok(())
 }

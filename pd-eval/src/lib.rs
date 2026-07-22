@@ -1166,6 +1166,16 @@ pub struct CachedBatchRunOutcome {
     pub cache_dir: PathBuf,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct CachedBatchRunOptions<'a> {
+    pub output_dir: Option<&'a Path>,
+    pub workers: usize,
+    pub compare_ref: Option<&'a str>,
+    pub baseline_dir: Option<&'a Path>,
+    pub missing_compare: MissingComparePolicy,
+    pub reuse_cache: bool,
+}
+
 #[derive(Clone, Debug)]
 struct WorkspaceState {
     commit_key: String,
@@ -1324,15 +1334,17 @@ pub fn run_pack_file_cached(
     let base_dir = path
         .parent()
         .ok_or_else(|| anyhow!("pack path has no parent directory"))?;
-    run_pack_cached(
+    run_pack_cached_with_options(
         &pack,
         base_dir,
-        output_dir,
-        workers,
-        compare_ref,
-        baseline_dir,
-        missing_compare,
-        reuse_cache,
+        CachedBatchRunOptions {
+            output_dir,
+            workers,
+            compare_ref,
+            baseline_dir,
+            missing_compare,
+            reuse_cache,
+        },
     )
 }
 
@@ -1472,12 +1484,12 @@ pub fn compare_batch_reports(candidate: &BatchReport, baseline: &BatchReport) ->
     let mut regressions = Vec::new();
     let mut improvements = Vec::new();
     let mut outcome_changes = Vec::new();
-    for run_id in shared_run_ids.iter().cloned() {
+    for run_id in &shared_run_ids {
         let candidate_record = candidate_records
-            .get(&run_id)
+            .get(run_id)
             .expect("shared run ids should exist in candidate map");
         let baseline_record = baseline_records
-            .get(&run_id)
+            .get(run_id)
             .expect("shared run ids should exist in baseline map");
         if let Some(comparison) = compare_run_pair(candidate_record, baseline_record) {
             match comparison.change_kind {
@@ -1768,6 +1780,7 @@ fn format_policy_seconds_delta(value: f64) -> String {
     format!("{value:+.2}s")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_pack_cached(
     pack: &ScenarioPackSpec,
     base_dir: &Path,
@@ -1778,6 +1791,33 @@ pub fn run_pack_cached(
     missing_compare: MissingComparePolicy,
     reuse_cache: bool,
 ) -> Result<CachedBatchRunOutcome> {
+    run_pack_cached_with_options(
+        pack,
+        base_dir,
+        CachedBatchRunOptions {
+            output_dir,
+            workers,
+            compare_ref,
+            baseline_dir,
+            missing_compare,
+            reuse_cache,
+        },
+    )
+}
+
+pub fn run_pack_cached_with_options(
+    pack: &ScenarioPackSpec,
+    base_dir: &Path,
+    options: CachedBatchRunOptions<'_>,
+) -> Result<CachedBatchRunOutcome> {
+    let CachedBatchRunOptions {
+        output_dir,
+        workers,
+        compare_ref,
+        baseline_dir,
+        missing_compare,
+        reuse_cache,
+    } = options;
     validate_pack(pack)?;
 
     let resolved_runs = resolve_pack_runs(pack, base_dir)?;
@@ -3138,16 +3178,16 @@ fn resolve_transfer_matrix_runs(
                         &lane.id,
                     );
                     let (scenario, resolved_parameters, selector) =
-                        resolve_transfer_matrix_scenario(
+                        resolve_transfer_matrix_scenario(TransferMatrixScenarioRequest {
                             entry,
-                            &base_scenario,
+                            base_scenario: &base_scenario,
                             family_spec,
                             route_angle,
                             radius_tier,
                             seed_spec,
-                            &lane.id,
-                            &run_id,
-                        )?;
+                            lane_id: &lane.id,
+                            run_id: &run_id,
+                        })?;
                     let descriptor = ResolvedRunDescriptor {
                         run_id,
                         entry_id: entry.id.clone(),
@@ -3275,16 +3315,31 @@ fn signed_selector_token(value: &str) -> String {
     value.replace('+', "pos").replace('-', "neg")
 }
 
+#[derive(Clone, Copy)]
+struct TransferMatrixScenarioRequest<'a> {
+    entry: &'a TransferMatrixEntry,
+    base_scenario: &'a ScenarioSpec,
+    family_spec: &'a TransferRouteFamilySpec,
+    route_angle: &'a TransferRouteAngleSpec,
+    radius_tier: &'a TransferRadiusTierSpec,
+    seed_spec: &'a TransferSeedSpec,
+    lane_id: &'a str,
+    run_id: &'a str,
+}
+
 fn resolve_transfer_matrix_scenario(
-    entry: &TransferMatrixEntry,
-    base_scenario: &ScenarioSpec,
-    family_spec: &TransferRouteFamilySpec,
-    route_angle: &TransferRouteAngleSpec,
-    radius_tier: &TransferRadiusTierSpec,
-    seed_spec: &TransferSeedSpec,
-    lane_id: &str,
-    run_id: &str,
+    request: TransferMatrixScenarioRequest<'_>,
 ) -> Result<(ScenarioSpec, BTreeMap<String, f64>, SelectorAxes)> {
+    let TransferMatrixScenarioRequest {
+        entry,
+        base_scenario,
+        family_spec,
+        route_angle,
+        radius_tier,
+        seed_spec,
+        lane_id,
+        run_id,
+    } = request;
     let mut scenario = base_scenario.clone();
     scenario.id = run_id.to_owned();
     scenario.name = format!(
@@ -4449,17 +4504,17 @@ fn resolve_terminal_matrix_runs(
                         &lane.id,
                     );
                     let (scenario, resolved_parameters, selector) =
-                        resolve_terminal_matrix_scenario(
+                        resolve_terminal_matrix_scenario(TerminalMatrixScenarioRequest {
                             entry,
-                            &base_scenario,
+                            base_scenario: &base_scenario,
                             family_spec,
                             arc,
                             band,
                             seed_spec,
-                            &lane.id,
-                            &run_id,
+                            lane_id: &lane.id,
+                            run_id: &run_id,
                             max_time_s,
-                        )?;
+                        })?;
                     let descriptor = ResolvedRunDescriptor {
                         run_id,
                         entry_id: entry.id.clone(),
@@ -4604,17 +4659,33 @@ fn resolved_terminal_matrix_run_id(
     ))
 }
 
-fn resolve_terminal_matrix_scenario(
-    entry: &TerminalMatrixEntry,
-    base_scenario: &ScenarioSpec,
-    family_spec: &TerminalArrivalFamilySpec,
-    arc: &TerminalArcPointSpec,
+#[derive(Clone, Copy)]
+struct TerminalMatrixScenarioRequest<'a> {
+    entry: &'a TerminalMatrixEntry,
+    base_scenario: &'a ScenarioSpec,
+    family_spec: &'a TerminalArrivalFamilySpec,
+    arc: &'a TerminalArcPointSpec,
     band: TerminalBandSpec,
-    seed_spec: &TerminalSeedSpec,
-    lane_id: &str,
-    run_id: &str,
+    seed_spec: &'a TerminalSeedSpec,
+    lane_id: &'a str,
+    run_id: &'a str,
     max_time_s: Option<f64>,
+}
+
+fn resolve_terminal_matrix_scenario(
+    request: TerminalMatrixScenarioRequest<'_>,
 ) -> Result<(ScenarioSpec, BTreeMap<String, f64>, SelectorAxes)> {
+    let TerminalMatrixScenarioRequest {
+        entry,
+        base_scenario,
+        family_spec,
+        arc,
+        band,
+        seed_spec,
+        lane_id,
+        run_id,
+        max_time_s,
+    } = request;
     let mut scenario = base_scenario.clone();
     scenario.id = run_id.to_owned();
     scenario.name = format!(
@@ -4781,7 +4852,7 @@ fn resolve_terminal_matrix_scenario(
     let mut projected_dx_error_mag_m = 0.0;
     let mut traj_error_approach_sign = if x_m.abs() > f64::EPSILON {
         x_m.signum()
-    } else if seed_spec.index % 2 == 0 {
+    } else if seed_spec.index.is_multiple_of(2) {
         -1.0
     } else {
         1.0
@@ -4912,7 +4983,7 @@ fn terminal_band_ttg(
 fn resolved_side(arc_point: &str, seed: u64) -> (&'static str, f64) {
     if arc_point == "a00" {
         ("center", 0.0)
-    } else if seed % 2 == 0 {
+    } else if seed.is_multiple_of(2) {
         ("left", -1.0)
     } else {
         ("right", 1.0)
@@ -5043,7 +5114,7 @@ fn apply_terminal_reactive_terrain(
 fn terminal_terrain_approach_side_sign(side_sign: f64, seed_index: u64) -> f64 {
     if side_sign.abs() > f64::EPSILON {
         side_sign.signum()
-    } else if seed_index % 2 == 0 {
+    } else if seed_index.is_multiple_of(2) {
         -1.0
     } else {
         1.0
@@ -5293,125 +5364,48 @@ fn apply_numeric_perturbation(
     perturbation: &NumericPerturbationSpec,
     sampled_value: f64,
 ) -> Result<()> {
-    match perturbation.path.as_str() {
-        "world.gravity_mps2" => Ok(apply_numeric_mode(
-            &mut scenario.world.gravity_mps2,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "vehicle.dry_mass_kg" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.dry_mass_kg,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "vehicle.initial_fuel_kg" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.initial_fuel_kg,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "vehicle.max_fuel_kg" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_fuel_kg,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "vehicle.max_thrust_n" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_thrust_n,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "vehicle.max_fuel_burn_kgps" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_fuel_burn_kgps,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "vehicle.max_rotation_rate_radps" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_rotation_rate_radps,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "initial_state.position_m.x" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.position_m.x,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "initial_state.position_m.y" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.position_m.y,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "initial_state.velocity_mps.x" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.velocity_mps.x,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "initial_state.velocity_mps.y" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.velocity_mps.y,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "initial_state.attitude_rad" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.attitude_rad,
-            perturbation.mode,
-            sampled_value,
-        )),
-        "initial_state.angular_rate_radps" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.angular_rate_radps,
-            perturbation.mode,
-            sampled_value,
-        )),
-        _ => bail!(
+    let Some(target) = scenario_numeric_target_mut(scenario, &perturbation.path) else {
+        bail!(
             "unsupported numeric perturbation path '{}'",
             perturbation.path
-        ),
-    }
+        );
+    };
+    apply_numeric_mode(target, perturbation.mode, sampled_value);
+    Ok(())
 }
 
 fn apply_numeric_adjustment(
     scenario: &mut ScenarioSpec,
     adjustment: &NumericAdjustmentSpec,
 ) -> Result<()> {
-    match adjustment.path.as_str() {
-        "vehicle.dry_mass_kg" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.dry_mass_kg,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        "vehicle.initial_fuel_kg" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.initial_fuel_kg,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        "vehicle.max_fuel_kg" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_fuel_kg,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        "vehicle.max_thrust_n" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_thrust_n,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        "vehicle.max_fuel_burn_kgps" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_fuel_burn_kgps,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        "vehicle.max_rotation_rate_radps" => Ok(apply_numeric_mode(
-            &mut scenario.vehicle.max_rotation_rate_radps,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        "initial_state.attitude_rad" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.attitude_rad,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        "initial_state.angular_rate_radps" => Ok(apply_numeric_mode(
-            &mut scenario.initial_state.angular_rate_radps,
-            adjustment.mode,
-            adjustment.value,
-        )),
-        _ => bail!("unsupported numeric adjustment path '{}'", adjustment.path),
+    if !is_supported_terminal_adjustment_path(&adjustment.path) {
+        bail!("unsupported numeric adjustment path '{}'", adjustment.path);
+    }
+    let target = scenario_numeric_target_mut(scenario, &adjustment.path)
+        .expect("validated numeric adjustment paths must resolve to scenario fields");
+    apply_numeric_mode(target, adjustment.mode, adjustment.value);
+    Ok(())
+}
+
+fn scenario_numeric_target_mut<'a>(
+    scenario: &'a mut ScenarioSpec,
+    path: &str,
+) -> Option<&'a mut f64> {
+    match path {
+        "world.gravity_mps2" => Some(&mut scenario.world.gravity_mps2),
+        "vehicle.dry_mass_kg" => Some(&mut scenario.vehicle.dry_mass_kg),
+        "vehicle.initial_fuel_kg" => Some(&mut scenario.vehicle.initial_fuel_kg),
+        "vehicle.max_fuel_kg" => Some(&mut scenario.vehicle.max_fuel_kg),
+        "vehicle.max_thrust_n" => Some(&mut scenario.vehicle.max_thrust_n),
+        "vehicle.max_fuel_burn_kgps" => Some(&mut scenario.vehicle.max_fuel_burn_kgps),
+        "vehicle.max_rotation_rate_radps" => Some(&mut scenario.vehicle.max_rotation_rate_radps),
+        "initial_state.position_m.x" => Some(&mut scenario.initial_state.position_m.x),
+        "initial_state.position_m.y" => Some(&mut scenario.initial_state.position_m.y),
+        "initial_state.velocity_mps.x" => Some(&mut scenario.initial_state.velocity_mps.x),
+        "initial_state.velocity_mps.y" => Some(&mut scenario.initial_state.velocity_mps.y),
+        "initial_state.attitude_rad" => Some(&mut scenario.initial_state.attitude_rad),
+        "initial_state.angular_rate_radps" => Some(&mut scenario.initial_state.angular_rate_radps),
+        _ => None,
     }
 }
 
@@ -7743,9 +7737,11 @@ fn batch_waypoint_handoff_metrics(
         continuation_contract_pass: continuation_matches_handoff
             .then_some(waypoint.continuation_contract_pass)
             .flatten(),
-        continuation_contract_reasons: continuation_matches_handoff
-            .then_some(waypoint.continuation_contract_reasons.clone())
-            .unwrap_or_default(),
+        continuation_contract_reasons: if continuation_matches_handoff {
+            waypoint.continuation_contract_reasons.clone()
+        } else {
+            Vec::new()
+        },
         continuation_outbound_heading_error_rad: continuation_matches_handoff
             .then_some(waypoint.continuation_outbound_heading_error_rad)
             .flatten(),
@@ -9726,7 +9722,7 @@ fn find_latest_dirty_workspace_key(commit_key: &str, batch_stem: &str) -> Result
         };
         candidates.push((meta.cache.created_at_unix_s, workspace_key));
     }
-    candidates.sort_by(|lhs, rhs| lhs.cmp(rhs));
+    candidates.sort();
     Ok(candidates.pop().map(|(_, key)| key))
 }
 
