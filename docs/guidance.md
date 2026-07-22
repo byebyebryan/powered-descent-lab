@@ -104,10 +104,27 @@ The guidance regression set is:
 - paired full-seed nominal waypoint landing/contract packs
 - paired all-radius waypoint landing/contract packs
 
-The all-radius turn contract and landing packs both pass `405 / 405`. Bounded
-final authority-recovery search closes the former
+Current schema-34 primary evidence is:
+
+- clean terminal: `171 / 189` physical successes, with `9` scored failures and
+  `9` analytic invalidations
+- trajectory-error terminal: `694 / 756` physical successes, with `26` scored
+  failures and `36` analytic invalidations
+- direct transfer: `297 / 297`
+- all-radius turn landing and contract: `405 / 405` for both
+- all-radius ordered landing and contract: `135 / 135` for both
+
+Supporting full-seed nominal waypoint evidence remains `540 / 540` for turn
+landing/contracts and `180 / 180` for ordered landing/contracts. Bounded final
+authority-recovery search closes the former
 `single_gentle_bend_v1/full/r-30/short/seed 02` landing residual without
 changing waypoint contracts or adding route/profile branches.
+
+The report catalog also retains the direct-transfer solved-region and focused
+`r+80` full-seed captures as supporting schema-32 evidence (`1080 / 1080` and
+`108 / 108`). They remain valid outcome history but do not carry every
+schema-34 waypoint/terminal-recovery field; recapture them only when current
+schema evidence is needed.
 
 ## Experimental Boundary
 
@@ -120,8 +137,9 @@ when a new hypothesis justifies another experiment.
 
 ## Consolidation Rule
 
-The 2026-07-13 guidance consolidation was behavior-preserving: it did not change
-thresholds, candidate ordering, route geometry, phase transition conditions,
-schema `33`, or artifact contracts. Future structural cleanup follows the same
-rule. Behavioral changes require a separate controller change with fresh
-evaluation evidence.
+The 2026-07-13 guidance consolidation was behavior-preserving at the
+then-current schema `33`: it did not change thresholds, candidate ordering,
+route geometry, phase transition conditions, or artifact contracts. Schema
+`34` was added later for explicit terminal-recovery evidence. Future structural
+cleanup follows the same rule; behavioral changes require a separate controller
+change with fresh evaluation evidence.

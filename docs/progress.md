@@ -2,6 +2,29 @@
 
 ## 2026-07-22
 
+### Documentation reconciliation checkpoint
+
+- Reconciled README, architecture, guidance, roadmap, and both suite references
+  against the current crates, controller registry, fixture packs, CLI help, and
+  generated report catalog. Progress remains append-only history; older dated
+  outcomes were not rewritten as current evidence.
+- Removed the stale maintained two-lane/interim-pack description. Clean and
+  trajectory-error packs execute only `current`; cached result packs provide
+  historical comparison, while explicit baseline lanes remain diagnostic
+  fixture capability.
+- Recorded the implemented JSON artifact baseline, setup-time immutable terrain
+  context, height/slope/normal queries, current terminal/transfer module split,
+  and the remaining planner-facing geometry-query gap.
+- Aligned roadmap phase status: the maintained Phase 2 guidance workflow and
+  Phase 3 direct/waypoint guidance are closed; deterministic waypoint planning
+  is the next active slice. Terminal frontier tuning and richer report UX are
+  optional evidence-driven follow-ups.
+- Reconciled live evidence details: fresh primary captures use schema `34`, the
+  direct-transfer solved/full-frontier supporting captures remain historical
+  schema `32`, current wall-clock snapshots are labeled as non-contractual, and
+  the sole trajectory-error core outlier is
+  `traj_overshoot_large/half/a60/high/seed 2`.
+
 ### Guidance implementation cleanup checkpoint
 
 - Split the evaluator monolith into persisted models, pack resolution,

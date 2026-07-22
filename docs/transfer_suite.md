@@ -235,9 +235,9 @@ attitude, and touchdown.
 
 ## Waypoint Guidance Direction
 
-Waypoint work should start with guidance semantics, not waypoint setup. For the
-first waypoint slice, assume a higher-level planner has already chosen the
-waypoint list and any terrain-valid spatial or energy envelopes.
+Waypoint guidance was deliberately implemented before waypoint setup. The
+maintained guidance contract assumes a higher-level planner has already chosen
+the waypoint list and any terrain-valid spatial or energy envelopes.
 
 The waypoint controller's job is to follow the currently active leg and keep the
 vehicle in a useful state for the next leg. The controller should reason about
@@ -340,7 +340,7 @@ Implementation checkpoint:
 - `TransferWaypointSpec::assess_handoff` is the single source of truth for
   spatial triggering and outbound-envelope classification in `pd-core`,
   `pd-control`, and `pd-eval`.
-- `transfer_waypoint_pdg_v1` is the first terrain-blind waypoint controller
+- `transfer_waypoint_pdg_v1` is the maintained terrain-blind waypoint controller
   variant. While a waypoint is active, it keeps the leg under powered guidance,
   blocks direct-transfer coast/terminal handoff, and guides to the fixed
   waypoint endpoint with a target velocity aligned to the outbound leg. After
@@ -381,9 +381,10 @@ Implementation checkpoint:
   preserves the ordered marker history and synthesizes the terminal handoff
   from the authoritative final sample because checkpoint evaluation ends before
   another controller update can occur.
-- Waypoint-profile transfer runs use a `130s` sim cap. This keeps the first
-  pass focused on route feasibility while leaving landing-time tightening as
-  follow-up controller work.
+- Waypoint-profile transfer runs use a `130s` simulation cap to leave route and
+  final-landing headroom. The cap is an evaluation bound, not a controller
+  input; candidate horizons and control transitions do not depend on remaining
+  mission time.
 - Waypoint misses and outbound-out-of-envelope captures are route-contract
   warnings in reports, not mission failures by themselves. The maintained
   score remains final landing, but capture/contract warnings keep route quality
@@ -527,12 +528,12 @@ turning transfer guidance into a full route planner.
 
 ## Current Checkpoint
 
-Current direct-transfer checkpoint, refreshed on 2026-07-13 with `8` workers,
-`--no-reuse`, and no comparison basis:
+Current direct-transfer checkpoint, refreshed on 2026-07-22 into a fresh cache
+with `8` workers and no comparison basis:
 
 - `transfer_route_angle_radius_suite`: `297 / 297` successes, `0` crashes, and
   `0` invalidations across every route angle, radius, payload, and smoke seed;
-  wall clock is `46.22s`
+  wall clock is `49.11s`
 - `transfer_route_angle_radius_frontier_full`: `108 / 108` successes and `0`
   invalidations across the full-seed `r+80` partition
 - the focused uphill-corridor brake closes the former direct `r+80` failure
@@ -540,7 +541,11 @@ Current direct-transfer checkpoint, refreshed on 2026-07-13 with `8` workers,
 - `near_vertical_transfer_route` remains useful as a stress annotation, but it
   no longer describes a failing direct-transfer region
 
-Current normalized waypoint checkpoint, refreshed on 2026-07-15:
+Wall-clock values are local efficiency signals, not deterministic acceptance
+thresholds.
+
+Current maintained waypoint checkpoint; nominal full-seed closure was captured
+on 2026-07-15 and the all-radius primary packs were recaptured on 2026-07-22:
 
 - `transfer_waypoint_turn_contract_smoke`: `81 / 81` handoff successes; worst
   continuation ratio `0.529`
@@ -795,13 +800,16 @@ Frozen recoverability boost-scoring diagnostic:
 
 ## Implementation Boundary
 
-Direct and stateful waypoint lifecycle remain in
-`pd-control/src/transfer/mod.rs`, pure waypoint geometry and capture prediction
-live in `transfer/waypoint.rs`, metric and marker assembly lives in
-`transfer/telemetry.rs`, and rejected boost scorers are quarantined in
-`transfer/experimental.rs`. Controller tests live in `transfer/tests.rs`. This
-layout does not change controller IDs, configuration JSON, telemetry, or phase
-strings.
+The direct-transfer and waypoint update loop remains in
+`pd-control/src/transfer/mod.rs`. Serialized configuration lives in
+`transfer/config.rs`; lifecycle state and internal DTOs live in
+`transfer/state.rs`; shared ballistic and command-conversion helpers live in
+`transfer/math.rs`; and pure waypoint geometry and capture prediction live in
+`transfer/waypoint.rs`. Metric and marker assembly lives in
+`transfer/telemetry.rs`, rejected boost scorers are quarantined in
+`transfer/experimental.rs`, and controller tests live in `transfer/tests.rs`.
+This layout does not change controller IDs, configuration JSON, telemetry, or
+phase strings.
 
 ## Deferred Work
 

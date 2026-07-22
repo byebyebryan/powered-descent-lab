@@ -235,20 +235,23 @@ That choice preserves several advantages:
 The important change is not the terrain foundation. The important change is the
 query layer built on top of it.
 
-The lab should expose richer read-only terrain queries such as:
+The implemented heightfield query layer provides:
 
 - height and slope at `x`
 - local surface normal
+- full immutable terrain through the setup-time `RunContext`
+
+The waypoint-planning slice still needs richer read-only queries such as:
+
 - closest point / closest distance
 - ray and segment intersection
 - corridor or path-clearance sampling
 
-In v1, the bot should receive the full immutable terrain definition through the
-setup-time run context. Query helpers are still useful, but the controller
-should not be forced to rediscover the world through only per-frame local
-sensors.
+Controllers are therefore not forced to rediscover the world through only
+per-frame local sensors, while planner-specific geometry can be added without
+bloating the hot observation path.
 
-This should be a simple controller-facing terrain package, not a hidden view
+This is a simple controller-facing terrain package, not a hidden view
 over engine internals and not a sensor-gated approximation.
 
 Terrain avoidance is not a core terminal-controller objective for the current
@@ -353,8 +356,8 @@ Responsibilities:
 - export replay and trace artifacts
 - support targeted debugging and inspection
 
-This should replace the old mixed interactive/headless shell as the primary
-developer entry point.
+This is the primary developer entry point for targeted native runs and replaces
+the old mixed interactive/headless shell role.
 
 ### 5.4 `pd-eval`
 
@@ -795,8 +798,10 @@ Recommended stance:
   when they are actually needed for cache identity, collision avoidance, or
   compare workflows
 
-The exact encoding can be finalized later, but it should be friendly to both
-native tooling and a later static report viewer.
+The current compatibility baseline uses versioned JSON for manifests, actions,
+events, samples, controller updates, and summaries. A later columnar derivative
+may optimize large-scale analysis, but JSON remains authoritative for native
+tooling and static reports.
 
 If controller output frames include status, phase, metrics, or markers, those
 should be captured in controller-namespaced artifacts rather than flattened into
@@ -902,29 +907,27 @@ Example resolved selector:
 - `mission=terminal_guidance`
 - `arrival_family=half_arc_terminal_v1`
 - `condition_set=clean`
-- `vehicle_variant=nominal`
+- `vehicle_variant=half`
 - `arc_point=a30`
 - `velocity_band=mid`
-- `seed=0042`
-- `controller=baseline_v1`
+- `seed=0006`
+- `controller=terminal_pdg_v1`
 
-The current pack implementation is still an interim approximation:
+The pack implementation now represents this model directly:
 
-- `family` is the coarse physical-case bucket
-- `entry` is the controller lane inside that bucket
-- metadata should carry the explicit selector fields even before reports gain
-  first-class matrix rendering
+- terminal-matrix entries declare physical selectors, seed tier, vehicle
+  variant, expectation tier, and controller lanes
+- resolution records explicit selectors and perturbation parameters per run
+- batch reports render the hierarchy, matrix axes, lane, and seed as distinct
+  levels
+- maintained clean and trajectory-error packs execute only the `current` lane;
+  historical comparison is supplied by cached result packs
 
-For the first terminal-guidance corpus:
-
-- start with clean nominal and low-margin cases
-- drop dedicated `crossrange` families until `arc_point x velocity_band`
-  coverage exists as a real matrix
-- treat case expectations explicitly:
-  - `core`: should normally succeed
-  - `stress`: hard but still useful for success-rate tracking
-  - `frontier`: may be infeasible; crash avoidance matters more than 100%
-    success
+The maintained terminal corpus covers `empty`, `half`, and `full` payload tiers
+over clean plus small/large undershoot and overshoot conditions. Experimental
+terrain backstops remain outside the maintained scorecard. Authored expectation
+tiers describe corpus intent; analytic `scored`, `frontier`, and `impossible`
+classification is a separate evaluator result.
 
 Output-path stance:
 
@@ -942,11 +945,12 @@ Recommended ownership split:
 - artifacts record both family identity and the resolved seed/parameters used for
   that run
 
-The first scenario families should stay narrow and high-value:
+Scenario families stay narrow and high-value:
 
 - terminal descent
-- transfer with boost/coast/terminal behavior
-- terrain-reactive regression cases
+- direct transfer with boost/coast/terminal behavior
+- preplanned waypoint turn and ordered-route guidance
+- experimental terrain diagnostics outside maintained guidance gates
 - small pinned bug reproductions
 
 Do not start with a giant parameter cross-product or random fuzz catalog.
@@ -1013,10 +1017,13 @@ Recommended split for report UX:
 
 Current baseline:
 
-- a single-run view with terrain, trajectory, target, and event markers
-- time-series plots for the main state and control signals
-- batch summaries that make seeded regressions visible without replaying every
-  run
+- guidance scorecards over a declarative terminal/direct-transfer/waypoint
+  report catalog
+- selector-aware batch review trees, guidance-specific diagnostics, cached
+  result-pack comparison, and regression-policy status
+- single-run terrain, trajectory, target, waypoint, event, controller-guide,
+  time-series, and vector inspection modes
+- report-only regeneration over existing JSON evidence without simulation
 
 Reason:
 
@@ -1027,15 +1034,14 @@ Reason:
 
 ## 12. Deliberately Deferred Decisions
 
-These are important, but they should not block the repo reboot:
+The workspace, JSON contracts, and static report baseline are established. The
+remaining deferred choices should be made only when a concrete workload needs
+them:
 
-- exact on-disk scenario syntax
-- exact trace encoding format
-- optimization backend details for baseline controllers
+- optimization backend details for future optimizer-based controllers
+- whether high-volume analytics justify a columnar derivative of the owned JSON
+  artifacts
 - whether report UX remains generated HTML or later deserves a dedicated small
   static app
 - whether an optional experiment-tracker layer is useful beyond the owned
   artifact/report path
-
-Those choices should be made after the workspace exists and the first vertical
-slice proves the boundaries.

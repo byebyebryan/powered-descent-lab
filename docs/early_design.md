@@ -1,8 +1,10 @@
 # Project Design Notes
 
 This file is the original exploratory scratchpad. It contains superseded ideas,
-including older web/Wasm-oriented notes. The current working docs are
-[`architecture.md`](architecture.md) and [`roadmap.md`](roadmap.md).
+including older web/Wasm-oriented notes. Current system contracts live in
+[`architecture.md`](architecture.md) and [`guidance.md`](guidance.md); current
+status and sequencing live in [`roadmap.md`](roadmap.md). The terminal and
+transfer suite docs own maintained corpus details.
 
 ## 1. Powered Descent Lab
 

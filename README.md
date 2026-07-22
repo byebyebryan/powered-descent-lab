@@ -15,8 +15,8 @@ This project is not the eventual player-facing game. The split is intentional:
 Current design direction:
 
 - Rust cargo workspace, native-first
-- `clap` + `serde` + `tracing` style native tooling, with web reserved for static
-  report viewing rather than an interactive runtime
+- `clap` + `serde` native tooling, with web reserved for static report viewing
+  rather than an interactive runtime
 - fixed-step deterministic simulation
 - controller updates may run at a lower fixed rate than physics, with commands
   held between controller ticks
@@ -40,10 +40,10 @@ Current design direction:
   as optional report/debug caches
 - native multithreaded batch evaluation in `pd-eval`, especially for seeded
   scenario sweeps
-- basic static inspection/reporting as part of the near-term controller workflow,
-  not only a late polish phase
-- static web reports over captured artifacts, with optional lightweight
-  trajectory inspection later, but no browser runtime target
+- static inspection/reporting as part of the controller workflow, not only a
+  late polish phase
+- static web reports over captured artifacts, with lightweight trajectory
+  inspection modes but no browser runtime target
 
 ## Why Reboot
 
@@ -89,13 +89,19 @@ without treating the old scenario files as fixtures to transliterate directly.
 
 ## Docs
 
-- [Architecture](docs/architecture.md)
-- [Guidance Architecture](docs/guidance.md)
-- [Roadmap](docs/roadmap.md)
-- [Progress](docs/progress.md)
-- [Terminal Suite Design](docs/terminal_suite.md)
-- [Transfer Suite Design](docs/transfer_suite.md)
-- [Early Design Scratchpad](docs/early_design.md)
+- [Architecture](docs/architecture.md) owns system boundaries and persisted
+  contracts.
+- [Guidance Architecture](docs/guidance.md) owns current terminal, transfer,
+  waypoint, and future-planner responsibilities.
+- [Roadmap](docs/roadmap.md) owns current phase status and the next execution
+  slice.
+- [Terminal Suite Design](docs/terminal_suite.md) and
+  [Transfer Suite Design](docs/transfer_suite.md) own maintained corpus shape
+  and current evidence interpretation.
+- [Progress](docs/progress.md) is append-only checkpoint history; older results
+  there are not current claims.
+- [Early Design Scratchpad](docs/early_design.md) is retained exploratory
+  history and may contain superseded directions.
 
 ## Report Serving
 
@@ -291,7 +297,9 @@ smoke-tier Earth `half_arc_terminal_v1` matrix over:
 - `vehicle_variant = full`
   - the same hardware with full payload
 - `arc_point x velocity_band`
-- `baseline` and `current` controller lanes
+- one maintained `current` controller lane
+- optional cached comparison against an earlier result pack; comparison role is
+  report provenance, not another physical-case axis
 
 The maintained terminal baseline now matches the core `pylander`
 vehicle/engine envelope closely enough to reason about directly:
@@ -309,15 +317,11 @@ The one intentional simplification is fuel use:
   penalty above nominal thrust
 - fuel burn currently scales linearly between minimum and maximum thrust
 
-At the moment:
-
-- `baseline` means the older heuristic baseline controller
-- `current` means `terminal_pdg_v1`, the first serious terminal-only PDG-shaped
-  native Rust controller lane
-
-Batch reports now prefer cached current-lane history compare when a promoted
-clean cache exists. The internal `baseline` lane is still useful as a
-reference-controller check, but it is no longer the primary progress signal.
+In maintained terminal packs, `current` resolves to `terminal_pdg_v1`. Batch
+reports prefer cached current-controller history when a compatible clean cache
+exists. The older heuristic `baseline_v1` controller remains available for
+explicit comparison fixtures, but it is not executed by the maintained clean
+or trajectory-error packs and is not the project progress signal.
 
 Use `terminal_bot_lab_full` when the same matrix should run with the full
 seed tier for spread measurement. The `terminal_compare_*_fixture` packs are

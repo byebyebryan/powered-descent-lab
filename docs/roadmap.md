@@ -23,8 +23,9 @@ Current implementation status:
 
 - Phase 0 is complete.
 - Phase 1 is functionally complete for the first usable landing slice.
-- Phase 2 is now a late-stage bot workflow phase rather than a scaffolding
-  phase:
+- Phase 2 is complete for the maintained guidance workflow; future evaluator
+  and report additions are evidence-driven extensions rather than closure
+  blockers:
   - shared controller kit and multiple built-in controller styles
   - seeded packs and native multithreaded batch execution
   - single-run and batch static reports
@@ -39,7 +40,8 @@ Current implementation status:
   - scored authority-frontier annotations for low-thrust/high-energy cells
   - default thresholded regression policy over batch comparisons, scoped to the
     preferred current controller lane when both reports contain one
-- Phase 3 is active as an evaluation and controller workbench:
+- Phase 3 guidance is complete over the maintained direct-transfer and
+  preplanned-waypoint corpora; waypoint planning is the next active slice:
   - `timed_checkpoint` remains available as an early-termination contract probe
   - `signed_route_arc_transfer_v1` now exists as the first source-to-target
     matrix family
@@ -146,8 +148,7 @@ Exit criteria:
 
 Status:
 
-- the maintained terminal-guidance baseline is closed, while the broader phase
-  remains open for targeted frontier semantics and report/evaluation policy
+- complete for the maintained terminal-guidance and controller-iteration scope
 - tooling and reporting are in place; additional terminal-controller tuning is
   optional, hypothesis-driven work and does not block waypoint planning
 - current implementation includes:
@@ -228,9 +229,9 @@ Status:
   - `terrain_clip` and backstop containment are parked until terrain work is
     reframed as approach-corridor validation, collision warning, or waypoint
     planning
-- still missing:
-  - optional targeted controller robustness work on sparse half-payload
-    trajectory-error outliers, but this does not block the planner slice
+- deferred or optional follow-ups:
+  - optional targeted controller robustness work on the remaining half-payload
+    trajectory-error core outlier, but this does not block the planner slice
   - broader feasibility/frontier classification while keeping
     authority-frontier cells scored
   - future terrain boundary definition above terminal guidance:
@@ -433,7 +434,8 @@ Target:
 
 Planned scope:
 
-- setup-time terrain query API
+- planner-facing terrain query API beyond the existing setup-time terrain
+  context
 - closest-point, ray, and clearance queries
 - curated terrain-reactive scenarios after approach-corridor or waypoint
   semantics exist
@@ -446,9 +448,12 @@ Exit criteria:
 
 Status:
 
+- full immutable heightfield terrain is already available through `RunContext`
+- deterministic height, slope, and surface-normal queries are implemented
 - initial backstop terrain fixtures exist as experimental, non-blocking packs
 - first-pass generic controller-side terrain-clearance evaluation is in place as
   telemetry/diagnostic plumbing
+- closest-point, segment/ray, and route-corridor queries remain planner work
 - terrain-aware guidance is parked until approach-corridor validation,
   collision-course warnings, or waypoint planning define the higher-level
   boundary
@@ -509,9 +514,11 @@ Important rule:
 
 Do not port old module boundaries just because the old code already exists.
 
-## 5. First Comparison Corpus
+## 5. Cross-Implementation Comparison Posture
 
-The first cross-check set should stay small and high signal:
+The original `pylander` cross-check intent remains useful as a small behavior
+reference, not as the current acceptance gate. A focused set should stay small
+and high signal:
 
 - one nominal terminal descent
 - one off-nominal terminal case
@@ -531,8 +538,9 @@ Each case should have:
 The point is not perfect numeric parity. The point is to know whether the new
 lab matches the intended behavior envelope closely enough to trust iteration.
 
-Baseline comparison should be treated as a first-class reporting mode, not only
-as a post-hoc analysis utility.
+Result-pack comparison is now a first-class reporting mode. Cross-implementation
+`pylander` parity remains conceptual and scenario-level rather than a requirement
+for numeric trace equality.
 
 ## 5.1 Coverage and seeds
 

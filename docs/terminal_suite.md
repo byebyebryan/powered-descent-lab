@@ -17,8 +17,8 @@ It should answer:
 - can a controller land reliably across the intended terminal arrival space?
 - where inside that space does it become fragile?
 - how much spread exists between seeds within the same physical case?
-- how does the latest current lane compare against the chosen baseline on the
-  exact same resolved runs?
+- how does the latest current result pack compare against the chosen historical
+  result pack on the exact same resolved runs?
 
 This is why suite design is a first-class artifact, not just a byproduct of
 implementation.
@@ -42,6 +42,10 @@ That way the same resolved case can be run through:
 - future controller lanes
 
 without inventing different scenario identities for each controller.
+
+The maintained clean and trajectory-error packs currently execute only
+`current`. Multiple execution lanes remain useful for explicit controller
+comparison fixtures, but normal progress comparison reuses cached result packs.
 
 The compare target shown in reports is separate again:
 
@@ -94,8 +98,8 @@ The intended resolved selector shape is:
 - `vehicle_variant=half`
 - `arc_point=a30`
 - `velocity_band=mid`
-- `seed=0042`
-- `controller=baseline_v1`
+- `seed=0006`
+- `controller=terminal_pdg_v1`
 
 Interpretation:
 
@@ -106,11 +110,11 @@ Interpretation:
 
 ## Arrival Family
 
-The first real arrival family should be:
+The maintained arrival family is:
 
 - `half_arc_terminal_v1`
 
-This replaces the current provisional seeded perturbation families.
+It replaced the provisional seeded perturbation families.
 
 Reference geometry preview:
 
@@ -133,7 +137,7 @@ Instead:
 - resolve side deterministically from the seed
 - record the resolved side in per-run parameters
 
-Recommended first arc-point set:
+Maintained arc-point set:
 
 - `a00`
 - `a15`
@@ -150,10 +154,10 @@ into a needlessly fine grid.
 These represent angle-from-vertical magnitudes, not full signed left/right
 positions.
 
-Exact `90°` should be avoided in the first suite because it behaves more like a
-pathological edge than a useful core coverage point. The first maintained set
-should also stop at `a80` rather than `a84`, which keeps the shallow end in a
-more practical range while still covering very flat arrivals.
+Exact `90°` is omitted because it behaves more like a pathological edge than a
+useful core coverage point. The maintained set stops at `a80` rather than
+`a84`, which keeps the shallow end in a more practical range while still
+covering very flat arrivals.
 
 `a00` is a deliberate vertical reference case. It should remain in the first
 suite, but it is the one cell where side resolution is ignored because left and
@@ -161,10 +165,10 @@ right are not physically distinct there.
 
 ### Radial distance
 
-The first half-arc terminal suite should use one family-level nominal radius,
-not radius as another top-level matrix axis.
+The half-arc terminal suite uses one family-level nominal radius, not radius as
+another top-level matrix axis.
 
-Recommended first policy:
+Maintained policy:
 
 - `radius_nominal = 800m`
 - `gravity_mps2 = 9.81`
@@ -179,7 +183,7 @@ Rationale:
 - but carrying radius as another primary matrix axis in `pd-lab` would make the
   first terminal matrix noisier and harder to interpret
 
-So the first `half_arc_terminal_v1` family should:
+The maintained `half_arc_terminal_v1` family:
 
 - keep radius fixed at the family level
 - define velocity bands around that nominal radius
@@ -195,7 +199,7 @@ families:
 
 - `earth`
   - `gravity_mps2 = 9.81`
-  - use for the first maintained family
+  - used for the maintained family
   - more interesting and decision-dense as the default terminal workbench
   - aligns better with prior `pylander` intuition once practical flight-time
     tuning is restored
@@ -209,7 +213,7 @@ families:
   - useful as a wide-margin low-gravity reference
   - should remain available for comparison, not as the maintained default
 
-So the first family should remain:
+The maintained family remains:
 
 - `half_arc_terminal_v1`
   - earth gravity baseline
@@ -247,7 +251,7 @@ shape.
 
 ### Velocity bands
 
-The first suite should use three velocity bands:
+The maintained suite uses three velocity bands:
 
 - `low`
 - `mid`
@@ -272,17 +276,17 @@ Recommended interpretation:
 - `mid`: nominal time-to-go
 - `high`: shorter time-to-go, more aggressive arrival
 
-Suggested first policy:
+Maintained policy:
 
 - `mid`: the exact nominal time-to-go from the family table for that arc point
 - `low`: `+25%` time-to-go from nominal
 - `high`: `-25%` time-to-go from nominal
 
-To keep the family implementation unambiguous, `half_arc_terminal_v1` should
-carry an explicit `nominal_ttg_by_arc_point` table. `mid` means that exact
-table entry, not an implementation-specific heuristic.
+To keep the family implementation unambiguous, `half_arc_terminal_v1` carries
+an explicit `nominal_ttg_by_arc_point` table. `mid` means that exact table entry,
+not an implementation-specific heuristic.
 
-Recommended first `nominal_ttg_by_arc_point` table:
+Maintained `nominal_ttg_by_arc_point` table:
 
 - `a00 = 9.00s`
 - `a15 = 9.00s`
@@ -335,7 +339,7 @@ Seed is for small local variation within a cell, not for defining the cell.
 
 ### Clean-case seed policy
 
-For the first `clean` terminal suite:
+For the maintained `clean` terminal suite:
 
 - always resolve `side_sign` from seed
 - then apply exactly one of:
@@ -352,7 +356,7 @@ stacked disturbances.
 
 ### Clean seed schedule
 
-The first full tier should not repeat a five-state cycle. It should use a
+The full tier does not repeat a five-state cycle. It uses a
 canonical twelve-seed schedule so the spread metric is based on a balanced set
 of small but distinct nuisance variations.
 
@@ -365,7 +369,7 @@ That makes side resolution deterministic and portable across implementations
 without introducing a separate randomization policy. For `a00`, the resolved
 side should be ignored.
 
-Recommended deterministic full schedule:
+Maintained deterministic full schedule:
 
 - `seed 0`: left, radial `r1` positive
 - `seed 1`: right, radial `r1` negative
@@ -380,10 +384,10 @@ Recommended deterministic full schedule:
 - `seed 10`: left, speed `s3` positive
 - `seed 11`: right, speed `s3` negative
 
-Smoke should use a small representative subset of that canonical schedule. It
-is intentionally a fast sanity tier, not a symmetry-complete spread probe.
+Smoke uses a small representative subset of that canonical schedule. It is
+intentionally a fast sanity tier, not a symmetry-complete spread probe.
 
-Recommended smoke subset:
+Maintained smoke subset:
 
 - `seed 0`
 - `seed 1`
@@ -404,23 +408,22 @@ Keep clean-case magnitudes intentionally weak:
   - `s3 = 3.0%`
   - of nominal speed for that band
 
-The exact values can be tuned after the first matrix lands, but the suite
-should preserve this narrow-variation philosophy.
+These implemented values preserve the intended narrow-variation philosophy.
 
 ## Coverage Tiers
 
-The terminal suite should support two practical seed tiers:
+The terminal suite supports two practical seed tiers:
 
 - `smoke`
   - small seed count for quick controller iteration
-  - recommended first count: `3`
+  - count: `3`
 - `full`
   - broader seed count for meaningful spread measurement
-  - recommended first count: `12`
+  - count: `12`
 
 The same physical matrix should support both.
 
-For the first clean matrix, that implies:
+For the clean matrix, that gives:
 
 - `7 arc_points`
 - `3 velocity_bands`
@@ -429,7 +432,7 @@ For the first clean matrix, that implies:
 
 ## Condition Sets
 
-The first condition sets should be:
+The maintained condition sets are:
 
 - `clean`
 - `traj_undershoot_small`
@@ -444,7 +447,7 @@ Undershoot and overshoot should stay split at the condition-set level instead
 of being aggregated under a shared `traj_error` bucket. They tend to fail for
 different reasons and are hard to interpret as one aggregate.
 
-The first trajectory-error policy is projected miss distance:
+The maintained trajectory-error policy is projected miss distance:
 
 - solve the clean ballistic initial velocity for the cell
 - replace only the lateral velocity so the engine-off impact point would miss
@@ -453,7 +456,7 @@ The first trajectory-error policy is projected miss distance:
 - do not apply clean-case speed jitter afterward, so the projected miss remains
   exact
 
-The first maintained magnitudes are:
+The maintained magnitudes are:
 
 - `small`: `30m`, `45m`, `60m`
 - `large`: `75m`, `90m`, `105m`
@@ -532,7 +535,7 @@ terrain response with the existing low-thrust/high-energy authority frontier.
 
 ## Vehicle Variants
 
-The maintained Earth baseline should use the same core vehicle and nominal
+The maintained Earth baseline uses the same core vehicle and nominal
 engine envelope as `pylander`'s `SimpleLander`:
 
 - geometry:
@@ -561,15 +564,14 @@ One intentional simplification for `pd-lab` right now:
 That keeps the suite easier to reason about while still matching the basic
 mass, thrust, and control-authority picture from `pylander`.
 
-The first vehicle variants should be:
+The maintained vehicle variants are:
 
 - `empty`
 - `half`
 - `full`
 
-These should be modeled as fixed payload-style dry-mass additions, not as fuel
-cuts. The maintained first payload tiers should follow the useful
-`pylander` `plunge` precedent:
+These are modeled as fixed payload-style dry-mass additions, not as fuel cuts.
+The maintained payload tiers follow the useful `pylander` `plunge` precedent:
 
 - `empty`
   - no payload dry-mass adjustment
@@ -610,7 +612,7 @@ expected variation.
 
 ## Reporting Expectations
 
-The batch report should present the terminal suite as:
+The batch report presents the terminal suite as:
 
 - scenario class:
   - `mission`
@@ -621,14 +623,14 @@ The batch report should present the terminal suite as:
   - `velocity_band`
 - then payload / vehicle:
   - `vehicle_variant`
-- then lane:
+- then report lane:
   - `current`
-  - `baseline`
+  - `baseline` only when a comparison result pack is rendered
 - then seed detail
 
-The current tree/table report is acceptable for the first implementation pass.
-There is no need to build a new matrix-specific UI before the underlying suite
-is real.
+The current selector-aware review tree is the maintained matrix UI. A separate
+matrix-specific frontend is unnecessary unless a future corpus creates concrete
+inspection pressure.
 
 ## Current Status
 
@@ -686,10 +688,13 @@ Clean matrix report entrypoints:
 - `outputs/eval/terminal_bot_lab_suite/summary.json`
 - `outputs/eval/terminal_bot_lab_full/summary.json`
 
-Latest recorded wall-clock signal with `8` workers:
+Current report-artifact wall-clock signal with `8` workers:
 
-- `terminal_bot_lab_suite`: `6.69s`
+- `terminal_bot_lab_suite`: `6.80s`
 - `terminal_bot_lab_full`: `28.28s`
+
+Wall-clock values are local efficiency signals, not deterministic acceptance
+thresholds.
 
 Current-lane clean results:
 
@@ -720,9 +725,9 @@ The checkpoints below are from fresh schema-34 local captures. Regenerate
 ignored `outputs/eval` entrypoints after schema/report changes before treating
 the files in this checkout as authoritative.
 
-Latest refreshed schema-34 wall-clock signal:
+Current schema-34 report-artifact wall-clock signal:
 
-- `terminal_traj_err_suite`: `27.21s` with `8` workers
+- `terminal_traj_err_suite`: `28.34s` with `8` workers
 - `terminal_traj_err_full`: `114.17s` with `8` workers
 
 Current-lane trajectory-error results:
@@ -793,13 +798,12 @@ Parked terrain diagnostic snapshot:
 - the pack remains available for diagnostics, but it is no longer part of the
   maintained terminal guidance scorecard
 
-The standing sparse trajectory-error outliers are:
+The standing sparse trajectory-error core outlier is:
 
 - `traj_overshoot_large / half / a60 / high / seed 2`
-- `traj_overshoot_large / half / a60 / high / seed 4`
 
-These should be treated as controller/frontier probes, not as evidence that the
-selector model or report hierarchy needs another structural change.
+This should be treated as a controller robustness probe, not as evidence that
+the selector model or report hierarchy needs another structural change.
 
 The latest landing-time pass also suggests the current controller is near the
 practical tuning plateau for this corpus. Broad final-touchdown and
@@ -841,7 +845,7 @@ milestones are:
      climbing arrival cases
 7. later terrain diagnostics only after that higher-level boundary exists
 
-More specialized matrix-review UI should wait until the transfer or higher-level
-route layer creates real report pressure. The next implementation pressure for
-this document remains terminal policy and frontier semantics; transfer work now
-lives in its own suite design.
+More specialized matrix-review UI should wait until the planner or a later
+higher-level route layer creates real report pressure. Terminal policy and
+frontier semantics are optional, evidence-driven follow-ups; the project-level
+next slice is waypoint planning.
