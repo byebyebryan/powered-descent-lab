@@ -1,5 +1,28 @@
 # Progress
 
+## 2026-07-22
+
+### Guidance implementation cleanup checkpoint
+
+- Split the evaluator monolith into persisted models, pack resolution,
+  execution, runtime/cache support, comparison, review derivation, and tests.
+  The existing public exports, schema `34`, cache layout, and CLI behavior are
+  preserved.
+- Split batch report rendering into overview, guidance diagnostics,
+  review-tree, and comparison modules while retaining the existing static HTML
+  output and report-site paths.
+- Split transfer and terminal support code into explicit configuration, state,
+  and pure math/planning modules. Controller update loops and lifecycle
+  decisions remain in their owning `mod.rs` files; no thresholds, candidate
+  ordering, phase transitions, controller IDs, or telemetry contracts changed.
+- Made the workspace strict-Clippy clean. The full workspace passes `286`
+  tests, and report-only catalog refresh rebuilt `15` batches and `8,730` run
+  pages without executing simulations or changing tracked evidence.
+- Fresh primary-pack runs reproduce the closed guidance baseline: clean
+  terminal `171 / 189`, reference-error terminal `694 / 756`, direct transfer
+  `297 / 297`, all-radius turn landing/contract `405 / 405`, and all-radius
+  ordered landing/contract `135 / 135`.
+
 ## 2026-07-15
 
 ### Waypoint final-recovery closure checkpoint

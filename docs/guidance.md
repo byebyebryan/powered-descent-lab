@@ -64,10 +64,15 @@ The current `pd-control` layout follows those ownership boundaries:
 - `controllers.rs` owns the controller registry plus the legacy baseline and
   staged controllers
 - `guidance.rs` owns shared state-target acceleration and command allocation
-- `terminal/` owns terminal guidance; `terminal/terrain.rs` isolates its local
-  candidate-clearance estimator, while `terminal/tests.rs` keeps controller
-  tests out of the production module
-- `transfer/mod.rs` owns direct-transfer and waypoint lifecycle state
+- `terminal/mod.rs` owns the terminal update loop and guidance-plan lifecycle;
+  `terminal/config.rs` preserves the public serialized configuration,
+  `terminal/state.rs` owns internal command and entry DTOs,
+  `terminal/planning.rs` owns deterministic candidate ordering and ballistic
+  helpers, and `terminal/terrain.rs` isolates local candidate clearance
+- `transfer/mod.rs` owns the direct-transfer and waypoint update loop;
+  `transfer/config.rs` preserves the public serialized configuration,
+  `transfer/state.rs` owns lifecycle state and internal DTOs, and
+  `transfer/math.rs` owns shared ballistic and command-conversion helpers
 - `transfer/telemetry.rs` owns transfer and waypoint metric emission plus
   waypoint handoff-marker assembly; it receives already-computed guidance
   products and does not recompute control decisions
@@ -77,6 +82,13 @@ The current `pd-control` layout follows those ownership boundaries:
   weights retained for diagnostic reproducibility
 - `transfer/tests.rs` owns the transfer and waypoint controller tests without
   changing their access to module-private fixtures
+
+The evaluator follows the same separation. Persisted batch/report DTOs live in
+`pd-eval/src/model.rs`; pack validation and expansion live in `resolution.rs`;
+execution, artifact/cache support, comparison, and review derivation live in
+their named modules. The batch report shell delegates overview, diagnostics,
+review-tree, and comparison rendering to `pd-eval/src/report/` modules. Public
+crate exports and persisted schema paths remain unchanged.
 
 This split is internal. Public controller exports still resolve through
 `pd-control`, and persisted controller, phase, telemetry, and artifact contracts

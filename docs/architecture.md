@@ -375,6 +375,19 @@ Responsibilities:
 The eval layer should orchestrate runs around the same core and controller
 contracts used by `pd-cli`.
 
+Its implementation is split by responsibility rather than pack family:
+
+- `model.rs` owns persisted batch, cache, comparison, and review DTOs
+- `resolution.rs` validates packs and expands them into concrete runs
+- `execution.rs` schedules resolved runs and classifies analytic feasibility
+- `runtime.rs` owns scenario/controller loading plus artifact and cache support
+- `comparison.rs` and `review.rs` derive cross-run and per-run evidence
+- `report.rs` is the batch-report shell; its `report/` children own overview,
+  diagnostics, review-tree, and comparison presentation
+
+These are internal boundaries. The `pd-eval` public exports, JSON schema, cache
+layout, and stable report paths remain compatibility surfaces.
+
 Recommended parallelism boundary:
 
 - `pd-core` stays single-run and deterministic
