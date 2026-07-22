@@ -2,6 +2,36 @@
 
 ## 2026-07-22
 
+### Waypoint-planning design checkpoint
+
+- Stress-tested the next planner slice against current route contracts, terrain
+  geometry, evaluator/cache behavior, and the earlier terrain-avoidance failure
+  modes. The resulting v1 is a setup-time deterministic pad-to-pad planner, not
+  runtime avoidance or trajectory optimization.
+- Fixed ownership before implementation: neutral contracts and exact clearance
+  queries belong in `pd-core`, the algorithm belongs in a new `pd-plan` crate
+  with no `pd-control` dependency, and `pd-eval` owns resolution and evidence.
+- Bounded the search to monotone static-heightfield routes with zero to two
+  waypoints, endpoint clearance taper, conservative vehicle-envelope clearance,
+  and an explicit extra-loft ceiling. Without the loft ceiling, arbitrarily high
+  routes would make planner rejection meaningless.
+- Required the generic planner validator to check both endpoint legs as well as
+  intermediate legs. The current authored-profile validator's deliberate
+  endpoint exception cannot become a planner clearance loophole.
+- Separated guarantees: planner success covers declared geometry and
+  gravity-taxed authority screens; handoff, final landing, actual hull
+  clearance, fuel, and duration remain simulation evidence.
+- Defined stable planner provenance and rejection semantics so algorithm,
+  policy, and plan identity enter cache-reuse digests without breaking
+  cross-report matching of the same physical case. Expected planner rejections
+  remain contract fixtures rather than synthetic batch runs.
+- Scoped the first corpus to curated clear, single-ridge, and double-ridge
+  routes over `r-30 | r00 | r+30`, nominal radius, `empty | full`, and smoke
+  seeds. Authored routes are property oracles, not exact coordinate goldens.
+- Recorded the implementation sequence and deferred randomized terrain,
+  endpoint traps, steep/radius expansion, reactive avoidance, runtime
+  replanning, and analytic fuel claims until the bounded planner closes.
+
 ### Documentation reconciliation checkpoint
 
 - Reconciled README, architecture, guidance, roadmap, and both suite references

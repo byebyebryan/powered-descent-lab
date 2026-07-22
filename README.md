@@ -92,7 +92,9 @@ without treating the old scenario files as fixtures to transliterate directly.
 - [Architecture](docs/architecture.md) owns system boundaries and persisted
   contracts.
 - [Guidance Architecture](docs/guidance.md) owns current terminal, transfer,
-  waypoint, and future-planner responsibilities.
+  waypoint, and planner/guidance responsibilities.
+- [Waypoint Planning V1](docs/waypoint_planning.md) owns the next planner
+  contract, bounded search policy, evidence model, and implementation sequence.
 - [Roadmap](docs/roadmap.md) owns current phase status and the next execution
   slice.
 - [Terminal Suite Design](docs/terminal_suite.md) and
@@ -560,7 +562,8 @@ The old `single_dogleg_v1` packs and the full-matrix `late_bend_v1` pack remain
 parked diagnostic history rather than acceptance gates.
 Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
 corpus. General terrain avoidance remains parked at the planning/collision-warning
-layer, and waypoint planning is the next transfer slice.
+layer. The next transfer slice is the bounded deterministic pad-to-pad planner
+defined in `docs/waypoint_planning.md`.
 The guidance implementation now follows the ownership boundaries in
 `docs/guidance.md`: terminal and transfer are separate modules, pure waypoint
 geometry is isolated from controller lifecycle state, telemetry emission is

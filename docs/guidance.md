@@ -1,8 +1,9 @@
 # Guidance Architecture
 
 This document is the stable boundary between terminal guidance, direct
-transfer, waypoint guidance, and future waypoint planning. It describes
-ownership and compatibility rather than controller tuning.
+transfer, waypoint guidance, and waypoint planning. It describes ownership and
+compatibility rather than controller tuning. The planner's detailed contract
+and evidence model live in [Waypoint Planning V1](waypoint_planning.md).
 
 ## Ownership
 
@@ -21,10 +22,17 @@ lifecycle, handoff contract, continuation viability, and final-waypoint entry
 into terminal guidance. It is terrain-blind: waypoint placement and arrival
 envelopes must already encode a terrain-valid route.
 
-Waypoint planning is upstream of guidance. It will own terrain-valid waypoint
-placement, leg ordering, and arrival-envelope construction. Planning must not
-move terminal or waypoint contract logic into route-label-specific controller
-branches.
+The planned waypoint-planning layer is upstream of guidance. It owns
+terrain-valid waypoint placement, leg ordering, and arrival-envelope
+construction. V1 plans once from static setup-time context and emits a direct
+route or at most two preplanned waypoints. It does not select a controller, run
+inside the controller update loop, or move terminal and waypoint contract logic
+into route-label-specific branches.
+
+A planner success is a bounded geometric and conservative-authority result, not
+a promise that guidance will complete the mission. Existing handoff, ordered
+sequence, terminal-recoverability, terrain-clearance, and landing evidence
+remain the authority for flown behavior.
 
 ## Lifecycle Contract
 
@@ -89,6 +97,13 @@ execution, artifact/cache support, comparison, and review derivation live in
 their named modules. The batch report shell delegates overview, diagnostics,
 review-tree, and comparison rendering to `pd-eval/src/report/` modules. Public
 crate exports and persisted schema paths remain unchanged.
+
+The next planned boundary adds neutral route-planning contracts and clearance
+queries to `pd-core`, with the deterministic algorithm in a new `pd-plan` crate
+that depends only on `pd-core`. `pd-eval` will call it during scenario
+resolution, persist algorithm/policy/plan identity, and pass only the resulting
+`TransferRouteSpec` to guidance. `pd-control` must not become a dependency of
+the planner, and planner policy must not read controller configuration defaults.
 
 This split is internal. Public controller exports still resolve through
 `pd-control`, and persisted controller, phase, telemetry, and artifact contracts

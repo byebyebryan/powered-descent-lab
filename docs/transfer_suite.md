@@ -237,7 +237,10 @@ attitude, and touchdown.
 
 Waypoint guidance was deliberately implemented before waypoint setup. The
 maintained guidance contract assumes a higher-level planner has already chosen
-the waypoint list and any terrain-valid spatial or energy envelopes.
+the waypoint list and any terrain-valid spatial or energy envelopes. The first
+production planner contract and corpus are defined separately in
+[Waypoint Planning V1](waypoint_planning.md); this suite remains the authority
+for current preplanned guidance evidence.
 
 The waypoint controller's job is to follow the currently active leg and keep the
 vehicle in a useful state for the next leg. The controller should reason about
@@ -815,4 +818,5 @@ phase strings.
 
 - terminal climbing-arrival suite extension
 - aggregate handoff quality thresholds in batch summaries
-- waypoint/corridor planning above terminal guidance
+- implement the bounded planner and planner-backed corpus defined in
+  [Waypoint Planning V1](waypoint_planning.md)

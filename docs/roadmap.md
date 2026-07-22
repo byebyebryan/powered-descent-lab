@@ -57,6 +57,9 @@ Current implementation status:
     `135 / 135`
   - bounded final authority-recovery search closes the former short-radius
     landing residual, leaving waypoint planning as the next Phase 3 slice
+  - the planner design is now fixed as a setup-time, deterministic, pad-to-pad
+    search over static heightfields; see
+    [Waypoint Planning V1](waypoint_planning.md)
 
 ## 2. What Not To Build First
 
@@ -413,8 +416,15 @@ Status:
     `27 / 27`, with `27 / 54` initially bad entries recovering in-window
   - ordered-contract compute remains within budget at `434us` p99
 - next transfer slice is waypoint planning:
-  - keep guidance terrain-blind and make the planner own terrain-valid waypoint
-    placement, leg ordering, and arrival envelopes
+  - add neutral planner contracts and exact route-clearance primitives to
+    `pd-core`, then implement the algorithm in a new `pd-plan` crate with no
+    `pd-control` dependency
+  - plan once from immutable setup context and emit a direct route or at most
+    two monotone pass-through waypoints
+  - use an explicit versioned clearance, endpoint-taper, loft, and authority
+    policy so planner rejection is bounded and reproducible
+  - distinguish a geometrically accepted route from handoff, actual-clearance,
+    fuel, and final-landing simulation evidence
   - treat the full-seed and all-radius maintained corpus as the waypoint-guidance
     v1 regression baseline
   - keep future mechanisms independent of route/profile labels and mission
@@ -423,6 +433,8 @@ Status:
     recovery/reliability regression gates
   - retain the former short-radius post-contract crash as a final-recovery
     regression watch without weakening waypoint contracts
+  - the complete contract, corpus, failure semantics, and commit sequence live
+    in [Waypoint Planning V1](waypoint_planning.md)
 - one early-stop evaluation primitive (`timed_checkpoint`) remains available as
   a contract probe only, not as the transfer v1 scoring goal
 
@@ -434,9 +446,9 @@ Target:
 
 Planned scope:
 
-- planner-facing terrain query API beyond the existing setup-time terrain
-  context
-- closest-point, ray, and clearance queries
+- terrain query APIs beyond the segment/corridor clearance required by waypoint
+  planning
+- closest-point and ray queries for warnings and execution guardrails
 - curated terrain-reactive scenarios after approach-corridor or waypoint
   semantics exist
 - terrain-focused telemetry and replay markers
@@ -453,7 +465,8 @@ Status:
 - initial backstop terrain fixtures exist as experimental, non-blocking packs
 - first-pass generic controller-side terrain-clearance evaluation is in place as
   telemetry/diagnostic plumbing
-- closest-point, segment/ray, and route-corridor queries remain planner work
+- segment and route-corridor clearance are pulled into the Phase 3 planner
+  prerequisite; closest-point and ray queries remain Phase 4 work
 - terrain-aware guidance is parked until approach-corridor validation,
   collision-course warnings, or waypoint planning define the higher-level
   boundary
@@ -580,29 +593,30 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Begin the waypoint-planning slice above the now-reconciled guidance stack.
-Terminal, direct-transfer, and waypoint-guidance behavior are maintained
-baselines rather than open-ended tuning work.
+Implement [Waypoint Planning V1](waypoint_planning.md) above the reconciled
+guidance stack. Terminal, direct-transfer, and waypoint-guidance behavior are
+maintained baselines rather than open-ended tuning work.
 
-The next useful work is:
+The next commits are:
 
-1. Define a deterministic planner input/output contract: immutable terrain,
-   source/target state, vehicle authority, and route policy in; ordered waypoint
-   positions, tangents, and arrival envelopes out.
-2. Add planner-side validation for terrain clearance, leg ordering, kinematic
-   feasibility, and compatibility with the existing waypoint handoff contract.
-   Invalid plans should fail before guidance simulation.
-3. Start with a small authored oracle corpus whose valid routes are already
-   understood, then compare generated plans against contract and final-landing
-   packs separately.
-4. Keep guidance terrain-blind and prohibit obstacle-name, route-profile,
-   payload, seed, or mission-time branches in the controller.
-5. Preserve `terminal_bot_lab_suite`, `terminal_traj_err_suite`,
-   `transfer_route_angle_radius_suite`, and the paired waypoint closure packs as
-   no-regression gates while planner code evolves.
-6. Keep a later terminal-arrival extension on the roadmap: a signed
-   climb/descent arrival family that expands the current one-sided quarter-arc
-   into a half-arc around the target and exercises climbing arrivals.
+1. Add neutral planning contracts, exact segment/corridor clearance, and shared
+   route-property validation to `pd-core`.
+2. Add `pd-plan` with normalized safety-profile construction, deterministic
+   bounded candidate search, versioned policy, plan digests, and typed rejection
+   fixtures.
+3. Integrate planner-backed resolution and cache identity in `pd-eval`, then add
+   the focused `r-30 | r00 | r+30`, nominal-radius, `empty | full`, smoke-seed
+   authored-oracle/generated-plan corpus.
+4. Persist and render planner provenance, route geometry, planned/actual
+   clearance, loft, path-length, and authority diagnostics.
+5. Close on separate planner-contract, waypoint-handoff, physical-landing, and
+   actual-clearance evidence while preserving every maintained guidance gate.
+
+Do not expand to runtime replanning, randomized terrain, more than two
+waypoints, route/profile controller branches, or analytic fuel claims in this
+slice. Keep a later terminal-arrival extension on the roadmap: a signed
+climb/descent arrival family that expands the current one-sided quarter-arc into
+a half-arc around the target and exercises climbing arrivals.
 
 Direct transfer and waypoint contracts are clean across the maintained
 route-angle/radius matrix, while full-seed nominal contracts and landings are

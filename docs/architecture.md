@@ -178,8 +178,9 @@ uses terminal-compatible aliases only as report plumbing.
 Waypoint work should split planning from guidance.
 
 Waypoint planning is the upstream problem: choose terrain-valid waypoint
-positions and arrival envelopes that make each next leg feasible. It may use
-terrain, obstacle, and route-policy information later.
+positions and arrival envelopes that make each next leg feasible. The bounded
+v1 design plans once over static heightfield terrain and is specified in
+[Waypoint Planning V1](waypoint_planning.md).
 
 Waypoint guidance assumes the waypoint list is already planned, follows the
 currently active route leg, and enters a bounded handoff window at the waypoint
@@ -243,9 +244,12 @@ The implemented heightfield query layer provides:
 
 The waypoint-planning slice still needs richer read-only queries such as:
 
-- closest point / closest distance
-- ray and segment intersection
-- corridor or path-clearance sampling
+- exact segment-to-heightfield clearance
+- vehicle-center corridor validation with endpoint clearance taper
+- stable minimum-clearance diagnostics for route artifacts
+
+Closest-point and ray queries remain useful later for collision warnings and
+reactive guardrails, but they are not prerequisites for the bounded planner.
 
 Controllers are therefore not forced to rediscover the world through only
 per-frame local sensors, while planner-specific geometry can be added without
@@ -345,7 +349,24 @@ rich setup-time environment, compact per-tick state, and controller-owned
 inspection data. It should not move mission success authority back into the
 controller layer.
 
-### 5.3 `pd-cli`
+### 5.3 `pd-plan` (planned)
+
+`pd-plan` will own deterministic setup-time route construction.
+
+Responsibilities:
+
+- conservative vehicle-center safety-profile construction
+- bounded visibility-candidate search over static heightfields
+- direct versus waypoint route topology
+- handoff tangent and arrival-envelope construction
+- stable planner diagnostics and rejection codes
+
+`pd-plan` depends only on neutral contracts and terrain queries in `pd-core`. It
+must not depend on `pd-control`, select controller IDs, execute simulations, or
+own evaluator/report policy. The initial algorithm and bounded policy are
+defined in [Waypoint Planning V1](waypoint_planning.md).
+
+### 5.4 `pd-cli`
 
 `pd-cli` is the single-run native entry point.
 
@@ -359,7 +380,7 @@ Responsibilities:
 This is the primary developer entry point for targeted native runs and replaces
 the old mixed interactive/headless shell role.
 
-### 5.4 `pd-eval`
+### 5.5 `pd-eval`
 
 `pd-eval` owns repeated execution and analysis.
 
@@ -401,7 +422,7 @@ Recommended parallelism boundary:
 - output ordering and aggregate reports should still be written in a stable,
   deterministic order
 
-### 5.5 `pd-report` and the static report viewer
+### 5.6 `pd-report` and the static report viewer
 
 A minimal inspection/report path is part of the core bot-lab workflow, not only
 late polish.
@@ -532,6 +553,8 @@ Notes:
   assembly and comparison UX
 - `outputs/` stores generated run bundles, cache entries, stable report aliases,
   and report indexes; it is not source-controlled truth
+- `pd-plan` is the next planned workspace crate and is not part of the current
+  implemented shape yet
 
 ## 7. Contracts
 
@@ -935,6 +958,11 @@ Output-path stance:
   same run can be regenerated in place and refreshed through a stable URL
 - batch caches and compare artifacts may use short digests derived from the
   resolved pack, controller/config inputs, and commit/workspace identity
+- planner-backed cache identity must also include planner algorithm, complete
+  resolved policy, and plan digest; selector equality alone is insufficient
+- cross-report case matching should retain stable physical request identity and
+  route provenance so a changed generated plan remains comparable rather than
+  appearing as unrelated coverage
 - timestamps are useful for ad hoc archival bundles, but they should not be the
   primary identity mechanism for regression workflows
 
