@@ -4,7 +4,7 @@ use std::{
 };
 
 use pd_control::ControllerSpec;
-use pd_core::{RunManifest, RunSummary};
+use pd_core::{RoutePlan, RoutePlanningPolicy, RouteTopology, RunManifest, RunSummary};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -501,6 +501,50 @@ pub struct BatchRunReviewMetrics {
     pub waypoint_route_total: Option<usize>,
     #[serde(default)]
     pub waypoint_route_first_failure_index: Option<usize>,
+    #[serde(default)]
+    pub planner: Option<BatchPlannerReviewMetrics>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct BatchPlannerReviewMetrics {
+    #[serde(default)]
+    pub route_source: Option<String>,
+    #[serde(default)]
+    pub physical_case_id: Option<String>,
+    #[serde(default)]
+    pub algorithm_id: Option<String>,
+    #[serde(default)]
+    pub policy_version: Option<String>,
+    #[serde(default)]
+    pub policy_digest: Option<String>,
+    #[serde(default)]
+    pub request_digest: Option<String>,
+    #[serde(default)]
+    pub plan_digest: Option<String>,
+    #[serde(default)]
+    pub direct_path_clear: Option<bool>,
+    #[serde(default)]
+    pub direct_rejection_residual_m: Option<f64>,
+    #[serde(default)]
+    pub topology: Option<String>,
+    #[serde(default)]
+    pub waypoint_count: Option<usize>,
+    #[serde(default)]
+    pub planned_min_clearance_m: Option<f64>,
+    #[serde(default)]
+    pub sampled_en_route_min_hull_clearance_m: Option<f64>,
+    #[serde(default)]
+    pub route_length_m: Option<f64>,
+    #[serde(default)]
+    pub direct_distance_m: Option<f64>,
+    #[serde(default)]
+    pub excess_length_m: Option<f64>,
+    #[serde(default)]
+    pub peak_extra_loft_m: Option<f64>,
+    #[serde(default)]
+    pub authority_caps_mps: Vec<f64>,
+    #[serde(default)]
+    pub authority_ratios: Vec<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -618,6 +662,7 @@ pub enum ScenarioPackEntry {
     Family(ScenarioFamilyEntry),
     TerminalMatrix(TerminalMatrixEntry),
     TransferMatrix(TransferMatrixEntry),
+    PlannerMatrix(PlannerMatrixEntry),
 }
 
 impl ScenarioPackEntry {
@@ -627,6 +672,7 @@ impl ScenarioPackEntry {
             Self::Family(entry) => &entry.id,
             Self::TerminalMatrix(entry) => &entry.id,
             Self::TransferMatrix(entry) => &entry.id,
+            Self::PlannerMatrix(entry) => &entry.id,
         }
     }
 }
@@ -751,6 +797,52 @@ pub struct TransferMatrixLaneSpec {
     pub controller_config: Option<String>,
 }
 
+/// A planner-backed matrix entry.  This is intentionally distinct from
+/// `TransferMatrixEntry`: authored transfer geometry keeps its existing
+/// resolution path, while planner rows own the terrain profile, policy, and
+/// expected planner topology explicitly.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PlannerMatrixEntry {
+    pub id: String,
+    pub planner_matrix: String,
+    pub base_scenario: String,
+    pub lanes: Vec<TransferMatrixLaneSpec>,
+    pub seed_tier: TransferSeedTier,
+    pub vehicle_variant: String,
+    pub expectation_tier: String,
+    #[serde(default)]
+    pub route_angles: Vec<String>,
+    pub terrain_profile: PlannerTerrainProfile,
+    pub policy: RoutePlanningPolicy,
+    pub expected_topology: RouteTopology,
+    pub expected_waypoint_count: u8,
+    pub evaluation_goal: TransferMatrixEvaluationGoal,
+    #[serde(default)]
+    pub adjustments: Vec<NumericAdjustmentSpec>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlannerTerrainProfile {
+    ClearDirect,
+    SingleMidRidge,
+    DoubleSeparatedRidge,
+}
+
+impl PlannerTerrainProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ClearDirect => "clear_direct",
+            Self::SingleMidRidge => "single_mid_ridge",
+            Self::DoubleSeparatedRidge => "double_separated_ridge",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TransferSeedTier {
@@ -798,6 +890,20 @@ pub enum ResolvedRunSourceKind {
     FamilySweep,
     TerminalMatrix,
     TransferMatrix,
+    PlannerMatrix,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RoutePlanProvenance {
+    pub route_source: String,
+    pub physical_case_id: String,
+    pub algorithm_id: String,
+    pub policy_version: String,
+    pub policy_digest: String,
+    pub request_digest: String,
+    pub plan_digest: String,
+    pub expected_topology: RouteTopology,
+    pub expected_waypoint_count: u8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -817,6 +923,12 @@ pub struct ResolvedRunDescriptor {
     pub resolved_parameters: BTreeMap<String, f64>,
     pub controller_id: String,
     pub controller_spec: ControllerSpec,
+    #[serde(default)]
+    pub physical_case_id: Option<String>,
+    #[serde(default)]
+    pub route_provenance: Option<RoutePlanProvenance>,
+    #[serde(default)]
+    pub route_plan: Option<RoutePlan>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

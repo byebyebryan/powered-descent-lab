@@ -998,7 +998,7 @@ mod tests {
                 .iter()
                 .map(|group| group.id.as_str())
                 .collect::<Vec<_>>(),
-            ["terminal", "transfer", "waypoint"]
+            ["terminal", "transfer", "waypoint", "planner"]
         );
     }
 

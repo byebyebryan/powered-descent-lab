@@ -47,6 +47,44 @@ fn report_with_records(mut report: BatchReport, records: Vec<BatchRunRecord>) ->
     report
 }
 
+fn artifact_test_route_plan() -> pd_core::RoutePlan {
+    pd_core::RoutePlan {
+        algorithm_id: "heightfield_visibility_v1".to_owned(),
+        policy: pd_core::RoutePlanningPolicy::default(),
+        request_digest: "artifact-request".to_owned(),
+        plan_digest: "artifact-plan".to_owned(),
+        topology: pd_core::RouteTopology::Direct,
+        route: pd_core::TransferRouteSpec {
+            source_pad_id: "source".to_owned(),
+            target_pad_id: "target".to_owned(),
+            route_angle_deg: 0.0,
+            route_radius_m: 100.0,
+            waypoints: Vec::new(),
+        },
+        normalized_geometry: pd_core::NormalizedRouteGeometry {
+            horizontal_sign: 1,
+            direct_horizontal_span_m: 100.0,
+            direct_distance_m: 100.0,
+            route_angle_rad: 0.0,
+            route_angle_deg: 0.0,
+        },
+        diagnostics: pd_core::RoutePlanDiagnostics {
+            direct_path_clear: true,
+            direct_path_clearance: None,
+            route_length_m: 100.0,
+            direct_distance_m: 100.0,
+            excess_length_m: 0.0,
+            peak_extra_loft_m: 0.0,
+            minimum_planned_clearance_m: 1.0,
+            leg_diagnostics: Vec::new(),
+            selected_node_ids: Vec::new(),
+            safe_profile_points_m: Vec::new(),
+            selected_centerline_m: Vec::new(),
+            waypoint_authority: Vec::new(),
+        },
+    }
+}
+
 #[test]
 fn maintained_clean_terminal_packs_expand_only_the_current_controller_lane() {
     let packs_dir = fixtures_root().join("packs");
@@ -62,6 +100,137 @@ fn maintained_clean_terminal_packs_expand_only_the_current_controller_lane() {
             run.descriptor.lane_id == "current" && run.descriptor.controller_id == "terminal_pdg_v1"
         }));
     }
+}
+
+#[test]
+fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
+    let packs_dir = fixtures_root().join("packs");
+    let smoke = load_pack(&packs_dir.join("planner_generated_route_smoke.json")).unwrap();
+    let contract =
+        load_pack(&packs_dir.join("planner_generated_route_contract_smoke.json")).unwrap();
+    let smoke_runs = resolve_pack_runs(&smoke, &packs_dir).unwrap();
+    let contract_runs = resolve_pack_runs(&contract, &packs_dir).unwrap();
+    assert_eq!(smoke_runs.len(), 54);
+    assert_eq!(contract_runs.len(), 36);
+    assert!(smoke_runs.iter().all(|run| matches!(
+        &run.scenario.mission.goal,
+        EvaluationGoal::LandingOnPad { .. }
+    )));
+    for run in &contract_runs {
+        if run.descriptor.entry_id.contains("single") {
+            assert!(matches!(
+                &run.scenario.mission.goal,
+                EvaluationGoal::WaypointHandoff { .. }
+            ));
+        } else if run.descriptor.entry_id.contains("double") {
+            assert!(matches!(
+                &run.scenario.mission.goal,
+                EvaluationGoal::WaypointSequence { .. }
+            ));
+        } else {
+            panic!(
+                "unexpected planner contract entry {}",
+                run.descriptor.entry_id
+            );
+        }
+    }
+    for run in smoke_runs.iter().chain(contract_runs.iter()) {
+        assert_eq!(
+            run.descriptor.source_kind,
+            ResolvedRunSourceKind::PlannerMatrix
+        );
+        let plan = run
+            .descriptor
+            .route_plan
+            .as_ref()
+            .expect("planner run should persist complete route plan");
+        let provenance = run
+            .descriptor
+            .route_provenance
+            .as_ref()
+            .expect("planner run should persist route provenance");
+        assert_eq!(provenance.plan_digest, plan.plan_digest);
+        assert_eq!(
+            run.descriptor.physical_case_id.as_deref(),
+            Some(provenance.physical_case_id.as_str())
+        );
+        assert_eq!(
+            run.scenario.mission.transfer_route.as_ref(),
+            Some(&plan.route)
+        );
+    }
+    let smoke_again = resolve_pack_runs(&smoke, &packs_dir).unwrap();
+    assert_eq!(
+        smoke_runs
+            .iter()
+            .map(|run| run.descriptor.run_id.clone())
+            .collect::<Vec<_>>(),
+        smoke_again
+            .iter()
+            .map(|run| run.descriptor.run_id.clone())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        smoke_runs
+            .iter()
+            .map(|run| run
+                .descriptor
+                .route_plan
+                .as_ref()
+                .unwrap()
+                .plan_digest
+                .clone())
+            .collect::<Vec<_>>(),
+        smoke_again
+            .iter()
+            .map(|run| run
+                .descriptor
+                .route_plan
+                .as_ref()
+                .unwrap()
+                .plan_digest
+                .clone())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn legacy_descriptor_and_report_json_default_planner_fields() {
+    let base_dir = temp_fixture_root("legacy_planner_defaults");
+    let scenario = easy_checkpoint_scenario();
+    write_scenario(&base_dir, "scenarios/checkpoint_success.json", &scenario);
+    let pack = ScenarioPackSpec {
+        id: "legacy_planner_defaults".to_owned(),
+        name: "Legacy planner defaults".to_owned(),
+        description: "legacy descriptor compatibility".to_owned(),
+        terminal_matrix_max_time_s: None,
+        entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+            id: "checkpoint_success_idle".to_owned(),
+            scenario: "scenarios/checkpoint_success.json".to_owned(),
+            controller: "idle".to_owned(),
+            controller_config: None,
+            metadata: BTreeMap::new(),
+        })],
+    };
+    let descriptor = resolve_pack_runs(&pack, &base_dir)
+        .unwrap()
+        .pop()
+        .expect("legacy fixture should resolve")
+        .descriptor;
+    let mut encoded = serde_json::to_value(descriptor).unwrap();
+    let object = encoded
+        .as_object_mut()
+        .expect("descriptor should be an object");
+    object.remove("physical_case_id");
+    object.remove("route_provenance");
+    object.remove("route_plan");
+    let decoded: ResolvedRunDescriptor = serde_json::from_value(encoded).unwrap();
+    assert!(decoded.physical_case_id.is_none());
+    assert!(decoded.route_provenance.is_none());
+    assert!(decoded.route_plan.is_none());
+
+    let review: BatchRunReviewMetrics = serde_json::from_value(serde_json::json!({})).unwrap();
+    assert!(review.planner.is_none());
 }
 
 fn easy_landing_scenario() -> ScenarioSpec {
@@ -4448,6 +4617,184 @@ fn cached_batch_validation_rejects_schema_mismatch() {
             .unwrap()
             .is_none()
     );
+
+    let mut mismatched_identity = report.identity.clone();
+    mismatched_identity.resolved_run_digest = "stale-meta-digest".to_owned();
+    write_json(
+        &output_dir.join("meta.json"),
+        &BatchCacheMeta {
+            schema_version: BATCH_REPORT_SCHEMA_VERSION,
+            pack_id: report.pack_id.clone(),
+            pack_name: report.pack_name.clone(),
+            identity: mismatched_identity,
+            total_runs: report.total_runs,
+            workers_used: report.workers_used,
+            cache: BatchCacheInfo {
+                workspace_key: "unit".to_owned(),
+                commit_key: "unit".to_owned(),
+                batch_stem: "cache_schema".to_owned(),
+                cache_dir: output_dir.to_string_lossy().into_owned(),
+                status: BatchCacheStatus::Fresh,
+                created_at_unix_s: current_unix_timestamp(),
+                promotion: None,
+            },
+        },
+    )
+    .unwrap();
+    assert!(
+        validate_cached_batch_dir_compatible(&output_dir, &pack, &report.identity)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn cached_run_bundle_requires_route_plan_only_for_planner_descriptor() {
+    let base_dir = temp_fixture_root("cache_route_plan_artifact");
+    write_scenario(
+        &base_dir,
+        "scenarios/checkpoint_success.json",
+        &easy_checkpoint_scenario(),
+    );
+    let output_dir = base_dir.join("cache_output");
+    let pack = ScenarioPackSpec {
+        id: "cache_route_plan_artifact".to_owned(),
+        name: "Cache route plan artifact".to_owned(),
+        description: "conditional route plan artifact validation".to_owned(),
+        terminal_matrix_max_time_s: None,
+        entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+            id: "checkpoint_success_idle".to_owned(),
+            scenario: "scenarios/checkpoint_success.json".to_owned(),
+            controller: "idle".to_owned(),
+            controller_config: None,
+            metadata: BTreeMap::new(),
+        })],
+    };
+    let mut report = run_pack_with_workers(&pack, &base_dir, Some(&output_dir), 1).unwrap();
+    assert!(validate_cached_run_bundles(&report.records));
+
+    let route_plan = artifact_test_route_plan();
+    report.records[0].resolved.route_plan = Some(route_plan.clone());
+    assert!(!validate_cached_run_bundles(&report.records));
+
+    let bundle_dir = PathBuf::from(
+        report.records[0]
+            .bundle_dir
+            .as_deref()
+            .expect("run should have a bundle directory"),
+    );
+    fs::write(
+        bundle_dir.join("route_plan.json"),
+        serde_json::to_vec_pretty(&route_plan).unwrap(),
+    )
+    .unwrap();
+    assert!(validate_cached_run_bundles(&report.records));
+}
+
+#[test]
+fn compatible_cache_lookup_reuses_one_prior_digest_and_rejects_ambiguity() {
+    let base_dir = temp_fixture_root("compatible_cache_lookup");
+    write_scenario(
+        &base_dir,
+        "scenarios/checkpoint_success.json",
+        &easy_checkpoint_scenario(),
+    );
+    let pack = ScenarioPackSpec {
+        id: "compatible_cache_lookup".to_owned(),
+        name: "Compatible cache lookup".to_owned(),
+        description: "exact and compatible cache identity".to_owned(),
+        terminal_matrix_max_time_s: None,
+        entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+            id: "checkpoint_success_idle".to_owned(),
+            scenario: "scenarios/checkpoint_success.json".to_owned(),
+            controller: "idle".to_owned(),
+            controller_config: None,
+            metadata: BTreeMap::new(),
+        })],
+    };
+    let source_output = base_dir.join("source_output");
+    let current_report = run_pack_with_workers(&pack, &base_dir, Some(&source_output), 1).unwrap();
+    let current_identity = current_report.identity.clone();
+    let workspace_key = format!("unit-compatible-{}", current_unix_timestamp());
+    let workspace_root = eval_cache_root().join(&workspace_key);
+    let exact_dir = workspace_root.join(batch_cache_stem(&pack.id, &current_identity));
+
+    let write_cache = |dir: &Path, report: &BatchReport| {
+        fs::create_dir_all(dir).unwrap();
+        write_json(&dir.join("pack.json"), &pack).unwrap();
+        write_json(&dir.join("resolved_runs.json"), &report.resolved_runs).unwrap();
+        write_json(&dir.join("summary.json"), report).unwrap();
+        report::write_batch_report_artifacts(dir, report, None).unwrap();
+        write_json(
+            &dir.join("meta.json"),
+            &BatchCacheMeta {
+                schema_version: BATCH_REPORT_SCHEMA_VERSION,
+                pack_id: report.pack_id.clone(),
+                pack_name: report.pack_name.clone(),
+                identity: report.identity.clone(),
+                total_runs: report.total_runs,
+                workers_used: report.workers_used,
+                cache: BatchCacheInfo {
+                    workspace_key: workspace_key.clone(),
+                    commit_key: "unit".to_owned(),
+                    batch_stem: dir.file_name().unwrap().to_string_lossy().into_owned(),
+                    cache_dir: dir.to_string_lossy().into_owned(),
+                    status: BatchCacheStatus::Fresh,
+                    created_at_unix_s: current_unix_timestamp(),
+                    promotion: None,
+                },
+            },
+        )
+        .unwrap();
+    };
+
+    write_cache(&exact_dir, &current_report);
+    assert!(
+        validate_cached_batch_dir(&exact_dir, &pack, &current_identity)
+            .unwrap()
+            .is_some()
+    );
+    let mut changed_identity = current_identity.clone();
+    changed_identity.resolved_run_digest = "changed-plan-digest".to_owned();
+    assert!(
+        validate_cached_batch_dir(&exact_dir, &pack, &changed_identity)
+            .unwrap()
+            .is_none()
+    );
+
+    let mut prior_report = current_report.clone();
+    prior_report.identity.resolved_run_digest = "prior-run-digest".to_owned();
+    let prior_dir = workspace_root.join(format!(
+        "{}__prior",
+        batch_cache_stem(&pack.id, &current_identity)
+            .trim_end_matches(&short_digest(&current_identity.resolved_run_digest))
+    ));
+    write_cache(&prior_dir, &prior_report);
+    let (found_dir, found_report) = find_compatible_cache(&pack, &current_identity, &workspace_key)
+        .unwrap()
+        .expect("one prior digest should be reusable");
+    assert_eq!(found_dir, prior_dir);
+    assert_eq!(
+        found_report.identity.resolved_run_digest,
+        "prior-run-digest"
+    );
+
+    let mut second_prior = current_report;
+    second_prior.identity.resolved_run_digest = "second-prior-digest".to_owned();
+    let second_dir = workspace_root.join(format!(
+        "{}__second",
+        batch_cache_stem(&pack.id, &current_identity)
+            .trim_end_matches(&short_digest(&current_identity.resolved_run_digest))
+    ));
+    write_cache(&second_dir, &second_prior);
+    let error = find_compatible_cache(&pack, &current_identity, &workspace_key)
+        .expect_err("multiple prior digests should be ambiguous");
+    assert!(
+        error
+            .to_string()
+            .contains("ambiguous compatible compare caches")
+    );
+    let _ = fs::remove_dir_all(workspace_root);
 }
 
 #[test]

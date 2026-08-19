@@ -5,7 +5,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use pd_core::Vec2;
+use pd_core::{
+    CorridorClearance, CorridorResidual, NormalizedRouteGeometry, RoutePlan, RoutePlanDiagnostics,
+    RoutePlanningPolicy, RouteTopology, TransferRouteSpec, Vec2,
+};
 use pd_report::site::{eval_report_entry_is_fixture_backed, load_fixture_pack_ids};
 
 use crate::{
@@ -418,6 +421,100 @@ fn waypoint_triage_renders_for_waypoint_records() {
     assert!(html.contains("Handoff Progress"));
     assert!(!html.contains(r#"data-kind="waypoint profile""#));
     assert!(!html.contains("<h2>Waypoint Sequence</h2>"));
+}
+
+#[test]
+fn planner_batch_report_renders_direct_rejection_residual_and_provenance() {
+    let mut report = synthetic_transfer_shape_report(
+        "planner_batch_evidence_unit",
+        &[("r00", "empty", 40.0, 0)],
+    );
+    let record = report
+        .records
+        .first_mut()
+        .expect("synthetic report should contain one record");
+    let residual = CorridorResidual {
+        residual_m: 7.5,
+        centerline_position_m: Vec2::new(40.0, 10.0),
+        terrain_position_m: Vec2::new(40.0, 3.0),
+        terrain_segment_index: 2,
+        required_envelope_y_m: 10.0,
+        centerline_y_m: 8.0,
+        vertical_extent_m: 2.0,
+    };
+    let plan = RoutePlan {
+        algorithm_id: "heightfield_visibility_v1".to_owned(),
+        policy: RoutePlanningPolicy::default(),
+        request_digest: "request-batch-test".to_owned(),
+        plan_digest: "plan-batch-test".to_owned(),
+        topology: RouteTopology::Direct,
+        route: TransferRouteSpec {
+            source_pad_id: "source".to_owned(),
+            target_pad_id: "target".to_owned(),
+            route_angle_deg: 0.0,
+            route_radius_m: 100.0,
+            waypoints: Vec::new(),
+        },
+        normalized_geometry: NormalizedRouteGeometry {
+            horizontal_sign: 1,
+            direct_horizontal_span_m: 100.0,
+            direct_distance_m: 100.0,
+            route_angle_rad: 0.0,
+            route_angle_deg: 0.0,
+        },
+        diagnostics: RoutePlanDiagnostics {
+            direct_path_clear: false,
+            direct_path_clearance: Some(CorridorClearance {
+                clear: false,
+                minimum_clearance_m: -7.5,
+                worst_residual: residual,
+            }),
+            route_length_m: 100.0,
+            direct_distance_m: 100.0,
+            excess_length_m: 0.0,
+            peak_extra_loft_m: 0.0,
+            minimum_planned_clearance_m: -7.5,
+            leg_diagnostics: Vec::new(),
+            selected_node_ids: Vec::new(),
+            safe_profile_points_m: Vec::new(),
+            selected_centerline_m: Vec::new(),
+            waypoint_authority: Vec::new(),
+        },
+    };
+    record.resolved.physical_case_id = Some("case-batch-test".to_owned());
+    record.resolved.route_plan = Some(plan);
+    record.review.planner = Some(crate::BatchPlannerReviewMetrics {
+        route_source: Some("planner_matrix".to_owned()),
+        physical_case_id: Some("case-batch-test".to_owned()),
+        algorithm_id: Some("heightfield_visibility_v1".to_owned()),
+        policy_version: Some("heightfield_visibility_policy_v1".to_owned()),
+        policy_digest: Some("policy-batch-test".to_owned()),
+        request_digest: Some("request-batch-test".to_owned()),
+        plan_digest: Some("plan-batch-test".to_owned()),
+        direct_path_clear: Some(false),
+        direct_rejection_residual_m: Some(7.5),
+        topology: Some("direct".to_owned()),
+        waypoint_count: Some(0),
+        planned_min_clearance_m: Some(-7.5),
+        sampled_en_route_min_hull_clearance_m: Some(5.0),
+        route_length_m: Some(100.0),
+        direct_distance_m: Some(100.0),
+        excess_length_m: Some(0.0),
+        peak_extra_loft_m: Some(0.0),
+        authority_caps_mps: Vec::new(),
+        authority_ratios: Vec::new(),
+    });
+
+    let html = render_batch_report(
+        Path::new("outputs/eval/planner_batch_evidence_unit"),
+        &report,
+        None,
+        None,
+    );
+    assert!(html.contains("Planner provenance and diagnostics"));
+    assert!(html.contains("heightfield_visibility_v1"));
+    assert!(html.contains("blocked · residual 7.5 m"));
+    assert!(html.contains("plan-bat"));
 }
 
 #[test]

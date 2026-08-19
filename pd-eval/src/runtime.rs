@@ -42,6 +42,7 @@ pub(super) fn write_artifact_bundle(
     scenario: &ScenarioSpec,
     controller_spec: &ControllerSpec,
     artifacts: &ControlledRunArtifacts,
+    route_plan: Option<&pd_core::RoutePlan>,
 ) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create artifact bundle dir {}", path.display()))?;
@@ -56,7 +57,10 @@ pub(super) fn write_artifact_bundle(
     write_json(&path.join("actions.json"), &artifacts.run.actions)?;
     write_json(&path.join("events.json"), &artifacts.run.events)?;
     write_json(&path.join("samples.json"), &artifacts.run.samples)?;
-    pd_report::write_run_report_with_context(
+    if let Some(route_plan) = route_plan {
+        write_json(&path.join("route_plan.json"), route_plan)?;
+    }
+    pd_report::write_run_report_with_plan_context(
         &path.join("report.html"),
         scenario,
         Some(controller_spec),
@@ -70,13 +74,15 @@ pub(super) fn write_artifact_bundle(
             parent_report_label: Some("Batch report".to_owned()),
             run_index_href: Some("../".to_owned()),
         }),
+        route_plan,
     )?;
-    pd_report::write_run_preview_svg(
+    pd_report::write_run_preview_svg_with_plan(
         &path.join("preview.svg"),
         scenario,
         &artifacts.run.manifest,
         &artifacts.run.samples,
         &artifacts.controller_updates,
+        route_plan,
     )?;
     Ok(())
 }
@@ -292,6 +298,22 @@ pub(super) fn load_requested_baseline(
                         report,
                     }),
                 ))
+            } else if let Some((compatible_dir, report)) =
+                find_compatible_cache(pack, identity, resolved_ref)?
+            {
+                provenance.status = BatchCompareResolutionStatus::Resolved;
+                provenance.baseline_dir = Some(compatible_dir.to_string_lossy().into_owned());
+                provenance.note = Some(format!(
+                    "using compatible compare cache with pack spec digest '{}' and prior resolved run digest",
+                    identity.pack_spec_digest
+                ));
+                Ok((
+                    provenance,
+                    Some(ResolvedBaselineReport {
+                        dir: compatible_dir,
+                        report,
+                    }),
+                ))
             } else if missing_compare == MissingComparePolicy::Skip {
                 provenance.status = BatchCompareResolutionStatus::Missing;
                 provenance.baseline_dir = Some(baseline_dir.to_string_lossy().into_owned());
@@ -317,6 +339,20 @@ pub(super) fn validate_cached_batch_dir(
     pack: &ScenarioPackSpec,
     identity: &BatchIdentity,
 ) -> Result<Option<BatchReport>> {
+    let Some(report) = validate_cached_batch_dir_compatible(cache_dir, pack, identity)? else {
+        return Ok(None);
+    };
+    if report.identity.resolved_run_digest != identity.resolved_run_digest {
+        return Ok(None);
+    }
+    Ok(Some(report))
+}
+
+pub(super) fn validate_cached_batch_dir_compatible(
+    cache_dir: &Path,
+    pack: &ScenarioPackSpec,
+    identity: &BatchIdentity,
+) -> Result<Option<BatchReport>> {
     let required_files = [
         cache_dir.join("pack.json"),
         cache_dir.join("resolved_runs.json"),
@@ -335,7 +371,6 @@ pub(super) fn validate_cached_batch_dir(
         || meta.identity.schema_version != BATCH_REPORT_SCHEMA_VERSION
         || meta.pack_id != pack.id
         || meta.identity.pack_spec_digest != identity.pack_spec_digest
-        || meta.identity.resolved_run_digest != identity.resolved_run_digest
     {
         return Ok(None);
     }
@@ -347,7 +382,9 @@ pub(super) fn validate_cached_batch_dir(
         || report.identity.schema_version != BATCH_REPORT_SCHEMA_VERSION
         || report.pack_id != pack.id
         || report.identity.pack_spec_digest != identity.pack_spec_digest
-        || report.identity.resolved_run_digest != identity.resolved_run_digest
+        || meta.identity.schema_version != report.identity.schema_version
+        || meta.identity.pack_spec_digest != report.identity.pack_spec_digest
+        || meta.identity.resolved_run_digest != report.identity.resolved_run_digest
         || report.records.len() != report.resolved_runs.len()
     {
         return Ok(None);
@@ -356,6 +393,50 @@ pub(super) fn validate_cached_batch_dir(
         return Ok(None);
     }
     Ok(Some(report))
+}
+
+pub(super) fn find_compatible_cache(
+    pack: &ScenarioPackSpec,
+    identity: &BatchIdentity,
+    workspace_key: &str,
+) -> Result<Option<(PathBuf, BatchReport)>> {
+    let root = eval_cache_root().join(workspace_key);
+    if !root.is_dir() {
+        return Ok(None);
+    }
+    let prefix = format!(
+        "{}__spec_{}__runs_",
+        sanitize_token(&pack.id),
+        short_digest(&identity.pack_spec_digest)
+    );
+    let mut candidates = Vec::new();
+    for entry in fs::read_dir(&root)
+        .with_context(|| format!("failed to read cache workspace {}", root.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() || !entry.file_name().to_string_lossy().starts_with(&prefix)
+        {
+            continue;
+        }
+        let cache_dir = entry.path();
+        if let Some(report) = validate_cached_batch_dir_compatible(&cache_dir, pack, identity)? {
+            if report.identity.resolved_run_digest == identity.resolved_run_digest {
+                continue;
+            }
+            candidates.push((cache_dir, report));
+        }
+    }
+    candidates.sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0));
+    match candidates.len() {
+        0 => Ok(None),
+        1 => Ok(candidates.pop()),
+        count => bail!(
+            "ambiguous compatible compare caches for pack '{}' and spec digest '{}': found {}",
+            pack.id,
+            identity.pack_spec_digest,
+            count
+        ),
+    }
 }
 
 pub(super) fn validate_cached_run_bundles(records: &[BatchRunRecord]) -> bool {
@@ -384,6 +465,8 @@ pub(super) fn validate_cached_run_bundles(records: &[BatchRunRecord]) -> bool {
         REQUIRED_BUNDLE_FILES
             .iter()
             .all(|name| bundle_dir.join(name).exists())
+            && (record.resolved.route_plan.is_none()
+                || bundle_dir.join("route_plan.json").is_file())
     })
 }
 

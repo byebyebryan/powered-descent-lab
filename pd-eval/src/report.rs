@@ -1187,6 +1187,8 @@ fn render_batch_report_with_cache(
 
     {overview_html}
 
+    {planner_html}
+
     {coverage_html}
 
     {context_html}
@@ -1466,6 +1468,7 @@ fn render_batch_report_with_cache(
             comparison,
             render_view_controls(has_compare_view).as_str(),
         ),
+        planner_html = render_planner_diagnostics(candidate, baseline.map(|(_, report)| report)),
         coverage_html =
             render_coverage_matrix(candidate, baseline.map(|(_, report)| report), comparison,),
         guidance_diagnostics_html = render_guidance_diagnostics(
@@ -1499,6 +1502,217 @@ fn render_batch_report_with_cache(
             })
             .unwrap_or_default(),
     )
+}
+
+fn render_planner_diagnostics(candidate: &BatchReport, baseline: Option<&BatchReport>) -> String {
+    let baseline_by_case = baseline
+        .into_iter()
+        .flat_map(|report| report.records.iter())
+        .filter(|record| record.resolved.route_plan.is_some())
+        .map(|record| {
+            (
+                record
+                    .resolved
+                    .physical_case_id
+                    .as_deref()
+                    .unwrap_or(record.resolved.run_id.as_str())
+                    .to_owned(),
+                record,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut rows = String::new();
+    for record in candidate
+        .records
+        .iter()
+        .filter(|record| record.resolved.route_plan.is_some())
+    {
+        let key = record
+            .resolved
+            .physical_case_id
+            .as_deref()
+            .unwrap_or(record.resolved.run_id.as_str());
+        let changed = baseline_by_case
+            .get(key)
+            .and_then(|previous| {
+                Some(
+                    previous.resolved.route_plan.as_ref()?.plan_digest
+                        != record.resolved.route_plan.as_ref()?.plan_digest,
+                )
+            })
+            .unwrap_or(false);
+        rows.push_str(&render_planner_row(record, "candidate", changed));
+    }
+    if rows.is_empty() {
+        return String::new();
+    }
+    format!(
+        r#"<section class="planner-diagnostics card" data-planner-diagnostics>
+  <div class="section-head"><h2>Planner provenance and diagnostics</h2><span class="section-note">Generated routes retain their immutable plan evidence; authored routes remain outside this section.</span></div>
+  <div class="table-wrap"><table class="summary-table planner-table"><thead><tr>
+    <th>Source / physical case</th><th>Algorithm / policy</th><th>Plan</th><th>Topology</th><th>Clearance (planned / sampled)</th><th>Route / loft</th><th>Authority</th>
+  </tr></thead><tbody>{rows}</tbody></table></div>
+</section>"#,
+        rows = rows,
+    )
+}
+
+fn render_planner_row(record: &crate::BatchRunRecord, role: &str, changed: bool) -> String {
+    let provenance = record.resolved.route_provenance.as_ref();
+    let planner = record.review.planner.as_ref();
+    let source = planner
+        .and_then(|value| value.route_source.as_deref())
+        .or_else(|| provenance.map(|value| value.route_source.as_str()))
+        .unwrap_or("planner_matrix");
+    let physical_case = planner
+        .and_then(|value| value.physical_case_id.as_deref())
+        .or(record.resolved.physical_case_id.as_deref())
+        .or_else(|| provenance.map(|value| value.physical_case_id.as_str()))
+        .unwrap_or(record.resolved.run_id.as_str());
+    let algorithm = planner
+        .and_then(|value| value.algorithm_id.as_deref())
+        .or_else(|| provenance.map(|value| value.algorithm_id.as_str()))
+        .unwrap_or("heightfield_visibility_v1");
+    let policy_version = planner
+        .and_then(|value| value.policy_version.as_deref())
+        .or_else(|| provenance.map(|value| value.policy_version.as_str()))
+        .unwrap_or("unknown");
+    let policy_digest = planner
+        .and_then(|value| value.policy_digest.as_deref())
+        .or_else(|| provenance.map(|value| value.policy_digest.as_str()))
+        .unwrap_or("unknown");
+    let request_digest = planner
+        .and_then(|value| value.request_digest.as_deref())
+        .or_else(|| {
+            record
+                .resolved
+                .route_plan
+                .as_ref()
+                .map(|value| value.request_digest.as_str())
+        })
+        .or_else(|| provenance.map(|value| value.request_digest.as_str()))
+        .unwrap_or("unknown");
+    let plan_digest = planner
+        .and_then(|value| value.plan_digest.as_deref())
+        .or_else(|| {
+            record
+                .resolved
+                .route_plan
+                .as_ref()
+                .map(|value| value.plan_digest.as_str())
+        })
+        .or_else(|| provenance.map(|value| value.plan_digest.as_str()))
+        .unwrap_or("unknown");
+    let topology = planner
+        .and_then(|value| value.topology.clone())
+        .or_else(|| {
+            record
+                .resolved
+                .route_plan
+                .as_ref()
+                .map(|value| format!("{:?}", value.topology))
+        })
+        .unwrap_or_else(|| "unknown".to_owned());
+    let waypoint_count = planner
+        .and_then(|value| value.waypoint_count)
+        .or_else(|| {
+            record
+                .resolved
+                .route_plan
+                .as_ref()
+                .map(|value| value.waypoints().len())
+        })
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "?".to_owned());
+    let planned_clearance = planner
+        .and_then(|value| value.planned_min_clearance_m)
+        .map(format_planner_metric)
+        .unwrap_or_else(|| "n/a".to_owned());
+    let sampled_clearance = planner
+        .and_then(|value| value.sampled_en_route_min_hull_clearance_m)
+        .map(format_planner_metric)
+        .unwrap_or_else(|| "n/a".to_owned());
+    let direct_result = match planner.and_then(|value| value.direct_path_clear) {
+        Some(true) => "clear".to_owned(),
+        Some(false) => planner
+            .and_then(|value| value.direct_rejection_residual_m)
+            .map(|residual| format!("blocked · residual {residual:.1} m"))
+            .unwrap_or_else(|| "blocked".to_owned()),
+        None => "n/a".to_owned(),
+    };
+    let route = planner
+        .and_then(|value| value.route_length_m)
+        .map(format_planner_metric)
+        .unwrap_or_else(|| "n/a".to_owned());
+    let direct_distance = planner
+        .and_then(|value| value.direct_distance_m)
+        .map(format_planner_metric)
+        .unwrap_or_else(|| "n/a".to_owned());
+    let excess = planner
+        .and_then(|value| value.excess_length_m)
+        .map(format_planner_metric)
+        .unwrap_or_else(|| "n/a".to_owned());
+    let loft = planner
+        .and_then(|value| value.peak_extra_loft_m)
+        .map(format_planner_metric)
+        .unwrap_or_else(|| "n/a".to_owned());
+    let authority_caps = planner
+        .map(|value| format_planner_list(&value.authority_caps_mps))
+        .unwrap_or_else(|| "n/a".to_owned());
+    let authority_ratios = planner
+        .map(|value| format_planner_list(&value.authority_ratios))
+        .unwrap_or_else(|| "n/a".to_owned());
+    let changed_html = if changed {
+        r#" <span class="status-chip warn">changed plan</span>"#
+    } else {
+        ""
+    };
+    format!(
+        r#"<tr data-planner-case="{}"><td><div class="overview-stack"><span class="overview-main">{} · {}</span><span class="overview-sub">{} · run {}</span>{}</div></td><td><div class="overview-stack"><span class="overview-main">{}</span><span class="overview-sub">{} · policy {} · request {}</span></div></td><td><code>{}</code></td><td>{} / {} waypoint{}</td><td><div class="overview-stack"><span class="overview-main">{} / {} m</span><span class="overview-sub">direct {}</span></div></td><td><div class="overview-stack"><span class="overview-main">{} m</span><span class="overview-sub">direct {} · excess {} · loft {} m</span></div></td><td><div class="overview-stack"><span class="overview-main">caps {}</span><span class="overview-sub">ratios {}</span></div></td></tr>"#,
+        escape_html(physical_case),
+        escape_html(role),
+        escape_html(source),
+        escape_html(physical_case),
+        escape_html(&record.resolved.run_id),
+        changed_html,
+        escape_html(algorithm),
+        escape_html(policy_version),
+        escape_html(&short_digest(policy_digest)),
+        escape_html(&short_digest(request_digest)),
+        escape_html(&short_digest(plan_digest)),
+        escape_html(&topology),
+        escape_html(&waypoint_count),
+        if waypoint_count == "1" { "" } else { "s" },
+        escape_html(&planned_clearance),
+        escape_html(&sampled_clearance),
+        escape_html(&direct_result),
+        escape_html(&route),
+        escape_html(&direct_distance),
+        escape_html(&excess),
+        escape_html(&loft),
+        escape_html(&authority_caps),
+        escape_html(&authority_ratios),
+    )
+}
+
+fn format_planner_metric(value: f64) -> String {
+    if value.is_finite() {
+        format!("{value:.1}")
+    } else {
+        "n/a".to_owned()
+    }
+}
+
+fn format_planner_list(values: &[f64]) -> String {
+    if values.is_empty() {
+        "n/a".to_owned()
+    } else {
+        values
+            .iter()
+            .map(|value| format_planner_metric(*value))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 fn candidate_record_map(candidate: &BatchReport) -> BTreeMap<String, String> {

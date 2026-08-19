@@ -13,8 +13,9 @@ use pd_control::{
 };
 use pd_core::{
     EndReason, EvaluationGoal, EventRecord, LandingPadSpec, MissionOutcome, Observation,
-    RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition,
-    TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleSpec, WaypointHandoffKinematics,
+    RoutePlanningPolicy, RoutePlanningRequest, RouteTopology, RunContext, RunManifest, RunSummary,
+    SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2,
+    VehicleSpec, WaypointHandoffKinematics, build_endpoint_profile, validate_route,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 34;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 35;
 
 const TRANSFER_TERMINAL_REBOUND_ARM_HEIGHT_M: f64 = 25.0;
 const TRANSFER_TERMINAL_REBOUND_NEAR_PAD_HALF_WIDTHS: f64 = 3.0;
@@ -183,7 +184,12 @@ fn refresh_run_report(bundle_dir: &Path) -> Result<()> {
     let controller_updates =
         read_json::<Vec<ControllerUpdateRecord>>(&bundle_dir.join("controller_updates.json"))?;
     let performance = read_json::<RunPerformanceStats>(&bundle_dir.join("performance.json"))?;
-    pd_report::write_run_report_with_context(
+    let route_plan = bundle_dir
+        .join("route_plan.json")
+        .is_file()
+        .then(|| read_json::<pd_core::RoutePlan>(&bundle_dir.join("route_plan.json")))
+        .transpose()?;
+    pd_report::write_run_report_with_plan_context(
         &bundle_dir.join("report.html"),
         &scenario,
         Some(&controller),
@@ -197,6 +203,7 @@ fn refresh_run_report(bundle_dir: &Path) -> Result<()> {
             parent_report_label: Some("Batch report".to_owned()),
             run_index_href: Some("../".to_owned()),
         }),
+        route_plan.as_ref(),
     )
 }
 

@@ -36,6 +36,15 @@
         {"pack_id": "transfer_waypoint_sequence_route_angle_full", "label": "Ordered routes full seeds · landing", "role": "supporting", "evidence": "landing", "pair_id": "sequence-full"},
         {"pack_id": "transfer_waypoint_sequence_contract_route_angle_full", "label": "Ordered routes full seeds · contract", "role": "supporting", "evidence": "contract", "pair_id": "sequence-full"}
       ]
+    },
+    {
+      "id": "planner",
+      "title": "Planner-generated routes",
+      "description": "Deterministic terrain-aware route plans with persisted provenance, geometry, and contract evidence.",
+      "reports": [
+        {"pack_id": "planner_generated_route_smoke", "label": "Generated routes · landing", "role": "primary", "evidence": "landing"},
+        {"pack_id": "planner_generated_route_contract_smoke", "label": "Generated routes · contract", "role": "primary", "evidence": "contract"}
+      ]
     }
   ]
 }

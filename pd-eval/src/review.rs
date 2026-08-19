@@ -3,6 +3,7 @@ use super::*;
 pub(super) fn derive_run_review_metrics(
     scenario: &ScenarioSpec,
     artifacts: &ControlledRunArtifacts,
+    planner_plan: Option<&pd_core::RoutePlan>,
 ) -> BatchRunReviewMetrics {
     let run = &artifacts.run;
     let fuel_used_pct_of_max = (scenario.vehicle.max_fuel_kg > 1e-9)
@@ -186,6 +187,81 @@ pub(super) fn derive_run_review_metrics(
         waypoint_route_passed: waypoint_route.passed,
         waypoint_route_total: waypoint_route.total,
         waypoint_route_first_failure_index: waypoint_route.first_failure_index,
+        planner: planner_plan.map(|plan| planner_review_metrics(scenario, plan, &run.samples)),
+    }
+}
+
+fn planner_review_metrics(
+    scenario: &ScenarioSpec,
+    plan: &pd_core::RoutePlan,
+    samples: &[SampleRecord],
+) -> BatchPlannerReviewMetrics {
+    let request = RoutePlanningRequest {
+        world: scenario.world.clone(),
+        vehicle: scenario.vehicle.clone(),
+        initial_state: scenario.initial_state.clone(),
+        source_pad_id: plan.route.source_pad_id.clone(),
+        target_pad_id: plan.route.target_pad_id.clone(),
+        policy: plan.policy.clone(),
+    };
+    let sampled_en_route_min_hull_clearance_m =
+        build_endpoint_profile(&request, plan.normalized_geometry.direct_horizontal_span_m)
+            .ok()
+            .and_then(|(profile, _)| {
+                let source_pad = request.world.landing_pad(&request.source_pad_id)?;
+                let sign = f64::from(plan.normalized_geometry.horizontal_sign);
+                let mut minimum = f64::INFINITY;
+                for sample in samples {
+                    let progress = (sample.observation.position_m.x - source_pad.center_x_m) * sign;
+                    if progress >= profile.source_transition_end_m - 1.0e-9
+                        && progress <= profile.target_transition_start_m + 1.0e-9
+                    {
+                        minimum = minimum.min(sample.observation.min_hull_clearance_m);
+                    }
+                }
+                minimum.is_finite().then_some(minimum)
+            });
+    let direct_path_clear = plan.diagnostics.direct_path_clear;
+    let direct_rejection_residual_m = plan
+        .diagnostics
+        .direct_path_clearance
+        .as_ref()
+        .filter(|clearance| !clearance.clear)
+        .map(|clearance| clearance.worst_residual.residual_m);
+    let mut authority_caps_mps = Vec::new();
+    let mut authority_ratios = Vec::new();
+    for authority in &plan.diagnostics.waypoint_authority {
+        authority_caps_mps.push(authority.handoff_speed_cap_mps);
+        authority_ratios.extend([
+            authority.inbound_stopping_ratio_at_handoff,
+            authority.outbound_stopping_ratio_at_handoff,
+            authority.inbound_turn_ratio_at_handoff,
+            authority.outbound_turn_ratio_at_handoff,
+        ]);
+    }
+    BatchPlannerReviewMetrics {
+        route_source: Some("planner_matrix".to_owned()),
+        physical_case_id: scenario.metadata.get("physical_case_id").cloned(),
+        algorithm_id: Some(plan.algorithm_id.clone()),
+        policy_version: Some(plan.policy.policy_version.clone()),
+        policy_digest: Some(crate::stable_digest(&plan.policy).unwrap_or_default()),
+        request_digest: Some(plan.request_digest.clone()),
+        plan_digest: Some(plan.plan_digest.clone()),
+        direct_path_clear: Some(direct_path_clear),
+        direct_rejection_residual_m,
+        topology: Some(match plan.topology {
+            pd_core::RouteTopology::Direct => "direct".to_owned(),
+            pd_core::RouteTopology::Waypoint => "waypoint".to_owned(),
+        }),
+        waypoint_count: Some(plan.waypoints().len()),
+        planned_min_clearance_m: Some(plan.diagnostics.minimum_planned_clearance_m),
+        sampled_en_route_min_hull_clearance_m,
+        route_length_m: Some(plan.diagnostics.route_length_m),
+        direct_distance_m: Some(plan.diagnostics.direct_distance_m),
+        excess_length_m: Some(plan.diagnostics.excess_length_m),
+        peak_extra_loft_m: Some(plan.diagnostics.peak_extra_loft_m),
+        authority_caps_mps,
+        authority_ratios,
     }
 }
 

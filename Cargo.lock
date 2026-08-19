@@ -209,8 +209,18 @@ dependencies = [
  "clap",
  "pd-control",
  "pd-core",
+ "pd-plan",
  "pd-report",
  "rayon",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pd-plan"
+version = "0.1.0"
+dependencies = [
+ "pd-core",
  "serde",
  "serde_json",
 ]

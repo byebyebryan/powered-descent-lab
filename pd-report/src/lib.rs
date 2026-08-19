@@ -10,7 +10,8 @@ use pd_control::{
     ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue, metric,
 };
 use pd_core::{
-    EvaluationGoal, EventKind, EventRecord, RunManifest, SampleRecord, ScenarioSpec, Vec2,
+    EvaluationGoal, EventKind, EventRecord, RoutePlan, RunManifest, SampleRecord, ScenarioSpec,
+    Vec2,
 };
 use serde::Serialize;
 
@@ -62,6 +63,33 @@ pub fn write_run_report_with_context(
     performance: Option<&RunPerformanceStats>,
     context: Option<&RunReportContext>,
 ) -> Result<()> {
+    write_run_report_with_plan_context(
+        path,
+        scenario,
+        controller_spec,
+        manifest,
+        events,
+        samples,
+        controller_updates,
+        performance,
+        context,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn write_run_report_with_plan_context(
+    path: &Path,
+    scenario: &ScenarioSpec,
+    controller_spec: Option<&ControllerSpec>,
+    manifest: &RunManifest,
+    events: &[EventRecord],
+    samples: &[SampleRecord],
+    controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
+    context: Option<&RunReportContext>,
+    route_plan: Option<&RoutePlan>,
+) -> Result<()> {
     let report_data = build_report_data(
         scenario,
         controller_spec,
@@ -71,14 +99,21 @@ pub fn write_run_report_with_context(
         controller_updates,
         performance,
         context,
+        route_plan,
     );
     let display_title = friendly_report_title(scenario);
+    let planner_panel = if route_plan.is_some() {
+        PLANNER_PANEL_HTML
+    } else {
+        ""
+    };
     let html = report_template()
         .replace(
             "__REPORT_TITLE__",
             &escape_html(&format!("{display_title} report")),
         )
         .replace("__PLOTLY_HREF__", PLOTLY_CDN_URL)
+        .replace("__PLANNER_PANEL__", planner_panel)
         .replace("__REPORT_DATA__", &json_html(&report_data));
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
@@ -100,7 +135,24 @@ pub fn write_run_preview_svg(
     samples: &[SampleRecord],
     controller_updates: &[ControllerUpdateRecord],
 ) -> Result<()> {
-    let svg = build_run_preview_svg(scenario, manifest, samples, controller_updates);
+    write_run_preview_svg_with_plan(path, scenario, manifest, samples, controller_updates, None)
+}
+
+pub fn write_run_preview_svg_with_plan(
+    path: &Path,
+    scenario: &ScenarioSpec,
+    manifest: &RunManifest,
+    samples: &[SampleRecord],
+    controller_updates: &[ControllerUpdateRecord],
+    route_plan: Option<&RoutePlan>,
+) -> Result<()> {
+    let svg = build_run_preview_svg_with_plan(
+        scenario,
+        manifest,
+        samples,
+        controller_updates,
+        route_plan,
+    );
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
             format!(
@@ -138,6 +190,7 @@ struct PreviewRenderSeries<'a> {
     manifest: &'a RunManifest,
     trajectory: PreviewTrajectory<'a>,
     controller_updates: Option<&'a [ControllerUpdateRecord]>,
+    route_plan: Option<&'a RoutePlan>,
 }
 
 #[derive(Clone, Copy)]
@@ -193,6 +246,7 @@ pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
             manifest: series.manifest,
             trajectory: PreviewTrajectory::Samples(series.samples),
             controller_updates: series.controller_updates,
+            route_plan: None,
         })
         .collect::<Vec<_>>();
     build_preview_svg(&render_series, PreviewOptions::aggregate_lane())
@@ -206,6 +260,7 @@ pub fn build_multi_run_trajectory_preview_svg(series: &[AggregatePreviewSeries<'
             manifest: series.manifest,
             trajectory: PreviewTrajectory::Positions(series.trajectory_positions_m),
             controller_updates: None,
+            route_plan: None,
         })
         .collect::<Vec<_>>();
     build_preview_svg(&render_series, PreviewOptions::aggregate_lane())
@@ -221,6 +276,7 @@ fn build_report_data(
     controller_updates: &[ControllerUpdateRecord],
     performance: Option<&RunPerformanceStats>,
     context: Option<&RunReportContext>,
+    route_plan: Option<&RoutePlan>,
 ) -> ReportData {
     let report_samples = build_report_samples(samples, controller_updates);
     let report_markers = build_report_markers(&report_samples, controller_updates);
@@ -230,6 +286,7 @@ fn build_report_data(
         display_title: friendly_report_title(scenario),
         display_subtitle: friendly_report_subtitle(scenario),
         report_context: context.cloned().unwrap_or_default(),
+        route_plan: route_plan.cloned(),
         scenario_id: scenario.id.clone(),
         scenario_name: scenario.name.clone(),
         controller_id: manifest.controller_id.clone(),
@@ -385,11 +442,12 @@ fn friendly_waypoint_profile(value: &str) -> String {
         .replace('_', " ")
 }
 
-fn build_run_preview_svg(
+fn build_run_preview_svg_with_plan(
     scenario: &ScenarioSpec,
     manifest: &RunManifest,
     samples: &[SampleRecord],
     controller_updates: &[ControllerUpdateRecord],
+    route_plan: Option<&RoutePlan>,
 ) -> String {
     build_preview_svg(
         &[PreviewRenderSeries {
@@ -397,6 +455,7 @@ fn build_run_preview_svg(
             manifest,
             trajectory: PreviewTrajectory::Samples(samples),
             controller_updates: Some(controller_updates),
+            route_plan,
         }],
         PreviewOptions::full(),
     )
@@ -496,6 +555,25 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
             }
         }
     }
+    let planner_overlays = series
+        .first()
+        .and_then(|series| series.route_plan)
+        .map(|plan| {
+            let flip_sign = first_flip_sign;
+            let safe_profile = plan
+                .diagnostics
+                .safe_profile_points_m
+                .iter()
+                .map(|point| (transform_x(point.x, flip_sign), point.y))
+                .collect::<Vec<_>>();
+            let centerline = plan
+                .diagnostics
+                .selected_centerline_m
+                .iter()
+                .map(|point| (transform_x(point.x, flip_sign), point.y))
+                .collect::<Vec<_>>();
+            (safe_profile, centerline)
+        });
     let trajectories = series
         .iter()
         .map(|series| {
@@ -561,6 +639,11 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
     }
     for route_guide in &route_guides {
         for &(x, y) in route_guide {
+            include_point(x, y);
+        }
+    }
+    if let Some((safe_profile, centerline)) = planner_overlays.as_ref() {
+        for &(x, y) in safe_profile.iter().chain(centerline.iter()) {
             include_point(x, y);
         }
     }
@@ -818,6 +901,15 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
             )
         })
         .collect::<String>();
+    let planner_overlay_svg = planner_overlays
+        .map(|(safe_profile, centerline)| {
+            let safe = polyline_points(&safe_profile);
+            let selected = polyline_points(&centerline);
+            format!(
+                r##"<g><title>planner safe profile and selected centerline</title><polyline points="{safe}" fill="none" stroke="#9b59b6" stroke-width="1.1" stroke-dasharray="2 2" stroke-opacity="0.78"/><polyline points="{selected}" fill="none" stroke="#e8590c" stroke-width="1.0" stroke-dasharray="5 2" stroke-opacity="0.86"/></g>"##
+            )
+        })
+        .unwrap_or_default();
 
     format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH_PX}" height="{HEIGHT_PX}" viewBox="0 0 {WIDTH_PX} {HEIGHT_PX}" role="img" aria-label="run trajectory preview">
@@ -825,6 +917,7 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
   <rect x="0.5" y="0.5" width="{border_w:.1}" height="{border_h:.1}" rx="9.5" fill="none" stroke="#d7cdbd"/>
   {reference_svg}
   {trajectory_svg}
+  {planner_overlay_svg}
   {terrain_svg}
   {pad_svg}
   {route_guide_svg}
@@ -837,6 +930,7 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
         route_guide_svg = route_guide_svg,
         reference_svg = reference_svg,
         trajectory_svg = trajectory_svg,
+        planner_overlay_svg = planner_overlay_svg,
         terrain_svg = if terrain_points.is_empty() {
             String::new()
         } else {
@@ -1565,6 +1659,8 @@ struct ReportData {
     display_title: String,
     display_subtitle: String,
     report_context: RunReportContext,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    route_plan: Option<RoutePlan>,
     scenario_id: String,
     scenario_name: String,
     controller_id: String,
@@ -1883,6 +1979,17 @@ impl ReportMissionGoalDetails {
         }
     }
 }
+
+const PLANNER_PANEL_HTML: &str = r###"<section class="panel wide" id="planner-panel">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Planner Evidence</div>
+            <h2>Generated Route Plan</h2>
+          </div>
+        </div>
+        <p class="muted" id="planner-summary"></p>
+        <div class="fact-grid" id="planner-grid"></div>
+      </section>"###;
 
 fn report_template() -> &'static str {
     r####"<!DOCTYPE html>
@@ -2608,6 +2715,8 @@ fn report_template() -> &'static str {
         <div class="fact-grid" id="run-grid"></div>
       </section>
 
+      __PLANNER_PANEL__
+
       <section class="panel wide">
         <div class="panel-head">
           <div>
@@ -2711,6 +2820,14 @@ fn report_template() -> &'static str {
     const pad = reportData.pad || null;
     const transferRoute = reportData.missionDetails?.transferRoute || null;
     const waypoints = Array.isArray(transferRoute?.waypoints) ? transferRoute.waypoints : [];
+    const routePlan = reportData.routePlan || null;
+    const plannerDiagnostics = routePlan?.diagnostics || null;
+    const plannerSafeProfile = Array.isArray(plannerDiagnostics?.safe_profile_points_m)
+      ? plannerDiagnostics.safe_profile_points_m
+      : [];
+    const plannerCenterline = Array.isArray(plannerDiagnostics?.selected_centerline_m)
+      ? plannerDiagnostics.selected_centerline_m
+      : [];
 
     const xValues = samples.map((sample) => Number(sample.xM));
     const yValues = samples.map((sample) => Number(sample.yM));
@@ -2863,6 +2980,54 @@ fn report_template() -> &'static str {
         fact.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div>`;
         root.appendChild(fact);
       });
+    };
+
+    const renderPlannerEvidence = () => {
+      const panel = document.getElementById("planner-panel");
+      if (!panel) return;
+      if (!routePlan || !plannerDiagnostics) {
+        panel.hidden = true;
+        return;
+      }
+      panel.hidden = false;
+      const policy = routePlan.policy || {};
+      const authority = Array.isArray(plannerDiagnostics.waypoint_authority)
+        ? plannerDiagnostics.waypoint_authority
+        : [];
+      const caps = authority
+        .map((entry) => Number(entry.handoff_speed_cap_mps))
+        .filter((value) => Number.isFinite(value))
+        .map((value) => `${value.toFixed(1)} m/s`)
+        .join(", ") || "n/a";
+      const ratios = authority
+        .flatMap((entry) => [
+          Number(entry.inbound_stopping_ratio_at_handoff),
+          Number(entry.outbound_stopping_ratio_at_handoff),
+          Number(entry.inbound_turn_ratio_at_handoff),
+          Number(entry.outbound_turn_ratio_at_handoff),
+        ])
+        .filter((value) => Number.isFinite(value))
+        .map((value) => value.toFixed(3))
+        .join(", ") || "n/a";
+      const direct = plannerDiagnostics.direct_path_clear
+        ? "clear"
+        : `blocked${plannerDiagnostics.direct_path_clearance?.worst_residual?.residual_m !== undefined
+          ? ` · residual ${fmt(plannerDiagnostics.direct_path_clearance.worst_residual.residual_m)} m`
+          : ""}`;
+      setText(
+        "planner-summary",
+        `${routePlan.algorithm_id || "planner"} · ${routePlan.topology || "unknown"} · ${routePlan.route?.waypoints?.length || 0} emitted waypoint(s) · plan ${routePlan.plan_digest || "unknown"}`
+      );
+      renderFacts("planner-grid", [
+        ["Algorithm / policy", `${routePlan.algorithm_id || "n/a"} · ${policy.policy_version || "n/a"}`],
+        ["Request / plan digest", `${routePlan.request_digest || "n/a"} · ${routePlan.plan_digest || "n/a"}`],
+        ["Topology / waypoints", `${routePlan.topology || "n/a"} · ${routePlan.route?.waypoints?.length || 0}`],
+        ["Direct path", direct],
+        ["Planned clearance", `${fmtOptional(plannerDiagnostics.minimum_planned_clearance_m)} m`],
+        ["Route / direct / excess", `${fmtOptional(plannerDiagnostics.route_length_m)} / ${fmtOptional(plannerDiagnostics.direct_distance_m)} / ${fmtOptional(plannerDiagnostics.excess_length_m)} m`],
+        ["Peak extra loft", `${fmtOptional(plannerDiagnostics.peak_extra_loft_m)} m`],
+        ["Authority caps / ratios", `${caps} · ${ratios}`],
+      ]);
     };
 
     const renderMissionList = (targetId, rows) => {
@@ -3126,6 +3291,14 @@ fn report_template() -> &'static str {
         if (![x, y, radius].every((value) => Number.isFinite(value))) return;
         xs.push(x - radius, x + radius);
         ys.push(y - radius, y + radius);
+      });
+      [...plannerSafeProfile, ...plannerCenterline].forEach((point) => {
+        const x = Number(point.x);
+        const y = Number(point.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          xs.push(x);
+          ys.push(y);
+        }
       });
       if (!xs.length || !ys.length) return { span: 1 };
       const minX = Math.min(...xs);
@@ -3743,6 +3916,29 @@ fn report_template() -> &'static str {
       const waypointRouteTraces = buildWaypointRouteTraces();
       const waypointEnvelopeTraces = buildWaypointEnvelopeTraces();
       const waypointMarkerTraces = buildWaypointMarkerTraces();
+      const plannerTraces = [];
+      if (plannerSafeProfile.length) {
+        plannerTraces.push({
+          type: "scatter",
+          mode: "lines",
+          name: "planner safe profile",
+          x: plannerSafeProfile.map((point) => Number(point.x)),
+          y: plannerSafeProfile.map((point) => Number(point.y)),
+          line: { color: "#9b59b6", width: 1.4, dash: "dot" },
+          hoverinfo: "skip",
+        });
+      }
+      if (plannerCenterline.length) {
+        plannerTraces.push({
+          type: "scatter",
+          mode: "lines",
+          name: "planner selected centerline",
+          x: plannerCenterline.map((point) => Number(point.x)),
+          y: plannerCenterline.map((point) => Number(point.y)),
+          line: { color: "#e8590c", width: 1.5, dash: "dashdot" },
+          hoverinfo: "skip",
+        });
+      }
       const waypointWindowEntries = markers
         .filter((marker) => marker.id === "waypoint/handoff")
         .map((marker) => {
@@ -3783,6 +3979,7 @@ fn report_template() -> &'static str {
       const spatialTraces = [
         terrainTrace,
         ...(padTrace ? [padTrace] : []),
+        ...plannerTraces,
         ...waypointEnvelopeTraces,
         markerTrace,
         plainTrace,
@@ -3795,7 +3992,9 @@ fn report_template() -> &'static str {
         eventTrace,
         hoverTrace,
       ];
-      const waypointEnvelopeStart = padTrace ? 2 : 1;
+      const plannerStart = padTrace ? 2 : 1;
+      const plannerEnd = plannerStart + plannerTraces.length;
+      const waypointEnvelopeStart = plannerEnd;
       const waypointEnvelopeEnd = waypointEnvelopeStart + waypointEnvelopeTraces.length;
       const markerIndex = waypointEnvelopeEnd;
       const plainIndex = markerIndex + 1;
@@ -3813,6 +4012,7 @@ fn report_template() -> &'static str {
       const hoverIndex = spatialTraces.length - 1;
       const baseVisible = new Set([0, plainIndex, eventIndex, hoverIndex]);
       if (padTrace) baseVisible.add(1);
+      for (let index = plannerStart; index < plannerEnd; index += 1) baseVisible.add(index);
       const inRange = (index, start, end) => index >= start && index < end;
       const visibilityForMode = (mode) => spatialTraces.map((_trace, index) => {
         if (baseVisible.has(index)) return true;
@@ -3996,6 +4196,7 @@ fn report_template() -> &'static str {
       renderFlightStats();
       renderBotStats();
       renderRunStats();
+      renderPlannerEvidence();
       renderMissionProfile();
       buildSpatialPlot();
       buildMetricsPlot();
@@ -4007,6 +4208,158 @@ fn report_template() -> &'static str {
 </body>
 </html>
 "####
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pd_core::{
+        CorridorClearance, CorridorResidual, EndReason, MissionOutcome, NormalizedRouteGeometry,
+        PhysicalOutcome, RoutePlanDiagnostics, RoutePlanningPolicy, RouteTopology, RunManifest,
+        TransferRouteSpec,
+    };
+    use std::fs;
+
+    fn fixture_scenario() -> ScenarioSpec {
+        serde_json::from_str(
+            &fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../fixtures/scenarios/flat_terminal_descent.json"),
+            )
+            .expect("fixture scenario should be readable"),
+        )
+        .expect("fixture scenario should parse")
+    }
+
+    fn fixture_manifest(scenario: &ScenarioSpec) -> RunManifest {
+        RunManifest {
+            schema_version: 1,
+            scenario_id: scenario.id.clone(),
+            scenario_name: scenario.name.clone(),
+            scenario_seed: scenario.seed,
+            scenario_tags: scenario.tags.clone(),
+            controller_id: "planner_test".to_owned(),
+            physics_hz: scenario.sim.physics_hz,
+            controller_hz: scenario.sim.controller_hz,
+            sim_time_s: 0.0,
+            physics_steps: 0,
+            controller_updates: 0,
+            physical_outcome: PhysicalOutcome::Flying,
+            mission_outcome: MissionOutcome::InProgress,
+            end_reason: EndReason::Running,
+            summary: Default::default(),
+        }
+    }
+
+    fn fixture_plan() -> RoutePlan {
+        let residual = CorridorResidual {
+            residual_m: -1.0,
+            centerline_position_m: Vec2::new(0.0, 5.0),
+            terrain_position_m: Vec2::new(0.0, 0.0),
+            terrain_segment_index: 0,
+            required_envelope_y_m: 4.0,
+            centerline_y_m: 5.0,
+            vertical_extent_m: 1.0,
+        };
+        RoutePlan {
+            algorithm_id: "heightfield_visibility_v1".to_owned(),
+            policy: RoutePlanningPolicy::default(),
+            request_digest: "request-test".to_owned(),
+            plan_digest: "plan-test".to_owned(),
+            topology: RouteTopology::Waypoint,
+            route: TransferRouteSpec {
+                source_pad_id: "source".to_owned(),
+                target_pad_id: "pad_main".to_owned(),
+                route_angle_deg: 0.0,
+                route_radius_m: 100.0,
+                waypoints: Vec::new(),
+            },
+            normalized_geometry: NormalizedRouteGeometry {
+                horizontal_sign: 1,
+                direct_horizontal_span_m: 100.0,
+                direct_distance_m: 100.0,
+                route_angle_rad: 0.0,
+                route_angle_deg: 0.0,
+            },
+            diagnostics: RoutePlanDiagnostics {
+                direct_path_clear: false,
+                direct_path_clearance: Some(CorridorClearance {
+                    clear: false,
+                    minimum_clearance_m: -1.0,
+                    worst_residual: residual,
+                }),
+                route_length_m: 120.0,
+                direct_distance_m: 100.0,
+                excess_length_m: 20.0,
+                peak_extra_loft_m: 12.0,
+                minimum_planned_clearance_m: 3.0,
+                leg_diagnostics: Vec::new(),
+                selected_node_ids: vec!["node-0001-0".to_owned()],
+                safe_profile_points_m: vec![Vec2::new(0.0, 5.0), Vec2::new(100.0, 5.0)],
+                selected_centerline_m: vec![
+                    Vec2::new(0.0, 6.0),
+                    Vec2::new(50.0, 16.0),
+                    Vec2::new(100.0, 5.0),
+                ],
+                waypoint_authority: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn planner_report_and_preview_show_plan_evidence_but_legacy_stays_unchanged() {
+        let scenario = fixture_scenario();
+        let manifest = fixture_manifest(&scenario);
+        let plan = fixture_plan();
+        let report_path = std::env::temp_dir().join(format!(
+            "pd_report_planner_{}_{}.html",
+            std::process::id(),
+            plan.plan_digest
+        ));
+        write_run_report_with_plan_context(
+            &report_path,
+            &scenario,
+            None,
+            &manifest,
+            &[],
+            &[],
+            &[],
+            None,
+            None,
+            Some(&plan),
+        )
+        .expect("planner report should render");
+        let html = fs::read_to_string(&report_path).expect("planner report should be readable");
+        assert!(html.contains("Generated Route Plan"));
+        assert!(html.contains("heightfield_visibility_v1"));
+        assert!(html.contains("plan-test"));
+        assert!(html.contains(r#""algorithm_id":"heightfield_visibility_v1""#));
+        assert!(html.contains("safe_profile_points_m"));
+        assert!(html.contains("plannerDiagnostics?.safe_profile_points_m"));
+        assert!(html.contains("planner selected centerline"));
+        let legacy_path = report_path.with_file_name("pd_report_legacy.html");
+        write_run_report(
+            &legacy_path,
+            &scenario,
+            None,
+            &manifest,
+            &[],
+            &[],
+            &[],
+            None,
+        )
+        .expect("legacy report should render");
+        let legacy = fs::read_to_string(&legacy_path).expect("legacy report should be readable");
+        assert!(!legacy.contains("Generated Route Plan"));
+        assert!(!legacy.contains("heightfield_visibility_v1"));
+        let svg = build_run_preview_svg_with_plan(&scenario, &manifest, &[], &[], Some(&plan));
+        assert!(svg.contains("planner safe profile and selected centerline"));
+        assert!(svg.contains("points=\""));
+        let legacy_svg = build_run_preview_svg_with_plan(&scenario, &manifest, &[], &[], None);
+        assert!(!legacy_svg.contains("planner safe profile and selected centerline"));
+        fs::remove_file(report_path).expect("planner report should be removable");
+        fs::remove_file(legacy_path).expect("legacy report should be removable");
+    }
 }
 
 #[cfg(test)]

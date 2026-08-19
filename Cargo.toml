@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "pd-core",
+  "pd-plan",
   "pd-control",
   "pd-report",
   "pd-cli",
