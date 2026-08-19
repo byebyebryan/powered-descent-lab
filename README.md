@@ -93,8 +93,8 @@ without treating the old scenario files as fixtures to transliterate directly.
   contracts.
 - [Guidance Architecture](docs/guidance.md) owns current terminal, transfer,
   waypoint, and planner/guidance responsibilities.
-- [Waypoint Planning V1](docs/waypoint_planning.md) owns the next planner
-  contract, bounded search policy, evidence model, and implementation sequence.
+- [Waypoint Planning V1](docs/waypoint_planning.md) owns the implemented bounded
+  planner contract, search policy, evidence model, and closure sequence.
 - [Roadmap](docs/roadmap.md) owns current phase status and the next execution
   slice.
 - [Terminal Suite Design](docs/terminal_suite.md) and
@@ -121,8 +121,8 @@ report-only subtree. The printed LAN URL resolves automatically when available.
 Use the report site in this order:
 
 - `/reports/guidance/` is the primary evidence overview.
-- `/reports/guidance/terminal/`, `transfer/`, and `waypoint/` are the
-  responsibility-specific scorecards.
+- `/reports/guidance/terminal/`, `transfer/`, `waypoint/`, and `planner/` are
+  the responsibility-specific scorecards.
 - `/reports/eval/` is the complete fixture-backed batch index, including
   supporting and diagnostic captures.
 
@@ -158,6 +158,7 @@ Stable HTML entrypoints also live under `outputs/reports/`, for example:
 - `outputs/reports/guidance/terminal/index.html`
 - `outputs/reports/guidance/transfer/index.html`
 - `outputs/reports/guidance/waypoint/index.html`
+- `outputs/reports/guidance/planner/index.html`
 - `outputs/reports/eval/index.html`
 - `outputs/reports/runs/latest/`
 - `outputs/reports/eval/latest/`
@@ -267,6 +268,13 @@ cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_route_ang
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_smoke.json --workers 8
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_smoke.json --workers 8
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_smoke.json --workers 8
+```
+
+Run the focused planner-generated landing and route-contract packs:
+
+```bash
+cargo run -p pd-eval -- run-pack fixtures/packs/planner_generated_route_smoke.json --workers 8
+cargo run -p pd-eval -- run-pack fixtures/packs/planner_generated_route_contract_smoke.json --workers 8
 ```
 
 Run the full-seed nominal and all-radius waypoint closure packs:
@@ -561,9 +569,11 @@ remains below the `1ms` p99 budget.
 The old `single_dogleg_v1` packs and the full-matrix `late_bend_v1` pack remain
 parked diagnostic history rather than acceptance gates.
 Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
-corpus. General terrain avoidance remains parked at the planning/collision-warning
-layer. The next transfer slice is the bounded deterministic pad-to-pad planner
-defined in `docs/waypoint_planning.md`.
+corpus. The bounded deterministic pad-to-pad planner defined in
+`docs/waypoint_planning.md` is now implemented through evaluator integration
+and evidence rendering. General runtime avoidance remains parked at the
+planning/collision-warning layer; the next transfer step is planner closure on
+the focused generated-route packs and maintained no-regression gates.
 The guidance implementation now follows the ownership boundaries in
 `docs/guidance.md`: terminal and transfer are separate modules, pure waypoint
 geometry is isolated from controller lifecycle state, telemetry emission is

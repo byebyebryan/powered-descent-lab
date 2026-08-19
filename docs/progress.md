@@ -1,5 +1,41 @@
 # Progress
 
+## 2026-08-18
+
+### Waypoint-planning implementation phases 1-4
+
+- Added neutral, serializable planner policy/request/result/rejection contracts
+  to `pd-core`, together with strict non-clamping height queries, exact
+  piecewise-linear corridor clearance, and one shared all-leg route validator.
+- Added the controller-independent `pd-plan` crate. Its deterministic bounded
+  search normalizes left/right geometry, constructs a conservative safety
+  profile and finite candidate graph, emits zero to two ordered waypoints, and
+  persists stable request/plan identity plus clearance, loft, path, and
+  gravity-taxed authority diagnostics.
+- Made endpoint ownership explicit: the implicit centerline holds each pad's
+  touchdown reference until the contact footprint clears the pad, blends to or
+  from the original pad chord through the envelope transition, and never turns
+  those diagnostic points into guidance waypoints.
+- Added planner-backed matrix resolution in `pd-eval` for curated clear-direct,
+  single-ridge, and double-ridge terrain over `r-30 | r00 | r+30`, both payload
+  tiers, and smoke seeds. The focused packs contain `54` landing runs and `36`
+  handoff/ordered-contract runs.
+- Advanced batch artifacts to schema `35` with optional complete route plans,
+  compact provenance, exact cache identity, compatible prior-plan comparison,
+  planned and sampled en-route clearance, and planner diagnostics in run and
+  batch reports. Legacy authored descriptors and reports keep planner fields
+  absent.
+- A disposable fresh integration run resolved and executed every focused case
+  with zero invalidations. Landing finished `22 / 54`; handoff/ordered contracts
+  finished `31 / 36`. The generated artifacts were inspected and removed, so
+  this is a local validation snapshot rather than a maintained capture. It
+  identifies the phase-5 guidance/closure residual without expanding phases
+  1-4 into controller tuning.
+- Fresh maintained no-regression runs reproduced terminal bot-lab `171 / 189`,
+  trajectory-error `694 / 756`, direct transfer `297 / 297`, all-radius waypoint
+  turn landing/contract `405 / 405` each, and all-radius ordered landing/contract
+  `135 / 135` each. Planner closure and retained captures remain phase 5.
+
 ## 2026-07-22
 
 ### Waypoint-planning design checkpoint

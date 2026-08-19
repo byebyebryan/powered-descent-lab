@@ -175,12 +175,12 @@ angle means the target is uphill from the source. The matrix records
 transfer-specific report axes (`route_family`, `route_angle`, `radius_tier`) and
 uses terminal-compatible aliases only as report plumbing.
 
-Waypoint work should split planning from guidance.
+Waypoint work splits planning from guidance.
 
 Waypoint planning is the upstream problem: choose terrain-valid waypoint
-positions and arrival envelopes that make each next leg feasible. The bounded
-v1 design plans once over static heightfield terrain and is specified in
-[Waypoint Planning V1](waypoint_planning.md).
+positions and arrival envelopes that make each next leg feasible. The
+implemented bounded v1 planner runs once over static heightfield terrain and is
+specified in [Waypoint Planning V1](waypoint_planning.md).
 
 Waypoint guidance assumes the waypoint list is already planned, follows the
 currently active route leg, and enters a bounded handoff window at the waypoint
@@ -204,11 +204,12 @@ Waypoint guidance v1 is closed against a preplanned maintained corpus spanning
 turn and ordered routes, full nominal seeds, and route-radius tiers. Initial
 launch energy is regulated from immutable inbound-leg geometry, while final
 handoff selection and direct terminal entry use terrain-blind recoverability.
-Batch schema `34` reports that recoverability and low-altitude rebound as
-kinematic diagnostics alongside the observed route contract and final landing
-outcome. The planner still owns
-terrain-valid placement, leg ordering, and arrival-envelope design; guidance
-must not infer obstacle classes or repair a structurally bad route.
+Batch schema `35` adds optional planner provenance, route diagnostics, and
+planned-versus-sampled clearance to the schema-34 guidance evidence. The
+planner owns terrain-valid placement, leg ordering, and arrival-envelope
+design; guidance must not infer obstacle classes or repair a structurally bad
+route. Legacy authored runs retain their existing behavior with the planner
+fields absent.
 
 The controller implementation mirrors this ownership. `pd-control` keeps the
 registry and legacy controllers in `controllers.rs`, shared state-target math in
@@ -241,12 +242,10 @@ The implemented heightfield query layer provides:
 - height and slope at `x`
 - local surface normal
 - full immutable terrain through the setup-time `RunContext`
-
-The waypoint-planning slice still needs richer read-only queries such as:
-
-- exact segment-to-heightfield clearance
-- vehicle-center corridor validation with endpoint clearance taper
-- stable minimum-clearance diagnostics for route artifacts
+- strict, non-clamping height lookup for planning validation
+- exact segment-to-heightfield corridor clearance for a linearly varying
+  conservative envelope
+- endpoint-aware route validation and stable minimum-clearance diagnostics
 
 Closest-point and ray queries remain useful later for collision warnings and
 reactive guardrails, but they are not prerequisites for the bounded planner.
@@ -306,7 +305,8 @@ Responsibilities:
 
 - world and vehicle state
 - deterministic stepping
-- terrain and obstacle queries
+- terrain and obstacle queries, including exact conservative corridor clearance
+- neutral serialized route-planning contracts and shared route validation
 - mission setup
 - observation generation
 - action validation and actuation rules
@@ -349,9 +349,9 @@ rich setup-time environment, compact per-tick state, and controller-owned
 inspection data. It should not move mission success authority back into the
 controller layer.
 
-### 5.3 `pd-plan` (planned)
+### 5.3 `pd-plan`
 
-`pd-plan` will own deterministic setup-time route construction.
+`pd-plan` owns deterministic setup-time route construction.
 
 Responsibilities:
 
@@ -536,6 +536,7 @@ powered-descent-lab/
     packs/
     scenarios/
   pd-core/
+  pd-plan/
   pd-control/
   pd-report/
   pd-cli/
@@ -553,8 +554,8 @@ Notes:
   assembly and comparison UX
 - `outputs/` stores generated run bundles, cache entries, stable report aliases,
   and report indexes; it is not source-controlled truth
-- `pd-plan` is the next planned workspace crate and is not part of the current
-  implemented shape yet
+- `pd-plan` depends only on `pd-core`; controller selection, simulation, cache
+  orchestration, and evidence presentation remain outside the planner
 
 ## 7. Contracts
 

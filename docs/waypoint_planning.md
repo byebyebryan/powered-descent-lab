@@ -1,5 +1,19 @@
 # Waypoint Planning V1
 
+## Implementation Status
+
+Implementation phases 1-4 are complete. `pd-core` owns the serialized planning
+contracts, strict heightfield corridor queries, endpoint-shaped safety profile,
+and shared all-leg route validator. `pd-plan` owns the deterministic bounded
+search and stable plan identity. `pd-eval` resolves the focused generated-route
+matrices before simulation and carries planner identity through schema-35 cache
+and artifact contracts; `pd-report` and batch reports render optional planner
+evidence without changing legacy authored runs.
+
+Phase 5 remains the active closure step: explain the focused generated-route
+residuals, settle acceptance policy, retain the agreed captures, and record the
+clearance, handoff, landing, efficiency, and compute distributions.
+
 This document defines the first waypoint-planning slice above the closed
 terminal, direct-transfer, and preplanned-waypoint guidance stack. It owns the
 planner contract, bounded search policy, evidence model, and implementation
@@ -150,11 +164,15 @@ The `24m` and `96m` starting values align with existing transfer-clearance
 experience, but the planner owns its copies. It must not read hidden defaults
 from `pd-control`.
 
-The endpoint transition is capped at one quarter of the horizontal pad-to-pad
-span so source and target windows cannot consume the whole route. The full
-en-route requirement is an orientation-independent vehicle bounding radius plus
-`flight_clearance_margin_m`. Inside each endpoint window it tapers to the
-touchdown-reference offset at the pad center. Unsupported near-vertical or
+The endpoint transition is capped at one quarter of the usable horizontal span
+after each touchdown footprint has cleared its pad. The full en-route
+requirement is an orientation-independent vehicle bounding radius plus
+`flight_clearance_margin_m`. The canonical centerline remains at the source
+touchdown reference until the contact footprint clears the source pad, blends
+to the original pad-center chord as the envelope expands, follows that chord
+through the full-envelope middle unless explicit waypoints loft it, then uses
+the symmetric target blend and contact plateau. These implicit endpoint points
+are persisted diagnostics, not emitted waypoints. Unsupported near-vertical or
 overlapping endpoint geometry fails explicitly rather than silently weakening
 clearance.
 
@@ -377,7 +395,7 @@ planner states over matching resolved cases.
 
 ## Implementation Sequence
 
-The implementation should land in reviewable commits:
+The implementation sequence is:
 
 1. **Contracts and geometry primitives**
    - add neutral planning policy/result/error contracts to `pd-core`
@@ -401,6 +419,10 @@ The implementation should land in reviewable commits:
    - run the planner matrix and all maintained guidance no-regression gates
    - record accepted/rejected coverage, residuals, compute cost, and any policy
      changes before expanding the corpus
+
+Steps 1-4 are implemented in the current worktree. Step 5 is intentionally not
+claimed from unit/integration validation alone; it requires fresh simulation
+captures and maintained regression evidence.
 
 ## Design Basis
 

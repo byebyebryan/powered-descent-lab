@@ -41,7 +41,8 @@ Current implementation status:
   - default thresholded regression policy over batch comparisons, scoped to the
     preferred current controller lane when both reports contain one
 - Phase 3 guidance is complete over the maintained direct-transfer and
-  preplanned-waypoint corpora; waypoint planning is the next active slice:
+  preplanned-waypoint corpora; waypoint-planning implementation phases 1-4 are
+  complete and the active work is closure evidence:
   - `timed_checkpoint` remains available as an early-termination contract probe
   - `signed_route_arc_transfer_v1` now exists as the first source-to-target
     matrix family
@@ -56,10 +57,15 @@ Current implementation status:
     `135 / 135` ordered runs; paired landings are also `405 / 405` and
     `135 / 135`
   - bounded final authority-recovery search closes the former short-radius
-    landing residual, leaving waypoint planning as the next Phase 3 slice
-  - the planner design is now fixed as a setup-time, deterministic, pad-to-pad
-    search over static heightfields; see
-    [Waypoint Planning V1](waypoint_planning.md)
+    landing residual
+  - `pd-core` now owns neutral planner contracts, exact corridor queries, and
+    all-leg route validation; `pd-plan` implements the deterministic bounded
+    pad-to-pad search without a `pd-control` dependency
+  - `pd-eval` resolves the focused generated-route matrices before simulation,
+    includes complete plan identity in exact cache reuse, and persists schema-35
+    planner evidence for `pd-report` and batch reports
+  - closure captures and maintained no-regression runs remain the next gate;
+    see [Waypoint Planning V1](waypoint_planning.md)
 
 ## 2. What Not To Build First
 
@@ -415,18 +421,18 @@ Status:
   - the full `late_bend_v1` matrix is parked as a 27-run diagnostic: it lands
     `27 / 27`, with `27 / 54` initially bad entries recovering in-window
   - ordered-contract compute remains within budget at `434us` p99
-- next transfer slice is waypoint planning:
-  - add neutral planner contracts and exact route-clearance primitives to
-    `pd-core`, then implement the algorithm in a new `pd-plan` crate with no
-    `pd-control` dependency
-  - plan once from immutable setup context and emit a direct route or at most
-    two monotone pass-through waypoints
-  - use an explicit versioned clearance, endpoint-taper, loft, and authority
-    policy so planner rejection is bounded and reproducible
-  - distinguish a geometrically accepted route from handoff, actual-clearance,
-    fuel, and final-landing simulation evidence
-  - treat the full-seed and all-radius maintained corpus as the waypoint-guidance
-    v1 regression baseline
+- active transfer slice is waypoint-planner closure:
+  - the neutral contracts, exact route-clearance primitives, shared validator,
+    and controller-independent `pd-plan` implementation are in place
+  - setup-time planning emits a direct route or at most two monotone
+    pass-through waypoints under an explicit versioned clearance, endpoint,
+    loft, and authority policy
+  - schema-35 evaluator/report integration preserves the distinction between a
+    geometrically accepted route and handoff, actual-clearance, fuel, and final
+    landing evidence
+  - run and capture the focused generated landing/contract matrices, then treat
+    the full-seed and all-radius maintained corpus as the waypoint-guidance v1
+    regression baseline
   - keep future mechanisms independent of route/profile labels and mission
     timeout; use planned geometry, state, authority, and envelope margins
   - use handoff packs as guidance targets and paired landing packs as
@@ -593,24 +599,22 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Implement [Waypoint Planning V1](waypoint_planning.md) above the reconciled
-guidance stack. Terminal, direct-transfer, and waypoint-guidance behavior are
-maintained baselines rather than open-ended tuning work.
+Close [Waypoint Planning V1](waypoint_planning.md) above the reconciled guidance
+stack. Implementation phases 1-4 now provide the contracts, exact geometry,
+bounded planner, evaluator/cache integration, focused corpus, and optional run
+and batch evidence. Terminal, direct-transfer, and waypoint-guidance behavior
+remain maintained baselines rather than open-ended tuning work.
 
-The next commits are:
+The next checkpoint is implementation phase 5:
 
-1. Add neutral planning contracts, exact segment/corridor clearance, and shared
-   route-property validation to `pd-core`.
-2. Add `pd-plan` with normalized safety-profile construction, deterministic
-   bounded candidate search, versioned policy, plan digests, and typed rejection
-   fixtures.
-3. Integrate planner-backed resolution and cache identity in `pd-eval`, then add
-   the focused `r-30 | r00 | r+30`, nominal-radius, `empty | full`, smoke-seed
-   authored-oracle/generated-plan corpus.
-4. Persist and render planner provenance, route geometry, planned/actual
-   clearance, loft, path-length, and authority diagnostics.
-5. Close on separate planner-contract, waypoint-handoff, physical-landing, and
-   actual-clearance evidence while preserving every maintained guidance gate.
+1. Run and capture the focused 54-run generated-route landing pack and 36-run
+   handoff/sequence contract pack.
+2. Review planned and sampled clearance, topology, loft, path length, authority,
+   handoff, landing, fuel, duration, and planner compute evidence.
+3. Run every maintained terminal, direct-transfer, waypoint-turn, and ordered
+   waypoint no-regression gate.
+4. Record accepted/rejected coverage and any justified policy adjustment before
+   expanding route angles, radii, terrain classes, or replanning behavior.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this

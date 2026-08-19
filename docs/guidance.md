@@ -22,7 +22,7 @@ lifecycle, handoff contract, continuation viability, and final-waypoint entry
 into terminal guidance. It is terrain-blind: waypoint placement and arrival
 envelopes must already encode a terrain-valid route.
 
-The planned waypoint-planning layer is upstream of guidance. It owns
+The implemented waypoint-planning layer is upstream of guidance. It owns
 terrain-valid waypoint placement, leg ordering, and arrival-envelope
 construction. V1 plans once from static setup-time context and emits a direct
 route or at most two preplanned waypoints. It does not select a controller, run
@@ -58,7 +58,8 @@ during behavior-preserving refactors:
 - terminal and transfer configuration field names and defaults
 - controller phase strings
 - telemetry metric keys and marker IDs
-- batch schema `34` waypoint and terminal-recovery fields
+- batch schema `34` waypoint and terminal-recovery fields plus schema `35`'s
+  optional planner provenance and diagnostics
 - deterministic mission outcomes, handoff evidence, and landing summaries
 
 Internal Rust types and module paths are not compatibility surfaces. They may
@@ -98,12 +99,12 @@ their named modules. The batch report shell delegates overview, diagnostics,
 review-tree, and comparison rendering to `pd-eval/src/report/` modules. Public
 crate exports and persisted schema paths remain unchanged.
 
-The next planned boundary adds neutral route-planning contracts and clearance
-queries to `pd-core`, with the deterministic algorithm in a new `pd-plan` crate
-that depends only on `pd-core`. `pd-eval` will call it during scenario
-resolution, persist algorithm/policy/plan identity, and pass only the resulting
-`TransferRouteSpec` to guidance. `pd-control` must not become a dependency of
-the planner, and planner policy must not read controller configuration defaults.
+The planner boundary now places neutral route-planning contracts and clearance
+queries in `pd-core`, with the deterministic algorithm in `pd-plan`, which
+depends only on `pd-core`. `pd-eval` calls it during scenario resolution,
+persists algorithm/policy/plan identity, and passes only the resulting
+`TransferRouteSpec` to guidance. `pd-control` is not a planner dependency, and
+planner policy does not read controller configuration defaults.
 
 This split is internal. Public controller exports still resolve through
 `pd-control`, and persisted controller, phase, telemetry, and artifact contracts
