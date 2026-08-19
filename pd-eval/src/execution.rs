@@ -316,6 +316,7 @@ pub(super) fn execute_resolved_run(
             &resolved_run.descriptor.controller_spec,
             &artifacts,
             resolved_run.descriptor.route_plan.as_ref(),
+            resolved_run.descriptor.planner_compute.as_ref(),
         )?;
     }
 
@@ -323,6 +324,7 @@ pub(super) fn execute_resolved_run(
         &resolved_run.scenario,
         &artifacts,
         resolved_run.descriptor.route_plan.as_ref(),
+        resolved_run.descriptor.planner_compute.as_ref(),
     );
     let analytic = analytic_feasibility_for_run(resolved_run);
 

@@ -117,6 +117,7 @@ fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
         EvaluationGoal::LandingOnPad { .. }
     )));
     for run in &contract_runs {
+        assert_eq!(run.scenario.sim.max_time_s, 130.0);
         if run.descriptor.entry_id.contains("single") {
             assert!(matches!(
                 &run.scenario.mission.goal,
@@ -134,6 +135,30 @@ fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
             );
         }
     }
+    assert!(
+        smoke_runs
+            .iter()
+            .filter(|run| run
+                .descriptor
+                .route_plan
+                .as_ref()
+                .unwrap()
+                .waypoints()
+                .is_empty())
+            .all(|run| run.scenario.sim.max_time_s == 90.0)
+    );
+    assert!(
+        smoke_runs
+            .iter()
+            .filter(|run| !run
+                .descriptor
+                .route_plan
+                .as_ref()
+                .unwrap()
+                .waypoints()
+                .is_empty())
+            .all(|run| run.scenario.sim.max_time_s == 130.0)
+    );
     for run in smoke_runs.iter().chain(contract_runs.iter()) {
         assert_eq!(
             run.descriptor.source_kind,
@@ -149,6 +174,12 @@ fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
             .route_provenance
             .as_ref()
             .expect("planner run should persist route provenance");
+        let compute = run
+            .descriptor
+            .planner_compute
+            .as_ref()
+            .expect("planner run should persist compute evidence");
+        assert!(compute.wall_time_us <= 60_000_000);
         assert_eq!(provenance.plan_digest, plan.plan_digest);
         assert_eq!(
             run.descriptor.physical_case_id.as_deref(),
@@ -191,6 +222,19 @@ fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
                 .plan_digest
                 .clone())
             .collect::<Vec<_>>()
+    );
+    let identity = batch_identity_for_pack(&smoke, &smoke_runs).unwrap();
+    let mut retimed = smoke_runs.clone();
+    for run in &mut retimed {
+        if let Some(compute) = run.descriptor.planner_compute.as_mut() {
+            compute.wall_time_us = compute.wall_time_us.saturating_add(1_000_000);
+        }
+    }
+    assert_eq!(
+        identity.resolved_run_digest,
+        batch_identity_for_pack(&smoke, &retimed)
+            .unwrap()
+            .resolved_run_digest
     );
 }
 
@@ -4686,6 +4730,15 @@ fn cached_run_bundle_requires_route_plan_only_for_planner_descriptor() {
     fs::write(
         bundle_dir.join("route_plan.json"),
         serde_json::to_vec_pretty(&route_plan).unwrap(),
+    )
+    .unwrap();
+    report.records[0].resolved.planner_compute =
+        Some(pd_core::PlannerComputeEvidence { wall_time_us: 123 });
+    assert!(!validate_cached_run_bundles(&report.records));
+    fs::write(
+        bundle_dir.join("planner_compute.json"),
+        serde_json::to_vec_pretty(report.records[0].resolved.planner_compute.as_ref().unwrap())
+            .unwrap(),
     )
     .unwrap();
     assert!(validate_cached_run_bundles(&report.records));

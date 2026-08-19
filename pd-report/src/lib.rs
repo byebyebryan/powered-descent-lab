@@ -10,8 +10,8 @@ use pd_control::{
     ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue, metric,
 };
 use pd_core::{
-    EvaluationGoal, EventKind, EventRecord, RoutePlan, RunManifest, SampleRecord, ScenarioSpec,
-    Vec2,
+    EvaluationGoal, EventKind, EventRecord, PlannerComputeEvidence, RoutePlan, RunManifest,
+    SampleRecord, ScenarioSpec, Vec2,
 };
 use serde::Serialize;
 
@@ -90,6 +90,35 @@ pub fn write_run_report_with_plan_context(
     context: Option<&RunReportContext>,
     route_plan: Option<&RoutePlan>,
 ) -> Result<()> {
+    write_run_report_with_plan_context_and_compute(
+        path,
+        scenario,
+        controller_spec,
+        manifest,
+        events,
+        samples,
+        controller_updates,
+        performance,
+        context,
+        route_plan,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn write_run_report_with_plan_context_and_compute(
+    path: &Path,
+    scenario: &ScenarioSpec,
+    controller_spec: Option<&ControllerSpec>,
+    manifest: &RunManifest,
+    events: &[EventRecord],
+    samples: &[SampleRecord],
+    controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
+    context: Option<&RunReportContext>,
+    route_plan: Option<&RoutePlan>,
+    planner_compute: Option<&PlannerComputeEvidence>,
+) -> Result<()> {
     let report_data = build_report_data(
         scenario,
         controller_spec,
@@ -100,6 +129,7 @@ pub fn write_run_report_with_plan_context(
         performance,
         context,
         route_plan,
+        planner_compute,
     );
     let display_title = friendly_report_title(scenario);
     let planner_panel = if route_plan.is_some() {
@@ -277,6 +307,7 @@ fn build_report_data(
     performance: Option<&RunPerformanceStats>,
     context: Option<&RunReportContext>,
     route_plan: Option<&RoutePlan>,
+    planner_compute: Option<&PlannerComputeEvidence>,
 ) -> ReportData {
     let report_samples = build_report_samples(samples, controller_updates);
     let report_markers = build_report_markers(&report_samples, controller_updates);
@@ -287,6 +318,9 @@ fn build_report_data(
         display_subtitle: friendly_report_subtitle(scenario),
         report_context: context.cloned().unwrap_or_default(),
         route_plan: route_plan.cloned(),
+        planner_compute: planner_compute.map(|timing| ReportPlannerCompute {
+            wall_time_us: timing.wall_time_us,
+        }),
         scenario_id: scenario.id.clone(),
         scenario_name: scenario.name.clone(),
         controller_id: manifest.controller_id.clone(),
@@ -1661,6 +1695,8 @@ struct ReportData {
     report_context: RunReportContext,
     #[serde(skip_serializing_if = "Option::is_none")]
     route_plan: Option<RoutePlan>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    planner_compute: Option<ReportPlannerCompute>,
     scenario_id: String,
     scenario_name: String,
     controller_id: String,
@@ -1701,6 +1737,12 @@ struct ReportRunPerformance {
     cpu_time_per_tick_us: Option<f64>,
     sim_rate_x: Option<f64>,
     physics_steps_per_s: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReportPlannerCompute {
+    wall_time_us: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -2821,6 +2863,7 @@ fn report_template() -> &'static str {
     const transferRoute = reportData.missionDetails?.transferRoute || null;
     const waypoints = Array.isArray(transferRoute?.waypoints) ? transferRoute.waypoints : [];
     const routePlan = reportData.routePlan || null;
+    const plannerCompute = reportData.plannerCompute || null;
     const plannerDiagnostics = routePlan?.diagnostics || null;
     const plannerSafeProfile = Array.isArray(plannerDiagnostics?.safe_profile_points_m)
       ? plannerDiagnostics.safe_profile_points_m
@@ -3027,6 +3070,9 @@ fn report_template() -> &'static str {
         ["Route / direct / excess", `${fmtOptional(plannerDiagnostics.route_length_m)} / ${fmtOptional(plannerDiagnostics.direct_distance_m)} / ${fmtOptional(plannerDiagnostics.excess_length_m)} m`],
         ["Peak extra loft", `${fmtOptional(plannerDiagnostics.peak_extra_loft_m)} m`],
         ["Authority caps / ratios", `${caps} · ${ratios}`],
+        ["Planner compute", plannerCompute
+          ? `${fmt(Number(plannerCompute.wallTimeUs) / 1000.0, 2)} ms monotonic wall (pd_plan::plan)`
+          : "n/a"],
       ]);
     };
 

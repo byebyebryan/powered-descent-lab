@@ -21,6 +21,16 @@ use crate::{
 pub const HEIGHTFIELD_VISIBILITY_ALGORITHM_ID: &str = "heightfield_visibility_v1";
 pub const ROUTE_PLANNING_POLICY_VERSION: &str = "heightfield_visibility_policy_v1";
 
+/// Setup-time planner compute evidence.  `wall_time_us` is elapsed monotonic
+/// wall-clock time spent inside the deterministic `pd_plan::plan` call for a
+/// single resolved request; it excludes request construction, simulation,
+/// artifact I/O, and report rendering.  This is observational evidence only,
+/// so it must not participate in request/plan/cache identity digests.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PlannerComputeEvidence {
+    pub wall_time_us: u64,
+}
+
 /// Explicit planner policy.  Defaults are the V1 values in
 /// `docs/waypoint_planning.md`; callers persist the complete resolved value in
 /// every request and plan artifact.

@@ -43,6 +43,7 @@ pub(super) fn write_artifact_bundle(
     controller_spec: &ControllerSpec,
     artifacts: &ControlledRunArtifacts,
     route_plan: Option<&pd_core::RoutePlan>,
+    planner_compute: Option<&pd_core::PlannerComputeEvidence>,
 ) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create artifact bundle dir {}", path.display()))?;
@@ -60,7 +61,10 @@ pub(super) fn write_artifact_bundle(
     if let Some(route_plan) = route_plan {
         write_json(&path.join("route_plan.json"), route_plan)?;
     }
-    pd_report::write_run_report_with_plan_context(
+    if let Some(planner_compute) = planner_compute {
+        write_json(&path.join("planner_compute.json"), planner_compute)?;
+    }
+    pd_report::write_run_report_with_plan_context_and_compute(
         &path.join("report.html"),
         scenario,
         Some(controller_spec),
@@ -75,6 +79,7 @@ pub(super) fn write_artifact_bundle(
             run_index_href: Some("../".to_owned()),
         }),
         route_plan,
+        planner_compute,
     )?;
     pd_report::write_run_preview_svg_with_plan(
         &path.join("preview.svg"),
@@ -91,15 +96,21 @@ pub(super) fn batch_identity_for_pack(
     pack: &ScenarioPackSpec,
     resolved_runs: &[ResolvedBatchRun],
 ) -> Result<BatchIdentity> {
+    let identity_descriptors = resolved_runs
+        .iter()
+        .map(|run| {
+            let mut descriptor = run.descriptor.clone();
+            // Compute timing is observational and varies with machine load;
+            // keep it in persisted descriptors without making cache identity
+            // or compatible comparison depend on it.
+            descriptor.planner_compute = None;
+            descriptor
+        })
+        .collect::<Vec<_>>();
     Ok(BatchIdentity {
         schema_version: BATCH_REPORT_SCHEMA_VERSION,
         pack_spec_digest: stable_digest(pack)?,
-        resolved_run_digest: stable_digest(
-            &resolved_runs
-                .iter()
-                .map(|run| &run.descriptor)
-                .collect::<Vec<_>>(),
-        )?,
+        resolved_run_digest: stable_digest(&identity_descriptors)?,
     })
 }
 
@@ -467,6 +478,8 @@ pub(super) fn validate_cached_run_bundles(records: &[BatchRunRecord]) -> bool {
             .all(|name| bundle_dir.join(name).exists())
             && (record.resolved.route_plan.is_none()
                 || bundle_dir.join("route_plan.json").is_file())
+            && (record.resolved.planner_compute.is_none()
+                || bundle_dir.join("planner_compute.json").is_file())
     })
 }
 

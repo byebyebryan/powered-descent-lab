@@ -13,9 +13,10 @@ use pd_control::{
 };
 use pd_core::{
     EndReason, EvaluationGoal, EventRecord, LandingPadSpec, MissionOutcome, Observation,
-    RoutePlanningPolicy, RoutePlanningRequest, RouteTopology, RunContext, RunManifest, RunSummary,
-    SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2,
-    VehicleSpec, WaypointHandoffKinematics, build_endpoint_profile, validate_route,
+    PlannerComputeEvidence, RoutePlanningPolicy, RoutePlanningRequest, RouteTopology, RunContext,
+    RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec,
+    TransferWaypointSpec, Vec2, VehicleSpec, WaypointHandoffKinematics, build_endpoint_profile,
+    validate_route,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -28,7 +29,7 @@ use std::os::unix::fs as platform_fs;
 #[cfg(windows)]
 use std::os::windows::fs as platform_fs;
 
-pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 35;
+pub const BATCH_REPORT_SCHEMA_VERSION: u32 = 36;
 
 const TRANSFER_TERMINAL_REBOUND_ARM_HEIGHT_M: f64 = 25.0;
 const TRANSFER_TERMINAL_REBOUND_NEAR_PAD_HALF_WIDTHS: f64 = 3.0;
@@ -189,7 +190,14 @@ fn refresh_run_report(bundle_dir: &Path) -> Result<()> {
         .is_file()
         .then(|| read_json::<pd_core::RoutePlan>(&bundle_dir.join("route_plan.json")))
         .transpose()?;
-    pd_report::write_run_report_with_plan_context(
+    let planner_compute = bundle_dir
+        .join("planner_compute.json")
+        .is_file()
+        .then(|| {
+            read_json::<pd_core::PlannerComputeEvidence>(&bundle_dir.join("planner_compute.json"))
+        })
+        .transpose()?;
+    pd_report::write_run_report_with_plan_context_and_compute(
         &bundle_dir.join("report.html"),
         &scenario,
         Some(&controller),
@@ -204,6 +212,7 @@ fn refresh_run_report(bundle_dir: &Path) -> Result<()> {
             run_index_href: Some("../".to_owned()),
         }),
         route_plan.as_ref(),
+        planner_compute.as_ref(),
     )
 }
 
@@ -500,16 +509,7 @@ pub fn run_pack_with_workers(
     let resolved_runs = resolve_pack_runs(pack, base_dir)?;
     let requested_workers = workers.max(1);
     let workers_used = effective_worker_count(requested_workers, resolved_runs.len());
-    let identity = BatchIdentity {
-        schema_version: BATCH_REPORT_SCHEMA_VERSION,
-        pack_spec_digest: stable_digest(pack)?,
-        resolved_run_digest: stable_digest(
-            &resolved_runs
-                .iter()
-                .map(|run| &run.descriptor)
-                .collect::<Vec<_>>(),
-        )?,
-    };
+    let identity = batch_identity_for_pack(pack, &resolved_runs)?;
 
     let started = Instant::now();
     let records = execute_resolved_runs(&resolved_runs, output_dir, workers_used)?;

@@ -1662,13 +1662,24 @@ fn render_planner_row(record: &crate::BatchRunRecord, role: &str, changed: bool)
     let authority_ratios = planner
         .map(|value| format_planner_list(&value.authority_ratios))
         .unwrap_or_else(|| "n/a".to_owned());
+    let planner_compute = planner
+        .and_then(|value| value.compute_wall_time_us)
+        .or_else(|| {
+            record
+                .resolved
+                .planner_compute
+                .as_ref()
+                .map(|value| value.wall_time_us)
+        })
+        .map(|value| format!("{:.3} ms monotonic wall", value as f64 / 1000.0))
+        .unwrap_or_else(|| "n/a".to_owned());
     let changed_html = if changed {
         r#" <span class="status-chip warn">changed plan</span>"#
     } else {
         ""
     };
     format!(
-        r#"<tr data-planner-case="{}"><td><div class="overview-stack"><span class="overview-main">{} · {}</span><span class="overview-sub">{} · run {}</span>{}</div></td><td><div class="overview-stack"><span class="overview-main">{}</span><span class="overview-sub">{} · policy {} · request {}</span></div></td><td><code>{}</code></td><td>{} / {} waypoint{}</td><td><div class="overview-stack"><span class="overview-main">{} / {} m</span><span class="overview-sub">direct {}</span></div></td><td><div class="overview-stack"><span class="overview-main">{} m</span><span class="overview-sub">direct {} · excess {} · loft {} m</span></div></td><td><div class="overview-stack"><span class="overview-main">caps {}</span><span class="overview-sub">ratios {}</span></div></td></tr>"#,
+        r#"<tr data-planner-case="{}"><td><div class="overview-stack"><span class="overview-main">{} · {}</span><span class="overview-sub">{} · run {}</span>{}</div></td><td><div class="overview-stack"><span class="overview-main">{}</span><span class="overview-sub">{} · policy {} · request {}</span></div></td><td><code>{}</code></td><td>{} / {} waypoint{}</td><td><div class="overview-stack"><span class="overview-main">{} / {} m</span><span class="overview-sub">direct {}</span></div></td><td><div class="overview-stack"><span class="overview-main">{} m</span><span class="overview-sub">direct {} · excess {} · loft {} m</span></div></td><td><div class="overview-stack"><span class="overview-main">caps {}</span><span class="overview-sub">ratios {} · compute {}</span></div></td></tr>"#,
         escape_html(physical_case),
         escape_html(role),
         escape_html(source),
@@ -1692,6 +1703,7 @@ fn render_planner_row(record: &crate::BatchRunRecord, role: &str, changed: bool)
         escape_html(&loft),
         escape_html(&authority_caps),
         escape_html(&authority_ratios),
+        escape_html(&planner_compute),
     )
 }
 

@@ -725,6 +725,7 @@ pub(super) fn resolve_concrete_run(
         physical_case_id: None,
         route_provenance: None,
         route_plan: None,
+        planner_compute: None,
     };
 
     Ok(ResolvedBatchRun {
@@ -762,6 +763,7 @@ pub(super) fn resolve_family_runs(
             physical_case_id: None,
             route_provenance: None,
             route_plan: None,
+            planner_compute: None,
         };
         runs.push(ResolvedBatchRun {
             descriptor,
@@ -1345,6 +1347,7 @@ pub(super) fn resolve_transfer_matrix_runs(
                         physical_case_id: None,
                         route_provenance: None,
                         route_plan: None,
+                        planner_compute: None,
                     };
                     runs.push(ResolvedBatchRun {
                         descriptor,
@@ -1409,6 +1412,7 @@ pub(super) fn resolve_planner_matrix_runs(
                     target_pad_id: route.target_pad_id.clone(),
                     policy: entry.policy.clone(),
                 };
+                let planner_started_at = Instant::now();
                 let plan = pd_plan::plan(&request).map_err(|rejection| {
                     anyhow!(
                         "planner matrix entry '{}' case '{}' rejected: {} ({})",
@@ -1418,6 +1422,12 @@ pub(super) fn resolve_planner_matrix_runs(
                         rejection.message
                     )
                 })?;
+                let planner_compute = PlannerComputeEvidence {
+                    wall_time_us: planner_started_at
+                        .elapsed()
+                        .as_micros()
+                        .min(u128::from(u64::MAX)) as u64,
+                };
                 let actual_waypoint_count = u8::try_from(plan.waypoints().len())
                     .map_err(|_| anyhow!("planner produced too many waypoints"))?;
                 if plan.topology != entry.expected_topology
@@ -1540,6 +1550,7 @@ pub(super) fn resolve_planner_matrix_runs(
                     physical_case_id: Some(physical_case_id),
                     route_provenance: Some(provenance),
                     route_plan: Some(plan),
+                    planner_compute: Some(planner_compute),
                 };
                 runs.push(ResolvedBatchRun {
                     descriptor,
@@ -1625,6 +1636,18 @@ pub(super) fn resolve_planner_matrix_scenario(
         lane_id
     );
     scenario.seed = seed_spec.index;
+    // Planner-backed rows use the same execution horizon as the maintained
+    // transfer matrices.  Route choice is setup-time work, but waypoint
+    // guidance needs the longer horizon to complete its terminal descent;
+    // keeping the base scenario's larger value preserves explicit overrides.
+    scenario.sim.max_time_s = scenario
+        .sim
+        .max_time_s
+        .max(if entry.expected_waypoint_count > 0 {
+            130.0
+        } else {
+            90.0
+        });
     scenario.tags = merge_unique_tags(&base_scenario.tags, &entry.tags);
     scenario.metadata.extend(entry.metadata.clone());
     scenario
@@ -3158,6 +3181,7 @@ pub(super) fn resolve_terminal_matrix_runs(
                         physical_case_id: None,
                         route_provenance: None,
                         route_plan: None,
+                        planner_compute: None,
                     };
                     runs.push(ResolvedBatchRun {
                         descriptor,

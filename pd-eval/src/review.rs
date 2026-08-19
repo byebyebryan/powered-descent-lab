@@ -4,6 +4,7 @@ pub(super) fn derive_run_review_metrics(
     scenario: &ScenarioSpec,
     artifacts: &ControlledRunArtifacts,
     planner_plan: Option<&pd_core::RoutePlan>,
+    planner_compute: Option<&pd_core::PlannerComputeEvidence>,
 ) -> BatchRunReviewMetrics {
     let run = &artifacts.run;
     let fuel_used_pct_of_max = (scenario.vehicle.max_fuel_kg > 1e-9)
@@ -187,7 +188,8 @@ pub(super) fn derive_run_review_metrics(
         waypoint_route_passed: waypoint_route.passed,
         waypoint_route_total: waypoint_route.total,
         waypoint_route_first_failure_index: waypoint_route.first_failure_index,
-        planner: planner_plan.map(|plan| planner_review_metrics(scenario, plan, &run.samples)),
+        planner: planner_plan
+            .map(|plan| planner_review_metrics(scenario, plan, &run.samples, planner_compute)),
     }
 }
 
@@ -195,6 +197,7 @@ fn planner_review_metrics(
     scenario: &ScenarioSpec,
     plan: &pd_core::RoutePlan,
     samples: &[SampleRecord],
+    planner_compute: Option<&pd_core::PlannerComputeEvidence>,
 ) -> BatchPlannerReviewMetrics {
     let request = RoutePlanningRequest {
         world: scenario.world.clone(),
@@ -262,6 +265,7 @@ fn planner_review_metrics(
         peak_extra_loft_m: Some(plan.diagnostics.peak_extra_loft_m),
         authority_caps_mps,
         authority_ratios,
+        compute_wall_time_us: planner_compute.map(|timing| timing.wall_time_us),
     }
 }
 

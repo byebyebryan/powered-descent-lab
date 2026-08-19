@@ -503,6 +503,7 @@ fn planner_batch_report_renders_direct_rejection_residual_and_provenance() {
         peak_extra_loft_m: Some(0.0),
         authority_caps_mps: Vec::new(),
         authority_ratios: Vec::new(),
+        compute_wall_time_us: Some(42),
     });
 
     let html = render_batch_report(

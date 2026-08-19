@@ -4,7 +4,9 @@ use std::{
 };
 
 use pd_control::ControllerSpec;
-use pd_core::{RoutePlan, RoutePlanningPolicy, RouteTopology, RunManifest, RunSummary};
+use pd_core::{
+    PlannerComputeEvidence, RoutePlan, RoutePlanningPolicy, RouteTopology, RunManifest, RunSummary,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -545,6 +547,8 @@ pub struct BatchPlannerReviewMetrics {
     pub authority_caps_mps: Vec<f64>,
     #[serde(default)]
     pub authority_ratios: Vec<f64>,
+    #[serde(default)]
+    pub compute_wall_time_us: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -929,6 +933,8 @@ pub struct ResolvedRunDescriptor {
     pub route_provenance: Option<RoutePlanProvenance>,
     #[serde(default)]
     pub route_plan: Option<RoutePlan>,
+    #[serde(default)]
+    pub planner_compute: Option<PlannerComputeEvidence>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
