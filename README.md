@@ -571,9 +571,12 @@ parked diagnostic history rather than acceptance gates.
 Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
 corpus. The bounded deterministic pad-to-pad planner defined in
 `docs/waypoint_planning.md` is now implemented through evaluator integration
-and evidence rendering. General runtime avoidance remains parked at the
-planning/collision-warning layer; the next transfer step is planner closure on
-the focused generated-route packs and maintained no-regression gates.
+and schema-36 evidence rendering. Retained focused captures close at `54 / 54`
+generated-route landings and `36 / 36` handoff/ordered contracts with zero
+invalidations, and fresh maintained no-regression packs reproduced their
+declared baselines. General runtime avoidance remains parked at the
+planning/collision-warning layer; broader angles, radii, or terrain classes
+require a separate planner checkpoint.
 The guidance implementation now follows the ownership boundaries in
 `docs/guidance.md`: terminal and transfer are separate modules, pure waypoint
 geometry is isolated from controller lifecycle state, telemetry emission is

@@ -2,6 +2,45 @@
 
 ## 2026-08-18
 
+### Waypoint-planning phase-5 closure
+
+- Corrected planner-matrix evaluation parity: direct generated routes now use
+  the maintained `90s` mission horizon and waypoint routes use `130s`, matching
+  the authored transfer matrices instead of inheriting the terminal `60s`
+  default.
+- Kept direct-route precedence and every clearance, loft, topology, and
+  conservative-authority threshold unchanged. Among equal-waypoint candidates,
+  the planner now maximizes the minimum exact handoff-authority cap before
+  length and loft; only the ranking key is quantized to `1e-9 m/s` so
+  sub-quantum floating-point noise falls through to deterministic tie-breaks.
+- Advanced batch artifacts to schema `36` with optional per-run
+  `planner_compute.json` evidence. The measurement is elapsed monotonic wall
+  time inside one `pd_plan::plan` call, excludes evaluator setup, simulation,
+  I/O, and rendering, and is normalized out of deterministic batch identity.
+- Retained fresh focused captures at `54 / 54` generated-route landings and
+  `36 / 36` handoff/ordered-contract runs, both with zero invalidations. The
+  landing pack contains `18` direct and `36` waypoint routes; its sampled
+  en-route hull clearance spans `42.827-363.205m` and planner compute spans
+  `304-288133us` (`108873us` mean, `277492us` p95). The contract pack contains
+  `36` waypoint routes; clearance spans `54.938-290.420m` and compute spans
+  `83701-259383us` (`148155us` mean, `250354us` p95).
+- Generated landing routes span `776.000-1487.762m` (`1041.948m` mean), excess
+  path spans `0.000-663.762m`, and peak extra loft spans `0.000-370.800m`.
+  Landing fuel use spans `18.715-42.312%` (`29.470%` mean) over
+  `43.650-78.883s` simulations. Contract routes span `867.658-1487.762m`, use
+  `6.573-21.589%` fuel, and complete in `12.650-39.300s`; these are evidence
+  distributions, not new efficiency thresholds.
+- Fresh maintained runs reproduced terminal bot-lab `171 / 189` with `9`
+  scored failures and `9` analytic invalidations, trajectory-error `694 / 756`
+  with `26` failures and `36` invalidations, and direct transfer `297 / 297`.
+  Route-angle smoke landing/contract packs remain `135 / 135` turn and
+  `45 / 45` ordered, full-seed packs remain `540 / 540` turn and `180 / 180`
+  ordered, and all-radius packs remain `405 / 405` turn and `135 / 135`
+  ordered; all have zero invalidations.
+- Strict formatting and Clippy passed, and the workspace test gate passed all
+  `321` tests. `pd-control` and the terrain-blind, profile-agnostic controller
+  behavior were unchanged.
+
 ### Waypoint-planning implementation phases 1-4
 
 - Added neutral, serializable planner policy/request/result/rejection contracts

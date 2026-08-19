@@ -58,8 +58,9 @@ during behavior-preserving refactors:
 - terminal and transfer configuration field names and defaults
 - controller phase strings
 - telemetry metric keys and marker IDs
-- batch schema `34` waypoint and terminal-recovery fields plus schema `35`'s
-  optional planner provenance and diagnostics
+- batch schema `34` waypoint and terminal-recovery fields plus schema `36`'s
+  optional planner provenance, diagnostics, and identity-neutral per-solve
+  monotonic wall-time evidence
 - deterministic mission outcomes, handoff evidence, and landing summaries
 
 Internal Rust types and module paths are not compatibility surfaces. They may
@@ -129,6 +130,9 @@ Current schema-34 primary evidence is:
 - direct transfer: `297 / 297`
 - all-radius turn landing and contract: `405 / 405` for both
 - all-radius ordered landing and contract: `135 / 135` for both
+- focused generated-route landing: `54 / 54` with zero invalidations
+- focused generated-route handoff/ordered contract: `36 / 36` with zero
+  invalidations
 
 Supporting full-seed nominal waypoint evidence remains `540 / 540` for turn
 landing/contracts and `180 / 180` for ordered landing/contracts. Bounded final

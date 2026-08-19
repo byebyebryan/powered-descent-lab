@@ -2,17 +2,20 @@
 
 ## Implementation Status
 
-Implementation phases 1-4 are complete. `pd-core` owns the serialized planning
+Implementation phases 1-5 are complete. `pd-core` owns the serialized planning
 contracts, strict heightfield corridor queries, endpoint-shaped safety profile,
 and shared all-leg route validator. `pd-plan` owns the deterministic bounded
 search and stable plan identity. `pd-eval` resolves the focused generated-route
-matrices before simulation and carries planner identity through schema-35 cache
+matrices before simulation and carries planner identity through schema-36 cache
 and artifact contracts; `pd-report` and batch reports render optional planner
 evidence without changing legacy authored runs.
 
-Phase 5 remains the active closure step: explain the focused generated-route
-residuals, settle acceptance policy, retain the agreed captures, and record the
-clearance, handoff, landing, efficiency, and compute distributions.
+Fresh retained captures close the focused generated-route matrix at `54 / 54`
+landings and `36 / 36` handoff/ordered-contract runs, both with zero
+invalidations. Schema 36 persists the elapsed monotonic wall time spent inside
+each single `pd_plan::plan` call without making timing part of deterministic
+plan or batch identity. The maintained terminal, direct-transfer, and authored
+waypoint gates also reproduced their declared baselines.
 
 This document defines the first waypoint-planning slice above the closed
 terminal, direct-transfer, and preplanned-waypoint guidance stack. It owns the
@@ -200,8 +203,9 @@ The algorithm is:
 4. Add only forward-progress edges whose complete segment passes the shared
    centerline-to-heightfield clearance predicate.
 5. Accept a clear source-to-target edge as a zero-waypoint plan.
-6. Otherwise select a path lexicographically by waypoint count, total polyline
-   length, peak extra loft, and stable candidate identity.
+6. Otherwise select a path lexicographically by waypoint count, descending
+   minimum conservative handoff-authority cap, total polyline length, peak
+   extra loft, and stable candidate identity.
 7. Enforce the loft and two-waypoint limits, then construct handoff tangents and
    authority-clamped arrival envelopes.
 8. Run the same route-property validator used for authored oracle routes before
@@ -216,6 +220,12 @@ Candidate and edge identities are assigned from canonical terrain order. All
 inputs are finite-validated, numeric comparisons use a documented total order,
 and graph traversal never depends on hash iteration. Digests use canonical
 serialized values rather than debug text or artifact paths.
+
+Authority ranking maps only the comparison key to a fixed `1e-9 m/s` grid. The
+observed `4e-15 m/s` numerical difference therefore shares a stable key and
+falls through to the later length and loft tie-breaks. Emitted arrival-envelope
+caps, exact route validation, policy thresholds, and persisted diagnostics
+remain unquantized.
 
 The shared generic validator must check source-to-first, intermediate, and
 last-to-target legs with the endpoint taper. The current evaluator validator
@@ -383,6 +393,7 @@ Planner-backed run artifacts should expose:
 - safe profile, selected centerline, waypoint envelopes, and actual trajectory
 - planned and actual minimum clearance
 - route length, direct distance, excess length, peak loft, and authority ratios
+- elapsed monotonic planner wall time for the single setup-time solve
 
 The aggregate preview should remain readable: terrain, pads, generated
 waypoints, and actual trajectories are enough. Detailed per-seed views may add
@@ -420,9 +431,10 @@ The implementation sequence is:
    - record accepted/rejected coverage, residuals, compute cost, and any policy
      changes before expanding the corpus
 
-Steps 1-4 are implemented in the current worktree. Step 5 is intentionally not
-claimed from unit/integration validation alone; it requires fresh simulation
-captures and maintained regression evidence.
+Steps 1-5 are complete. The focused captures close at `54 / 54` landings and
+`36 / 36` contracts with zero invalidations, and every maintained regression
+pack reproduced its declared baseline. Further route angles, radii, terrain
+classes, or runtime behavior require a separate checkpoint.
 
 ## Design Basis
 

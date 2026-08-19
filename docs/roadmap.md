@@ -41,8 +41,8 @@ Current implementation status:
   - default thresholded regression policy over batch comparisons, scoped to the
     preferred current controller lane when both reports contain one
 - Phase 3 guidance is complete over the maintained direct-transfer and
-  preplanned-waypoint corpora; waypoint-planning implementation phases 1-4 are
-  complete and the active work is closure evidence:
+  preplanned-waypoint corpora; waypoint-planning implementation phases 1-5 are
+  complete:
   - `timed_checkpoint` remains available as an early-termination contract probe
   - `signed_route_arc_transfer_v1` now exists as the first source-to-target
     matrix family
@@ -62,10 +62,12 @@ Current implementation status:
     all-leg route validation; `pd-plan` implements the deterministic bounded
     pad-to-pad search without a `pd-control` dependency
   - `pd-eval` resolves the focused generated-route matrices before simulation,
-    includes complete plan identity in exact cache reuse, and persists schema-35
-    planner evidence for `pd-report` and batch reports
-  - closure captures and maintained no-regression runs remain the next gate;
-    see [Waypoint Planning V1](waypoint_planning.md)
+    includes complete plan identity in exact cache reuse, and persists schema-36
+    planner and compute evidence for `pd-report` and batch reports
+  - retained focused captures close at `54 / 54` landings and `36 / 36`
+    handoff/ordered contracts with zero invalidations; every maintained
+    no-regression pack reproduced its declared baseline
+  - see [Waypoint Planning V1](waypoint_planning.md)
 
 ## 2. What Not To Build First
 
@@ -421,18 +423,18 @@ Status:
   - the full `late_bend_v1` matrix is parked as a 27-run diagnostic: it lands
     `27 / 27`, with `27 / 54` initially bad entries recovering in-window
   - ordered-contract compute remains within budget at `434us` p99
-- active transfer slice is waypoint-planner closure:
+- waypoint-planner closure is complete:
   - the neutral contracts, exact route-clearance primitives, shared validator,
     and controller-independent `pd-plan` implementation are in place
   - setup-time planning emits a direct route or at most two monotone
     pass-through waypoints under an explicit versioned clearance, endpoint,
     loft, and authority policy
-  - schema-35 evaluator/report integration preserves the distinction between a
+  - schema-36 evaluator/report integration preserves the distinction between a
     geometrically accepted route and handoff, actual-clearance, fuel, and final
-    landing evidence
-  - run and capture the focused generated landing/contract matrices, then treat
-    the full-seed and all-radius maintained corpus as the waypoint-guidance v1
-    regression baseline
+    landing evidence while adding per-solve monotonic wall-time evidence
+  - retained generated-route captures close at `54 / 54` landings and `36 / 36`
+    contracts; the full-seed and all-radius maintained corpus remains the
+    waypoint-guidance v1 regression baseline
   - keep future mechanisms independent of route/profile labels and mission
     timeout; use planned geometry, state, authority, and envelope margins
   - use handoff packs as guidance targets and paired landing packs as
@@ -599,22 +601,18 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Close [Waypoint Planning V1](waypoint_planning.md) above the reconciled guidance
-stack. Implementation phases 1-4 now provide the contracts, exact geometry,
-bounded planner, evaluator/cache integration, focused corpus, and optional run
-and batch evidence. Terminal, direct-transfer, and waypoint-guidance behavior
-remain maintained baselines rather than open-ended tuning work.
+[Waypoint Planning V1](waypoint_planning.md) is closed above the reconciled
+guidance stack. Implementation phases 1-5 now provide the contracts, exact
+geometry, bounded planner, evaluator/cache integration, focused corpus,
+schema-36 run and batch evidence, retained `54 / 54` landing and `36 / 36`
+contract captures, and fresh maintained no-regression evidence.
 
-The next checkpoint is implementation phase 5:
-
-1. Run and capture the focused 54-run generated-route landing pack and 36-run
-   handoff/sequence contract pack.
-2. Review planned and sampled clearance, topology, loft, path length, authority,
-   handoff, landing, fuel, duration, and planner compute evidence.
-3. Run every maintained terminal, direct-transfer, waypoint-turn, and ordered
-   waypoint no-regression gate.
-4. Record accepted/rejected coverage and any justified policy adjustment before
-   expanding route angles, radii, terrain classes, or replanning behavior.
+Choose the next checkpoint explicitly before expanding the planner. The
+smallest coherent extension is broader setup-time coverage across additional
+route angles, radius tiers, or one new curated terrain class, with the current
+focused packs and maintained guidance corpus held as gates. Treat compute
+evidence as a measured distribution, not a pass/fail budget, until the expanded
+corpus supplies a justified threshold.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this
@@ -622,9 +620,9 @@ slice. Keep a later terminal-arrival extension on the roadmap: a signed
 climb/descent arrival family that expands the current one-sided quarter-arc into
 a half-arc around the target and exercises climbing arrivals.
 
-Direct transfer and waypoint contracts are clean across the maintained
-route-angle/radius matrix, while full-seed nominal contracts and landings are
-clean. Schema-34 window and terminal-recovery evidence keeps contract quality
-separate from final touchdown reliability. The next meaningful expansion is
-therefore planner-generated route geometry, not route-specific guidance
-recovery heuristics.
+Direct transfer, authored waypoint guidance, and the focused generated-route
+matrix are clean across their maintained scopes. Schema-34 window and
+terminal-recovery evidence keeps contract quality separate from final touchdown
+reliability; schema 36 adds planner provenance and compute evidence without
+changing that boundary. Any next expansion should remain planner-generated
+geometry, not route-specific guidance recovery heuristics.

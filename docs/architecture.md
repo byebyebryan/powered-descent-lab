@@ -204,12 +204,15 @@ Waypoint guidance v1 is closed against a preplanned maintained corpus spanning
 turn and ordered routes, full nominal seeds, and route-radius tiers. Initial
 launch energy is regulated from immutable inbound-leg geometry, while final
 handoff selection and direct terminal entry use terrain-blind recoverability.
-Batch schema `35` adds optional planner provenance, route diagnostics, and
-planned-versus-sampled clearance to the schema-34 guidance evidence. The
-planner owns terrain-valid placement, leg ordering, and arrival-envelope
+Batch schema `36` adds optional planner provenance, route diagnostics,
+planned-versus-sampled clearance, and per-solve monotonic wall-time evidence to
+the schema-34 guidance evidence. Planner timing is excluded from deterministic
+plan and batch identity. The planner owns terrain-valid placement, leg
+ordering, and arrival-envelope
 design; guidance must not infer obstacle classes or repair a structurally bad
 route. Legacy authored runs retain their existing behavior with the planner
-fields absent.
+fields absent. Retained focused captures close at `54 / 54` generated-route
+landings and `36 / 36` handoff/ordered-contract runs with zero invalidations.
 
 The controller implementation mirrors this ownership. `pd-control` keeps the
 registry and legacy controllers in `controllers.rs`, shared state-target math in
