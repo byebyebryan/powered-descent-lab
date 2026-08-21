@@ -83,14 +83,14 @@ impl Planner {
             .filter(|node| node.point.y <= node.loft_cap_y + 1.0e-9)
             .cloned()
             .collect();
-        let mut authority_rejected = false;
+        let mut candidate_rejections = CandidateRejections::default();
         let capped_path = find_path(
             request,
             &geometry,
             &profile,
             &capped_nodes,
             usize::from(request.policy.max_waypoints),
-            &mut authority_rejected,
+            &mut candidate_rejections,
         )?;
 
         let capped_extended = find_path(
@@ -99,12 +99,13 @@ impl Planner {
             &profile,
             &capped_nodes,
             usize::from(request.policy.max_waypoints).saturating_add(1),
-            &mut authority_rejected,
+            &mut candidate_rejections,
         )?;
         if capped_path.is_none()
-            && capped_extended
+            && (capped_extended
                 .as_ref()
                 .is_some_and(|path| path.nodes.len() > usize::from(request.policy.max_waypoints))
+                || candidate_rejections.complexity)
         {
             return Err(PlanningRejection::new(
                 PlanningRejectionCode::RouteComplexityExceeded,
@@ -138,7 +139,7 @@ impl Planner {
             &profile,
             &uncapped_nodes,
             usize::from(request.policy.max_waypoints),
-            &mut authority_rejected,
+            &mut candidate_rejections,
         )?
         .is_some()
         {
@@ -153,16 +154,22 @@ impl Planner {
             &profile,
             &uncapped_nodes,
             usize::from(request.policy.max_waypoints).saturating_add(1),
-            &mut authority_rejected,
+            &mut candidate_rejections,
         )?
         .is_some()
+            || candidate_rejections.complexity
         {
             return Err(PlanningRejection::new(
                 PlanningRejectionCode::RouteComplexityExceeded,
                 "no route within the waypoint-count and loft policy",
             ));
         }
-        if authority_rejected {
+        if candidate_rejections.loft {
+            Err(PlanningRejection::new(
+                PlanningRejectionCode::LoftLimitExceeded,
+                "candidate routes exceed the extra-loft policy",
+            ))
+        } else if candidate_rejections.authority {
             Err(PlanningRejection::new(
                 PlanningRejectionCode::InsufficientAuthority,
                 "candidate paths cannot construct a valid authority envelope",
@@ -196,6 +203,13 @@ struct CandidatePath {
     minimum_handoff_speed_cap_mps: f64,
     route_length_m: f64,
     peak_extra_loft_m: f64,
+}
+
+#[derive(Default)]
+struct CandidateRejections {
+    authority: bool,
+    loft: bool,
+    complexity: bool,
 }
 
 fn normalized_terrain(
@@ -579,7 +593,7 @@ fn find_path(
     profile: &SafetyProfile,
     nodes: &[Node],
     max_waypoints: usize,
-    authority_rejected: &mut bool,
+    candidate_rejections: &mut CandidateRejections,
 ) -> Result<Option<CandidatePath>, PlanningRejection> {
     if max_waypoints == 0 {
         return Ok(None);
@@ -599,7 +613,7 @@ fn find_path(
         0,
         &mut current,
         &mut best,
-        authority_rejected,
+        candidate_rejections,
     )?;
     Ok(best)
 }
@@ -616,7 +630,7 @@ fn search_paths(
     next_index: usize,
     current: &mut Vec<Node>,
     best: &mut Option<CandidatePath>,
-    authority_rejected: &mut bool,
+    candidate_rejections: &mut CandidateRejections,
 ) -> Result<(), PlanningRejection> {
     let previous = current.last().map_or(source, |node| node.point);
     for index in next_index..nodes.len() {
@@ -633,7 +647,7 @@ fn search_paths(
                 geometry,
                 source,
                 target,
-                authority_rejected,
+                candidate_rejections,
             )?;
         }
         if remaining_waypoints > 1 {
@@ -648,7 +662,7 @@ fn search_paths(
                 index + 1,
                 current,
                 best,
-                authority_rejected,
+                candidate_rejections,
             )?;
         }
         current.pop();
@@ -663,7 +677,7 @@ fn consider_path(
     geometry: &NormalizedRouteGeometry,
     source: Vec2,
     target: Vec2,
-    authority_rejected: &mut bool,
+    candidate_rejections: &mut CandidateRejections,
 ) -> Result<(), PlanningRejection> {
     let capture_radius = ((target - source).length() * 0.08).clamp(35.0, 95.0);
     if nodes
@@ -672,14 +686,37 @@ fn consider_path(
     {
         return Ok(());
     }
-    let authority_caps_mps = match candidate_authority_caps(request, geometry, &nodes) {
-        Ok(caps) => caps,
-        Err(rejection) if rejection.code == PlanningRejectionCode::InsufficientAuthority => {
-            *authority_rejected = true;
-            return Ok(());
+    let normalized_points = std::iter::once(source)
+        .chain(nodes.iter().map(|node| node.point))
+        .chain(std::iter::once(target))
+        .collect::<Vec<_>>();
+    let node_ids = nodes.iter().map(|node| node.id.clone()).collect::<Vec<_>>();
+    let route = match route_from_points(request, geometry, &normalized_points, &node_ids) {
+        Ok(route) => route,
+        Err(rejection) => {
+            return if reject_local_candidate(&rejection, candidate_rejections) {
+                Ok(())
+            } else {
+                Err(rejection)
+            };
         }
-        Err(rejection) => return Err(rejection),
     };
+    let validation = match validate_route(request, &route) {
+        Ok(validation) => validation,
+        Err(error) => {
+            let rejection = PlanningRejection::new(error.rejection_code(), error.to_string());
+            return if reject_local_candidate(&rejection, candidate_rejections) {
+                Ok(())
+            } else {
+                Err(rejection)
+            };
+        }
+    };
+    let authority_caps_mps = validation
+        .waypoint_authority
+        .iter()
+        .map(|authority| authority.handoff_speed_cap_mps)
+        .collect::<Vec<_>>();
     let minimum_handoff_speed_cap_mps = authority_caps_mps
         .iter()
         .copied()
@@ -715,6 +752,28 @@ fn consider_path(
     Ok(())
 }
 
+fn reject_local_candidate(
+    rejection: &PlanningRejection,
+    candidate_rejections: &mut CandidateRejections,
+) -> bool {
+    match rejection.code {
+        PlanningRejectionCode::InsufficientAuthority => {
+            candidate_rejections.authority = true;
+            true
+        }
+        PlanningRejectionCode::LoftLimitExceeded => {
+            candidate_rejections.loft = true;
+            true
+        }
+        PlanningRejectionCode::NoRouteWithinPolicy => true,
+        PlanningRejectionCode::RouteComplexityExceeded => {
+            candidate_rejections.complexity = true;
+            true
+        }
+        PlanningRejectionCode::InvalidRequest | PlanningRejectionCode::UnsupportedGeometry => false,
+    }
+}
+
 fn candidate_precedes(candidate: &CandidatePath, current: &CandidatePath) -> bool {
     candidate
         .nodes
@@ -736,29 +795,6 @@ fn candidate_precedes(candidate: &CandidatePath, current: &CandidatePath) -> boo
 
 fn authority_rank_key(cap_mps: f64) -> i64 {
     (cap_mps / AUTHORITY_RANK_QUANTUM_MPS).round() as i64
-}
-
-fn candidate_authority_caps(
-    request: &RoutePlanningRequest,
-    geometry: &NormalizedRouteGeometry,
-    nodes: &[Node],
-) -> Result<Vec<f64>, PlanningRejection> {
-    if nodes.is_empty() {
-        return Err(PlanningRejection::new(
-            PlanningRejectionCode::UnsupportedGeometry,
-            "waypoint candidate must contain at least one node",
-        ));
-    }
-    let normalized_points = std::iter::once(source_point(request, geometry))
-        .chain(nodes.iter().map(|node| node.point))
-        .chain(std::iter::once(target_point(request, geometry)))
-        .collect::<Vec<_>>();
-    let shaped_data = shaped_route_data(request, geometry, &normalized_points)?;
-    Ok(shaped_data
-        .waypoint_authority
-        .iter()
-        .map(|authority| authority.handoff_speed_cap_mps)
-        .collect())
 }
 
 fn candidate_identity(path: &CandidatePath) -> String {
@@ -1349,7 +1385,7 @@ mod tests {
     }
 
     #[test]
-    fn single_ridge_gets_one_monotone_waypoint() {
+    fn exact_validation_skips_higher_invalid_single_ridge_candidate() {
         let mut request = request(vec![
             Vec2::new(-100.0, 0.0),
             Vec2::new(10.0, 0.0),
@@ -1370,6 +1406,9 @@ mod tests {
         assert!(plan.diagnostics.minimum_planned_clearance_m >= 0.0);
         let loft_cap =
             request.policy.max_extra_loft_ratio * plan.normalized_geometry.direct_distance_m;
+        // The graph also contains a bounded loft-cap candidate.  Exact route
+        // validation must discard it when its shaped final leg exceeds the
+        // policy, allowing the lower valid support candidate to win.
         assert!(plan.diagnostics.peak_extra_loft_m < loft_cap - 1.0e-6);
     }
 
@@ -1501,7 +1540,7 @@ mod tests {
     }
 
     #[test]
-    fn ridge_above_loft_cap_is_rejected() {
+    fn all_exact_candidates_above_loft_cap_preserve_loft_rejection() {
         let mut request = request(vec![
             Vec2::new(-100.0, 0.0),
             Vec2::new(10.0, 0.0),
@@ -1520,7 +1559,7 @@ mod tests {
     }
 
     #[test]
-    fn gravity_taxed_authority_rejects_short_handoff() {
+    fn all_exact_candidates_without_authority_preserve_authority_rejection() {
         let mut request = request(vec![
             Vec2::new(-100.0, 0.0),
             Vec2::new(10.0, 0.0),

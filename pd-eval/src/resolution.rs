@@ -1736,7 +1736,7 @@ pub(super) fn resolve_planner_matrix_scenario(
     Ok(scenario)
 }
 
-fn planner_terrain_points(
+pub(super) fn planner_terrain_points(
     source_pad: &LandingPadSpec,
     target_pad: &LandingPadSpec,
     profile: &str,
@@ -1765,6 +1765,7 @@ fn planner_terrain_points(
     let transition = policy.endpoint_transition_m.min(free_span * 0.25);
     let source_transition_end = source_transition_start + transition;
     let target_transition_start = target_transition_end - transition;
+    let full_envelope_extent = planner_full_envelope_extent(vehicle, policy);
     let chord_y = |x: f64| {
         source_pad.surface_y_m
             + ((target_pad.surface_y_m - source_pad.surface_y_m) * (x - source_pad.center_x_m)
@@ -1787,20 +1788,50 @@ fn planner_terrain_points(
     match profile {
         "clear_direct" => {}
         "single_mid_ridge" => {
-            let x = source_pad.center_x_m + (span * 0.5);
-            points.extend([
-                Vec2::new(x - 42.0, low(x - 42.0)),
-                Vec2::new(x, chord_y(x) + 120.0),
-                Vec2::new(x + 42.0, low(x + 42.0)),
-            ]);
+            let ridge = planner_ridge_geometry(
+                span,
+                source_transition_end,
+                target_transition_start,
+                full_envelope_extent,
+                &[0.5],
+                &[42.0],
+                &[120.0],
+            )?;
+            for ((center, half_width), peak_height) in ridge
+                .centers_m
+                .iter()
+                .zip(&ridge.half_widths_m)
+                .zip(&ridge.peak_heights_m)
+            {
+                let x = source_pad.center_x_m + center;
+                points.extend([
+                    Vec2::new(x - half_width, low(x - half_width)),
+                    Vec2::new(x, chord_y(x) + peak_height),
+                    Vec2::new(x + half_width, low(x + half_width)),
+                ]);
+            }
         }
         "double_separated_ridge" => {
-            for fraction in [0.28, 0.72] {
-                let x = source_pad.center_x_m + (span * fraction);
+            let ridge = planner_ridge_geometry(
+                span,
+                source_transition_end,
+                target_transition_start,
+                full_envelope_extent,
+                &[0.28, 0.72],
+                &[16.0, 16.0],
+                &[230.0, 230.0],
+            )?;
+            for ((center, half_width), peak_height) in ridge
+                .centers_m
+                .iter()
+                .zip(&ridge.half_widths_m)
+                .zip(&ridge.peak_heights_m)
+            {
+                let x = source_pad.center_x_m + center;
                 points.extend([
-                    Vec2::new(x - 16.0, low(x - 16.0)),
-                    Vec2::new(x, chord_y(x) + 230.0),
-                    Vec2::new(x + 16.0, low(x + 16.0)),
+                    Vec2::new(x - half_width, low(x - half_width)),
+                    Vec2::new(x, chord_y(x) + peak_height),
+                    Vec2::new(x + half_width, low(x + half_width)),
                 ]);
             }
         }
@@ -1823,6 +1854,135 @@ fn planner_terrain_points(
     .validate()
     .map_err(anyhow::Error::msg)?;
     Ok(points)
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct PlannerRidgeGeometry {
+    pub(super) centers_m: Vec<f64>,
+    pub(super) half_widths_m: Vec<f64>,
+    pub(super) peak_heights_m: Vec<f64>,
+    pub(super) scale: f64,
+}
+
+pub(super) fn planner_full_envelope_extent(
+    vehicle: &VehicleSpec,
+    policy: &RoutePlanningPolicy,
+) -> f64 {
+    vehicle
+        .geometry
+        .hull_width_m
+        .mul_add(0.5, 0.0)
+        .hypot(vehicle.geometry.hull_height_m * 0.5)
+        + policy.flight_clearance_margin_m
+}
+
+pub(super) fn planner_ridge_geometry(
+    span: f64,
+    source_transition_end: f64,
+    target_transition_start: f64,
+    full_envelope_extent: f64,
+    fractions: &[f64],
+    raw_half_widths: &[f64],
+    raw_peak_heights: &[f64],
+) -> Result<PlannerRidgeGeometry> {
+    if fractions.len() != raw_half_widths.len()
+        || fractions.len() != raw_peak_heights.len()
+        || fractions.is_empty()
+    {
+        bail!("planner ridge profile has inconsistent feature geometry");
+    }
+    if !span.is_finite() || span <= 0.0 {
+        bail!("planner ridge profile span must be finite and positive");
+    }
+    if !full_envelope_extent.is_finite() || full_envelope_extent < 0.0 {
+        bail!("planner ridge profile envelope extent must be finite and non-negative");
+    }
+    for (index, fraction) in fractions.iter().enumerate() {
+        if !fraction.is_finite() || !(0.0..=1.0).contains(fraction) {
+            bail!("planner ridge profile has an invalid center fraction");
+        }
+        if index > 0 && *fraction <= fractions[index - 1] {
+            bail!("planner ridge profile center fractions must be strictly increasing");
+        }
+        let half_width = raw_half_widths[index];
+        if !half_width.is_finite() || half_width <= 0.0 {
+            bail!("planner ridge profile has an invalid half width");
+        }
+        let peak_height = raw_peak_heights[index];
+        if !peak_height.is_finite() || peak_height < 0.0 {
+            bail!("planner ridge profile has an invalid peak height");
+        }
+    }
+    let usable_start = source_transition_end + full_envelope_extent;
+    let usable_end = target_transition_start - full_envelope_extent;
+    let usable_width = usable_end - usable_start;
+    if usable_width <= 0.0 {
+        bail!("planner ridge profile has no usable full-envelope-safe interior");
+    }
+    let raw_outer_start = span * fractions[0] - raw_half_widths[0];
+    let raw_outer_end =
+        span * fractions[fractions.len() - 1] + raw_half_widths[raw_half_widths.len() - 1];
+    let raw_outer_width = raw_outer_end - raw_outer_start;
+    if raw_outer_width <= 0.0 {
+        bail!("planner ridge profile has no positive raw outer width");
+    }
+    let scale = (usable_width / raw_outer_width).min(1.0);
+    if !scale.is_finite() || scale <= 0.0 {
+        bail!("planner ridge profile cannot fit the full-envelope-safe interior");
+    }
+    let half_widths_m = raw_half_widths
+        .iter()
+        .map(|half_width| half_width * scale)
+        .collect::<Vec<_>>();
+    let peak_heights_m = raw_peak_heights
+        .iter()
+        .map(|height| height * scale)
+        .collect::<Vec<_>>();
+    let mut centers_m = Vec::with_capacity(fractions.len());
+    for (&fraction, &half_width) in fractions.iter().zip(&half_widths_m) {
+        let raw_center = span * fraction;
+        let footprint_minimum = usable_start + half_width;
+        let footprint_maximum = usable_end - half_width;
+        // Keep the complete feature footprint in the full-envelope-safe
+        // interior.  When a compressed feature would otherwise be clamped,
+        // set its peak back by one more scaled half-width from either
+        // endpoint; this avoids putting the high portion directly on the
+        // endpoint-owned corridor influence.  Uncompressed features retain
+        // their authored center whenever their raw footprint is safe.
+        let clamped = raw_center < footprint_minimum || raw_center > footprint_maximum;
+        let setback = scale < 1.0 && clamped;
+        let minimum = usable_start
+            + if setback {
+                2.0 * half_width
+            } else {
+                half_width
+            };
+        let maximum = usable_end
+            - if setback {
+                2.0 * half_width
+            } else {
+                half_width
+            };
+        if maximum < minimum {
+            bail!("planner ridge profile does not fit the setback full-envelope-safe interior");
+        }
+        centers_m.push(raw_center.clamp(minimum, maximum));
+    }
+    for ((&left, &left_width), (&right, &right_width)) in centers_m
+        .iter()
+        .zip(&half_widths_m)
+        .zip(centers_m.iter().skip(1).zip(half_widths_m.iter().skip(1)))
+    {
+        if right - left <= left_width + right_width {
+            bail!("planner ridge profile features overlap after scaling and clamping");
+        }
+    }
+    Ok(PlannerRidgeGeometry {
+        centers_m,
+        half_widths_m,
+        peak_heights_m,
+        scale,
+    })
 }
 
 pub(super) fn selected_transfer_route_angle_specs<'a>(

@@ -6,8 +6,8 @@ use std::{
 
 use super::*;
 use pd_core::{
-    EvaluationGoal, LandingPadSpec, MissionSpec, ScenarioSpec, SimConfig, TerrainDefinition, Vec2,
-    VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec,
+    EvaluationGoal, LandingPadSpec, MissionSpec, RoutePlanningPolicy, ScenarioSpec, SimConfig,
+    TerrainDefinition, Vec2, VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec,
 };
 
 fn fixtures_root() -> PathBuf {
@@ -235,6 +235,267 @@ fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
         batch_identity_for_pack(&smoke, &retimed)
             .unwrap()
             .resolved_run_digest
+    );
+}
+
+#[test]
+fn planner_generated_route_angle_expansion_packs_resolve_expected_counts_and_selectors() {
+    let packs_dir = fixtures_root().join("packs");
+    let landing =
+        load_pack(&packs_dir.join("planner_generated_route_angle_expansion_smoke.json")).unwrap();
+    let contract =
+        load_pack(&packs_dir.join("planner_generated_route_angle_expansion_contract_smoke.json"))
+            .unwrap();
+    let landing_runs = resolve_pack_runs(&landing, &packs_dir).unwrap();
+    let contract_runs = resolve_pack_runs(&contract, &packs_dir).unwrap();
+
+    assert_eq!(landing_runs.len(), 36);
+    assert_eq!(contract_runs.len(), 24);
+    for run in landing_runs.iter().chain(contract_runs.iter()) {
+        assert!(matches!(
+            run.descriptor.selector.route_angle.as_str(),
+            "r-60" | "r+60"
+        ));
+        assert_eq!(
+            run.descriptor.source_kind,
+            ResolvedRunSourceKind::PlannerMatrix
+        );
+        let plan = run
+            .descriptor
+            .route_plan
+            .as_ref()
+            .expect("angle expansion should persist a route plan");
+        let provenance = run
+            .descriptor
+            .route_provenance
+            .as_ref()
+            .expect("angle expansion should persist route provenance");
+        assert_eq!(provenance.route_source, "planner_matrix");
+        assert_eq!(provenance.plan_digest, plan.plan_digest);
+        assert!(
+            run.descriptor
+                .planner_compute
+                .as_ref()
+                .expect("angle expansion should persist planner timing")
+                .wall_time_us
+                <= 60_000_000
+        );
+        assert_eq!(
+            run.scenario.mission.transfer_route.as_ref(),
+            Some(&plan.route)
+        );
+        if run.descriptor.entry_id.contains("clear") {
+            assert_eq!(plan.topology, pd_core::RouteTopology::Direct);
+            assert!(plan.waypoints().is_empty());
+        } else if run.descriptor.entry_id.contains("single") {
+            assert_eq!(plan.topology, pd_core::RouteTopology::Waypoint);
+            assert_eq!(plan.waypoints().len(), 1);
+        } else if run.descriptor.entry_id.contains("double") {
+            assert_eq!(plan.topology, pd_core::RouteTopology::Waypoint);
+            assert_eq!(plan.waypoints().len(), 2);
+        } else {
+            panic!(
+                "unexpected planner angle expansion entry {}",
+                run.descriptor.entry_id
+            );
+        }
+    }
+    assert!(landing_runs.iter().all(|run| matches!(
+        &run.scenario.mission.goal,
+        EvaluationGoal::LandingOnPad { .. }
+    )));
+    assert!(contract_runs.iter().all(|run| {
+        if run.descriptor.entry_id.contains("single") {
+            matches!(
+                &run.scenario.mission.goal,
+                EvaluationGoal::WaypointHandoff { .. }
+            )
+        } else {
+            matches!(
+                &run.scenario.mission.goal,
+                EvaluationGoal::WaypointSequence { .. }
+            )
+        }
+    }));
+}
+
+#[test]
+fn planner_ridge_geometry_preserves_nominal_and_scales_compressed_profiles() {
+    let source = LandingPadSpec {
+        id: "source".to_owned(),
+        center_x_m: 0.0,
+        surface_y_m: 100.0,
+        width_m: 36.0,
+    };
+    let target = LandingPadSpec {
+        id: "target".to_owned(),
+        center_x_m: 800.0,
+        surface_y_m: 100.0,
+        width_m: 36.0,
+    };
+    let mut vehicle = easy_landing_scenario().vehicle;
+    vehicle.geometry = VehicleGeometry {
+        hull_width_m: 8.0,
+        hull_height_m: 10.0,
+        touchdown_half_span_m: 4.0,
+        touchdown_base_offset_m: 5.0,
+    };
+    let policy = RoutePlanningPolicy::default();
+    let full_extent = planner_full_envelope_extent(&vehicle, &policy);
+    let nominal = planner_ridge_geometry(
+        800.0,
+        111.0,
+        689.0,
+        full_extent,
+        &[0.28, 0.72],
+        &[16.0, 16.0],
+        &[230.0, 230.0],
+    )
+    .unwrap();
+    assert_eq!(nominal.scale, 1.0);
+    assert!(
+        nominal
+            .centers_m
+            .iter()
+            .zip([224.0, 576.0])
+            .all(|(actual, expected)| (*actual - expected).abs() < 1.0e-12)
+    );
+    assert!(
+        nominal
+            .half_widths_m
+            .iter()
+            .all(|width| (*width - 16.0).abs() < 1.0e-12)
+    );
+    assert!(
+        nominal
+            .peak_heights_m
+            .iter()
+            .all(|height| (*height - 230.0).abs() < 1.0e-12)
+    );
+    assert!(
+        nominal
+            .centers_m
+            .windows(2)
+            .zip(nominal.half_widths_m.windows(2))
+            .all(|(centers, widths)| centers[1] - centers[0] > widths[0] + widths[1])
+    );
+
+    let compressed = planner_ridge_geometry(
+        400.0,
+        111.0,
+        289.0,
+        full_extent,
+        &[0.28, 0.72],
+        &[16.0, 16.0],
+        &[230.0, 230.0],
+    )
+    .unwrap();
+    let usable_start = 111.0 + full_extent;
+    let usable_end = 289.0 - full_extent;
+    let expected_scale = (usable_end - usable_start) / 208.0;
+    assert!((compressed.scale - expected_scale).abs() < 1.0e-12);
+    assert!(
+        compressed
+            .half_widths_m
+            .iter()
+            .all(|width| (*width - 16.0 * expected_scale).abs() < 1.0e-12)
+    );
+    assert!(
+        compressed
+            .peak_heights_m
+            .iter()
+            .all(|height| (*height - 230.0 * expected_scale).abs() < 1.0e-12)
+    );
+    assert!(
+        (compressed.centers_m[0] - (usable_start + 2.0 * compressed.half_widths_m[0])).abs()
+            < 1.0e-12
+    );
+    assert!(
+        (compressed.centers_m[1] - (usable_end - 2.0 * compressed.half_widths_m[1])).abs()
+            < 1.0e-12
+    );
+    for (actual, expected) in compressed
+        .centers_m
+        .iter()
+        .zip([159.43293216437664, 240.56706783562336])
+    {
+        assert!((*actual - expected).abs() < 1.0e-9);
+    }
+    assert!(
+        compressed
+            .centers_m
+            .iter()
+            .zip(&compressed.half_widths_m)
+            .all(
+                |(center, width)| *center - *width >= usable_start + *width - 1.0e-12
+                    && *center + *width <= usable_end - *width + 1.0e-12
+            )
+    );
+    assert!(
+        compressed.centers_m[1] - compressed.centers_m[0]
+            > compressed.half_widths_m[0] + compressed.half_widths_m[1]
+    );
+    let chord_rise_m = 400.0 * 60.0_f64.to_radians().tan();
+    let peak_points = compressed
+        .centers_m
+        .iter()
+        .zip(&compressed.peak_heights_m)
+        .map(|(x, height)| Vec2::new(*x, chord_rise_m * *x / 400.0 + *height))
+        .collect::<Vec<_>>();
+    let direct_capture_radius_m = (800.0_f64 * 0.08).clamp(35.0, 95.0);
+    assert!((peak_points[1] - peak_points[0]).length() > 2.0 * direct_capture_radius_m);
+
+    let points = planner_terrain_points(
+        &source,
+        &target,
+        "double_separated_ridge",
+        &vehicle,
+        &policy,
+    )
+    .unwrap();
+    for expected in [
+        Vec2::new(208.0, -40.0),
+        Vec2::new(224.0, 330.0),
+        Vec2::new(240.0, -40.0),
+        Vec2::new(560.0, -40.0),
+        Vec2::new(576.0, 330.0),
+        Vec2::new(592.0, -40.0),
+    ] {
+        assert!(
+            points.iter().any(|point| {
+                (point.x - expected.x).abs() < 1.0e-9 && (point.y - expected.y).abs() < 1.0e-9
+            }),
+            "nominal ridge coordinate {expected:?} changed: {points:?}"
+        );
+    }
+
+    assert!(
+        planner_ridge_geometry(250.0, 111.0, 139.0, full_extent, &[0.5], &[16.0], &[230.0],)
+            .is_err()
+    );
+    assert!(
+        planner_ridge_geometry(
+            400.0,
+            111.0,
+            289.0,
+            full_extent,
+            &[0.5, 0.5],
+            &[16.0, 16.0],
+            &[230.0, 230.0],
+        )
+        .is_err()
+    );
+    assert!(
+        planner_ridge_geometry(
+            400.0,
+            111.0,
+            289.0,
+            full_extent,
+            &[0.49, 0.51],
+            &[16.0, 16.0],
+            &[230.0, 230.0],
+        )
+        .is_err()
     );
 }
 
