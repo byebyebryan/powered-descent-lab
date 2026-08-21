@@ -1,5 +1,47 @@
 # Progress
 
+## 2026-08-21
+
+### Route-angle expansion trackability research
+
+- Exercised the diagnostic nominal-radius `r-60 | r+60` planner expansion
+  against the retained local contract evidence. The established focused
+  planner corpus remains `36 / 36`; the diagnostic expansion snapshot is
+  `11 / 24`, with `13` failed handoff or ordered-sequence contracts. These
+  `/tmp` captures are local research evidence, not maintained or committed
+  acceptance evidence.
+- Added a research-only trajectory-tube shadow example that consumes persisted
+  `scenario.json`, `route_plan.json`, and `manifest.json` bundles while keeping
+  labels, seeds, controller configuration, and recorded outcomes outside the
+  pure evaluator. It composes sequential quintic segments through the final
+  waypoint and checks finite duration/speed grids, contracted handoff margins,
+  sampled terrain/hull tubes, gravity-inclusive thrust, tilt, and attitude
+  rate.
+- Corrected the first spike result after review: the initial prototype had
+  invented an unscored zero-velocity landing segment and reversed the
+  minimum-average-speed duration bound. The retained result is the corrected
+  handoff-prefix evaluation documented in
+  [Trajectory-tube shadow spike](trajectory_tube_spike.md).
+- No fixed profile met the production gate. The permissive profile preserved
+  `12 / 36` baseline successes and falsely accepted `7 / 13` expansion
+  failures; moderate preserved `6 / 36` with `4 / 13` false accepts;
+  conservative preserved `2 / 36` with `3 / 13` false accepts. None preserved
+  any of the `11` successful expansion runs.
+- Every printed terrain-limited mismatch localized its minimum sampled
+  clearance to the source-contact/departure portion of segment zero. This is
+  evidence that a center-only route witness lacks a neutral takeoff/acquisition
+  contract, not evidence that the maintained route geometry became invalid.
+- Rejected production integration of the center-only polynomial model. The
+  next design checkpoint must define a planner-owned source-departure or
+  acquisition capability plus a tracking-error tube or paired-executor
+  contract, then validate it on held-out evidence without route-label tuning.
+  Candidate replay additionally requires bounded candidate exposure; failure
+  of that richer contract is the escalation gate for convex feasibility or
+  paired reachability.
+- The spike changed no planner selection, controller behavior, schema, cache,
+  fixture, or maintained evidence contract. Workspace formatting, strict
+  Clippy, all-target tests, and `git diff --check` passed after review.
+
 ## 2026-08-18
 
 ### Waypoint-planning phase-5 closure
