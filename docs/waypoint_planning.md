@@ -17,6 +17,23 @@ each single `pd_plan::plan` call without making timing part of deterministic
 plan or batch identity. The maintained terminal, direct-transfer, and authored
 waypoint gates also reproduced their declared baselines.
 
+### Post-closure expansion finding
+
+The first diagnostic nominal-radius `r-60 | r+60` expansion exposed a boundary
+above planner V1 rather than reopening V1 closure. Its disposable local
+contract snapshot closed at `11 / 24`, while the established focused planner
+contract remains `36 / 36`. A research-only sequential quintic trajectory-tube
+spike could not preserve that maintained baseline while rejecting the expansion
+failures, and its terrain-limited mismatch diagnostics localized to the
+undeclared source-contact/departure transition.
+
+The result is a production stop rule for that model, not a new planner
+rejection claim. Further coverage expansion first requires a neutral
+source-departure/acquisition capability and a tracking-error tube or paired
+executor contract, validated on held-out evidence without route-label tuning.
+The model, corrected results, limitations, and escalation gate are recorded in
+[Trajectory-tube shadow spike](trajectory_tube_spike.md).
+
 This document defines the first waypoint-planning slice above the closed
 terminal, direct-transfer, and preplanned-waypoint guidance stack. It owns the
 planner contract, bounded search policy, evidence model, and implementation

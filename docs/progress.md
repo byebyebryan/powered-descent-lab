@@ -1,5 +1,70 @@
 # Progress
 
+## 2026-08-29
+
+### Planner V1 publication review
+
+- Reviewed the accepted waypoint-planning V1 history separately from the
+  rejected route-angle and trajectory-tube experiments. The production slice
+  remains the five planner design, implementation, closure-fix, and closure
+  commits through `2cb4f60`.
+- Found one generic planner correctness gap during that review: candidate
+  search ranked routes after edge-clearance and authority screening, but full
+  shaped-route validation occurred only after selection. A higher-ranked local
+  rejection could therefore hide a lower valid route. Candidate routes now run
+  through the shared exact validator before ranking, while aggregate loft,
+  authority, and complexity rejection semantics remain explicit.
+- Extracted only that `pd-plan` correction from the research branch. The
+  route-angle terrain expansion, diagnostic packs, and trajectory-tube
+  executable remain excluded from `main`; their negative design evidence is
+  preserved in [Trajectory-tube shadow spike](trajectory_tube_spike.md).
+- Fresh formatting, strict workspace Clippy, and all-target workspace tests
+  passed (`321` tests). Fresh focused captures closed at `54 / 54` generated
+  landings and `36 / 36` handoff/ordered contracts, both with zero failures and
+  zero invalidations.
+- Fresh local planner compute evidence remained a measured distribution rather
+  than a policy threshold. Landing solves spanned `317-265300us` (`109693us`
+  mean, `255957us` p95); contract solves spanned `105081-266795us` (`166268us`
+  mean, `266011us` p95).
+
+## 2026-08-21
+
+### Route-angle expansion and trajectory-tube research closure
+
+- The first nominal-radius `r-60 | r+60` expansion remains diagnostic rather
+  than accepted. Its disposable local contract snapshot closed at `11 / 24`,
+  leaving `13` failed handoff or ordered-sequence contracts; those snapshots
+  are not maintained or committed acceptance evidence.
+- The temporary study evaluated a deterministic center-to-center trajectory
+  witness over persisted research bundles while keeping labels, seeds,
+  controller configuration, and recorded outcomes outside the pure evaluator.
+  The detailed model, corrected results, and limitations are recorded in
+  [Trajectory-tube shadow spike](trajectory_tube_spike.md).
+- The first spike result was superseded: it invented an unscored zero-velocity
+  landing segment after the final waypoint and reversed the minimum-average-
+  speed duration bound. The retained result is the corrected handoff-prefix
+  evaluation.
+- No fixed profile met the production gate. The permissive profile preserved
+  `12 / 36` baseline successes and falsely accepted `7 / 13` expansion
+  failures; moderate preserved `6 / 36` with `4 / 13` false accepts;
+  conservative preserved `2 / 36` with `3 / 13` false accepts. None preserved
+  any of the `11` successful expansion runs.
+- Every printed terrain-limited mismatch localized its minimum sampled
+  clearance to the source-contact/departure portion of segment zero. This is
+  evidence that a center-only route witness lacks a neutral takeoff/acquisition
+  contract, not evidence that maintained route geometry became invalid.
+- The center-only polynomial model is rejected for production integration. The
+  next design checkpoint must define a planner-owned source-departure or
+  acquisition capability plus a tracking-error tube or paired-executor
+  contract, then validate it on held-out evidence without route-label tuning.
+  Candidate replay additionally requires bounded candidate exposure; failure
+  of that richer contract is the escalation gate for convex feasibility or
+  paired reachability.
+- The spike changed no planner selection, controller behavior, schema, fixture,
+  or maintained evidence contract. The executable and diagnostic packs remain
+  excluded from `main`; this entry preserves the negative result and its design
+  implications only.
+
 ## 2026-08-18
 
 ### Waypoint-planning phase-5 closure

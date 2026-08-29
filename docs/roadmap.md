@@ -67,6 +67,13 @@ Current implementation status:
   - retained focused captures close at `54 / 54` landings and `36 / 36`
     handoff/ordered contracts with zero invalidations; every maintained
     no-regression pack reproduced its declared baseline
+  - the first nominal-radius `r-60 | r+60` expansion remains diagnostic rather
+    than accepted: its disposable local contract snapshot closed at `11 / 24`,
+    and the research-only center-to-center trajectory-tube model failed the
+    maintained-baseline preservation gate
+  - source departure/acquisition and an explicit execution tracking contract
+    are now design prerequisites for another planner coverage expansion; see
+    [Trajectory-tube shadow spike](trajectory_tube_spike.md)
   - see [Waypoint Planning V1](waypoint_planning.md)
 
 ## 2. What Not To Build First
@@ -607,12 +614,28 @@ geometry, bounded planner, evaluator/cache integration, focused corpus,
 schema-36 run and batch evidence, retained `54 / 54` landing and `36 / 36`
 contract captures, and fresh maintained no-regression evidence.
 
-Choose the next checkpoint explicitly before expanding the planner. The
-smallest coherent extension is broader setup-time coverage across additional
-route angles, radius tiers, or one new curated terrain class, with the current
-focused packs and maintained guidance corpus held as gates. Treat compute
-evidence as a measured distribution, not a pass/fail budget, until the expanded
-corpus supplies a justified threshold.
+The attempted nominal-radius `r-60 | r+60` expansion shows that broader
+setup-time coverage is not a mechanical next step. Its disposable local
+contract snapshot closed only `11 / 24`, and the
+[trajectory-tube shadow spike](trajectory_tube_spike.md) could not preserve the
+`36 / 36` maintained baseline while rejecting the expansion failures. Do not
+integrate or tune that center-only model.
+
+The next checkpoint should first settle a neutral execution-capability contract:
+
+1. define the planner-owned source-departure or acquisition state/envelope
+   without controller IDs, hidden `pd-control` defaults, route labels, or seed
+   branches;
+2. define an explicit tracking-error tube or paired-executor guarantee that can
+   compose sequentially through every waypoint handoff;
+3. derive candidate values from maintained traces, reserve held-out cases, and
+   require maintained-baseline preservation before interpreting expansion
+   discrimination;
+4. expose bounded planner candidates for research replay only after the
+   capability contract is stable, so the lab can distinguish a bad selected
+   route from a candidate-set limitation;
+5. escalate to a small convex-feasibility or paired-reachability formulation if
+   the richer contract still cannot pass without route-label tuning.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this
@@ -625,4 +648,5 @@ matrix are clean across their maintained scopes. Schema-34 window and
 terminal-recovery evidence keeps contract quality separate from final touchdown
 reliability; schema 36 adds planner provenance and compute evidence without
 changing that boundary. Any next expansion should remain planner-generated
-geometry, not route-specific guidance recovery heuristics.
+geometry backed by an explicit execution-capability contract, not route-specific
+guidance recovery heuristics.
