@@ -27,6 +27,31 @@
   mean, `255957us` p95); contract solves spanned `105081-266795us` (`166268us`
   mean, `266011us` p95).
 
+### Source-departure execution design checkpoint
+
+- Defined the unimplemented
+  [source-departure/acquisition execution contract](source_departure_execution_contract.md)
+  without changing planner generation, ranking, controller behavior, or the
+  maintained evidence contract.
+- Closed the source-prefix gap by defining the complete transition as
+  `initial_state -> contact_exit -> tracking_entry`: pad departure and
+  acquisition are separate compositional phases, and the capability must
+  certify both. Plane-interpolated states remain derived diagnostics; raw
+  physics-rate states are authoritative.
+- Settled D0 as two evidence slices. D0a adds a neutral post-run `pd-core`
+  point-envelope clearance query plus `pd-eval` source-transition extraction;
+  D0b adds neutral route-wide leg/handoff-opportunity evidence before either
+  capability alternative is fitted. Whole-route tri-state support now requires
+  ordered phase/set composition with stable first-decisive reasons.
+- Required a committed input-only development manifest, fresh physics-rate
+  bundles, ordinary-versus-evidence cadence execution parity, and an explicit
+  crossing/censoring/clearance/route-boundary test matrix. Ignored `10 Hz`
+  spike caches are diagnostic only and cannot satisfy the `120 Hz` evidence
+  contract.
+- Kept the progress-indexed route-relative envelope and paired-executor
+  capability as alternatives pending a predeclared held-out comparison. The
+  already-seen `r-60`/`r+60` evidence remains diagnostic rather than held out.
+
 ## 2026-08-21
 
 ### Route-angle expansion and trajectory-tube research closure
@@ -54,9 +79,10 @@
   evidence that a center-only route witness lacks a neutral takeoff/acquisition
   contract, not evidence that maintained route geometry became invalid.
 - The center-only polynomial model is rejected for production integration. The
-  next design checkpoint must define a planner-owned source-departure or
-  acquisition capability plus a tracking-error tube or paired-executor
-  contract, then validate it on held-out evidence without route-label tuning.
+  next design checkpoint must define a neutral source-departure or acquisition
+  capability plus a progress-indexed route-relative envelope or
+  paired-executor contract, then validate it on held-out evidence without
+  route-label tuning.
   Candidate replay additionally requires bounded candidate exposure; failure
   of that richer contract is the escalation gate for convex feasibility or
   paired reachability.

@@ -72,8 +72,9 @@ Current implementation status:
     and the research-only center-to-center trajectory-tube model failed the
     maintained-baseline preservation gate
   - source departure/acquisition and an explicit execution tracking contract
-    are now design prerequisites for another planner coverage expansion; see
-    [Trajectory-tube shadow spike](trajectory_tube_spike.md)
+    are now settled design prerequisites, but remain unimplemented; see
+    [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
+    unimplemented [source-departure/acquisition execution contract](source_departure_execution_contract.md)
   - see [Waypoint Planning V1](waypoint_planning.md)
 
 ## 2. What Not To Build First
@@ -621,21 +622,28 @@ contract snapshot closed only `11 / 24`, and the
 `36 / 36` maintained baseline while rejecting the expansion failures. Do not
 integrate or tune that center-only model.
 
-The next checkpoint should first settle a neutral execution-capability contract:
+The neutral
+[source-departure/acquisition execution contract](source_departure_execution_contract.md)
+now settles the design boundary without implementing a predictor. The next
+checkpoint is its evidence-first implementation sequence:
 
-1. define the planner-owned source-departure or acquisition state/envelope
-   without controller IDs, hidden `pd-control` defaults, route labels, or seed
-   branches;
-2. define an explicit tracking-error tube or paired-executor guarantee that can
-   compose sequentially through every waypoint handoff;
-3. derive candidate values from maintained traces, reserve held-out cases, and
-   require maintained-baseline preservation before interpreting expansion
-   discrimination;
-4. expose bounded planner candidates for research replay only after the
-   capability contract is stable, so the lab can distinguish a bad selected
-   route from a candidate-set limitation;
-5. escalate to a small convex-feasibility or paired-reachability formulation if
-   the richer contract still cannot pass without route-label tuning.
+1. D0a: freeze the input-only development manifest, add the neutral `pd-core`
+   point-envelope clearance query, and extract physics-rate evidence across
+   `initial_state -> contact_exit -> tracking_entry`;
+2. D0b: extract neutral route-wide leg and waypoint contract-window/deadline
+   evidence from the same raw bundles, keeping controller markers and outcomes
+   as audit/join data;
+3. D1: compare the progress-indexed route-relative envelope and paired-executor
+   alternative on development evidence, requiring ordered tri-state composition
+   from pad departure through every waypoint handoff;
+4. D2-D3: freeze genuinely uninspected inputs and predictions before held-out
+   simulation, then compare with separate evidence and outcome digests;
+5. D4-D5: expose bounded planner candidates for research replay and consider
+   planner integration only after an alternative passes every declared gate.
+
+If the richer contract cannot preserve maintained passes and reject failures
+without route-label tuning, escalate to a small convex-feasibility or paired-
+reachability formulation.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this

@@ -29,10 +29,16 @@ undeclared source-contact/departure transition.
 
 The result is a production stop rule for that model, not a new planner
 rejection claim. Further coverage expansion first requires a neutral
-source-departure/acquisition capability and a tracking-error tube or paired
-executor contract, validated on held-out evidence without route-label tuning.
+source-departure/acquisition capability and a progress-indexed route-relative
+envelope or paired-executor contract, validated on held-out evidence without
+route-label tuning.
 The model, corrected results, limitations, and escalation gate are recorded in
 [Trajectory-tube shadow spike](trajectory_tube_spike.md).
+The follow-on [source-departure/acquisition execution contract](source_departure_execution_contract.md)
+closes the design prerequisites with an initial-state pad-departure/acquisition
+contract, neutral source and route-wide evidence artifacts, explicit tri-state
+phase composition, and a blinded implementation sequence. It remains
+unimplemented and does not reopen V1 closure.
 
 This document defines the first waypoint-planning slice above the closed
 terminal, direct-transfer, and preplanned-waypoint guidance stack. It owns the
