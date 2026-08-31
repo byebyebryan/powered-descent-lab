@@ -1,5 +1,36 @@
 # Progress
 
+## 2026-08-31
+
+### D1 capability design closure
+
+- Closed the common D1 research contract without implementing a predictor or
+  changing `pd-core`, `pd-plan`, or `pd-control`. Both prototypes now consume a
+  canonical neutral `RouteCapabilityInputV1`; whole `ScenarioSpec`, outcome,
+  evidence, controller audit/configuration, seed, labels, and identity-based
+  branching are explicitly forbidden.
+- Defined the versioned state-set, capability, tri-state prediction, and
+  development-comparison artifacts. Full route-relative state sets compose in
+  fixed phase order from the initial singleton through the final handoff;
+  inability to certify support is `unknown`, while `unsupported` requires an
+  explicit negative certificate and malformed artifacts remain separate.
+- Locked Alternative A as a 32-bin progress-indexed empirical interval-envelope
+  baseline with same-stratum convex-hull coverage, minimum per-bin support,
+  outward-rounded bounds, and conservative containment.
+  Locked Alternative B as a deterministic paired-executor research oracle; an
+  exact authoritative replay is an upper-bound comparator and cannot qualify
+  for planner integration.
+- Predeclared deterministic leave-one-resolved-input-digest-out development
+  selection over the current `60` inputs, excluding every physical-input alias
+  from the fit fold. Fresh D0 evidence classifies the `24`
+  diagnostic cases as `10` scoped passes and `14` scoped failures, superseding
+  the archival spike's `11 / 13` split. Advancement requires all `36`
+  maintained successes supported, zero support for diagnostic failures, useful
+  diagnostic-pass coverage, stratum coverage, and zero invalid artifacts.
+- Split implementation into D1a common artifacts/gate, D1b interval envelope,
+  D1c paired oracle, and D1d comparison lock. D1a is the next bounded
+  checkpoint; D2 held-out design and simulation remain downstream.
+
 ## 2026-08-29
 
 ### Planner V1 publication review

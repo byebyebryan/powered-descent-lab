@@ -7,11 +7,13 @@ D0a and D0b are implemented. The versioned input-only development corpus,
 neutral point-envelope terrain query, physics-rate source-transition extractor,
 route-execution assembler, and sibling fidelity gates now cover the
 authoritative source transition and retained route prefix through the final
-emitted waypoint handoff. Every capability, prediction, held-out comparison,
-and planner-facing phase from D1 onward remains unimplemented. D0a/D0b change
-no planner generation or ranking, controller behavior, or maintained fixture
-semantics. Simulation remains authoritative for flight outcomes, actual hull
-clearance, fuel, handoff success, and landing.
+emitted waypoint handoff. The D1 research contract is design-closed below, but
+its capability, prediction, and development-comparison artifacts remain
+unimplemented. Every held-out-comparison and planner-facing phase from D2
+onward also remains unimplemented. D0a/D0b change no planner generation or
+ranking, controller behavior, or maintained fixture semantics. Simulation
+remains authoritative for flight outcomes, actual hull clearance, fuel,
+handoff success, and landing.
 
 The capability label is deliberately narrower than a mission result. It covers
 planner-generated waypoint topology from the initial source-pad state through
@@ -85,12 +87,12 @@ waypoints:
 2. Each subsequent route-leg terminal set must be contained in the declared
    admissible input set for its waypoint handoff and next leg. Independent
    waypoint checks do not establish this composition.
-3. The composed result is `supported` only when every required phase and set
-   containment is supported. It is `unsupported` when at least one phase within
-   the capability's declared domain proves a physical or set-containment
-   failure. It is `unknown` when no phase is `unsupported` but any required
-   phase is outside the capability domain, unbounded, analytically invalid, or
-   otherwise indeterminate.
+3. Evaluate in composition order and stop the authoritative support proof at
+   the first phase or containment that is not `supported`. The composed result
+   is `supported` only when every required decision is supported;
+   `unsupported` only when that first decisive boundary has an explicit
+   negative certificate; otherwise it is `unknown`. Later phase calculations
+   may be retained as diagnostics but do not change the composed decision.
 
 Stable reasons identify the phase (`pad_departure`, `acquisition`, `route_leg`,
 or `handoff`), the waypoint/leg index when present, and the first boundary or
@@ -426,7 +428,7 @@ seen-input/exposure registry (digest R)
         -> input-only corpus manifest (digest M)
         -> pre-run capability/config (digest C)
         -> sealed tri-state predictions (digest P)
-        -> held-out simulation
+        -> independent held-out comparison simulation
         -> post-run SourceTransitionEvidence (digest S)
         -> post-run RouteExecutionEvidence (digest E, includes S)
         -> separate outcome/comparison artifact with scoped labels (digest O)
@@ -437,8 +439,170 @@ These digests stay separate. Do not hash an exposure registry or input manifest
 together with a mutable model/config as one identity. Resolved physical inputs
 such as route radius may be features; seed and route-family labels may not. Any
 simulation seed needed by the harness is sealed external provenance, never a
-pure evaluator feature. Predictions are sealed before any held-out simulation
-runs; outcomes and labels are joined only after extraction and sealing.
+pure evaluator feature. Predictions are sealed before any authoritative
+held-out comparison run; outcomes and labels are joined only after extraction
+and sealing. Alternative B's own generated trace is prediction work and is
+sealed with that prediction before the independent comparison run.
+
+## D1 locked research contract
+
+D1 remains `pd-eval` research work. It may introduce evaluator-owned DTOs and
+prototype engines, but it changes no `pd-core`, `pd-plan`, or `pd-control`
+contract. Moving an accepted neutral subset to another crate is a later
+architecture decision.
+
+### Common input and artifact boundary
+
+`RouteCapabilityInputV1` is the only input accepted by either D1 predictor. Its
+feature payload is reconstructed from a valid `RoutePlanningRequest` and the
+selected persisted route and contains only:
+
+- the resolved gravity and terrain, physical source/target pad geometry,
+  vehicle, authoritative initial state, physical route-planning policy values,
+  and resolved `SafetyProfile`;
+- the exact ordered shaped centerline, normalized route geometry,
+  `horizontal_sign`, ordered physical `TransferWaypointSpec` values, and
+  waypoint topology.
+
+Pad/waypoint string IDs and the request and route-plan digests exist only as
+join provenance in the enclosing artifact. They are not feature values and
+evaluator formulas may not branch on them. The canonical input digest covers
+the canonical resolved physical payload, not its own digest or provenance
+identities. Model-specific transforms are computed after input validation,
+declared by the capability configuration, and covered by the capability digest;
+they never change the common input bytes or input digest.
+
+A whole `ScenarioSpec` is forbidden as predictor input. In particular,
+scenario ID, name, description, seed, tags, metadata, `SimConfig`, mission goal,
+run/lane identity, route-family labels, outcome, D0 evidence, controller audit,
+controller configuration, planner algorithm identity, and planner ranking or
+authority diagnostics are not present. A paired prototype resolves its fixed
+executor pairing and step budget from its capability artifact, never from
+scenario data. A valid direct route still produces a complete prediction, but
+with `unknown/scope/direct_route`; it is outside this checkpoint rather than an
+invalid input.
+
+The common versioned artifacts are:
+
+- `PhaseStateSetV1`, the conservative state-set representation described
+  below;
+- `RouteCapabilityArtifactV1`, containing the alternative name, model payload,
+  complete numeric configuration, declared physical domain, training-evidence
+  digests as audit provenance, a model/config digest, and a capability-artifact
+  digest;
+- `RouteExecutionPredictionV1`, containing its schema, input, model/config,
+  capability-artifact, and prediction digests, ordered phase decisions, and
+  first decisive reason, but no observation, outcome, run, or controller
+  fields; and
+- `DevelopmentComparisonV1`, the only artifact allowed to join a sealed
+  prediction with D0 evidence and a separately derived scoped outcome.
+
+A prediction has artifact status `complete` or `invalid`. Only a complete
+prediction carries the tri-state decision `supported`, `unsupported`, or
+`unknown`; invalid artifacts have no decision and are counted separately. A
+model/config digest covers exactly the behavior-bearing model payload and full
+configuration. The capability-artifact digest additionally covers schema,
+alternative, declared domain, model/config digest, and ordered training or
+calibration evidence identities. Predictor behavior may depend only on the
+common input and model/config payload; provenance participates in artifact
+identity and audit, never evaluator branching.
+
+### State sets and ordered composition
+
+`PhaseStateSetV1` uses finite closed intervals with `lower <= upper`. Attitude
+uses a circular interval `(center, half_width)` with `0 <= half_width <= pi`,
+not a scalar minimum/maximum across the wrap boundary. Its route-relative
+state is complete enough to carry one phase into the next:
+
+- shaped-route progress or event-boundary interval;
+- along-track and cross-track position error;
+- along-track and cross-track velocity;
+- attitude, angular rate, total mass, and fuel mass; and
+- elapsed time only when a phase contract requires it.
+
+World-space hull clearance is a derived constraint over a projected state set,
+not another state coordinate. Every state set and containment decision has a
+stable identity and digest. `TransferWaypointSpec` defines a necessary handoff
+pass set; it is not by itself the complete admissible input set for the next
+leg.
+
+Composition has one fixed order: the authoritative initial singleton,
+`pad_departure`, `acquisition`, `route_leg_0`, `handoff_0`, then each remaining
+route leg and handoff through the final emitted waypoint. There is no target
+leg or landing phase. Each terminal set is carried as the next phase's input
+set, and every required boundary containment is explicit.
+
+The proof rules are deliberately asymmetric:
+
+- `supported` requires a positive certificate for every phase and every
+  required containment;
+- `unsupported` requires an alternative-specific negative physical or
+  containment certificate; inability to prove support is never a negative
+  certificate;
+- `unknown` covers a valid input outside the declared domain, missing empirical
+  coverage, indeterminate containment, a representation that cannot make the
+  required conservative claim, or a bounded solver that returns no
+  certificate; and
+- `invalid` is reserved for malformed or nonfinite input, schema/digest
+  inconsistency, or internal determinism failure.
+
+Reasons use the stable namespaces `invalid/input/*`, `invalid/artifact/*`,
+`unknown/scope/*`, `unknown/domain/*`, `unknown/coverage/*`,
+`unknown/numerical/*`, `unsupported/physics/*`, and
+`unsupported/containment/*`. The first decisive reason in composition order is
+authoritative; later diagnostics cannot replace it.
+
+### Development fitting, comparison, and advancement
+
+D1 uses the current `60` input-only development cases: `36` maintained cases
+and `24` already-seen diagnostic cases. Fresh D0 execution produced `10`
+diagnostic scoped passes and `14` diagnostic scoped failures, superseding the
+archival spike's `11 / 13` outcome split. The current physical domain is narrow:
+route angles `-60`, `-30`, `0`, `30`, and `60` degrees; route radii `776`,
+`800`, and `824 m`; one- and two-waypoint topologies; two fixed vehicles with
+dry masses `7200` and `11700 kg` and `6300 kg` initial fuel; Earth gravity;
+two fixed terrain shapes; initial rest; and one executor pairing. Only
+`horizontal_sign = +1` has corpus evidence. Unit tests for mirrored geometry do
+not enlarge the empirical domain.
+
+The fitting API may read `RouteCapabilityInputV1` and neutral, complete or
+censored D0 physical evidence. It may not read scoped outcomes, comparison
+rows, controller audit, or controller-private prediction types. Numeric
+configurations, preprocessing, interpolation, padding, solver limits, and
+reason-code mappings are declared before comparison.
+
+Development evaluation is deterministic leave-one-resolved-input-digest-out
+cross-validation. Each fold removes every row with the same canonical physical
+input digest, preventing seed, case-ID, or provenance aliases from appearing in
+both fit and comparison sets. D1a records the unique-digest count and fold
+membership; it may describe a fold as `59 / 1` only after proving all `60`
+digests are unique. Seal each excluded prediction before joining its outcome.
+This is development cross-validation, not held-out evidence. After a
+configuration is selected, fit the final development capability from all `60`
+neutral evidence records and retain the out-of-fold predictions and comparison
+report separately.
+
+A development report is gate-conforming only when its out-of-fold results:
+
+- has zero invalid inputs, evidence records, capabilities, or predictions;
+- supports all `36` maintained scoped successes;
+- supports none of the `14` diagnostic scoped failures;
+- supports at least `5` of the `10` diagnostic scoped passes; and
+- supports at least one diagnostic pass in every waypoint-topology by vehicle
+  stratum that contains a pass.
+
+All-`unknown` therefore cannot pass. Among configurations that satisfy every
+gate, select the one that supports the most diagnostic passes, then has the
+fewest unknown rows, then has the smaller canonical serialized capability
+payload in bytes, with the canonical configuration digest as the final lexical
+tie-break. The predeclared candidate set may be selected using the development
+comparison; no parameters may vary by case/route family and no candidate or
+configuration may change after that joined report is visible. These
+finite-corpus gates choose a development prototype; they do not establish a
+robust or production safety guarantee. Any D2 input outside the final declared
+physical coverage domain must predict `unknown`. A gate-conforming A
+report may advance to D2; a gate-conforming B report validates only the oracle
+benchmark and does not change its integration status.
 
 ## Capability alternatives: compare, do not choose
 
@@ -447,9 +611,26 @@ accepted by this checkpoint.
 
 ### A. Progress-indexed route-relative reachable/state-error envelope
 
-Alternative A is a progress-indexed, route-relative reachable/state-error
-envelope over the persisted shaped centerline. It is not a time-trajectory
-tube and does not invent a nominal quintic or reference trajectory. It must:
+Alternative A is `progress_interval_envelope_v1`, a progress-indexed,
+route-relative empirical state-error envelope over the persisted shaped
+centerline. It is not a time-trajectory tube and does not invent a nominal
+quintic or reference trajectory. Its first locked baseline uses `32` equal
+normalized-progress bins per phase, half-open except for the final closed bin,
+and axis-aligned intervals for the full state above, with circular attitude.
+Evidence is pooled only within a physical stratum keyed by terrain-geometry
+digest, vehicle-physics digest, and waypoint count. A query is covered only
+when its `(signed route angle, route radius)` point lies in the convex hull of
+training inputs in that same stratum and every required phase/bin contains at
+least three distinct training-input digests. There is no cross-stratum
+interpolation or extrapolation.
+
+Each scalar interval is the observed per-bin minimum/maximum rounded outward
+by one representable `f64`; attitude is the unique smallest circular interval
+containing the samples, or `unknown/numerical/ambiguous_attitude_arc` when no
+unique arc below `pi` exists. V1 has no fitted residual padding and no
+outcome-selected tolerance. The versioned configuration declares the physical
+feature transforms, stratum keys, binning, coverage count, outward-rounding
+rule, and fixed geometry comparison tolerances. It must:
 
 - bound cross/path error and velocity decomposition at progress-indexed states;
 - bound attitude and angular rate, mass and fuel, and any other declared
@@ -457,32 +638,63 @@ tube and does not invent a nominal quintic or reference trajectory. It must:
 - sequentially carry the terminal state/error set from one leg and handoff into
   the admissible input set for the next leg.
 
+The envelope covers authoritative physics-step states and raw boundary-bracket
+endpoints. It makes no continuous-time claim between integration steps, and a
+plane-interpolated crossing diagnostic cannot widen or certify a state set.
+
+The candidate query conservatively projects each interval set into world space
+for exact terrain/hull checks and proves every phase-boundary containment.
+Coverage outside the declared same-stratum convex hull, an under-covered bin,
+or an envelope that overlaps a constraint without proving violation yields
+`unknown`.
+`unsupported` requires an independent negative physical lower bound or a
+proved disjoint containment; a wide empirical envelope is not such a proof.
+
 Its planner-facing output is only a neutral, versioned capability and digest.
 The appeal is compositional, interpretable coverage over the exact shaped route,
 and a direct way to expose error growth. The risks are model calibration,
 reachable-set composition, and optimism: independent waypoint screens are not
-enough, and a loose-looking envelope is not automatically robust.
+enough, and this remains a finite-development empirical certificate rather
+than a robust reachable-set proof.
 
 ### B. Paired-executor reachability/certification
 
-Alternative B is offline paired-executor reachability or certification over a
-declared physical domain. Pairing and controller/executor identity may be kept
-in certification/audit records and external capability resolution, but never
-as planner features or planner branches. The planner-facing result is only a
-neutral, versioned capability and digest.
+Alternative B is locked for D1 as `paired_executor_oracle_v1`, an explicit
+research upper-bound comparator, not a planner-integration candidate. It runs a
+fixed deterministic executor pairing from `RouteCapabilityInputV1` before the
+comparison join. Pairing identity, controller/executor configuration, numeric
+limits, and step budget belong to the capability artifact and audit
+provenance; they never become input features or planner branches.
 
-This alternative tests execution interaction more directly and can retain
-controller-specific detail outside planner contracts. It costs more to produce,
-requires auditable pairing and reachability assumptions, and may have less
-compact coverage than a progress-indexed envelope. Per-candidate simulation is
-a research oracle only; it cannot become a production setup-time screen merely
-because it is paired with a route.
+The oracle's decision is derived by applying the neutral D0 boundary and
+ordered-contract extraction semantics to its generated physical trace. It may
+not read controller phases/markers, mission outcome, or controller-private
+`WaypointGuidancePrediction` state. Completion of every scoped physical phase
+and contract supplies `supported`; a neutral decisive deadline or physical
+failure supplies `unsupported`; censoring, an out-of-domain input, or exhausted
+solver budget without either certificate supplies `unknown`. Trace/schema
+failure, nondeterminism, or parity mismatch is `invalid`.
+
+This oracle composes singleton states from one deterministic execution; it does
+not certify a neighborhood of possible initial or handoff states. Its
+`supported` decision therefore has only exact-pair empirical semantics and is
+not interchangeable with Alternative A's set-coverage claim.
+
+When this oracle uses the same authoritative executor/configuration as the
+later comparison run, the report must label it `exact_pair_oracle`. That result
+measures replay consistency and an empirical ceiling; it cannot count as
+independent predictive evidence, make Alternative B eligible for D4, or justify
+a production setup-time simulation screen. An offline reusable paired
+reachability certificate would require a new capability version and design
+gate.
 
 The selection gate is the evidence protocol below. Prototype both alternatives
-outside planner selection, compare their neutral outputs, and choose neither in
-this document. If neither meets the gate, stop and compare a small convex
-feasibility formulation with paired reachability rather than adding scalar
-reserves or retuning a profile.
+outside planner selection and compare their neutral outputs; this design
+checkpoint accepts neither result in advance. If Alternative A misses its
+development gate, stop and compare a small convex-feasibility formulation with
+an offline paired-reachability certificate rather than adding scalar reserves
+or retuning a profile. The D1 paired oracle remains a benchmark regardless of
+its development score.
 
 ## Development input and extractor-fidelity gate
 
@@ -545,29 +757,37 @@ The minimum D0a/D0b test matrix covers:
    diagnostic/development. Do not promote them by relabeling or by reusing
    committed summaries.
 3. Before running or seeing any outcome, predeclare and hash an input-only
-   matrix with genuinely uninspected resolved physical inputs: unseen route
-   angles and radii, plus relevant terrain, vehicle, and load dimensions.
-   Predeclare the minimum useful coverage, class-support requirements,
-   stratification, and confidence-reporting method before execution. The
-   manifest digest must remain separate from capability/config digests. First
-   freeze a seen-input/exposure registry covering repository fixtures, committed
-   summaries, development manifests, retained research inputs, and any manually
-   inspected run known to the study. The registry records normalized resolved-
-   input digests, factor values, and whether outcomes were exposed. A held-out
-   row is ineligible if its resolved-input digest was seen or if an angle/radius
-   declared unseen was previously exposed; uncertain exposure is treated as
-   seen. Seal the registry digest separately and append newly exposed held-out
-   rows only after the comparison is complete.
+   matrix with genuinely uninspected resolved physical inputs. The
+   discrimination matrix uses unseen route angles/radii strictly inside the
+   accepted capability's same-stratum convex hull; its terrain, vehicle-physics,
+   and waypoint-topology keys remain in the declared D1 domain. A separately
+   reported abstention matrix may vary terrain, vehicle, or load outside that
+   domain and must predict `unknown`; those rows do not provide in-domain class
+   support or enlarge the capability. Predeclare the minimum useful coverage,
+   class-support requirements, stratification, and confidence-reporting method
+   before execution. The manifest digest must remain separate from
+   capability/config digests. First freeze a seen-input/exposure registry
+   covering repository fixtures, committed summaries, development manifests,
+   retained research inputs, and any manually inspected run known to the study.
+   The registry records normalized resolved-input digests, factor values, and
+   whether outcomes were exposed. A held-out row is ineligible if its
+   resolved-input digest was seen or if an angle/radius declared unseen was
+   previously exposed; uncertain exposure is treated as seen. Seal the registry
+   digest separately and append newly exposed held-out rows only after the
+   comparison is complete.
 4. Lock the extractor, evidence schema, alternative model/config, capability
    version, and any thresholds before revealing held-out outcomes. No physical
    threshold is selected by this checkpoint; once one exists, its exact value
    and implementation are frozen before reveal.
-5. Run the pure evaluator without route labels, seeds, controller IDs,
-   controller phases, or recorded outcomes. Seal only the tri-state predictions
-   before held-out simulation. Then run the held-out simulations, extract and
-   seal `SourceTransitionEvidence` and `RouteExecutionEvidence`; separately
-   derive and seal scoped labels in the outcome/comparison artifact, and only
-   then perform the final comparison join.
+5. Run each predictor from the common input without route labels, seeds,
+   controller phases, or recorded outcomes. Alternative B may resolve only the
+   fixed pairing declared by its already-frozen capability. Seal the tri-state
+   predictions and B's prediction-generation trace digest before the
+   authoritative held-out comparison simulation. Then run the independent
+   comparison simulations, extract and seal
+   `SourceTransitionEvidence` and `RouteExecutionEvidence`; separately derive
+   and seal scoped labels in the outcome/comparison artifact, and only then
+   perform the final comparison join.
 6. Report confusion counts, useful coverage, discrimination, confidence, and
    every invalidation separately for development and held-out inputs. Unknown,
    invalid extraction, and analytic invalidation are explicit
@@ -674,19 +894,42 @@ predictor features; malformed input alone is `invalid`.
 extractor, and provenance gates for the maintained and already-seen diagnostic
 development sets.
 
-**Work:** Prototype Alternative A and Alternative B outside planner selection
-using only neutral physical inputs. For each alternative, explicitly compose
-pad departure, acquisition, every route leg, and every handoff using the
-tri-state rules above. Lock each alternative's extractor/model configuration
-and versioned capability representation for comparison; D0a/D0b observations
-may be calibration or validation targets, but never features or inputs to a
-pre-run predictor for the same run. This is not a production choice.
+**D1a — common contract and development gate:** Implement the `pd-eval`-owned
+input, state-set, capability, prediction, and comparison artifacts above.
+Derive and seal a D1 input manifest from the existing input-only `60`-row D0
+manifest, plus a separate fresh `36 / 10 / 14` outcome overlay. Enforce
+forbidden-field tests and implement deterministic
+leave-one-input-digest-out fitting, sealing, comparison, and advancement
+reports. This slice introduces no model.
+It exits only when canonicalization is byte-stable, forbidden identity/outcome
+mutations leave the feature payload and digest unchanged, physical mutations
+change them, malformed state sets and digest mismatches are rejected, and mock
+predictions prove the all-unknown and false-accept gates cannot pass.
 
-**Exit:** Both alternatives expose stable predictions/reasons/digests,
-progress-indexed or paired certification semantics are auditable, and terminal
-state-set composition is explicit from the initial source state through every
-handoff. Phase-indexed reasons preserve the first decisive unsupported/unknown
-boundary. No per-candidate production screen or planner integration exists.
+**D1b — Alternative A:** Implement `progress_interval_envelope_v1` with its
+locked phase/bin representation. Predeclare the candidate configurations, fit
+only neutral D0 physical evidence, emit out-of-fold predictions, and evaluate
+the development advancement gate. Fit an all-development capability only after
+configuration selection.
+
+**D1c — Alternative B oracle:** Implement `paired_executor_oracle_v1` through
+public neutral contracts, with a fixed pairing resolved by the capability.
+Prove trace determinism/parity and emit the same common prediction schema. Keep
+the `exact_pair_oracle` result visibly separate from integration eligibility.
+
+**D1d — comparison lock:** Publish both development reports, input,
+model/config, capability-artifact, prediction, and comparison digests, coverage
+by declared domain and stratum, and all first-decisive reasons. Alternative A
+advances to D2 only if it passes every development gate. Alternative B remains
+an oracle benchmark; if A fails, no predictor advances and the next design
+checkpoint compares an offline paired-reachability certificate with the small
+convex-feasibility escalation.
+
+**Exit:** Both alternatives expose byte-stable predictions, reasons, and
+digests. Terminal state-set composition is explicit from the initial source
+state through every handoff, out-of-fold comparison is outcome-isolated, and
+phase-indexed reasons preserve the first decisive unsupported/unknown boundary.
+No per-candidate production screen or planner integration exists.
 
 ### D2 — freeze held-out inputs and seal predictions
 
@@ -697,18 +940,21 @@ confidence plan is reviewable.
 **Work:** Freeze and separately hash the exposure registry and genuinely
 uninspected input-only matrix. Reject contaminated rows before simulation.
 Freeze the capability/config digests and seal both alternatives' tri-state
-predictions before any held-out simulation runs.
+predictions, including Alternative B's prediction-trace digest, before any
+authoritative held-out comparison simulation runs.
 
 **Exit:** Exposure-registry, manifest, capability/config, and prediction digests
-are separate and immutable; no held-out outcome, label, seed, route family, or
-controller ID has entered prediction generation.
+are separate and immutable. No held-out outcome, label, seed, route family, or
+controller ID has entered the common input or evaluator branching; B's one
+fixed pairing remains isolated in its capability.
 
 ### D3 — reveal held-out runs and compare
 
 **Entry:** D2 predictions are sealed and the held-out matrix is immutable.
 
-**Work:** Run the held-out simulations, regenerate raw physics-rate bundles,
-extract both boundaries or the sound available prefix for a censored status,
+**Work:** Run the independent authoritative held-out comparison simulations,
+regenerate raw physics-rate bundles, extract both boundaries or the sound
+available prefix for a censored status,
 seal `SourceTransitionEvidence` and `RouteExecutionEvidence`; separately derive
 and seal scoped outcomes in the outcome/comparison artifact, then publish
 confusion, coverage, invalidations, class support, stratification, and
@@ -717,13 +963,15 @@ confidence reports.
 **Exit:** The hard gates are evaluated without counting `unknown`, invalid, or
 analytic-invalidation rows as true negatives; censored terminal failures are
 valid outcome rows and a `supported` prediction joined to either one is a
-false accept. Select an alternative only if the evidence justifies an accepted
-capability; this document itself makes no such selection.
+false accept. Alternative A may be accepted only if the evidence justifies its
+capability; B remains an oracle report and this document itself makes no
+selection.
 
 ### D4 — bounded candidate exposure
 
-**Entry:** An alternative has passed the declared development and held-out gates
-and has an accepted versioned capability/digest.
+**Entry:** Alternative A, or a separately designed offline certificate that is
+not the D1 oracle, has passed the declared development and held-out gates and
+has an accepted versioned capability/digest.
 
 **Work:** Expose a bounded set of existing planner candidates for research
 replay. Determine whether an existing candidate passes the richer capability;

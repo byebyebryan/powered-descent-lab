@@ -74,8 +74,9 @@ Current implementation status:
   - the source-departure/acquisition and route-execution evidence prerequisites
     are implemented through D0a/D0b: all `60` development cases pass cadence
     parity, produce complete neutral source and route artifacts, and replay
-    deterministically with zero invalidations; capability work remains gated at
-    D1; see [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
+    deterministically with zero invalidations; the D1 capability design is
+    closed and implementation remains gated at D1a; see
+    [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
   - see [Waypoint Planning V1](waypoint_planning.md)
 
@@ -636,12 +637,18 @@ implementing a predictor. The remaining evidence-first sequence is:
 2. D0b (complete): the same `60` bundles produce complete route-wide leg and
    waypoint contract-window/deadline evidence with zero invalidations and
    deterministic repeat digests; controller markers remain audit-only;
-3. D1 (next): compare the progress-indexed route-relative envelope and
-   paired-executor alternative on development evidence, requiring ordered
-   tri-state composition from pad departure through every waypoint handoff;
-4. D2-D3: freeze genuinely uninspected inputs and predictions before held-out
+3. D1 design (complete): the neutral input/artifact boundary, full state-set
+   composition, asymmetric tri-state proof rules, narrow empirical domain,
+   leave-one-input-digest-out development gate, 32-bin envelope baseline, and
+   paired research-oracle boundary are locked;
+4. D1 implementation (next): deliver D1a common artifacts and the
+   outcome-isolated development harness, then D1b interval-envelope and D1c
+   paired-oracle prototypes, followed by the D1d comparison lock. Only
+   Alternative A may advance from this design; exact paired replay is an
+   upper-bound benchmark, not integration evidence;
+5. D2-D3: freeze genuinely uninspected inputs and predictions before held-out
    simulation, then compare with separate evidence and outcome digests;
-5. D4-D5: expose bounded planner candidates for research replay and consider
+6. D4-D5: expose bounded planner candidates for research replay and consider
    planner integration only after an alternative passes every declared gate.
 
 If the richer contract cannot preserve maintained passes and reject failures
