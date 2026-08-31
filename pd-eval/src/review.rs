@@ -1342,14 +1342,36 @@ pub(super) fn waypoint_sample_stats(
                 .landing_pad(&route.target_pad_id)
                 .map(|pad| Vec2::new(pad.center_x_m, pad.surface_y_m))
         })?;
-    let target_m = waypoint.position_m;
+    neutral_waypoint_sample_stats(
+        observation.position_m,
+        observation.velocity_mps,
+        anchor_m,
+        waypoint.position_m,
+        next_target_m,
+        waypoint.handoff_tangent_unit,
+    )
+}
+
+/// Compute the route-neutral waypoint handoff kinematics.  The review path
+/// resolves the scenario-bound anchors, while route evidence supplies the
+/// already-resolved anchors directly.  Keeping the arithmetic here gives both
+/// paths one formula and deliberately avoids importing controller guidance
+/// frames.
+pub(crate) fn neutral_waypoint_sample_stats(
+    position_m: Vec2,
+    velocity_mps: Vec2,
+    anchor_m: Vec2,
+    target_m: Vec2,
+    next_target_m: Vec2,
+    contracted_handoff_tangent: Option<Vec2>,
+) -> Option<WaypointHandoffKinematics> {
     let leg_unit = waypoint_normalized(target_m - anchor_m)?;
     let next_leg_unit = waypoint_normalized(next_target_m - target_m)?;
-    let handoff_tangent_unit = waypoint.handoff_tangent_unit.unwrap_or(next_leg_unit);
-    let to_waypoint_m = observation.position_m - target_m;
-    let speed_mps = observation.velocity_mps.length();
+    let handoff_tangent_unit = contracted_handoff_tangent.unwrap_or(next_leg_unit);
+    let to_waypoint_m = position_m - target_m;
+    let speed_mps = velocity_mps.length();
     let velocity_unit = if speed_mps > 1.0e-9 {
-        observation.velocity_mps * (1.0 / speed_mps)
+        velocity_mps * (1.0 / speed_mps)
     } else {
         Vec2::new(0.0, 0.0)
     };
@@ -1361,11 +1383,10 @@ pub(super) fn waypoint_sample_stats(
         cross_track_m: waypoint_cross(to_waypoint_m, leg_unit).abs(),
         plane_progress_m: waypoint_dot(to_waypoint_m, leg_unit),
         outbound_heading_error_rad,
-        outbound_progress_mps: waypoint_dot(observation.velocity_mps, handoff_tangent_unit),
-        outbound_cross_speed_mps: waypoint_cross(observation.velocity_mps, handoff_tangent_unit)
-            .abs(),
+        outbound_progress_mps: waypoint_dot(velocity_mps, handoff_tangent_unit),
+        outbound_cross_speed_mps: waypoint_cross(velocity_mps, handoff_tangent_unit).abs(),
         speed_mps,
-        vertical_speed_mps: observation.velocity_mps.y,
+        vertical_speed_mps: velocity_mps.y,
     })
 }
 

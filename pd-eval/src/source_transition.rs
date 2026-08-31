@@ -2501,7 +2501,7 @@ fn controller_frame_is_finite(frame: &ControllerFrame) -> bool {
         })
 }
 
-fn raw_state(sample_index: usize, sample: &SampleRecord) -> SourceTransitionRawState {
+pub(crate) fn raw_state(sample_index: usize, sample: &SampleRecord) -> SourceTransitionRawState {
     let observation = &sample.observation;
     SourceTransitionRawState {
         sample_index,
@@ -2884,7 +2884,7 @@ fn source_transition_sample_values(sample: &SourceTransitionSample) -> [f64; 20]
     ]
 }
 
-fn point_clearance_record(
+pub(crate) fn point_clearance_record(
     envelope: pd_core::CorridorEnvelope,
     clearance: pd_core::CorridorClearance,
 ) -> SourceTransitionPointClearance {
@@ -3314,14 +3314,22 @@ fn command_is_finite(command: Command) -> bool {
     command.throttle_frac.is_finite() && command.target_attitude_rad.is_finite()
 }
 
-fn world_to_normalized(point: Vec2, source_center_x_m: f64, horizontal_sign: i8) -> Vec2 {
+pub(crate) fn world_to_normalized(
+    point: Vec2,
+    source_center_x_m: f64,
+    horizontal_sign: i8,
+) -> Vec2 {
     Vec2::new(
         f64::from(horizontal_sign) * (point.x - source_center_x_m),
         point.y,
     )
 }
 
-fn normalized_to_world(point: Vec2, source_center_x_m: f64, horizontal_sign: i8) -> Vec2 {
+pub(crate) fn normalized_to_world(
+    point: Vec2,
+    source_center_x_m: f64,
+    horizontal_sign: i8,
+) -> Vec2 {
     Vec2::new(
         source_center_x_m + f64::from(horizontal_sign) * point.x,
         point.y,
@@ -3354,7 +3362,7 @@ fn dot(lhs: Vec2, rhs: Vec2) -> f64 {
     lhs.x * rhs.x + lhs.y * rhs.y
 }
 
-fn digest_serialized<T: Serialize>(value: &T) -> String {
+pub(crate) fn digest_serialized<T: Serialize>(value: &T) -> String {
     let bytes = serde_json::to_vec(value).unwrap_or_default();
     let mut hash = 0xcbf29ce484222325_u64;
     for byte in bytes {

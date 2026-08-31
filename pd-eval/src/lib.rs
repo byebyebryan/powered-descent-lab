@@ -60,6 +60,9 @@ use execution::*;
 mod source_transition;
 pub use source_transition::*;
 
+mod route_execution;
+pub use route_execution::*;
+
 #[derive(Clone, Debug)]
 struct WorkspaceState {
     commit_key: String,
@@ -534,6 +537,404 @@ fn run_source_transition_gate_case(
     Ok(SourceTransitionGateCaseResult {
         parity,
         evidence,
+        replay_stable,
+        baseline_contract_pass,
+    })
+}
+
+/// Schema version for the sibling D0b route-execution development gate.
+pub const ROUTE_EXECUTION_GATE_SCHEMA_VERSION: u32 = 1;
+
+/// Deterministic machine-readable result of the development-only D0b gate.
+/// Route evidence remains neutral; baseline contract checks and corpus IDs are
+/// gate bookkeeping only.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RouteExecutionDevelopmentGateSummary {
+    pub schema_version: u32,
+    pub manifest_id: String,
+    pub input_digest: String,
+    pub case_filter: Option<String>,
+    pub baseline_total_count: usize,
+    pub diagnostic_total_count: usize,
+    pub baseline_contract_passes: usize,
+    pub baseline_contract_failures: Vec<SourceTransitionGateFailure>,
+    pub parity_passes: usize,
+    pub parity_failures: Vec<SourceTransitionGateFailure>,
+    pub source_status_counts: BTreeMap<String, usize>,
+    pub route_status_counts: BTreeMap<String, usize>,
+    pub source_invalidations: Vec<SourceTransitionGateFailure>,
+    pub route_invalidations: Vec<SourceTransitionGateFailure>,
+    pub deterministic_replay_passes: usize,
+    pub deterministic_replay_failures: Vec<SourceTransitionGateFailure>,
+    pub overall_passed: bool,
+    pub failure_reasons: Vec<String>,
+}
+
+/// Run the development-only D0b route-execution gate over both committed
+/// corpora.  It captures the same ordinary/physics pair as D0a and writes the
+/// physics raw bundle, nested source evidence, and route evidence.
+pub fn run_route_execution_development_gate(
+    manifest_path: &Path,
+    repo_root: &Path,
+    output_dir: &Path,
+) -> Result<RouteExecutionDevelopmentGateSummary> {
+    run_route_execution_development_gate_filtered(manifest_path, repo_root, output_dir, None)
+}
+
+/// Run one explicitly selected D0b case after validating both complete input
+/// corpora.  This is an inspection probe; the unfiltered invocation is the
+/// authoritative gate.
+pub fn run_route_execution_development_case(
+    manifest_path: &Path,
+    repo_root: &Path,
+    output_dir: &Path,
+    case_id: &str,
+) -> Result<RouteExecutionDevelopmentGateSummary> {
+    if case_id.trim().is_empty() {
+        bail!("D0b case filter must not be empty");
+    }
+    run_route_execution_development_gate_filtered(
+        manifest_path,
+        repo_root,
+        output_dir,
+        Some(case_id),
+    )
+}
+
+fn run_route_execution_development_gate_filtered(
+    manifest_path: &Path,
+    repo_root: &Path,
+    output_dir: &Path,
+    case_filter: Option<&str>,
+) -> Result<RouteExecutionDevelopmentGateSummary> {
+    let manifest = load_source_transition_development_manifest(manifest_path)?;
+    let baseline_pack_path = resolve_source_transition_path(repo_root, &manifest.baseline_pack);
+    let baseline_pack = load_pack(&baseline_pack_path)?;
+    let baseline_pack_digest = format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&baseline_pack)
+    );
+    if baseline_pack_digest != manifest.baseline_pack_digest {
+        bail!(
+            "D0b baseline pack digest drift: expected {}, resolved {}",
+            manifest.baseline_pack_digest,
+            baseline_pack_digest
+        );
+    }
+    let baseline_base_dir = baseline_pack_path
+        .parent()
+        .ok_or_else(|| anyhow!("baseline pack path has no parent"))?;
+    let baseline_runs = resolve_pack_runs(&baseline_pack, baseline_base_dir)?;
+    validate_source_transition_resolved_ids(
+        "baseline",
+        manifest
+            .baseline_cases
+            .iter()
+            .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
+            .collect(),
+        baseline_runs
+            .iter()
+            .map(|run| run.descriptor.run_id.clone())
+            .collect(),
+        manifest.baseline_expected_case_count,
+    )?;
+    if source_transition_resolved_input_corpus_digest(&baseline_runs)?
+        != manifest.baseline_resolved_input_digest
+    {
+        bail!("D0b baseline resolved-input digest drift");
+    }
+
+    let diagnostic_pack_path =
+        resolve_source_transition_path(repo_root, &manifest.diagnostic_source_pack);
+    let diagnostic_pack = load_source_transition_diagnostic_input_pack(&diagnostic_pack_path)?;
+    if diagnostic_pack.source_commit != manifest.diagnostic_source_commit {
+        bail!(
+            "D0b diagnostic source commit mismatch: manifest {}, pack {}",
+            manifest.diagnostic_source_commit,
+            diagnostic_pack.source_commit
+        );
+    }
+    let diagnostic_pack_digest = format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&diagnostic_pack)
+    );
+    if diagnostic_pack_digest != manifest.diagnostic_pack_digest {
+        bail!(
+            "D0b diagnostic input-pack digest drift: expected {}, resolved {}",
+            manifest.diagnostic_pack_digest,
+            diagnostic_pack_digest
+        );
+    }
+    validate_source_transition_resolved_ids(
+        "diagnostic",
+        manifest
+            .diagnostic_cases
+            .iter()
+            .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
+            .collect(),
+        diagnostic_pack
+            .cases
+            .iter()
+            .map(|case| case.run_id.clone())
+            .collect(),
+        manifest.diagnostic_expected_case_count,
+    )?;
+    if source_transition_archived_input_corpus_digest(&diagnostic_pack.cases)
+        != manifest.diagnostic_resolved_input_digest
+    {
+        bail!("D0b diagnostic resolved-input digest drift");
+    }
+
+    fs::create_dir_all(output_dir).with_context(|| {
+        format!(
+            "failed to create D0b development output directory {}",
+            output_dir.display()
+        )
+    })?;
+    let baseline_selected = baseline_runs
+        .iter()
+        .filter(|run| case_filter.is_none_or(|case_id| run.descriptor.run_id == case_id))
+        .collect::<Vec<_>>();
+    let diagnostic_selected = diagnostic_pack
+        .cases
+        .iter()
+        .filter(|case| case_filter.is_none_or(|case_id| case.run_id == case_id))
+        .collect::<Vec<_>>();
+    if case_filter.is_some() && baseline_selected.len() + diagnostic_selected.len() != 1 {
+        bail!(
+            "D0b case filter did not select exactly one resolved case: {}",
+            case_filter.unwrap_or_default()
+        );
+    }
+    let mut summary = RouteExecutionDevelopmentGateSummary {
+        schema_version: ROUTE_EXECUTION_GATE_SCHEMA_VERSION,
+        manifest_id: manifest.manifest_id,
+        input_digest: manifest.input_digest,
+        case_filter: case_filter.map(ToOwned::to_owned),
+        baseline_total_count: baseline_selected.len(),
+        diagnostic_total_count: diagnostic_selected.len(),
+        baseline_contract_passes: 0,
+        baseline_contract_failures: Vec::new(),
+        parity_passes: 0,
+        parity_failures: Vec::new(),
+        source_status_counts: BTreeMap::new(),
+        route_status_counts: BTreeMap::new(),
+        source_invalidations: Vec::new(),
+        route_invalidations: Vec::new(),
+        deterministic_replay_passes: 0,
+        deterministic_replay_failures: Vec::new(),
+        overall_passed: false,
+        failure_reasons: Vec::new(),
+    };
+    for run in baseline_selected {
+        let input = SourceTransitionGateRunInput::from_baseline(run)?;
+        record_route_execution_gate_case(&mut summary, &input, "baseline", output_dir, true);
+    }
+    for case in diagnostic_selected {
+        let input = SourceTransitionGateRunInput::from_archived(case);
+        record_route_execution_gate_case(&mut summary, &input, "diagnostic", output_dir, false);
+    }
+    if !summary.baseline_contract_failures.is_empty() {
+        summary
+            .failure_reasons
+            .push("baseline_contract_failed".to_owned());
+    }
+    if !summary.parity_failures.is_empty() {
+        summary
+            .failure_reasons
+            .push("cadence_parity_failed".to_owned());
+    }
+    if !summary.source_invalidations.is_empty() {
+        summary
+            .failure_reasons
+            .push("source_transition_invalidated".to_owned());
+    }
+    if !summary.route_invalidations.is_empty() {
+        summary
+            .failure_reasons
+            .push("route_execution_invalidated".to_owned());
+    }
+    if !summary.deterministic_replay_failures.is_empty() {
+        summary
+            .failure_reasons
+            .push("deterministic_replay_failed".to_owned());
+    }
+    summary.overall_passed = summary.failure_reasons.is_empty();
+    fs::write(
+        output_dir.join("summary.json"),
+        serde_json::to_string_pretty(&summary)?,
+    )?;
+    Ok(summary)
+}
+
+struct RouteExecutionGateCaseResult {
+    parity: SourceTransitionCadenceParity,
+    source: SourceTransitionEvidence,
+    route: RouteExecutionEvidence,
+    replay_stable: bool,
+    baseline_contract_pass: bool,
+}
+
+fn record_route_execution_gate_case(
+    summary: &mut RouteExecutionDevelopmentGateSummary,
+    input: &SourceTransitionGateRunInput<'_>,
+    corpus: &str,
+    output_dir: &Path,
+    is_baseline: bool,
+) {
+    let result = run_route_execution_gate_case(input, corpus, output_dir);
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            let failure = SourceTransitionGateFailure {
+                run_id: input.run_id.to_owned(),
+                reason: format!("capture_failed:{error}"),
+            };
+            summary.source_invalidations.push(failure.clone());
+            summary.route_invalidations.push(failure);
+            *summary
+                .source_status_counts
+                .entry("invalid".to_owned())
+                .or_default() += 1;
+            *summary
+                .route_status_counts
+                .entry("invalid".to_owned())
+                .or_default() += 1;
+            return;
+        }
+    };
+    if is_baseline {
+        if result.baseline_contract_pass {
+            summary.baseline_contract_passes += 1;
+        } else {
+            summary
+                .baseline_contract_failures
+                .push(SourceTransitionGateFailure {
+                    run_id: input.run_id.to_owned(),
+                    reason: "mission_success_checkpoint_satisfied_while_flying_not_observed"
+                        .to_owned(),
+                });
+        }
+    }
+    if result.parity.passed {
+        summary.parity_passes += 1;
+    } else {
+        summary.parity_failures.push(SourceTransitionGateFailure {
+            run_id: input.run_id.to_owned(),
+            reason: result.parity.mismatch_reasons.join(","),
+        });
+    }
+    let source_status = serde_json::to_string(&result.source.status)
+        .unwrap_or_else(|_| "\"invalid\"".to_owned())
+        .trim_matches('"')
+        .to_owned();
+    *summary
+        .source_status_counts
+        .entry(source_status)
+        .or_default() += 1;
+    if let Some(reason) = &result.source.invalid_reason {
+        summary
+            .source_invalidations
+            .push(SourceTransitionGateFailure {
+                run_id: input.run_id.to_owned(),
+                reason: reason.to_string(),
+            });
+    }
+    let route_status = result.route.status.code();
+    *summary.route_status_counts.entry(route_status).or_default() += 1;
+    if let Some(reason) = &result.route.invalid_reason {
+        summary
+            .route_invalidations
+            .push(SourceTransitionGateFailure {
+                run_id: input.run_id.to_owned(),
+                reason: reason.to_string(),
+            });
+    }
+    if result.replay_stable {
+        summary.deterministic_replay_passes += 1;
+    } else {
+        summary
+            .deterministic_replay_failures
+            .push(SourceTransitionGateFailure {
+                run_id: input.run_id.to_owned(),
+                reason: "source_or_route_evidence_changed_on_repeat".to_owned(),
+            });
+    }
+}
+
+fn run_route_execution_gate_case(
+    input: &SourceTransitionGateRunInput<'_>,
+    corpus: &str,
+    output_dir: &Path,
+) -> Result<RouteExecutionGateCaseResult> {
+    let context = RunContext::from_scenario(input.scenario)
+        .map_err(|error| anyhow!("failed to build run context: {error}"))?;
+    let (ordinary, physics) = run_source_transition_cadence_pair(&context, input.controller_spec)
+        .map_err(|error| anyhow!("controller capture failed: {error}"))?;
+    let physics_scenario = with_physics_rate_evidence_overlay(input.scenario);
+    let parity = compare_source_transition_cadence_parity(
+        input.scenario,
+        &ordinary,
+        &physics_scenario,
+        &physics,
+    );
+    let bundle_dir = output_dir.join(corpus).join(input.run_id);
+    write_source_transition_raw_bundle(&bundle_dir, &physics_scenario, input.route_plan, &physics)?;
+    let provenance = source_transition_provenance_for_route_plan(
+        &physics_scenario,
+        input.route_plan,
+        &physics.run,
+        &physics.controller_updates,
+        input.run_id.to_owned(),
+    )?;
+    let source = assemble_source_transition_evidence_from_controlled_artifacts(
+        &physics_scenario,
+        input.route_plan,
+        &physics,
+        provenance.clone(),
+    );
+    write_source_transition_artifacts(&bundle_dir.join("source_transition.json"), &source)?;
+    let route = assemble_route_execution_evidence_from_controlled_artifacts(
+        &physics_scenario,
+        input.route_plan,
+        &physics,
+        provenance.clone(),
+    );
+    write_route_execution_artifacts(&bundle_dir.join("route_execution.json"), &route)?;
+    let source_repeat = assemble_source_transition_evidence_from_controlled_artifacts(
+        &physics_scenario,
+        input.route_plan,
+        &physics,
+        provenance.clone(),
+    );
+    let route_repeat = assemble_route_execution_evidence_from_controlled_artifacts(
+        &physics_scenario,
+        input.route_plan,
+        &physics,
+        provenance,
+    );
+    let replay_stable = serde_json::to_vec(&source)? == serde_json::to_vec(&source_repeat)?
+        && source.evidence_digest == source_repeat.evidence_digest
+        && source.physical_digest == source_repeat.physical_digest
+        && serde_json::to_vec(&route)? == serde_json::to_vec(&route_repeat)?
+        && route.evidence_digest == route_repeat.evidence_digest
+        && route.physical_digest == route_repeat.physical_digest;
+    let baseline_contract_pass = matches!(
+        (
+            ordinary.run.manifest.mission_outcome,
+            ordinary.run.manifest.end_reason,
+            ordinary.run.manifest.physical_outcome,
+        ),
+        (
+            MissionOutcome::Success,
+            EndReason::CheckpointSatisfied,
+            PhysicalOutcome::Flying,
+        )
+    );
+    Ok(RouteExecutionGateCaseResult {
+        parity,
+        source,
+        route,
         replay_stable,
         baseline_contract_pass,
     })
