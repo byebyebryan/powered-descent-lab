@@ -336,6 +336,99 @@ impl TerrainDefinition {
         })
     }
 
+    /// Return the exact minimum clearance between a point-centred envelope
+    /// and the terrain over that envelope's lateral span.
+    ///
+    /// Unlike [`Self::exact_corridor_clearance`], this query has no segment
+    /// interpolation and accepts a zero-width lateral span.  The terrain is
+    /// piecewise linear, so its maximum over the closed span is attained at a
+    /// span endpoint or at a terrain vertex contained by the span.  A point
+    /// query is intentionally strict about the terrain domain: callers must
+    /// not accidentally turn an out-of-domain clearance into an edge-clamped
+    /// observation.
+    pub fn exact_point_clearance(
+        &self,
+        center_m: Vec2,
+        envelope: CorridorEnvelope,
+    ) -> Result<CorridorClearance, TerrainQueryError> {
+        self.validate()
+            .map_err(|message| TerrainQueryError::InvalidTerrain { message })?;
+        envelope
+            .validate()
+            .map_err(|message| TerrainQueryError::InvalidCorridor { message })?;
+        if !center_m.x.is_finite() || !center_m.y.is_finite() {
+            return Err(TerrainQueryError::InvalidCorridor {
+                message: "point query center must be finite".to_owned(),
+            });
+        }
+
+        let domain = self.domain_x();
+        let left = center_m.x - envelope.horizontal_extent_m;
+        let right = center_m.x + envelope.horizontal_extent_m;
+        for x_m in [left, right] {
+            if !x_m.is_finite() {
+                return Err(TerrainQueryError::InvalidCorridor {
+                    message: "point query lateral span must be finite".to_owned(),
+                });
+            }
+            if x_m < domain.0 || x_m > domain.1 {
+                return Err(TerrainQueryError::DomainOverrun {
+                    x_m,
+                    domain_min_x_m: domain.0,
+                    domain_max_x_m: domain.1,
+                });
+            }
+        }
+
+        let required_y = center_m.y - envelope.vertical_extent_m;
+        if !required_y.is_finite() {
+            return Err(TerrainQueryError::InvalidCorridor {
+                message: "point query required envelope height must be finite".to_owned(),
+            });
+        }
+        let mut candidate_xs = vec![left, right];
+        for vertex in self.points() {
+            if vertex.x >= left && vertex.x <= right {
+                candidate_xs.push(vertex.x);
+            }
+        }
+
+        let mut worst: Option<CorridorResidual> = None;
+        for terrain_x in candidate_xs {
+            let terrain_y = self.sample_height(terrain_x);
+            let residual = terrain_y - required_y;
+            if !residual.is_finite() {
+                return Err(TerrainQueryError::InvalidCorridor {
+                    message: "point query clearance residual must be finite".to_owned(),
+                });
+            }
+            let candidate = CorridorResidual {
+                residual_m: residual,
+                centerline_position_m: center_m,
+                terrain_position_m: Vec2::new(terrain_x, terrain_y),
+                terrain_segment_index: self.segment_index_for(terrain_x),
+                required_envelope_y_m: required_y,
+                centerline_y_m: center_m.y,
+                vertical_extent_m: envelope.vertical_extent_m,
+            };
+            if worst
+                .as_ref()
+                .is_none_or(|current| residual > current.residual_m)
+            {
+                worst = Some(candidate);
+            }
+        }
+
+        let worst_residual = worst.ok_or_else(|| TerrainQueryError::InvalidCorridor {
+            message: "point query produced no evaluation points".to_owned(),
+        })?;
+        Ok(CorridorClearance {
+            clear: worst_residual.residual_m <= 0.0,
+            minimum_clearance_m: -worst_residual.residual_m,
+            worst_residual,
+        })
+    }
+
     pub fn sample_slope(&self, x_m: f64) -> f64 {
         match self {
             Self::Heightfield { points_m } => {
@@ -493,5 +586,62 @@ mod tests {
             )
             .unwrap();
         assert!(!below.clear);
+    }
+
+    #[test]
+    fn exact_point_clearance_handles_zero_horizontal_span() {
+        let terrain = TerrainDefinition::Heightfield {
+            points_m: vec![Vec2::new(0.0, 0.0), Vec2::new(10.0, 10.0)],
+        };
+        let clearance = terrain
+            .exact_point_clearance(Vec2::new(5.0, 20.0), CorridorEnvelope::new(0.0, 2.0))
+            .unwrap();
+        assert!(clearance.clear);
+        assert!((clearance.minimum_clearance_m - 13.0).abs() < 1.0e-12);
+        assert_eq!(
+            clearance.worst_residual.terrain_position_m,
+            Vec2::new(5.0, 5.0)
+        );
+    }
+
+    #[test]
+    fn exact_point_clearance_handles_zero_vertical_extent_and_vertices() {
+        let terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(0.0, 0.0),
+                Vec2::new(5.0, 20.0),
+                Vec2::new(10.0, 0.0),
+            ],
+        };
+        let clearance = terrain
+            .exact_point_clearance(Vec2::new(5.0, 10.0), CorridorEnvelope::new(5.0, 0.0))
+            .unwrap();
+        assert!(!clearance.clear);
+        assert_eq!(clearance.minimum_clearance_m, -10.0);
+        assert_eq!(
+            clearance.worst_residual.terrain_position_m,
+            Vec2::new(5.0, 20.0)
+        );
+        assert_eq!(clearance.worst_residual.terrain_segment_index, 0);
+    }
+
+    #[test]
+    fn exact_point_clearance_rejects_domain_and_geometry_errors() {
+        let terrain = TerrainDefinition::Heightfield {
+            points_m: vec![Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)],
+        };
+        assert!(matches!(
+            terrain.exact_point_clearance(Vec2::new(0.0, 1.0), CorridorEnvelope::new(0.1, 0.0)),
+            Err(TerrainQueryError::DomainOverrun { .. })
+        ));
+        assert!(matches!(
+            terrain.exact_point_clearance(Vec2::new(5.0, 1.0), CorridorEnvelope::new(-1.0, 0.0)),
+            Err(TerrainQueryError::InvalidCorridor { .. })
+        ));
+        assert!(matches!(
+            terrain
+                .exact_point_clearance(Vec2::new(f64::NAN, 1.0), CorridorEnvelope::new(0.0, 0.0)),
+            Err(TerrainQueryError::InvalidCorridor { .. })
+        ));
     }
 }
