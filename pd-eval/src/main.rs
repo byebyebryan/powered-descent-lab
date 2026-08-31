@@ -5,7 +5,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
-    resolve_pack_compare_baseline, run_pack_file_cached,
+    resolve_pack_compare_baseline, run_pack_file_cached, run_source_transition_development_case,
+    run_source_transition_development_gate,
 };
 
 #[derive(Debug, Parser)]
@@ -22,6 +23,7 @@ enum Commands {
     Report(ReportArgs),
     RefreshReports(RefreshReportsArgs),
     PromoteCache(PromoteCacheArgs),
+    SourceTransitionGate(SourceTransitionGateArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -76,6 +78,23 @@ struct PromoteCacheArgs {
 
     #[arg(long, value_name = "REF", default_value = "HEAD")]
     target_ref: String,
+}
+
+#[derive(Debug, Parser)]
+struct SourceTransitionGateArgs {
+    #[arg(
+        long,
+        value_name = "MANIFEST_JSON",
+        default_value = "fixtures/manifests/source_transition_d0a_development.json"
+    )]
+    manifest: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: PathBuf,
+
+    /// Non-authoritative single-case inspection after complete input checks.
+    #[arg(long, value_name = "RUN_ID")]
+    case: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -149,6 +168,21 @@ fn main() -> Result<()> {
                 &args.target_ref,
             )?;
             println!("{}", promoted_dir.display());
+        }
+        Commands::SourceTransitionGate(args) => {
+            let root = repo_root();
+            let summary = match args.case.as_deref() {
+                Some(case_id) => run_source_transition_development_case(
+                    &args.manifest,
+                    &root,
+                    &args.output_dir,
+                    case_id,
+                )?,
+                None => {
+                    run_source_transition_development_gate(&args.manifest, &root, &args.output_dir)?
+                }
+            };
+            println!("{}", serde_json::to_string_pretty(&summary)?);
         }
     }
 

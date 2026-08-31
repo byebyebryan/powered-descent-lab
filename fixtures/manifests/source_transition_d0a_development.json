@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "manifest_id": "source_transition_d0a_development_v1",
+  "source_commit": "42e8314",
+  "baseline_pack": "fixtures/packs/planner_generated_route_contract_smoke.json",
+  "baseline_pack_digest": "fnv1a64:15446cd136124cfb",
+  "baseline_expected_case_count": 36,
+  "baseline_resolved_input_digest": "fnv1a64:ba258fb11d2fc36e",
+  "diagnostic_source_pack": "fixtures/evidence/source_transition_d0a_diagnostic_inputs.json",
+  "diagnostic_source_commit": "bde34c5",
+  "diagnostic_pack_digest": "fnv1a64:2ea41a687dfd610d",
+  "diagnostic_expected_case_count": 24,
+  "diagnostic_resolved_input_digest": "fnv1a64:3d4032e317fba7ec",
+  "baseline_cases": [
+    {
+      "entry_id": "planner_contract_single_empty",
+      "lane_id": "waypoint_handoff",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "empty",
+      "terrain_profile": "single_mid_ridge",
+      "route_angles": ["r-30", "r00", "r+30"],
+      "seeds": [0, 1, 2]
+    },
+    {
+      "entry_id": "planner_contract_single_full",
+      "lane_id": "waypoint_handoff",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "full",
+      "terrain_profile": "single_mid_ridge",
+      "route_angles": ["r-30", "r00", "r+30"],
+      "seeds": [0, 1, 2]
+    },
+    {
+      "entry_id": "planner_contract_double_empty",
+      "lane_id": "waypoint_sequence",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "empty",
+      "terrain_profile": "double_separated_ridge",
+      "route_angles": ["r-30", "r00", "r+30"],
+      "seeds": [0, 1, 2]
+    },
+    {
+      "entry_id": "planner_contract_double_full",
+      "lane_id": "waypoint_sequence",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "full",
+      "terrain_profile": "double_separated_ridge",
+      "route_angles": ["r-30", "r00", "r+30"],
+      "seeds": [0, 1, 2]
+    }
+  ],
+  "diagnostic_cases": [
+    {
+      "entry_id": "planner_angle_expansion_contract_single_empty",
+      "lane_id": "waypoint_handoff",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "empty",
+      "terrain_profile": "single_mid_ridge",
+      "route_angles": ["r-60", "r+60"],
+      "seeds": [0, 1, 2]
+    },
+    {
+      "entry_id": "planner_angle_expansion_contract_single_full",
+      "lane_id": "waypoint_handoff",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "full",
+      "terrain_profile": "single_mid_ridge",
+      "route_angles": ["r-60", "r+60"],
+      "seeds": [0, 1, 2]
+    },
+    {
+      "entry_id": "planner_angle_expansion_contract_double_empty",
+      "lane_id": "waypoint_sequence",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "empty",
+      "terrain_profile": "double_separated_ridge",
+      "route_angles": ["r-60", "r+60"],
+      "seeds": [0, 1, 2]
+    },
+    {
+      "entry_id": "planner_angle_expansion_contract_double_full",
+      "lane_id": "waypoint_sequence",
+      "controller": "transfer_waypoint_pdg",
+      "vehicle_variant": "full",
+      "terrain_profile": "double_separated_ridge",
+      "route_angles": ["r-60", "r+60"],
+      "seeds": [0, 1, 2]
+    }
+  ],
+  "overlay": {
+    "version": "sample_retention_physics_rate_v1",
+    "sample_retention": "physics_rate",
+    "preserves_execution_inputs": true
+  },
+  "input_digest": "fnv1a64:d14a0b4f8cd0a92f"
+}

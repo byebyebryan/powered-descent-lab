@@ -239,6 +239,45 @@ fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
 }
 
 #[test]
+fn source_transition_diagnostic_inputs_resolve_exactly_24_input_only_runs() {
+    let pack_path = fixtures_root()
+        .join("evidence")
+        .join("source_transition_d0a_diagnostic_inputs.json");
+    let pack = load_source_transition_diagnostic_input_pack(&pack_path).unwrap();
+    let manifest = load_source_transition_development_manifest(
+        &fixtures_root()
+            .join("manifests")
+            .join("source_transition_d0a_development.json"),
+    )
+    .unwrap();
+    let expected_ids = manifest
+        .diagnostic_cases
+        .iter()
+        .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
+        .collect::<Vec<_>>();
+    let actual_ids = pack
+        .cases
+        .iter()
+        .map(|case| case.run_id.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(pack.cases.len(), 24);
+    assert_eq!(actual_ids, expected_ids);
+    let serialized = serde_json::to_string(&pack).unwrap();
+    for forbidden in [
+        "outcome",
+        "result",
+        "class",
+        "summary",
+        "trajectory_evaluator",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "diagnostic input pack contains forbidden field/content {forbidden:?}"
+        );
+    }
+}
+
+#[test]
 fn legacy_descriptor_and_report_json_default_planner_fields() {
     let base_dir = temp_fixture_root("legacy_planner_defaults");
     let scenario = easy_checkpoint_scenario();

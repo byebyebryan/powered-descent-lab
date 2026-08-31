@@ -13,10 +13,10 @@ use pd_control::{
 };
 use pd_core::{
     EndReason, EvaluationGoal, EventRecord, LandingPadSpec, MissionOutcome, Observation,
-    PlannerComputeEvidence, RoutePlanningPolicy, RoutePlanningRequest, RouteTopology, RunContext,
-    RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition, TransferRouteSpec,
-    TransferWaypointSpec, Vec2, VehicleSpec, WaypointHandoffKinematics, build_endpoint_profile,
-    validate_route,
+    PhysicalOutcome, PlannerComputeEvidence, RoutePlan, RoutePlanningPolicy, RoutePlanningRequest,
+    RouteTopology, RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec,
+    TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleSpec,
+    WaypointHandoffKinematics, build_endpoint_profile, validate_route,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -57,6 +57,9 @@ use review::*;
 mod execution;
 use execution::*;
 
+mod source_transition;
+pub use source_transition::*;
+
 #[derive(Clone, Debug)]
 struct WorkspaceState {
     commit_key: String,
@@ -77,6 +80,463 @@ pub fn load_pack(path: &Path) -> Result<ScenarioPackSpec> {
         .with_context(|| format!("failed to parse scenario pack json {}", path.display()))?;
     validate_pack(&pack)?;
     Ok(pack)
+}
+
+/// Inputs accepted by the development-only gate.  The baseline is resolved by
+/// the maintained pack resolver; the diagnostic corpus is an immutable archive
+/// replay.  Keeping this small adapter separate avoids forging ordinary batch
+/// descriptors for archived inputs.
+struct SourceTransitionGateRunInput<'a> {
+    run_id: &'a str,
+    scenario: &'a ScenarioSpec,
+    route_plan: &'a RoutePlan,
+    controller_spec: &'a ControllerSpec,
+}
+
+impl<'a> SourceTransitionGateRunInput<'a> {
+    fn from_baseline(run: &'a ResolvedBatchRun) -> Result<Self> {
+        Ok(Self {
+            run_id: &run.descriptor.run_id,
+            scenario: &run.scenario,
+            route_plan: run
+                .descriptor
+                .route_plan
+                .as_ref()
+                .ok_or_else(|| anyhow!("resolved D0a baseline run has no route plan"))?,
+            controller_spec: &run.descriptor.controller_spec,
+        })
+    }
+
+    fn from_archived(case: &'a SourceTransitionDiagnosticInputCase) -> Self {
+        Self {
+            run_id: &case.run_id,
+            scenario: &case.scenario,
+            route_plan: &case.route_plan,
+            controller_spec: &case.controller,
+        }
+    }
+}
+
+/// Run the development-only D0a source-transition gate.  This resolves the
+/// committed baseline and validates immutable diagnostic input snapshots,
+/// captures each case at ordinary and physics-rate retention, and writes only
+/// physics-rate raw bundles plus neutral source evidence to `output_dir`.
+pub fn run_source_transition_development_gate(
+    manifest_path: &Path,
+    repo_root: &Path,
+    output_dir: &Path,
+) -> Result<SourceTransitionDevelopmentGateSummary> {
+    run_source_transition_development_gate_filtered(manifest_path, repo_root, output_dir, None)
+}
+
+/// Run one explicitly selected D0a case after validating the complete
+/// manifest and both input corpora.  This is a non-authoritative inspection
+/// probe; the full gate remains the no-filter command.
+pub fn run_source_transition_development_case(
+    manifest_path: &Path,
+    repo_root: &Path,
+    output_dir: &Path,
+    case_id: &str,
+) -> Result<SourceTransitionDevelopmentGateSummary> {
+    if case_id.trim().is_empty() {
+        bail!("D0a case filter must not be empty");
+    }
+    run_source_transition_development_gate_filtered(
+        manifest_path,
+        repo_root,
+        output_dir,
+        Some(case_id),
+    )
+}
+
+fn run_source_transition_development_gate_filtered(
+    manifest_path: &Path,
+    repo_root: &Path,
+    output_dir: &Path,
+    case_filter: Option<&str>,
+) -> Result<SourceTransitionDevelopmentGateSummary> {
+    let manifest = load_source_transition_development_manifest(manifest_path)?;
+    let baseline_pack_path = resolve_source_transition_path(repo_root, &manifest.baseline_pack);
+    let baseline_pack = load_pack(&baseline_pack_path)?;
+    let baseline_pack_digest = format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&baseline_pack)
+    );
+    if baseline_pack_digest != manifest.baseline_pack_digest {
+        bail!(
+            "D0a baseline pack digest drift: expected {}, resolved {}",
+            manifest.baseline_pack_digest,
+            baseline_pack_digest
+        );
+    }
+    let baseline_base_dir = baseline_pack_path
+        .parent()
+        .ok_or_else(|| anyhow!("baseline pack path has no parent"))?;
+    let baseline_runs = resolve_pack_runs(&baseline_pack, baseline_base_dir)?;
+    let baseline_expected_ids = manifest
+        .baseline_cases
+        .iter()
+        .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
+        .collect::<Vec<_>>();
+    let baseline_actual_ids = baseline_runs
+        .iter()
+        .map(|run| run.descriptor.run_id.clone())
+        .collect::<Vec<_>>();
+    validate_source_transition_resolved_ids(
+        "baseline",
+        baseline_expected_ids,
+        baseline_actual_ids,
+        manifest.baseline_expected_case_count,
+    )?;
+    let baseline_resolved_input_digest =
+        source_transition_resolved_input_corpus_digest(&baseline_runs)?;
+    if baseline_resolved_input_digest != manifest.baseline_resolved_input_digest {
+        bail!(
+            "D0a baseline resolved-input digest drift: expected {}, resolved {}",
+            manifest.baseline_resolved_input_digest,
+            baseline_resolved_input_digest
+        );
+    }
+
+    let diagnostic_pack_path =
+        resolve_source_transition_path(repo_root, &manifest.diagnostic_source_pack);
+    let diagnostic_pack = load_source_transition_diagnostic_input_pack(&diagnostic_pack_path)?;
+    if diagnostic_pack.source_commit != manifest.diagnostic_source_commit {
+        bail!(
+            "D0a diagnostic source commit mismatch: manifest {}, pack {}",
+            manifest.diagnostic_source_commit,
+            diagnostic_pack.source_commit
+        );
+    }
+    let diagnostic_pack_digest = format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&diagnostic_pack)
+    );
+    if diagnostic_pack_digest != manifest.diagnostic_pack_digest {
+        bail!(
+            "D0a diagnostic input-pack digest drift: expected {}, resolved {}",
+            manifest.diagnostic_pack_digest,
+            diagnostic_pack_digest
+        );
+    }
+    let diagnostic_expected_ids = manifest
+        .diagnostic_cases
+        .iter()
+        .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
+        .collect::<Vec<_>>();
+    let diagnostic_actual_ids = diagnostic_pack
+        .cases
+        .iter()
+        .map(|case| case.run_id.clone())
+        .collect::<Vec<_>>();
+    validate_source_transition_resolved_ids(
+        "diagnostic",
+        diagnostic_expected_ids,
+        diagnostic_actual_ids,
+        manifest.diagnostic_expected_case_count,
+    )?;
+    let diagnostic_resolved_input_digest =
+        source_transition_archived_input_corpus_digest(&diagnostic_pack.cases);
+    if diagnostic_resolved_input_digest != manifest.diagnostic_resolved_input_digest {
+        bail!(
+            "D0a diagnostic resolved-input digest drift: expected {}, resolved {}",
+            manifest.diagnostic_resolved_input_digest,
+            diagnostic_resolved_input_digest
+        );
+    }
+
+    fs::create_dir_all(output_dir).with_context(|| {
+        format!(
+            "failed to create D0a development output directory {}",
+            output_dir.display()
+        )
+    })?;
+
+    let baseline_selected = baseline_runs
+        .iter()
+        .filter(|run| case_filter.is_none_or(|case_id| run.descriptor.run_id == case_id))
+        .collect::<Vec<_>>();
+    let diagnostic_selected = diagnostic_pack
+        .cases
+        .iter()
+        .filter(|case| case_filter.is_none_or(|case_id| case.run_id == case_id))
+        .collect::<Vec<_>>();
+    if case_filter.is_some() && baseline_selected.len() + diagnostic_selected.len() != 1 {
+        bail!(
+            "D0a case filter did not select exactly one resolved case: {}",
+            case_filter.unwrap_or_default()
+        );
+    }
+
+    let mut summary = SourceTransitionDevelopmentGateSummary {
+        schema_version: SOURCE_TRANSITION_GATE_SCHEMA_VERSION,
+        manifest_id: manifest.manifest_id.clone(),
+        input_digest: manifest.input_digest.clone(),
+        case_filter: case_filter.map(ToOwned::to_owned),
+        baseline_total_count: baseline_selected.len(),
+        diagnostic_total_count: diagnostic_selected.len(),
+        baseline_contract_passes: 0,
+        baseline_contract_failures: Vec::new(),
+        parity_passes: 0,
+        parity_failures: Vec::new(),
+        evidence_status_counts: BTreeMap::new(),
+        invalidations: Vec::new(),
+        deterministic_replay_passes: 0,
+        deterministic_replay_failures: Vec::new(),
+        overall_passed: false,
+        failure_reasons: Vec::new(),
+    };
+
+    for run in baseline_selected {
+        let input = SourceTransitionGateRunInput::from_baseline(run)?;
+        record_source_transition_gate_case(&mut summary, &input, "baseline", output_dir, true);
+    }
+    for case in diagnostic_selected {
+        let input = SourceTransitionGateRunInput::from_archived(case);
+        record_source_transition_gate_case(&mut summary, &input, "diagnostic", output_dir, false);
+    }
+
+    if !summary.baseline_contract_failures.is_empty() {
+        summary
+            .failure_reasons
+            .push("baseline_contract_failed".to_owned());
+    }
+    if !summary.parity_failures.is_empty() {
+        summary
+            .failure_reasons
+            .push("cadence_parity_failed".to_owned());
+    }
+    if !summary.invalidations.is_empty() {
+        summary
+            .failure_reasons
+            .push("source_transition_invalidated".to_owned());
+    }
+    if !summary.deterministic_replay_failures.is_empty() {
+        summary
+            .failure_reasons
+            .push("deterministic_replay_failed".to_owned());
+    }
+    summary.overall_passed = summary.failure_reasons.is_empty();
+    let summary_path = output_dir.join("summary.json");
+    fs::write(&summary_path, serde_json::to_string_pretty(&summary)?).with_context(|| {
+        format!(
+            "failed to write D0a development summary {}",
+            summary_path.display()
+        )
+    })?;
+    Ok(summary)
+}
+
+fn resolve_source_transition_path(repo_root: &Path, path: &str) -> PathBuf {
+    let path = PathBuf::from(path);
+    if path.is_absolute() {
+        path
+    } else {
+        repo_root.join(path)
+    }
+}
+
+fn validate_source_transition_resolved_ids(
+    corpus: &str,
+    expected_ids: Vec<String>,
+    actual_ids: Vec<String>,
+    expected_count: usize,
+) -> Result<()> {
+    if expected_ids.len() != expected_count || actual_ids.len() != expected_count {
+        bail!(
+            "D0a {corpus} resolved count mismatch: expected {expected_count}, manifest {}, resolved {}",
+            expected_ids.len(),
+            actual_ids.len()
+        );
+    }
+    if actual_ids != expected_ids {
+        bail!(
+            "D0a {corpus} resolved run IDs drift from manifest: expected {:?}, resolved {:?}",
+            expected_ids,
+            actual_ids
+        );
+    }
+    Ok(())
+}
+
+fn source_transition_resolved_input_corpus_digest(runs: &[ResolvedBatchRun]) -> Result<String> {
+    let identities = runs
+        .iter()
+        .map(|run| {
+            let route_plan = run
+                .descriptor
+                .route_plan
+                .as_ref()
+                .ok_or_else(|| anyhow!("resolved D0a run has no route plan"))?;
+            Ok(source_transition_resolved_input_digest(
+                &run.descriptor.run_id,
+                &run.scenario,
+                route_plan,
+                &run.descriptor.controller_spec,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&identities)
+    ))
+}
+
+fn source_transition_archived_input_corpus_digest(
+    cases: &[SourceTransitionDiagnosticInputCase],
+) -> String {
+    let identities = cases
+        .iter()
+        .map(|case| {
+            source_transition_resolved_input_digest(
+                &case.run_id,
+                &case.scenario,
+                &case.route_plan,
+                &case.controller,
+            )
+        })
+        .collect::<Vec<_>>();
+    format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&identities)
+    )
+}
+
+struct SourceTransitionGateCaseResult {
+    parity: SourceTransitionCadenceParity,
+    evidence: SourceTransitionEvidence,
+    replay_stable: bool,
+    baseline_contract_pass: bool,
+}
+
+fn record_source_transition_gate_case(
+    summary: &mut SourceTransitionDevelopmentGateSummary,
+    input: &SourceTransitionGateRunInput<'_>,
+    corpus: &str,
+    output_dir: &Path,
+    is_baseline: bool,
+) {
+    let case_result = run_source_transition_gate_case(input, corpus, output_dir);
+    let case_result = match case_result {
+        Ok(result) => result,
+        Err(error) => {
+            summary.invalidations.push(SourceTransitionGateFailure {
+                run_id: input.run_id.to_owned(),
+                reason: format!("capture_failed:{error}"),
+            });
+            *summary
+                .evidence_status_counts
+                .entry("invalid".to_owned())
+                .or_default() += 1;
+            return;
+        }
+    };
+
+    if is_baseline {
+        if case_result.baseline_contract_pass {
+            summary.baseline_contract_passes += 1;
+        } else {
+            summary
+                .baseline_contract_failures
+                .push(SourceTransitionGateFailure {
+                    run_id: input.run_id.to_owned(),
+                    reason: "mission_success_checkpoint_satisfied_while_flying_not_observed"
+                        .to_owned(),
+                });
+        }
+    }
+    if case_result.parity.passed {
+        summary.parity_passes += 1;
+    } else {
+        summary.parity_failures.push(SourceTransitionGateFailure {
+            run_id: input.run_id.to_owned(),
+            reason: case_result.parity.mismatch_reasons.join(","),
+        });
+    }
+
+    let status = serde_json::to_string(&case_result.evidence.status)
+        .unwrap_or_else(|_| "\"invalid\"".to_owned())
+        .trim_matches('"')
+        .to_owned();
+    *summary.evidence_status_counts.entry(status).or_default() += 1;
+    if let Some(reason) = &case_result.evidence.invalid_reason {
+        summary.invalidations.push(SourceTransitionGateFailure {
+            run_id: input.run_id.to_owned(),
+            reason: reason.to_string(),
+        });
+    }
+    if case_result.replay_stable {
+        summary.deterministic_replay_passes += 1;
+    } else {
+        summary
+            .deterministic_replay_failures
+            .push(SourceTransitionGateFailure {
+                run_id: input.run_id.to_owned(),
+                reason: "source_evidence_bytes_or_digest_changed_on_repeat".to_owned(),
+            });
+    }
+}
+
+fn run_source_transition_gate_case(
+    input: &SourceTransitionGateRunInput<'_>,
+    corpus: &str,
+    output_dir: &Path,
+) -> Result<SourceTransitionGateCaseResult> {
+    let context = RunContext::from_scenario(input.scenario)
+        .map_err(|error| anyhow!("failed to build run context: {error}"))?;
+    let (ordinary, physics) = run_source_transition_cadence_pair(&context, input.controller_spec)
+        .map_err(|error| anyhow!("controller capture failed: {error}"))?;
+    let physics_scenario = with_physics_rate_evidence_overlay(input.scenario);
+    let parity = compare_source_transition_cadence_parity(
+        input.scenario,
+        &ordinary,
+        &physics_scenario,
+        &physics,
+    );
+    let bundle_dir = output_dir.join(corpus).join(input.run_id);
+    write_source_transition_raw_bundle(&bundle_dir, &physics_scenario, input.route_plan, &physics)?;
+    let provenance = source_transition_provenance_for_route_plan(
+        &physics_scenario,
+        input.route_plan,
+        &physics.run,
+        &physics.controller_updates,
+        input.run_id.to_owned(),
+    )?;
+    let evidence = assemble_source_transition_evidence_from_controlled_artifacts(
+        &physics_scenario,
+        input.route_plan,
+        &physics,
+        provenance.clone(),
+    );
+    let evidence_path = bundle_dir.join("source_transition.json");
+    write_source_transition_artifacts(&evidence_path, &evidence)?;
+    let repeated = assemble_source_transition_evidence_from_controlled_artifacts(
+        &physics_scenario,
+        input.route_plan,
+        &physics,
+        provenance,
+    );
+    let replay_stable = serde_json::to_vec(&evidence)? == serde_json::to_vec(&repeated)?
+        && evidence.evidence_digest == repeated.evidence_digest
+        && evidence.physical_digest == repeated.physical_digest;
+    let baseline_contract_pass = matches!(
+        (
+            ordinary.run.manifest.mission_outcome,
+            ordinary.run.manifest.end_reason,
+            ordinary.run.manifest.physical_outcome,
+        ),
+        (
+            MissionOutcome::Success,
+            EndReason::CheckpointSatisfied,
+            PhysicalOutcome::Flying,
+        )
+    );
+    Ok(SourceTransitionGateCaseResult {
+        parity,
+        evidence,
+        replay_stable,
+        baseline_contract_pass,
+    })
 }
 
 pub fn run_pack_file(path: &Path, output_dir: Option<&Path>) -> Result<BatchReport> {
