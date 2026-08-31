@@ -3,14 +3,15 @@
 ## Status and scope
 
 This remains an evidence-first checkpoint, not a production feasibility model.
-D0a is implemented: the versioned input-only development corpus, neutral
-point-envelope terrain query, physics-rate source-transition extractor, and
-fidelity gate now cover `initial_state -> contact_exit -> tracking_entry`.
-D0b and every capability, prediction, held-out comparison, and planner-facing
-phase remain unimplemented. D0a changes no planner generation or ranking,
-controller behavior, or maintained fixture semantics. Simulation remains
-authoritative for flight outcomes, actual hull clearance, fuel, handoff
-success, and landing.
+D0a and D0b are implemented. The versioned input-only development corpus,
+neutral point-envelope terrain query, physics-rate source-transition extractor,
+route-execution assembler, and sibling fidelity gates now cover the
+authoritative source transition and retained route prefix through the final
+emitted waypoint handoff. Every capability, prediction, held-out comparison,
+and planner-facing phase from D1 onward remains unimplemented. D0a/D0b change
+no planner generation or ranking, controller behavior, or maintained fixture
+semantics. Simulation remains authoritative for flight outcomes, actual hull
+clearance, fuel, handoff success, and landing.
 
 The capability label is deliberately narrower than a mission result. It covers
 planner-generated waypoint topology from the initial source-pad state through
@@ -652,6 +653,13 @@ every waypoint; record the first raw contract-satisfying state when present,
 full-state, path-error, clearance, backtracking, and per-leg extrema. Attach
 controller markers only as audit evidence. Add no predictor, planner screen,
 controller behavior, or maintained acceptance threshold.
+
+**Implemented checkpoint:** The sibling `route-execution-gate` regenerated all
+`36` maintained and `24` already-seen diagnostic inputs. It preserved `36 / 36`
+maintained contracts, passed ordinary-versus-physics execution parity for
+`60 / 60` cases, produced `60` complete route artifacts with zero source or
+route invalidations, and reproduced deterministic source/route evidence for
+`60 / 60` repeat extractions.
 
 **Exit:** The maintained and diagnostic development bundles produce complete or
 sound route-censored artifacts with deterministic digests. Every available leg

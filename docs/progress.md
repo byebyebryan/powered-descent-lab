@@ -71,8 +71,33 @@
   invalidations, and reproduced byte-stable evidence/digests for `60 / 60`
   repeated extractions.
 - D0a remains development evidence, not held-out discrimination or a
-  capability claim. The next checkpoint is D0b neutral route-execution
-  evidence over the same physics-rate bundles.
+  capability claim. Its physics-rate bundles and nested evidence now feed the
+  completed D0b route-execution checkpoint below.
+
+### D0b neutral route-execution evidence
+
+- Implemented a `pd-eval`-owned pure route kernel and post-run assembler over
+  the same full physics-rate bundles as D0a. The artifact nests complete D0a
+  evidence, maps the retained prefix to the persisted shaped centerline,
+  records full physical state and exact clearance series, partitions samples
+  into route legs, and derives sequential waypoint capture/deadline/contract
+  opportunities without reading controller phase or outcomes.
+- Preserved sound evidence boundaries explicitly: source- or route-terminal
+  prefixes censor before the unresolved waypoint, malformed or unverifiable
+  inputs alone invalidate, exact interior vertices map to the outbound segment,
+  final vertices map to the incoming segment, and backtracking, re-entry,
+  repeated capture crossings, and reverse deadline crossings remain auditable.
+  Controller handoff markers and phase live only in the audit sidecar and do
+  not affect the physical digest.
+- Added the sibling `route-execution-gate` CLI. A fresh full run preserved
+  `36 / 36` maintained contracts, passed ordinary-versus-physics capture parity
+  for `60 / 60` cases, produced `60` complete nested source artifacts and `60`
+  complete route artifacts with zero invalidations, and reproduced stable
+  source/route evidence for `60 / 60` repeated extractions.
+- D0a/D0b remain neutral development observations, not a capability or held-out
+  result. D1 is next: prototype and lock both pre-run capability alternatives
+  outside planner selection, using ordered phase/set composition and keeping
+  these same-run observations out of predictor inputs.
 
 ## 2026-08-21
 

@@ -71,10 +71,12 @@ Current implementation status:
     than accepted: its disposable local contract snapshot closed at `11 / 24`,
     and the research-only center-to-center trajectory-tube model failed the
     maintained-baseline preservation gate
-  - source departure/acquisition and an explicit execution tracking contract
-    are now settled design prerequisites, but remain unimplemented; see
-    [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
-    unimplemented [source-departure/acquisition execution contract](source_departure_execution_contract.md)
+  - the source-departure/acquisition and route-execution evidence prerequisites
+    are implemented through D0a/D0b: all `60` development cases pass cadence
+    parity, produce complete neutral source and route artifacts, and replay
+    deterministically with zero invalidations; capability work remains gated at
+    D1; see [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
+    [source-departure/acquisition execution contract](source_departure_execution_contract.md)
   - see [Waypoint Planning V1](waypoint_planning.md)
 
 ## 2. What Not To Build First
@@ -624,19 +626,19 @@ integrate or tune that center-only model.
 
 The neutral
 [source-departure/acquisition execution contract](source_departure_execution_contract.md)
-now has a validated D0a source-transition evidence slice without implementing
-a predictor. The remaining evidence-first sequence is:
+now has validated D0a source-transition and D0b route-execution evidence without
+implementing a predictor. The remaining evidence-first sequence is:
 
 1. D0a (complete): the input-only development manifest, neutral `pd-core`
    point-envelope clearance query, and physics-rate evidence across
    `initial_state -> contact_exit -> tracking_entry` pass the full `60`-case
    development fidelity gate;
-2. D0b (next): extract neutral route-wide leg and waypoint
-   contract-window/deadline evidence from the same raw bundles, keeping
-   controller markers and outcomes as audit/join data;
-3. D1: compare the progress-indexed route-relative envelope and paired-executor
-   alternative on development evidence, requiring ordered tri-state composition
-   from pad departure through every waypoint handoff;
+2. D0b (complete): the same `60` bundles produce complete route-wide leg and
+   waypoint contract-window/deadline evidence with zero invalidations and
+   deterministic repeat digests; controller markers remain audit-only;
+3. D1 (next): compare the progress-indexed route-relative envelope and
+   paired-executor alternative on development evidence, requiring ordered
+   tri-state composition from pad departure through every waypoint handoff;
 4. D2-D3: freeze genuinely uninspected inputs and predictions before held-out
    simulation, then compare with separate evidence and outcome digests;
 5. D4-D5: expose bounded planner candidates for research replay and consider
