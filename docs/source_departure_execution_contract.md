@@ -2,11 +2,15 @@
 
 ## Status and scope
 
-This is a design and evidence checkpoint only. The contract is **unimplemented**:
-it adds no production feasibility model, changes no planner generation or
-ranking, and does not change controller behavior or maintained fixtures.
-Simulation remains authoritative for flight outcomes, actual hull clearance,
-fuel, handoff success, and landing.
+This remains an evidence-first checkpoint, not a production feasibility model.
+D0a is implemented: the versioned input-only development corpus, neutral
+point-envelope terrain query, physics-rate source-transition extractor, and
+fidelity gate now cover `initial_state -> contact_exit -> tracking_entry`.
+D0b and every capability, prediction, held-out comparison, and planner-facing
+phase remain unimplemented. D0a changes no planner generation or ranking,
+controller behavior, or maintained fixture semantics. Simulation remains
+authoritative for flight outcomes, actual hull clearance, fuel, handoff
+success, and landing.
 
 The capability label is deliberately narrower than a mission result. It covers
 planner-generated waypoint topology from the initial source-pad state through

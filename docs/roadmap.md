@@ -624,15 +624,16 @@ integrate or tune that center-only model.
 
 The neutral
 [source-departure/acquisition execution contract](source_departure_execution_contract.md)
-now settles the design boundary without implementing a predictor. The next
-checkpoint is its evidence-first implementation sequence:
+now has a validated D0a source-transition evidence slice without implementing
+a predictor. The remaining evidence-first sequence is:
 
-1. D0a: freeze the input-only development manifest, add the neutral `pd-core`
-   point-envelope clearance query, and extract physics-rate evidence across
-   `initial_state -> contact_exit -> tracking_entry`;
-2. D0b: extract neutral route-wide leg and waypoint contract-window/deadline
-   evidence from the same raw bundles, keeping controller markers and outcomes
-   as audit/join data;
+1. D0a (complete): the input-only development manifest, neutral `pd-core`
+   point-envelope clearance query, and physics-rate evidence across
+   `initial_state -> contact_exit -> tracking_entry` pass the full `60`-case
+   development fidelity gate;
+2. D0b (next): extract neutral route-wide leg and waypoint
+   contract-window/deadline evidence from the same raw bundles, keeping
+   controller markers and outcomes as audit/join data;
 3. D1: compare the progress-indexed route-relative envelope and paired-executor
    alternative on development evidence, requiring ordered tri-state composition
    from pad departure through every waypoint handoff;

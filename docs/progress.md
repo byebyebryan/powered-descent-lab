@@ -52,6 +52,28 @@
   capability as alternatives pending a predeclared held-out comparison. The
   already-seen `r-60`/`r+60` evidence remains diagnostic rather than held out.
 
+### D0a neutral source-transition evidence
+
+- Implemented the D0a evidence slice without changing planner or controller
+  behavior: `pd-core` now owns the exact axis-aligned point-envelope terrain
+  clearance query, while `pd-eval` owns the pure crossing/feature kernel,
+  post-run censoring assembler, neutral evidence/audit artifacts, and the
+  development gate CLI.
+- Versioned input fixtures are separated from observed outputs. The maintained
+  `36`-case baseline still resolves from its ordinary pack; the already-seen
+  `24` diagnostic `r-60`/`r+60` cases are sealed resolved
+  scenario/route-plan/controller inputs reconstructed from `bde34c5`. No
+  archived outcomes, result summaries, trajectory-evaluator output, or class
+  labels were imported.
+- A fresh full D0a development run preserved `36 / 36` maintained contracts,
+  passed ordinary-versus-physics-rate execution parity for all `60 / 60`
+  cases, produced `60` complete source-transition records with zero
+  invalidations, and reproduced byte-stable evidence/digests for `60 / 60`
+  repeated extractions.
+- D0a remains development evidence, not held-out discrimination or a
+  capability claim. The next checkpoint is D0b neutral route-execution
+  evidence over the same physics-rate bundles.
+
 ## 2026-08-21
 
 ### Route-angle expansion and trajectory-tube research closure
