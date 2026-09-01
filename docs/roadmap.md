@@ -641,19 +641,29 @@ implementing a predictor. The remaining evidence-first sequence is:
    composition, asymmetric tri-state proof rules, narrow empirical domain,
    leave-one-input-digest-out development gate, 32-bin envelope baseline, and
    paired research-oracle boundary are locked;
-4. D1 implementation (next): deliver D1a common artifacts and the
-   outcome-isolated development harness, then D1b interval-envelope and D1c
-   paired-oracle prototypes, followed by the D1d comparison lock. Only
-   Alternative A may advance from this design; exact paired replay is an
-   upper-bound benchmark, not integration evidence;
-5. D2-D3: freeze genuinely uninspected inputs and predictions before held-out
-   simulation, then compare with separate evidence and outcome digests;
+4. D1 implementation (in progress): D1a common artifacts and the
+   outcome-isolated development harness are complete. D1b's fixed
+   interval-envelope candidate is also complete and deterministically fails:
+   exact terrain identity leaves every out-of-fold query without a physical
+   stratum, so all 60 predictions abstain. The current exact-float overlay is
+   `11 / 13`, not the design-locked `10 / 14`; the gate records that drift
+   without retuning. A subsequent input-only terrain-equivalence spike also
+   rejects the simple A2 unblock: its route-relative relief motif yields eight
+   groups, only `30 / 60` eligible rows, eight maintained hull exclusions, and
+   `139` required cells with zero leave-one-out support. D1c may still be
+   implemented as the declared paired-oracle benchmark, followed by the D1d
+   comparison lock, but neither Alternative A nor the motif-based A2 concept
+   advances to D2;
+5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
+   after a new design checkpoint produces an integration-eligible alternative;
 6. D4-D5: expose bounded planner candidates for research replay and consider
    planner integration only after an alternative passes every declared gate.
 
-If the richer contract cannot preserve maintained passes and reject failures
-without route-label tuning, escalate to a small convex-feasibility or paired-
-reachability formulation.
+The terrain-equivalence spike closes the empirical-envelope salvage question
+for the tested motif without outcome-guided tuning. The next design checkpoint
+must compare a small convex-feasibility formulation with offline paired
+reachability rather than invent another terrain grouping from the exposed
+development outcomes.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this

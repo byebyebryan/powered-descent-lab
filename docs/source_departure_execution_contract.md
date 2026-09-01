@@ -7,13 +7,17 @@ D0a and D0b are implemented. The versioned input-only development corpus,
 neutral point-envelope terrain query, physics-rate source-transition extractor,
 route-execution assembler, and sibling fidelity gates now cover the
 authoritative source transition and retained route prefix through the final
-emitted waypoint handoff. The D1 research contract is design-closed below, but
-its capability, prediction, and development-comparison artifacts remain
-unimplemented. Every held-out-comparison and planner-facing phase from D2
-onward also remains unimplemented. D0a/D0b change no planner generation or
-ranking, controller behavior, or maintained fixture semantics. Simulation
-remains authoritative for flight outcomes, actual hull clearance, fuel,
-handoff success, and landing.
+emitted waypoint handoff. The D1 research contract is design-closed below.
+D1a's common capability, prediction, fold, comparison, and gate artifacts and
+D1b's fixed Alternative A prototype are implemented. Alternative A
+deterministically misses its development gate and is not accepted. An
+input-only terrain-equivalence spike also rejects the tested route-relative
+relief motif as an A2 design basis; it changes no capability or prediction.
+D1c, D1d, every held-out comparison, and every planner-facing phase from D2
+onward remain unimplemented. D0a/D0b/D1a/D1b and the spike change no planner
+generation or ranking, controller behavior, or maintained fixture semantics.
+Simulation remains authoritative for flight outcomes, actual hull clearance,
+fuel, handoff success, and landing.
 
 The capability label is deliberately narrower than a mission result. It covers
 planner-generated waypoint topology from the initial source-pad state through
@@ -555,9 +559,11 @@ authoritative; later diagnostics cannot replace it.
 ### Development fitting, comparison, and advancement
 
 D1 uses the current `60` input-only development cases: `36` maintained cases
-and `24` already-seen diagnostic cases. Fresh D0 execution produced `10`
-diagnostic scoped passes and `14` diagnostic scoped failures, superseding the
-archival spike's `11 / 13` outcome split. The current physical domain is narrow:
+and `24` already-seen diagnostic cases. The design-locked D0 snapshot produced
+`10` diagnostic scoped passes and `14` diagnostic scoped failures. The later
+D1b implementation rerun, after enabling exact JSON float round-tripping,
+produced `11 / 13`; that drift is reported by the unchanged gate rather than
+used to alter its criteria. The current physical domain is narrow:
 route angles `-60`, `-30`, `0`, `30`, and `60` degrees; route radii `776`,
 `800`, and `824 m`; one- and two-waypoint topologies; two fixed vehicles with
 dry masses `7200` and `11700 kg` and `6300 kg` initial fuel; Earth gravity;
@@ -571,12 +577,16 @@ rows, controller audit, or controller-private prediction types. Numeric
 configurations, preprocessing, interpolation, padding, solver limits, and
 reason-code mappings are declared before comparison.
 
-Development evaluation is deterministic leave-one-resolved-input-digest-out
-cross-validation. Each fold removes every row with the same canonical physical
-input digest, preventing seed, case-ID, or provenance aliases from appearing in
-both fit and comparison sets. D1a records the unique-digest count and fold
-membership; it may describe a fold as `59 / 1` only after proving all `60`
-digests are unique. Seal each excluded prediction before joining its outcome.
+Development evaluation is deterministic leave-one-physical-input-digest-out
+cross-validation. The grouping identity is the canonical physical
+`RouteCapabilityInputV1.input_digest`; each fold removes every row with the same
+value, preventing seed, case-ID, or provenance aliases from appearing in both
+fit and comparison sets. The `source_transition_resolved_input_digest` carried
+as provenance `resolved_input_digest` binds the complete corpus, provenance, and
+execution identity for corpus and exposure accounting; it is not the
+anti-leakage fold key. D1a records the unique-digest count and fold membership;
+it may describe a fold as `59 / 1` only after proving all `60` digests are
+unique. Seal each excluded prediction before joining its outcome.
 This is development cross-validation, not held-out evidence. After a
 configuration is selected, fit the final development capability from all `60`
 neutral evidence records and retain the out-of-fold predictions and comparison
@@ -911,6 +921,30 @@ locked phase/bin representation. Predeclare the candidate configurations, fit
 only neutral D0 physical evidence, emit out-of-fold predictions, and evaluate
 the development advancement gate. Fit an all-development capability only after
 configuration selection.
+
+**D1b result:** Implemented. Fresh D0 evidence passed `36 / 36` maintained
+contracts, `60 / 60` cadence parity, and `60 / 60` deterministic replay with
+zero invalidations. The fixed candidate then produced 60 byte-stable
+out-of-fold `unknown/domain/missing_physical_stratum` predictions: the exact
+terrain-geometry key creates one-member strata, so excluding each query digest
+removes the only training member. The advancement gate failed, the candidate
+was not retuned after the outcome join, and Alternative A cannot advance to D2.
+The prescribed next design checkpoint is a comparison of small
+convex-feasibility and offline paired-reachability formulations; D1c remains
+useful only as the already-declared oracle benchmark.
+
+**D1b terrain-equivalence follow-up:** Implemented as a non-normative,
+input-only support spike, not a new predictor. The existing exact key again
+produces `60` singleton groups. A source-to-target chord-relative relief motif
+with fixed `0.1` location buckets, `10 m` height buckets, and only `1e-12`
+normalized arithmetic-boundary snapping produces eight groups of
+`15, 15, 9, 9, 4, 4, 2, 2`. Its minimum leave-one-out group support is one;
+only `30 / 60` rows satisfy the combined support check, eight maintained rows
+are outside their leave-one-out route-angle/radius hull, and 139 required cells
+have zero support. The exact query terrain remains bound and mandatory. The
+byte-stable artifact `5fd070e32738f4b4` therefore records
+`viable_for_a2_design = false`; no A2 model, outcome-guided regrouping, or D2
+entry is authorized.
 
 **D1c — Alternative B oracle:** Implement `paired_executor_oracle_v1` through
 public neutral contracts, with a fixed pairing resolved by the capability.

@@ -2,6 +2,73 @@
 
 ## 2026-08-31
 
+### D1b terrain-equivalence unblock spike
+
+- Added the evaluator-only `terrain-equivalence-spike` command over an explicit
+  fresh D0b evidence root. The spike reads only canonical physical inputs and
+  neutral route evidence, binds the committed baseline/diagnostic input
+  digests, preserves each row's exact terrain digest, and never opens the
+  outcome overlay or fits a capability.
+- Compared the rejected exact terrain/vehicle/topology partition with one
+  explicitly non-normative `route_relief_motif_v1` partition. The motif uses
+  source-to-target chord-relative positive relief peaks, fixed `0.1` location
+  and `10 m` height buckets, and an arithmetic-jitter-only `1e-12` normalized
+  boundary rule. Broader `0.005` snapping was rejected because it would merge
+  terrain separated by physically meaningful route distance.
+- The exact key reproduced `60` singleton groups. The motif produced `8`
+  groups of `15, 15, 9, 9, 4, 4, 2, 2`; its weakest leave-one-input fold retained
+  only one peer. Only `30 / 60` rows met the combined support gate, `8`
+  maintained rows fell outside their leave-one-out angle/radius hull, `372`
+  required cells were under the three-input minimum, and `139` of those cells
+  had zero support.
+- Two complete corrected runs were byte-identical. The sealed artifact digest
+  is `5fd070e32738f4b4`, with spike input-manifest digest
+  `99947d46b8ccce78`, baseline resolved-input digest
+  `fnv1a64:ba258fb11d2fc36e`, and diagnostic resolved-input digest
+  `fnv1a64:85236d37129f5efd`.
+- The motif therefore does not justify an A2 envelope design. Exact query
+  terrain remains mandatory, no D1b parameter or outcome gate was retuned, and
+  D2 remains blocked. The next design checkpoint compares a small
+  convex-feasibility formulation with offline paired reachability; the paired
+  executor remains a research oracle rather than an integration candidate.
+
+### D1a contracts and D1b Alternative A checkpoint
+
+- Implemented the evaluator-owned D1a boundary: canonical physical inputs,
+  versioned state sets and capability artifacts, ordered tri-state predictions,
+  digest-grouped leave-one-input-digest-out folds, outcome-isolated comparison,
+  and advancement-gate reports. No planner, controller, or simulator behavior
+  changed.
+- Implemented the one predeclared D1b
+  `progress_interval_envelope_v1` candidate with 32 progress bins, exact
+  same-stratum convex-hull coverage, one-ULP outward observed bounds, circular
+  attitude intervals, explicit boundary composition, conservative terrain and
+  waypoint-contract projections, and stable first-decisive reasons.
+- Closed evidence-integrity gaps found in review: source-transition bounds now
+  participate in the D0 physical digest and must match the D1 input; persisted
+  source/route evidence receives schema, cadence, finite-ordering, bracket,
+  leg, and waypoint validation; exact JSON float round-tripping preserves
+  one-ULP intervals; and D0 outcome summaries remain unopened until all D1b
+  predictions are sealed.
+- Regenerated the authoritative 60-row D0 evidence root. The gate passed with
+  `36 / 36` maintained contracts, `60 / 60` cadence-parity checks, `60 / 60`
+  deterministic replays, all source/route records complete, and zero
+  invalidations.
+- Alternative A deterministically failed its development gate. Every
+  out-of-fold query returned
+  `unknown/domain/missing_physical_stratum`: exact terrain-geometry identity
+  produces 60 one-member strata, so excluding the query digest removes its
+  entire stratum. Two complete D1b runs were byte-identical. Key digests are
+  D0 summary `fb904c3f2b8fc289`, input manifest `d6269031f81bf692`, folds
+  `74019b9b77c0521`, predictions `ac20f9d36ffeb4bf`, comparison
+  `c213fdf98b055a0f`, gate report `8711b54204e7e281`, and final capability
+  `f598eb41ddc7ab90`.
+- The exact-float rerun also resolves the current diagnostic overlay as
+  `11` scoped passes and `13` scoped failures, rather than the design-locked
+  `10 / 14`. The implementation did not change the locked criteria or tune the
+  candidate after outcome reveal; both count mismatches remain explicit gate
+  failures. Alternative A does not advance to D2.
+
 ### D1 capability design closure
 
 - Closed the common D1 research contract without implementing a predictor or
@@ -28,8 +95,9 @@
   maintained successes supported, zero support for diagnostic failures, useful
   diagnostic-pass coverage, stratum coverage, and zero invalid artifacts.
 - Split implementation into D1a common artifacts/gate, D1b interval envelope,
-  D1c paired oracle, and D1d comparison lock. D1a is the next bounded
-  checkpoint; D2 held-out design and simulation remain downstream.
+  D1c paired oracle, and D1d comparison lock. D1a and D1b are now complete;
+  D1c remains an optional research benchmark and D1d remains the comparison
+  lock. No D2 held-out work may start from the rejected Alternative A result.
 
 ## 2026-08-29
 
