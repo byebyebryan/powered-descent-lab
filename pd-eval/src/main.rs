@@ -5,9 +5,10 @@ use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
-    resolve_pack_compare_baseline, run_pack_file_cached, run_route_execution_development_case,
+    resolve_pack_compare_baseline, run_pack_file_cached,
+    run_progress_interval_envelope_development_gate, run_route_execution_development_case,
     run_route_execution_development_gate, run_source_transition_development_case,
-    run_source_transition_development_gate,
+    run_source_transition_development_gate, run_terrain_equivalence_spike,
 };
 
 #[derive(Debug, Parser)]
@@ -26,6 +27,8 @@ enum Commands {
     PromoteCache(PromoteCacheArgs),
     SourceTransitionGate(SourceTransitionGateArgs),
     RouteExecutionGate(RouteExecutionGateArgs),
+    ProgressIntervalEnvelopeGate(ProgressIntervalEnvelopeGateArgs),
+    TerrainEquivalenceSpike(TerrainEquivalenceSpikeArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -114,6 +117,26 @@ struct RouteExecutionGateArgs {
     /// Non-authoritative single-case inspection after complete input checks.
     #[arg(long, value_name = "RUN_ID")]
     case: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+struct ProgressIntervalEnvelopeGateArgs {
+    /// Explicit fresh D0b route-execution evidence root.
+    #[arg(long, value_name = "D0B_EVIDENCE_DIR")]
+    evidence_dir: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct TerrainEquivalenceSpikeArgs {
+    /// Explicit fresh D0b route-execution evidence root.
+    #[arg(long, value_name = "D0B_EVIDENCE_DIR")]
+    evidence_dir: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: PathBuf,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -217,6 +240,17 @@ fn main() -> Result<()> {
                 }
             };
             println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
+        Commands::ProgressIntervalEnvelopeGate(args) => {
+            let summary = run_progress_interval_envelope_development_gate(
+                &args.evidence_dir,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
+        Commands::TerrainEquivalenceSpike(args) => {
+            let artifact = run_terrain_equivalence_spike(&args.evidence_dir, &args.output_dir)?;
+            println!("{}", serde_json::to_string_pretty(&artifact)?);
         }
     }
 

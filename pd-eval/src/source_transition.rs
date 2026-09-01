@@ -973,6 +973,7 @@ pub struct SourceTransitionHeldCommandChange {
 /// Immutable and opaque identities supplied by the post-run caller.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SourceTransitionProvenance {
+    pub resolved_input_digest: String,
     pub request_digest: String,
     pub policy_digest: String,
     pub route_plan_digest: String,
@@ -1045,6 +1046,8 @@ struct SourceTransitionRawBundleDigestMaterial<'a> {
 
 #[derive(Clone, Debug, Serialize)]
 struct PhysicalDigestMaterial<'a> {
+    source_transition_start_m: f64,
+    source_transition_end_m: f64,
     initial_anchor: &'a SourceTransitionInitialAnchor,
     contact_exit: &'a Option<SourceTransitionBoundaryBracket>,
     tracking_entry: &'a Option<SourceTransitionBoundaryBracket>,
@@ -1175,6 +1178,8 @@ pub fn extract_source_transition_kernel(
         tracking_boundary.as_ref(),
     );
     let physical_digest = digest_serialized(&PhysicalDigestMaterial {
+        source_transition_start_m: input.profile.source_transition_start_m,
+        source_transition_end_m: input.profile.source_transition_end_m,
         initial_anchor: &initial_anchor,
         contact_exit: &contact_boundary,
         tracking_entry: &tracking_boundary,
@@ -1242,11 +1247,11 @@ pub fn assemble_source_transition_evidence(
         Ok(status) => (status, None),
         Err(reason) => (SourceTransitionEvidenceStatus::Invalid, Some(reason)),
     };
-    let mut evidence = SourceTransitionEvidence {
+    let evidence = SourceTransitionEvidence {
         schema_version: SOURCE_TRANSITION_SCHEMA_VERSION,
         extractor_version: SOURCE_TRANSITION_EXTRACTOR_VERSION.to_owned(),
         evidence_digest: String::new(),
-        physical_digest: kernel.physical_digest.clone(),
+        physical_digest: String::new(),
         status,
         invalid_reason,
         provenance,
@@ -1267,8 +1272,7 @@ pub fn assemble_source_transition_evidence(
         terminal,
         audit: kernel.audit,
     };
-    evidence.evidence_digest = source_transition_evidence_digest(&evidence);
-    evidence
+    seal_source_transition_evidence(evidence)
 }
 
 /// Assemble source evidence directly from the existing serialized run bundle
@@ -1455,6 +1459,7 @@ pub fn source_transition_provenance_for_route_plan(
             )
         })?;
     Ok(SourceTransitionProvenance {
+        resolved_input_digest: String::new(),
         request_digest: route_plan.request_digest.clone(),
         policy_digest: source_transition_canonical_digest(&route_plan.policy),
         route_plan_digest: route_plan.plan_digest.clone(),
@@ -1530,6 +1535,213 @@ pub fn source_transition_evidence_digest(evidence: &SourceTransitionEvidence) ->
     let mut material = evidence.clone();
     material.evidence_digest.clear();
     digest_serialized(&material)
+}
+
+/// Recompute the neutral physical payload digest without provenance, terminal,
+/// or audit fields.  D1 capability fitting uses this to reject physical-field
+/// tampering while keeping audit-only mutations behavior-neutral.
+pub fn source_transition_physical_digest(
+    evidence: &SourceTransitionEvidence,
+) -> Result<String, String> {
+    let initial_anchor = evidence
+        .initial_anchor
+        .as_ref()
+        .ok_or_else(|| "source evidence has no initial anchor".to_owned())?;
+    Ok(digest_serialized(&PhysicalDigestMaterial {
+        source_transition_start_m: evidence.source_transition_start_m,
+        source_transition_end_m: evidence.source_transition_end_m,
+        initial_anchor,
+        contact_exit: &evidence.contact_exit,
+        tracking_entry: &evidence.tracking_entry,
+        boundary_centerline_references: &evidence.boundary_centerline_references,
+        first_outbound_reference: &evidence.first_outbound_reference,
+        samples: &evidence.samples,
+        pad_departure_extrema: &evidence.pad_departure_extrema,
+        acquisition_extrema: &evidence.acquisition_extrema,
+        boundary_crossings: &evidence.boundary_crossings,
+        backtracking_events: &evidence.backtracking_events,
+        reentry_events: &evidence.reentry_events,
+    }))
+}
+
+/// Validate the schema and physical structure of a persisted neutral source
+/// artifact.  Digest checks alone are insufficient because a malformed JSON
+/// artifact can be resealed with internally consistent digests.
+pub fn validate_persisted_source_transition_evidence(
+    evidence: &SourceTransitionEvidence,
+) -> Result<(), String> {
+    if evidence.schema_version != SOURCE_TRANSITION_SCHEMA_VERSION {
+        return Err(format!(
+            "source evidence schema_version must equal {SOURCE_TRANSITION_SCHEMA_VERSION}"
+        ));
+    }
+    if evidence.extractor_version != SOURCE_TRANSITION_EXTRACTOR_VERSION {
+        return Err(format!(
+            "source evidence extractor_version must equal {SOURCE_TRANSITION_EXTRACTOR_VERSION}"
+        ));
+    }
+    if evidence.evidence_digest != source_transition_evidence_digest(evidence) {
+        return Err("source evidence digest mismatch".to_owned());
+    }
+    if evidence.status == SourceTransitionEvidenceStatus::Invalid {
+        return evidence
+            .invalid_reason
+            .as_ref()
+            .map(|_| ())
+            .ok_or_else(|| "invalid source evidence has no invalid_reason".to_owned());
+    }
+    if evidence.invalid_reason.is_some() {
+        return Err("non-invalid source evidence carries an invalid_reason".to_owned());
+    }
+    if evidence.cadence.physics_hz == 0
+        || evidence.cadence.sample_hz != Some(evidence.cadence.physics_hz)
+    {
+        return Err("source evidence is not sampled at a positive physics rate".to_owned());
+    }
+    if !evidence.source_transition_start_m.is_finite()
+        || !evidence.source_transition_end_m.is_finite()
+        || evidence.source_transition_start_m < 0.0
+        || evidence.source_transition_end_m < evidence.source_transition_start_m
+    {
+        return Err("source transition bounds are not finite and ordered".to_owned());
+    }
+    if evidence.physical_digest != source_transition_physical_digest(evidence)? {
+        return Err("source physical digest mismatch".to_owned());
+    }
+    let initial = evidence
+        .initial_anchor
+        .as_ref()
+        .ok_or_else(|| "source evidence has no initial anchor".to_owned())?;
+    if evidence.samples.is_empty()
+        || !source_raw_state_is_finite(&initial.state)
+        || !initial.source_progress_m.is_finite()
+        || !initial.normalized_progress.is_finite()
+        || initial.state.sample_index != 0
+    {
+        return Err("source initial anchor is malformed".to_owned());
+    }
+    for (index, sample) in evidence.samples.iter().enumerate() {
+        if sample.sample_index != index
+            || sample.state.sample_index != index
+            || sample.physics_step != sample.state.physics_step
+            || sample.sim_time_s != sample.state.sim_time_s
+            || (index == 0 && sample.physics_step != 0)
+            || (index > 0
+                && evidence.samples[index - 1].physics_step.checked_add(1)
+                    != Some(sample.physics_step))
+            || !source_transition_sample_is_finite(sample)
+        {
+            return Err(format!(
+                "source sample {index} is malformed or non-contiguous"
+            ));
+        }
+    }
+    if initial.state != evidence.samples[0].state {
+        return Err("source initial anchor does not match sample zero".to_owned());
+    }
+    validate_persisted_source_bracket(
+        evidence,
+        SourceTransitionBoundary::ContactExit,
+        evidence.source_transition_start_m,
+        evidence.contact_exit.as_ref(),
+    )?;
+    validate_persisted_source_bracket(
+        evidence,
+        SourceTransitionBoundary::TrackingEntry,
+        evidence.source_transition_end_m,
+        evidence.tracking_entry.as_ref(),
+    )?;
+    match evidence.status {
+        SourceTransitionEvidenceStatus::Complete => {
+            if evidence.contact_exit.is_none() || evidence.tracking_entry.is_none() {
+                return Err("complete source evidence is missing a boundary".to_owned());
+            }
+        }
+        SourceTransitionEvidenceStatus::CensoredBeforeContactExit => {
+            if evidence.contact_exit.is_some() || evidence.tracking_entry.is_some() {
+                return Err("pre-contact censor carries a later boundary".to_owned());
+            }
+        }
+        SourceTransitionEvidenceStatus::CensoredBeforeTrackingEntry => {
+            if evidence.contact_exit.is_none() || evidence.tracking_entry.is_some() {
+                return Err("pre-tracking censor has inconsistent boundaries".to_owned());
+            }
+        }
+        SourceTransitionEvidenceStatus::Invalid => unreachable!(),
+    }
+    if evidence.first_outbound_reference.is_none() {
+        return Err("source evidence has no outbound reference".to_owned());
+    }
+    Ok(())
+}
+
+fn source_raw_state_is_finite(state: &SourceTransitionRawState) -> bool {
+    [
+        state.sim_time_s,
+        state.position_m.x,
+        state.position_m.y,
+        state.velocity_mps.x,
+        state.velocity_mps.y,
+        state.attitude_rad,
+        state.angular_rate_radps,
+        state.mass_kg,
+        state.fuel_kg,
+    ]
+    .iter()
+    .all(|value| value.is_finite())
+}
+
+fn source_transition_sample_is_finite(sample: &SourceTransitionSample) -> bool {
+    source_raw_state_is_finite(&sample.state)
+        && [
+            sample.sim_time_s,
+            sample.source_progress_m,
+            sample.normalized_progress,
+            sample.path.normalized_position_m.x,
+            sample.path.normalized_position_m.y,
+            sample.path.along_track_m,
+            sample.path.cross_track_m,
+            sample.path.velocity_along_track_mps,
+            sample.path.velocity_cross_track_mps,
+            sample.clearance.observed_hull_clearance_m,
+            sample
+                .clearance
+                .observed_touchdown_clearance_m
+                .unwrap_or(0.0),
+            sample.clearance.contact_envelope.minimum_clearance_m,
+            sample.clearance.resolved_envelope.minimum_clearance_m,
+            sample.clearance.full_envelope.minimum_clearance_m,
+        ]
+        .iter()
+        .all(|value| value.is_finite())
+}
+
+fn validate_persisted_source_bracket(
+    evidence: &SourceTransitionEvidence,
+    boundary: SourceTransitionBoundary,
+    expected_boundary_m: f64,
+    bracket: Option<&SourceTransitionBoundaryBracket>,
+) -> Result<(), String> {
+    let Some(bracket) = bracket else {
+        return Ok(());
+    };
+    if bracket.boundary != boundary
+        || bracket.boundary_m != expected_boundary_m
+        || bracket.before.sample_index.checked_add(1) != Some(bracket.after.sample_index)
+        || bracket.before.sample_index >= evidence.samples.len()
+        || bracket.after.sample_index >= evidence.samples.len()
+        || bracket.before != evidence.samples[bracket.before.sample_index].state
+        || bracket.after != evidence.samples[bracket.after.sample_index].state
+        || !bracket.before_source_progress_m.is_finite()
+        || !bracket.after_source_progress_m.is_finite()
+        || bracket.before_source_progress_m >= expected_boundary_m
+        || bracket.after_source_progress_m < expected_boundary_m
+        || !bracket.interpolation_fraction.is_finite()
+        || !(0.0..=1.0).contains(&bracket.interpolation_fraction)
+    {
+        return Err(format!("persisted {boundary:?} bracket is malformed"));
+    }
+    Ok(())
 }
 
 /// Stable digest helper used for evidence identities and manifest checks.
@@ -1970,7 +2182,7 @@ fn invalid_minimal_evidence(
     // cannot claim a complete raw-bundle identity.  Leave the field empty;
     // the serialized-artifact wrapper above always derives the complete
     // digest before extraction.
-    let mut evidence = SourceTransitionEvidence {
+    let evidence = SourceTransitionEvidence {
         schema_version: SOURCE_TRANSITION_SCHEMA_VERSION,
         extractor_version: SOURCE_TRANSITION_EXTRACTOR_VERSION.to_owned(),
         evidence_digest: String::new(),
@@ -1998,11 +2210,36 @@ fn invalid_minimal_evidence(
         terminal,
         audit: fallback_audit(samples, actions, controller_updates),
     };
-    evidence.physical_digest = digest_serialized(&(
-        evidence.invalid_reason.clone(),
-        evidence.provenance.samples_digest.clone(),
-        evidence.provenance.action_log_digest.clone(),
-    ));
+    seal_source_transition_evidence(evidence)
+}
+
+fn seal_source_transition_evidence(
+    mut evidence: SourceTransitionEvidence,
+) -> SourceTransitionEvidence {
+    evidence.evidence_digest.clear();
+    evidence.physical_digest.clear();
+    // Canonical artifacts are sealed from the representation they persist.
+    // The workspace enables serde_json's exact float round-trip parser; this
+    // bounded loop is a defensive fixed-point check rather than quantization.
+    for _ in 0..8 {
+        let Ok(bytes) = serde_json::to_vec(&evidence) else {
+            break;
+        };
+        let Ok(next) = serde_json::from_slice::<SourceTransitionEvidence>(&bytes) else {
+            break;
+        };
+        if next == evidence {
+            break;
+        }
+        evidence = next;
+    }
+    evidence.physical_digest = source_transition_physical_digest(&evidence).unwrap_or_else(|_| {
+        digest_serialized(&(
+            evidence.invalid_reason.clone(),
+            evidence.provenance.samples_digest.clone(),
+            evidence.provenance.action_log_digest.clone(),
+        ))
+    });
     evidence.evidence_digest = source_transition_evidence_digest(&evidence);
     evidence
 }
@@ -3862,6 +4099,18 @@ mod tests {
             SourceTransitionEvidenceStatus::Complete
         );
         assert!(complete_evidence.invalid_reason.is_none());
+        validate_persisted_source_transition_evidence(&complete_evidence).unwrap();
+        let mut changed_bounds = complete_evidence.clone();
+        changed_bounds.source_transition_end_m += 1.0;
+        assert_ne!(
+            source_transition_physical_digest(&complete_evidence).unwrap(),
+            source_transition_physical_digest(&changed_bounds).unwrap()
+        );
+        let mut malformed = complete_evidence.clone();
+        malformed.samples[1].sample_index = 99;
+        malformed.samples[1].state.sample_index = 99;
+        let malformed = seal_source_transition_evidence(malformed);
+        assert!(validate_persisted_source_transition_evidence(&malformed).is_err());
 
         let contact_only_samples = vec![
             sample(0, 0.0, 0.0),
@@ -4371,6 +4620,13 @@ mod tests {
         assert_eq!(
             source_transition_evidence_digest(&evidence),
             evidence.evidence_digest
+        );
+        let decoded: SourceTransitionEvidence =
+            serde_json::from_str(&serde_json::to_string(&evidence).unwrap()).unwrap();
+        assert_eq!(decoded, evidence);
+        assert_eq!(
+            source_transition_evidence_digest(&decoded),
+            decoded.evidence_digest
         );
     }
 

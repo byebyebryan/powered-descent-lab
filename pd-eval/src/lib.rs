@@ -63,6 +63,15 @@ pub use source_transition::*;
 mod route_execution;
 pub use route_execution::*;
 
+mod route_capability;
+pub use route_capability::*;
+
+mod progress_interval_envelope;
+pub use progress_interval_envelope::*;
+
+mod terrain_equivalence_spike;
+pub use terrain_equivalence_spike::*;
+
 #[derive(Clone, Debug)]
 struct WorkspaceState {
     commit_key: String,
@@ -498,19 +507,26 @@ fn run_source_transition_gate_case(
     );
     let bundle_dir = output_dir.join(corpus).join(input.run_id);
     write_source_transition_raw_bundle(&bundle_dir, &physics_scenario, input.route_plan, &physics)?;
-    let provenance = source_transition_provenance_for_route_plan(
+    let mut provenance = source_transition_provenance_for_route_plan(
         &physics_scenario,
         input.route_plan,
         &physics.run,
         &physics.controller_updates,
         input.run_id.to_owned(),
     )?;
+    provenance.resolved_input_digest = source_transition_resolved_input_digest(
+        input.run_id,
+        input.scenario,
+        input.route_plan,
+        input.controller_spec,
+    );
     let evidence = assemble_source_transition_evidence_from_controlled_artifacts(
         &physics_scenario,
         input.route_plan,
         &physics,
         provenance.clone(),
     );
+    validate_source_evidence_round_trip(&evidence)?;
     let evidence_path = bundle_dir.join("source_transition.json");
     write_source_transition_artifacts(&evidence_path, &evidence)?;
     let repeated = assemble_source_transition_evidence_from_controlled_artifacts(
@@ -568,6 +584,61 @@ pub struct RouteExecutionDevelopmentGateSummary {
     pub deterministic_replay_failures: Vec<SourceTransitionGateFailure>,
     pub overall_passed: bool,
     pub failure_reasons: Vec<String>,
+    pub summary_digest: String,
+}
+
+impl RouteExecutionDevelopmentGateSummary {
+    pub fn validate(&self) -> std::result::Result<(), String> {
+        let total = self.baseline_total_count + self.diagnostic_total_count;
+        if self.schema_version != ROUTE_EXECUTION_GATE_SCHEMA_VERSION
+            || self.manifest_id.trim().is_empty()
+            || self.input_digest.trim().is_empty()
+        {
+            return Err("D0b summary schema or identity is invalid".to_owned());
+        }
+        if self.baseline_contract_passes + self.baseline_contract_failures.len()
+            != self.baseline_total_count
+            || self.parity_passes + self.parity_failures.len() != total
+            || self.deterministic_replay_passes + self.deterministic_replay_failures.len() != total
+            || self.source_status_counts.values().sum::<usize>() != total
+            || self.route_status_counts.values().sum::<usize>() != total
+        {
+            return Err("D0b summary counts or pass flag are inconsistent".to_owned());
+        }
+        let mut expected_failure_reasons = Vec::new();
+        if !self.baseline_contract_failures.is_empty() {
+            expected_failure_reasons.push("baseline_contract_failed".to_owned());
+        }
+        if !self.parity_failures.is_empty() {
+            expected_failure_reasons.push("cadence_parity_failed".to_owned());
+        }
+        if !self.source_invalidations.is_empty() {
+            expected_failure_reasons.push("source_transition_invalidated".to_owned());
+        }
+        if !self.route_invalidations.is_empty() {
+            expected_failure_reasons.push("route_execution_invalidated".to_owned());
+        }
+        if !self.deterministic_replay_failures.is_empty() {
+            expected_failure_reasons.push("deterministic_replay_failed".to_owned());
+        }
+        if self.failure_reasons != expected_failure_reasons
+            || self.overall_passed != expected_failure_reasons.is_empty()
+        {
+            return Err("D0b summary failure reasons or pass flag are inconsistent".to_owned());
+        }
+        let mut material = self.clone();
+        material.summary_digest.clear();
+        if self.summary_digest != source_transition_canonical_digest(&material) {
+            return Err("D0b summary digest mismatch".to_owned());
+        }
+        Ok(())
+    }
+
+    fn seal(&mut self) -> std::result::Result<(), String> {
+        self.summary_digest.clear();
+        self.summary_digest = source_transition_canonical_digest(self);
+        self.validate()
+    }
 }
 
 /// Run the development-only D0b route-execution gate over both committed
@@ -638,10 +709,14 @@ fn run_route_execution_development_gate_filtered(
             .collect(),
         manifest.baseline_expected_case_count,
     )?;
-    if source_transition_resolved_input_corpus_digest(&baseline_runs)?
-        != manifest.baseline_resolved_input_digest
-    {
-        bail!("D0b baseline resolved-input digest drift");
+    let baseline_resolved_input_digest =
+        source_transition_resolved_input_corpus_digest(&baseline_runs)?;
+    if baseline_resolved_input_digest != manifest.baseline_resolved_input_digest {
+        bail!(
+            "D0b baseline resolved-input digest drift: expected {}, resolved {}",
+            manifest.baseline_resolved_input_digest,
+            baseline_resolved_input_digest
+        );
     }
 
     let diagnostic_pack_path =
@@ -679,10 +754,14 @@ fn run_route_execution_development_gate_filtered(
             .collect(),
         manifest.diagnostic_expected_case_count,
     )?;
-    if source_transition_archived_input_corpus_digest(&diagnostic_pack.cases)
-        != manifest.diagnostic_resolved_input_digest
-    {
-        bail!("D0b diagnostic resolved-input digest drift");
+    let diagnostic_resolved_input_digest =
+        source_transition_archived_input_corpus_digest(&diagnostic_pack.cases);
+    if diagnostic_resolved_input_digest != manifest.diagnostic_resolved_input_digest {
+        bail!(
+            "D0b diagnostic resolved-input digest drift: expected {}, resolved {}",
+            manifest.diagnostic_resolved_input_digest,
+            diagnostic_resolved_input_digest
+        );
     }
 
     fs::create_dir_all(output_dir).with_context(|| {
@@ -725,6 +804,7 @@ fn run_route_execution_development_gate_filtered(
         deterministic_replay_failures: Vec::new(),
         overall_passed: false,
         failure_reasons: Vec::new(),
+        summary_digest: String::new(),
     };
     for run in baseline_selected {
         let input = SourceTransitionGateRunInput::from_baseline(run)?;
@@ -760,6 +840,7 @@ fn run_route_execution_development_gate_filtered(
             .push("deterministic_replay_failed".to_owned());
     }
     summary.overall_passed = summary.failure_reasons.is_empty();
+    summary.seal().map_err(anyhow::Error::msg)?;
     fs::write(
         output_dir.join("summary.json"),
         serde_json::to_string_pretty(&summary)?,
@@ -880,19 +961,26 @@ fn run_route_execution_gate_case(
     );
     let bundle_dir = output_dir.join(corpus).join(input.run_id);
     write_source_transition_raw_bundle(&bundle_dir, &physics_scenario, input.route_plan, &physics)?;
-    let provenance = source_transition_provenance_for_route_plan(
+    let mut provenance = source_transition_provenance_for_route_plan(
         &physics_scenario,
         input.route_plan,
         &physics.run,
         &physics.controller_updates,
         input.run_id.to_owned(),
     )?;
+    provenance.resolved_input_digest = source_transition_resolved_input_digest(
+        input.run_id,
+        input.scenario,
+        input.route_plan,
+        input.controller_spec,
+    );
     let source = assemble_source_transition_evidence_from_controlled_artifacts(
         &physics_scenario,
         input.route_plan,
         &physics,
         provenance.clone(),
     );
+    validate_source_evidence_round_trip(&source)?;
     write_source_transition_artifacts(&bundle_dir.join("source_transition.json"), &source)?;
     let route = assemble_route_execution_evidence_from_controlled_artifacts(
         &physics_scenario,
@@ -900,6 +988,31 @@ fn run_route_execution_gate_case(
         &physics,
         provenance.clone(),
     );
+    let route_round_trip: RouteExecutionEvidence =
+        serde_json::from_slice(&serde_json::to_vec(&route)?)?;
+    if route != route_round_trip {
+        bail!(
+            "route evidence changes on JSON round-trip at {}",
+            first_json_difference(
+                &serde_json::to_value(&route)?,
+                &serde_json::to_value(&route_round_trip)?,
+                "$",
+            )
+            .unwrap_or_else(|| "unknown path".to_owned())
+        );
+    }
+    if route.evidence_digest != route_execution_evidence_digest(&route_round_trip)
+        || route.physical_digest != route_execution_physical_digest(&route_round_trip)
+        || route.source_transition.evidence_digest
+            != source_transition_evidence_digest(&route_round_trip.source_transition)
+        || route.source_transition.physical_digest
+            != source_transition_physical_digest(&route_round_trip.source_transition)
+                .map_err(|error| anyhow!(error))?
+        || route.provenance.source_evidence_digest
+            != route_round_trip.source_transition.evidence_digest
+    {
+        bail!("route evidence digests are not stable across JSON round-trip");
+    }
     write_route_execution_artifacts(&bundle_dir.join("route_execution.json"), &route)?;
     let source_repeat = assemble_source_transition_evidence_from_controlled_artifacts(
         &physics_scenario,
@@ -938,6 +1051,64 @@ fn run_route_execution_gate_case(
         replay_stable,
         baseline_contract_pass,
     })
+}
+
+fn validate_source_evidence_round_trip(evidence: &SourceTransitionEvidence) -> Result<()> {
+    let round_trip: SourceTransitionEvidence =
+        serde_json::from_slice(&serde_json::to_vec(evidence)?)?;
+    if *evidence != round_trip {
+        bail!(
+            "source evidence changes on JSON round-trip at {}",
+            first_json_difference(
+                &serde_json::to_value(evidence)?,
+                &serde_json::to_value(&round_trip)?,
+                "$",
+            )
+            .unwrap_or_else(|| "unknown path".to_owned())
+        );
+    }
+    if evidence.evidence_digest != source_transition_evidence_digest(&round_trip)
+        || evidence.physical_digest
+            != source_transition_physical_digest(&round_trip).map_err(anyhow::Error::msg)?
+    {
+        bail!("source evidence digests are not stable across JSON round-trip");
+    }
+    Ok(())
+}
+
+fn first_json_difference(
+    left: &serde_json::Value,
+    right: &serde_json::Value,
+    path: &str,
+) -> Option<String> {
+    match (left, right) {
+        (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
+            for key in left.keys().chain(right.keys()).collect::<BTreeSet<_>>() {
+                let child_path = format!("{path}.{key}");
+                match (left.get(key), right.get(key)) {
+                    (Some(left), Some(right)) => {
+                        if let Some(difference) = first_json_difference(left, right, &child_path) {
+                            return Some(difference);
+                        }
+                    }
+                    _ => return Some(child_path),
+                }
+            }
+            None
+        }
+        (serde_json::Value::Array(left), serde_json::Value::Array(right)) => {
+            if left.len() != right.len() {
+                return Some(format!("{path}.length"));
+            }
+            left.iter()
+                .zip(right)
+                .enumerate()
+                .find_map(|(index, (left, right))| {
+                    first_json_difference(left, right, &format!("{path}[{index}]"))
+                })
+        }
+        _ => (left != right).then(|| format!("{path}: {left} != {right}")),
+    }
 }
 
 pub fn run_pack_file(path: &Path, output_dir: Option<&Path>) -> Result<BatchReport> {

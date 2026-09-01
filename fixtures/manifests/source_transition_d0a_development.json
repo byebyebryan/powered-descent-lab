@@ -8,9 +8,9 @@
   "baseline_resolved_input_digest": "fnv1a64:ba258fb11d2fc36e",
   "diagnostic_source_pack": "fixtures/evidence/source_transition_d0a_diagnostic_inputs.json",
   "diagnostic_source_commit": "bde34c5",
-  "diagnostic_pack_digest": "fnv1a64:2ea41a687dfd610d",
+  "diagnostic_pack_digest": "fnv1a64:bfa5ebac7003dda6",
   "diagnostic_expected_case_count": 24,
-  "diagnostic_resolved_input_digest": "fnv1a64:3d4032e317fba7ec",
+  "diagnostic_resolved_input_digest": "fnv1a64:85236d37129f5efd",
   "baseline_cases": [
     {
       "entry_id": "planner_contract_single_empty",
@@ -92,5 +92,5 @@
     "sample_retention": "physics_rate",
     "preserves_execution_inputs": true
   },
-  "input_digest": "fnv1a64:d14a0b4f8cd0a92f"
+  "input_digest": "fnv1a64:4f3b0eb97bce8209"
 }

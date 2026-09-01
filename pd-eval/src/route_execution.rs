@@ -416,6 +416,7 @@ pub struct RouteExecutionControllerMarkerAudit {
 /// capability, and prediction identities.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct RouteExecutionProvenance {
+    pub resolved_input_digest: String,
     pub request_digest: String,
     pub policy_digest: String,
     pub route_plan_digest: String,
@@ -442,6 +443,8 @@ pub struct RouteExecutionEvidence {
     pub provenance: RouteExecutionProvenance,
     pub cadence: SourceTransitionCadence,
     pub source_transition: SourceTransitionEvidence,
+    /// Exact normalized selected centerline used by the route kernel.
+    pub selected_centerline_m: Vec<Vec2>,
     pub samples: Vec<RouteExecutionSample>,
     pub legs: Vec<RouteExecutionLegEvidence>,
     pub waypoints: Vec<RouteExecutionWaypointEvidence>,
@@ -644,6 +647,7 @@ pub fn extract_route_execution_kernel(
     let legs = build_leg_evidence(input, &samples, tracking_after_index, &waypoint_evidence);
     let (backtracking_events, reentry_events) = path_events(&samples);
     let physical_digest = digest_serialized(&(
+        input.selected_centerline_m,
         &samples,
         &legs,
         &waypoint_evidence,
@@ -702,19 +706,17 @@ pub fn assemble_route_execution_evidence(
         }
     };
     let (status, invalid_reason) = classify_route_status(input, &kernel, terminal.as_ref());
-    let mut evidence = RouteExecutionEvidence {
+    let evidence = RouteExecutionEvidence {
         schema_version: ROUTE_EXECUTION_SCHEMA_VERSION,
         extractor_version: ROUTE_EXECUTION_EXTRACTOR_VERSION.to_owned(),
         evidence_digest: String::new(),
-        physical_digest: digest_serialized(&(
-            source_evidence.physical_digest.clone(),
-            &kernel.physical_digest,
-        )),
+        physical_digest: String::new(),
         status,
         invalid_reason,
         provenance,
         cadence: input.cadence,
         source_transition: source_evidence,
+        selected_centerline_m: input.selected_centerline_m.to_vec(),
         samples: kernel.samples,
         legs: kernel.legs,
         waypoints: kernel.waypoints,
@@ -723,8 +725,7 @@ pub fn assemble_route_execution_evidence(
         terminal,
         audit: route_execution_audit(input.samples, controller_updates),
     };
-    evidence.evidence_digest = route_execution_evidence_digest(&evidence);
-    evidence
+    seal_route_execution_evidence(evidence)
 }
 
 /// Convenience wrapper for a controller-produced full physics-rate bundle.
@@ -911,6 +912,7 @@ fn route_execution_context(
         })
         .collect::<Vec<_>>();
     let provenance = RouteExecutionProvenance {
+        resolved_input_digest: source_provenance.resolved_input_digest.clone(),
         request_digest: source_provenance.request_digest.clone(),
         policy_digest: source_provenance.policy_digest.clone(),
         route_plan_digest: source_provenance.route_plan_digest.clone(),
@@ -1904,7 +1906,7 @@ fn invalid_route_evidence(
     reason: RouteExecutionInvalidReason,
 ) -> RouteExecutionEvidence {
     provenance.source_evidence_digest = source_evidence.evidence_digest.clone();
-    let mut evidence = RouteExecutionEvidence {
+    let evidence = RouteExecutionEvidence {
         schema_version: ROUTE_EXECUTION_SCHEMA_VERSION,
         extractor_version: ROUTE_EXECUTION_EXTRACTOR_VERSION.to_owned(),
         evidence_digest: String::new(),
@@ -1914,6 +1916,7 @@ fn invalid_route_evidence(
         provenance,
         cadence,
         source_transition: source_evidence,
+        selected_centerline_m: Vec::new(),
         samples: Vec::new(),
         legs: Vec::new(),
         waypoints: Vec::new(),
@@ -1922,10 +1925,34 @@ fn invalid_route_evidence(
         terminal,
         audit: route_execution_audit(samples, controller_updates),
     };
-    evidence.physical_digest = digest_serialized(&(
-        evidence.invalid_reason.clone(),
-        evidence.provenance.samples_digest.clone(),
-    ));
+    seal_route_execution_evidence(evidence)
+}
+
+fn seal_route_execution_evidence(mut evidence: RouteExecutionEvidence) -> RouteExecutionEvidence {
+    evidence.evidence_digest.clear();
+    evidence.physical_digest.clear();
+    // Seal the persisted representation.  Exact float round-tripping should
+    // converge immediately; retain a bounded defensive fixed-point check.
+    for _ in 0..8 {
+        let Ok(bytes) = serde_json::to_vec(&evidence) else {
+            break;
+        };
+        let Ok(next) = serde_json::from_slice::<RouteExecutionEvidence>(&bytes) else {
+            break;
+        };
+        if next == evidence {
+            break;
+        }
+        evidence = next;
+    }
+    evidence.physical_digest = if evidence.status == RouteExecutionEvidenceStatus::Invalid {
+        digest_serialized(&(
+            evidence.invalid_reason.clone(),
+            evidence.provenance.samples_digest.clone(),
+        ))
+    } else {
+        route_execution_physical_digest(&evidence)
+    };
     evidence.evidence_digest = route_execution_evidence_digest(&evidence);
     evidence
 }
@@ -1949,6 +1976,7 @@ fn invalid_route_evidence_from_context(
         physics_hz: context.scenario.sim.physics_hz,
     };
     let provenance = RouteExecutionProvenance {
+        resolved_input_digest: context.source_provenance.resolved_input_digest,
         request_digest: context.source_provenance.request_digest,
         policy_digest: context.source_provenance.policy_digest,
         route_plan_digest: context.route_plan.plan_digest.clone(),
@@ -1975,6 +2003,251 @@ pub fn route_execution_evidence_digest(evidence: &RouteExecutionEvidence) -> Str
     let mut material = evidence.clone();
     material.evidence_digest.clear();
     digest_serialized(&material)
+}
+
+/// Recompute the complete neutral D0b physical digest.  Provenance, terminal
+/// metadata, and controller audit remain deliberately outside this identity.
+pub fn route_execution_physical_digest(evidence: &RouteExecutionEvidence) -> String {
+    let kernel_digest = digest_serialized(&(
+        &evidence.selected_centerline_m,
+        &evidence.samples,
+        &evidence.legs,
+        &evidence.waypoints,
+        &evidence.backtracking_events,
+        &evidence.reentry_events,
+    ));
+    digest_serialized(&(
+        evidence.source_transition.physical_digest.clone(),
+        kernel_digest,
+    ))
+}
+
+/// Validate the schema and index topology of a persisted neutral route
+/// artifact.  This rejects malformed artifacts even when an attacker or
+/// broken producer has recomputed otherwise self-consistent digests.
+pub fn validate_persisted_route_execution_evidence(
+    evidence: &RouteExecutionEvidence,
+) -> Result<(), String> {
+    if evidence.schema_version != ROUTE_EXECUTION_SCHEMA_VERSION {
+        return Err(format!(
+            "route evidence schema_version must equal {ROUTE_EXECUTION_SCHEMA_VERSION}"
+        ));
+    }
+    if evidence.extractor_version != ROUTE_EXECUTION_EXTRACTOR_VERSION {
+        return Err(format!(
+            "route evidence extractor_version must equal {ROUTE_EXECUTION_EXTRACTOR_VERSION}"
+        ));
+    }
+    if evidence.evidence_digest != route_execution_evidence_digest(evidence) {
+        return Err("route evidence digest mismatch".to_owned());
+    }
+    if evidence.status == RouteExecutionEvidenceStatus::Invalid {
+        return evidence
+            .invalid_reason
+            .as_ref()
+            .map(|_| ())
+            .ok_or_else(|| "invalid route evidence has no invalid_reason".to_owned());
+    }
+    if evidence.invalid_reason.is_some() {
+        return Err("non-invalid route evidence carries an invalid_reason".to_owned());
+    }
+    super::source_transition::validate_persisted_source_transition_evidence(
+        &evidence.source_transition,
+    )?;
+    if evidence.cadence.physics_hz == 0
+        || evidence.cadence.sample_hz != Some(evidence.cadence.physics_hz)
+        || evidence.cadence != evidence.source_transition.cadence
+    {
+        return Err("route evidence is not sampled at the source physics rate".to_owned());
+    }
+    if evidence.provenance.source_evidence_digest != evidence.source_transition.evidence_digest {
+        return Err("route provenance does not name the nested source evidence".to_owned());
+    }
+    if evidence.physical_digest != route_execution_physical_digest(evidence) {
+        return Err("route physical digest mismatch".to_owned());
+    }
+    if evidence.selected_centerline_m.len() < 2
+        || evidence
+            .selected_centerline_m
+            .iter()
+            .any(|point| !point.x.is_finite() || !point.y.is_finite())
+        || evidence
+            .selected_centerline_m
+            .windows(2)
+            .any(|pair| pair[1].x <= pair[0].x || (pair[1] - pair[0]).length() <= 0.0)
+    {
+        return Err("route evidence selected centerline is malformed".to_owned());
+    }
+    if evidence.samples.is_empty() {
+        return Err("route evidence has no samples".to_owned());
+    }
+    for (index, sample) in evidence.samples.iter().enumerate() {
+        if sample.sample_index != index
+            || sample.state.sample_index != index
+            || sample.physics_step != sample.state.physics_step
+            || sample.sim_time_s != sample.state.sim_time_s
+            || (index == 0 && sample.physics_step != 0)
+            || (index > 0
+                && evidence.samples[index - 1].physics_step.checked_add(1)
+                    != Some(sample.physics_step))
+            || !route_execution_sample_finite(sample)
+            || !route_execution_raw_state_finite(&sample.state)
+        {
+            return Err(format!(
+                "route sample {index} is malformed or non-contiguous"
+            ));
+        }
+    }
+    for (leg_index, leg) in evidence.legs.iter().enumerate() {
+        if leg.leg_index != leg_index {
+            return Err(format!("route leg {leg_index} has a non-canonical index"));
+        }
+        validate_route_boundary_identity(evidence, &leg.start_boundary)?;
+        validate_route_boundary_identity(evidence, &leg.end_boundary)?;
+        if let (Some(start), Some(end)) = (
+            leg.start_boundary.sample_index,
+            leg.end_boundary.sample_index,
+        ) && start > end
+        {
+            return Err(format!("route leg {leg_index} has reversed boundaries"));
+        }
+        for range in &leg.sample_ranges {
+            let Some(first) = range.sample_indices.first().copied() else {
+                return Err(format!("route leg {leg_index} has an empty sample range"));
+            };
+            if first != range.first_sample_index
+                || range.sample_indices.last().copied() != Some(range.last_sample_index)
+                || range
+                    .sample_indices
+                    .iter()
+                    .any(|index| *index >= evidence.samples.len())
+                || range
+                    .sample_indices
+                    .windows(2)
+                    .any(|pair| pair[0].checked_add(1) != Some(pair[1]))
+            {
+                return Err(format!(
+                    "route leg {leg_index} has a malformed sample range"
+                ));
+            }
+        }
+    }
+    for (waypoint_index, waypoint) in evidence.waypoints.iter().enumerate() {
+        if waypoint.waypoint_index != waypoint_index
+            || waypoint.waypoint_id.trim().is_empty()
+            || waypoint.contract.id != waypoint.waypoint_id
+        {
+            return Err(format!(
+                "route waypoint {waypoint_index} has an invalid identity"
+            ));
+        }
+        waypoint
+            .contract
+            .validate()
+            .map_err(|error| format!("route waypoint {waypoint_index}: {error}"))?;
+        for opportunity in &waypoint.opportunity {
+            let sample = evidence
+                .samples
+                .get(opportunity.sample.sample_index)
+                .ok_or_else(|| {
+                    format!("route waypoint {waypoint_index} opportunity sample is missing")
+                })?;
+            if sample != &opportunity.sample {
+                return Err(format!(
+                    "route waypoint {waypoint_index} opportunity sample is not canonical"
+                ));
+            }
+        }
+        if let Some(resolution) = &waypoint.resolution {
+            let sample = evidence
+                .samples
+                .get(resolution.sample_index)
+                .ok_or_else(|| format!("route waypoint {waypoint_index} resolution is missing"))?;
+            if resolution.physics_step != sample.physics_step
+                || resolution.sim_time_s != sample.sim_time_s
+            {
+                return Err(format!(
+                    "route waypoint {waypoint_index} resolution identity is inconsistent"
+                ));
+            }
+        }
+        if let Some(first_pass) = &waypoint.first_contract_pass
+            && (!first_pass.assessment.contract_pass
+                || evidence.samples.get(first_pass.sample.sample_index) != Some(&first_pass.sample))
+        {
+            return Err(format!(
+                "route waypoint {waypoint_index} first contract pass is malformed"
+            ));
+        }
+    }
+    match evidence.status {
+        RouteExecutionEvidenceStatus::Complete => {
+            if evidence
+                .waypoints
+                .iter()
+                .any(|waypoint| waypoint.resolution.is_none())
+            {
+                return Err("complete route evidence has an unresolved waypoint".to_owned());
+            }
+        }
+        RouteExecutionEvidenceStatus::CensoredBeforeWaypoint { waypoint_index } => {
+            if waypoint_index >= evidence.waypoints.len()
+                || evidence.waypoints[waypoint_index].resolution.is_some()
+            {
+                return Err(
+                    "censored route status does not identify an unresolved waypoint".to_owned(),
+                );
+            }
+        }
+        RouteExecutionEvidenceStatus::Invalid => unreachable!(),
+    }
+    Ok(())
+}
+
+fn validate_route_boundary_identity(
+    evidence: &RouteExecutionEvidence,
+    boundary: &RouteExecutionBoundaryIdentity,
+) -> Result<(), String> {
+    match (
+        boundary.sample_index,
+        boundary.physics_step,
+        boundary.sim_time_s,
+    ) {
+        (None, None, None) => Ok(()),
+        (Some(index), Some(step), Some(time)) => {
+            let sample = evidence
+                .samples
+                .get(index)
+                .ok_or_else(|| format!("route boundary '{}' sample is missing", boundary.kind))?;
+            if sample.physics_step != step || sample.sim_time_s != time {
+                return Err(format!(
+                    "route boundary '{}' identity is inconsistent",
+                    boundary.kind
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(format!(
+            "route boundary '{}' has partial sample identity",
+            boundary.kind
+        )),
+    }
+}
+
+fn route_execution_raw_state_finite(state: &SourceTransitionRawState) -> bool {
+    [
+        state.sim_time_s,
+        state.position_m.x,
+        state.position_m.y,
+        state.velocity_mps.x,
+        state.velocity_mps.y,
+        state.attitude_rad,
+        state.angular_rate_radps,
+        state.mass_kg,
+        state.fuel_kg,
+    ]
+    .iter()
+    .all(|value| value.is_finite())
 }
 
 /// Write route evidence and its audit/provenance sidecar.
@@ -2025,6 +2298,7 @@ pub fn route_execution_provenance_for_route_plan(
         artifact_identity,
     )?;
     Ok(RouteExecutionProvenance {
+        resolved_input_digest: source.resolved_input_digest,
         request_digest: source.request_digest,
         policy_digest: source.policy_digest,
         route_plan_digest: source.route_plan_digest,
@@ -3490,6 +3764,19 @@ mod tests {
         let decoded: RouteExecutionEvidence = serde_json::from_str(&serialized).unwrap();
         assert_eq!(decoded.evidence_digest, first.evidence_digest);
         assert_eq!(decoded.physical_digest, first.physical_digest);
+        assert_eq!(
+            route_execution_evidence_digest(&decoded),
+            decoded.evidence_digest
+        );
+        assert_eq!(
+            route_execution_physical_digest(&decoded),
+            decoded.physical_digest
+        );
+        validate_persisted_route_execution_evidence(&decoded).unwrap();
+        let mut malformed = decoded;
+        malformed.legs[0].leg_index = 99;
+        let malformed = seal_route_execution_evidence(malformed);
+        assert!(validate_persisted_route_execution_evidence(&malformed).is_err());
     }
 
     #[test]
