@@ -14,9 +14,18 @@ use pd_core::{
     Vec2, build_endpoint_profile, compute_waypoint_authority, endpoint_shaped_centerline,
     normalized_geometry, validate_route,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const ALGORITHM_ID: &str = pd_core::HEIGHTFIELD_VISIBILITY_ALGORITHM_ID;
+
+/// Versioned, input-only planner candidate exposure consumed by research
+/// diagnostics.  This API deliberately sits beside (rather than inside)
+/// [`plan`], so ordinary planner results and rejection strings remain
+/// unchanged.
+pub const CANDIDATE_EXPOSURE_SCHEMA_ID: &str = "planner_candidate_exposure_v1";
+pub const CANDIDATE_EXPOSURE_SCHEMA_VERSION: u32 = 1;
+pub const CANDIDATE_EXPOSURE_MAX_EXAMINED_PATHS: usize = 65_536;
+pub const CANDIDATE_EXPOSURE_MAX_RETAINED_CANDIDATES: usize = 256;
 
 /// Quantization used only for candidate ranking. Exact authority caps emitted
 /// into route plans and validated by pd-core remain unquantized.
@@ -25,6 +34,449 @@ const AUTHORITY_RANK_QUANTUM_MPS: f64 = 1.0e-9;
 /// Plan an owned request snapshot through the deterministic V1 search.
 pub fn plan(request: &RoutePlanningRequest) -> Result<RoutePlan, PlanningRejection> {
     Planner.plan(request)
+}
+
+/// A bounded, input-only view of the exact candidate paths considered by the
+/// production planner.  The selected production plan is always rank zero,
+/// including when the diagnostic path budget prevents the search from
+/// reaching that path in traversal order.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlannerCandidateExposureV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub request_digest: String,
+    pub selected_plan_digest: String,
+    pub limits: PlannerCandidateExposureLimitsV1,
+    pub examined_path_count: usize,
+    /// Number of valid candidates found by bounded traversal. An injected
+    /// selected plan is deliberately excluded from this count.
+    pub accepted_candidate_count: usize,
+    pub retained_candidate_count: usize,
+    pub complete: bool,
+    pub path_truncated: bool,
+    pub retention_truncated: bool,
+    pub truncation_reasons: Vec<String>,
+    pub selected_plan_injected: bool,
+    pub candidates: Vec<PlannerCandidateV1>,
+    pub exposure_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PlannerCandidateExposureLimitsV1 {
+    pub max_examined_paths: usize,
+    pub max_retained_candidates: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlannerCandidateV1 {
+    pub rank: usize,
+    pub plan_digest: String,
+    pub plan: RoutePlan,
+    pub node_ids: Vec<String>,
+    pub minimum_handoff_speed_cap_mps: f64,
+    pub route_length_m: f64,
+    pub peak_extra_loft_m: f64,
+}
+
+impl PlannerCandidateExposureV1 {
+    /// Validate structural, selected-plan, ranking, and digest invariants.
+    /// Candidate order is established by and rechecked against the exact
+    /// production comparator; duplicated metrics are canonicalized to the
+    /// emitted plan's diagnostics and validated independently.
+    /// Callers should run this before persisting or consuming an exposure.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != CANDIDATE_EXPOSURE_SCHEMA_ID {
+            return Err(format!(
+                "candidate exposure schema_id must equal {CANDIDATE_EXPOSURE_SCHEMA_ID}"
+            ));
+        }
+        if self.schema_version != CANDIDATE_EXPOSURE_SCHEMA_VERSION {
+            return Err(format!(
+                "candidate exposure schema_version must equal {CANDIDATE_EXPOSURE_SCHEMA_VERSION}"
+            ));
+        }
+        let expected_limits = PlannerCandidateExposureLimitsV1 {
+            max_examined_paths: CANDIDATE_EXPOSURE_MAX_EXAMINED_PATHS,
+            max_retained_candidates: CANDIDATE_EXPOSURE_MAX_RETAINED_CANDIDATES,
+        };
+        if self.limits != expected_limits {
+            return Err("candidate exposure limits do not match schema v1".to_owned());
+        }
+        if self.examined_path_count > self.limits.max_examined_paths {
+            return Err("candidate exposure examined path count exceeds its limit".to_owned());
+        }
+        if self.path_truncated && self.examined_path_count != self.limits.max_examined_paths {
+            return Err("path-truncated exposure did not exhaust its path limit".to_owned());
+        }
+        let direct_exposure_counts = self
+            .candidates
+            .first()
+            .is_some_and(|candidate| candidate.plan.topology == RouteTopology::Direct);
+        if self.accepted_candidate_count > self.examined_path_count && !direct_exposure_counts {
+            return Err("candidate exposure accepted count exceeds examined paths".to_owned());
+        }
+        if self.retained_candidate_count != self.candidates.len()
+            || self.retained_candidate_count > self.limits.max_retained_candidates
+        {
+            return Err("candidate exposure retained count is inconsistent".to_owned());
+        }
+        if self.complete == self.path_truncated {
+            return Err(
+                "candidate exposure complete/path truncation flags are inconsistent".to_owned(),
+            );
+        }
+        let mut expected_reasons = Vec::new();
+        if self.path_truncated {
+            expected_reasons.push("path_budget_exhausted".to_owned());
+        }
+        if self.retention_truncated {
+            expected_reasons.push("retention_cap_exceeded".to_owned());
+        }
+        if self.truncation_reasons != expected_reasons {
+            return Err("candidate exposure truncation reasons are inconsistent".to_owned());
+        }
+        if self.candidates.is_empty() {
+            return Err("candidate exposure has no selected candidate".to_owned());
+        }
+        if self.candidates[0].plan.topology == RouteTopology::Direct {
+            if self.selected_plan_injected
+                || self.accepted_candidate_count != 1
+                || self.examined_path_count != 0
+                || self.path_truncated
+                || self.retention_truncated
+            {
+                return Err("direct exposure has impossible selection counts".to_owned());
+            }
+        } else if !self.selected_plan_injected && self.accepted_candidate_count == 0 {
+            return Err("waypoint exposure without injection has no selected candidate".to_owned());
+        }
+        let known_valid_count =
+            self.accepted_candidate_count + usize::from(self.selected_plan_injected);
+        if known_valid_count == 0 {
+            return Err("candidate exposure has no known valid candidate".to_owned());
+        }
+        if self.retention_truncated != (known_valid_count > self.limits.max_retained_candidates)
+            || self.retained_candidate_count
+                != known_valid_count.min(self.limits.max_retained_candidates)
+        {
+            return Err("candidate exposure retention counts are inconsistent".to_owned());
+        }
+        if self.candidates[0].rank != 0
+            || self.candidates[0].plan_digest != self.selected_plan_digest
+            || self.candidates[0].plan.plan_digest != self.selected_plan_digest
+            || self.candidates[0].plan.request_digest != self.request_digest
+        {
+            return Err("candidate exposure rank zero is not the selected plan".to_owned());
+        }
+        let mut digests = std::collections::BTreeSet::new();
+        let expected_policy = &self.candidates[0].plan.policy;
+        for (rank, candidate) in self.candidates.iter().enumerate() {
+            if candidate.rank != rank {
+                return Err("candidate exposure ranks are not contiguous".to_owned());
+            }
+            if candidate.plan_digest != candidate.plan.plan_digest {
+                return Err(format!("candidate rank {rank} has a plan digest mismatch"));
+            }
+            let recomputed_plan_digest = digest(&PlanDigestInput {
+                algorithm_id: &candidate.plan.algorithm_id,
+                policy: &candidate.plan.policy,
+                request_digest: &candidate.plan.request_digest,
+                topology: candidate.plan.topology,
+                route: &candidate.plan.route,
+                diagnostics: &candidate.plan.diagnostics,
+            })
+            .map_err(|error| format!("candidate rank {rank} digest input is invalid: {error}"))?;
+            if candidate.plan_digest != recomputed_plan_digest {
+                return Err(format!(
+                    "candidate rank {rank} plan digest is not canonical"
+                ));
+            }
+            if candidate.plan.request_digest != self.request_digest {
+                return Err(format!(
+                    "candidate rank {rank} has a different request digest"
+                ));
+            }
+            if candidate.plan.algorithm_id != ALGORITHM_ID {
+                return Err(format!(
+                    "candidate rank {rank} uses an unexpected planner algorithm"
+                ));
+            }
+            if candidate.plan.policy != *expected_policy {
+                return Err(format!(
+                    "candidate rank {rank} uses a different planning policy"
+                ));
+            }
+            if candidate.node_ids != candidate.plan.diagnostics.selected_node_ids {
+                return Err(format!(
+                    "candidate rank {rank} node identity does not match its plan"
+                ));
+            }
+            if [
+                candidate.minimum_handoff_speed_cap_mps,
+                candidate.route_length_m,
+                candidate.peak_extra_loft_m,
+            ]
+            .iter()
+            .any(|value| !value.is_finite())
+            {
+                return Err(format!(
+                    "candidate rank {rank} ranking metrics are not finite"
+                ));
+            }
+            let expected_minimum_handoff_speed_cap_mps = candidate
+                .plan
+                .diagnostics
+                .waypoint_authority
+                .iter()
+                .map(|authority| authority.handoff_speed_cap_mps)
+                .min_by(f64::total_cmp)
+                .unwrap_or(0.0);
+            if candidate.minimum_handoff_speed_cap_mps != expected_minimum_handoff_speed_cap_mps
+                || candidate.route_length_m != candidate.plan.diagnostics.route_length_m
+                || candidate.peak_extra_loft_m != candidate.plan.diagnostics.peak_extra_loft_m
+            {
+                return Err(format!(
+                    "candidate rank {rank} ranking metrics are not canonical"
+                ));
+            }
+            if !digests.insert(candidate.plan_digest.clone()) {
+                return Err(format!("candidate rank {rank} duplicates a plan digest"));
+            }
+            candidate
+                .plan
+                .route
+                .validate()
+                .map_err(|error| format!("candidate rank {rank} route is invalid: {error}"))?;
+            if let Some(previous) = self.candidates.get(rank.saturating_sub(1))
+                && rank > 0
+            {
+                let previous_path = candidate_path_from_plan(previous).map_err(|error| {
+                    format!("candidate rank {} ranking data: {error}", rank - 1)
+                })?;
+                let candidate_path = candidate_path_from_plan(candidate)
+                    .map_err(|error| format!("candidate rank {rank} ranking data: {error}"))?;
+                if !candidate_precedes(&previous_path, &candidate_path) {
+                    return Err(format!(
+                        "candidate rank {rank} is not ordered by planner ranking"
+                    ));
+                }
+            }
+        }
+        if self.exposure_digest != candidate_exposure_digest(self) {
+            return Err("candidate exposure digest mismatch".to_owned());
+        }
+        Ok(())
+    }
+}
+
+/// Compute the stable exposure digest, excluding the digest field itself.
+pub fn candidate_exposure_digest(exposure: &PlannerCandidateExposureV1) -> String {
+    let mut material = exposure.clone();
+    material.exposure_digest.clear();
+    digest(&material).unwrap_or_else(|_| "fnv1a64:0000000000000000".to_owned())
+}
+
+/// Expose the planner's bounded, statically valid waypoint candidates for a
+/// research-only diagnostic.  This function shares the production candidate
+/// generator, exact route constructor/validator, comparator, and plan digest
+/// machinery.  It has no executor or outcome inputs.
+pub fn expose_candidates(
+    request: &RoutePlanningRequest,
+) -> Result<PlannerCandidateExposureV1, PlanningRejection> {
+    let selected = plan(request)?;
+    let request_digest = selected.request_digest.clone();
+    let limits = PlannerCandidateExposureLimitsV1 {
+        max_examined_paths: CANDIDATE_EXPOSURE_MAX_EXAMINED_PATHS,
+        max_retained_candidates: CANDIDATE_EXPOSURE_MAX_RETAINED_CANDIDATES,
+    };
+    if selected.topology == RouteTopology::Direct {
+        let selected_route_length_m = selected.diagnostics.route_length_m;
+        let selected_peak_extra_loft_m = selected.diagnostics.peak_extra_loft_m;
+        let mut exposure = PlannerCandidateExposureV1 {
+            schema_id: CANDIDATE_EXPOSURE_SCHEMA_ID.to_owned(),
+            schema_version: CANDIDATE_EXPOSURE_SCHEMA_VERSION,
+            request_digest,
+            selected_plan_digest: selected.plan_digest.clone(),
+            limits,
+            examined_path_count: 0,
+            accepted_candidate_count: 1,
+            retained_candidate_count: 1,
+            complete: true,
+            path_truncated: false,
+            retention_truncated: false,
+            truncation_reasons: Vec::new(),
+            selected_plan_injected: false,
+            candidates: vec![PlannerCandidateV1 {
+                rank: 0,
+                plan_digest: selected.plan_digest.clone(),
+                plan: selected,
+                node_ids: Vec::new(),
+                minimum_handoff_speed_cap_mps: 0.0,
+                route_length_m: selected_route_length_m,
+                peak_extra_loft_m: selected_peak_extra_loft_m,
+            }],
+            exposure_digest: String::new(),
+        };
+        exposure.exposure_digest = candidate_exposure_digest(&exposure);
+        exposure.validate().map_err(exposure_rejection)?;
+        return Ok(exposure);
+    }
+
+    request.validate().map_err(|error| {
+        PlanningRejection::new(PlanningRejectionCode::InvalidRequest, error.to_string())
+    })?;
+    let geometry = normalized_geometry(request).map_err(rejection_from_validation)?;
+    let (profile, free_span) = build_endpoint_profile(request, geometry.direct_horizontal_span_m)
+        .map_err(rejection_from_validation)?;
+    if free_span <= 0.0 {
+        return Err(PlanningRejection::new(
+            PlanningRejectionCode::UnsupportedGeometry,
+            "source and target pad footprints overlap",
+        ));
+    }
+    let terrain = normalized_terrain(request, &geometry)?;
+    let profile_events =
+        safety_profile_events(&profile, &terrain, geometry.direct_horizontal_span_m);
+    let safe_profile_points =
+        safe_profile_points_world(request, &geometry, &profile, &terrain, &profile_events)?;
+    let direct_points = endpoint_shaped_centerline(request, &geometry, &profile, &[])
+        .map_err(rejection_from_validation)?;
+    let direct_clearance = exact_path_clearance(request, &geometry, &profile, &direct_points)?;
+    let candidates = build_candidates(request, &geometry, &profile, &terrain, &profile_events)?;
+    let capped_nodes = candidates
+        .iter()
+        .filter(|node| node.point.y <= node.loft_cap_y + 1.0e-9)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut search = ExposureSearch::default();
+    let mut candidate_rejections = CandidateRejections::default();
+    let source = source_point(request, &geometry);
+    let target = target_point(request, &geometry);
+    if request.policy.max_waypoints > 0 {
+        search_exposure_paths(
+            request,
+            &geometry,
+            &profile,
+            &capped_nodes,
+            source,
+            target,
+            usize::from(request.policy.max_waypoints),
+            0,
+            &mut Vec::new(),
+            &mut search,
+            &mut candidate_rejections,
+        )?;
+    }
+
+    let selected_identity = selected
+        .diagnostics
+        .selected_node_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("/");
+    let selected_path_in_search = search
+        .paths
+        .iter()
+        .find(|path| candidate_identity(path) == selected_identity)
+        .cloned();
+    let selected_in_search = selected_path_in_search.is_some();
+    let selected_path = selected_path_in_search
+        .unwrap_or_else(|| selected_candidate_path(request, &geometry, &selected));
+    search.paths.sort_by(candidate_ordering);
+    let retained_limit_without_selected = CANDIDATE_EXPOSURE_MAX_RETAINED_CANDIDATES - 1;
+    search
+        .paths
+        .retain(|path| candidate_identity(path) != selected_identity);
+    search.paths.truncate(retained_limit_without_selected);
+
+    let mut candidate_plans = Vec::with_capacity(search.paths.len() + 1);
+    candidate_plans.push((selected_path, selected.clone()));
+    for path in search.paths {
+        let plan = build_success_plan(
+            request,
+            request_digest.clone(),
+            geometry.clone(),
+            profile.clone(),
+            path.clone(),
+            direct_clearance.clone(),
+            safe_profile_points.clone(),
+        )?;
+        candidate_plans.push((path, plan));
+    }
+    candidate_plans[1..].sort_by(|left, right| candidate_ordering(&left.0, &right.0));
+    if candidate_plans[1..]
+        .iter()
+        .any(|candidate| !candidate_precedes(&candidate_plans[0].0, &candidate.0))
+    {
+        return Err(PlanningRejection::new(
+            PlanningRejectionCode::UnsupportedGeometry,
+            "ordinary selected planner candidate is not rank zero",
+        ));
+    }
+    let candidates = candidate_plans
+        .into_iter()
+        .enumerate()
+        .map(|(rank, (path, plan))| {
+            if rank == 0 && plan.plan_digest != selected.plan_digest {
+                return Err(PlanningRejection::new(
+                    PlanningRejectionCode::UnsupportedGeometry,
+                    "selected planner candidate digest changed during exposure",
+                ));
+            }
+            let _ = path;
+            let minimum_handoff_speed_cap_mps = plan
+                .diagnostics
+                .waypoint_authority
+                .iter()
+                .map(|authority| authority.handoff_speed_cap_mps)
+                .min_by(f64::total_cmp)
+                .unwrap_or(0.0);
+            let route_length_m = plan.diagnostics.route_length_m;
+            let peak_extra_loft_m = plan.diagnostics.peak_extra_loft_m;
+            Ok(PlannerCandidateV1 {
+                rank,
+                plan_digest: plan.plan_digest.clone(),
+                plan,
+                node_ids: path.nodes.iter().map(|node| node.id.clone()).collect(),
+                minimum_handoff_speed_cap_mps,
+                route_length_m,
+                peak_extra_loft_m,
+            })
+        })
+        .collect::<Result<Vec<_>, PlanningRejection>>()?;
+    let retention_truncated = search.accepted_candidate_count + usize::from(!selected_in_search)
+        > CANDIDATE_EXPOSURE_MAX_RETAINED_CANDIDATES;
+    let mut exposure = PlannerCandidateExposureV1 {
+        schema_id: CANDIDATE_EXPOSURE_SCHEMA_ID.to_owned(),
+        schema_version: CANDIDATE_EXPOSURE_SCHEMA_VERSION,
+        request_digest,
+        selected_plan_digest: selected.plan_digest.clone(),
+        limits,
+        examined_path_count: search.examined_path_count,
+        accepted_candidate_count: search.accepted_candidate_count,
+        retained_candidate_count: candidates.len(),
+        complete: !search.path_truncated,
+        path_truncated: search.path_truncated,
+        retention_truncated,
+        truncation_reasons: Vec::new(),
+        selected_plan_injected: !selected_in_search,
+        candidates,
+        exposure_digest: String::new(),
+    };
+    if exposure.path_truncated {
+        exposure
+            .truncation_reasons
+            .push("path_budget_exhausted".to_owned());
+    }
+    if exposure.retention_truncated {
+        exposure
+            .truncation_reasons
+            .push("retention_cap_exceeded".to_owned());
+    }
+    exposure.exposure_digest = candidate_exposure_digest(&exposure);
+    exposure.validate().map_err(exposure_rejection)?;
+    Ok(exposure)
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -203,6 +655,14 @@ struct CandidatePath {
     minimum_handoff_speed_cap_mps: f64,
     route_length_m: f64,
     peak_extra_loft_m: f64,
+}
+
+#[derive(Default)]
+struct ExposureSearch {
+    paths: Vec<CandidatePath>,
+    examined_path_count: usize,
+    accepted_candidate_count: usize,
+    path_truncated: bool,
 }
 
 #[derive(Default)]
@@ -670,6 +1130,74 @@ fn search_paths(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn search_exposure_paths(
+    request: &RoutePlanningRequest,
+    geometry: &NormalizedRouteGeometry,
+    profile: &SafetyProfile,
+    nodes: &[Node],
+    source: Vec2,
+    target: Vec2,
+    remaining_waypoints: usize,
+    next_index: usize,
+    current: &mut Vec<Node>,
+    search: &mut ExposureSearch,
+    candidate_rejections: &mut CandidateRejections,
+) -> Result<(), PlanningRejection> {
+    if search.path_truncated {
+        return Ok(());
+    }
+    let previous = current.last().map_or(source, |node| node.point);
+    for index in next_index..nodes.len() {
+        if search.path_truncated {
+            break;
+        }
+        let node = &nodes[index];
+        if !edge_clear(request, geometry, profile, previous, node.point)? {
+            continue;
+        }
+        current.push(node.clone());
+        if edge_clear(request, geometry, profile, node.point, target)?
+            && candidate_path_capture_allowed(source, target, current)
+        {
+            if search.examined_path_count >= CANDIDATE_EXPOSURE_MAX_EXAMINED_PATHS {
+                search.path_truncated = true;
+                current.pop();
+                break;
+            }
+            search.examined_path_count += 1;
+            if let Some(candidate) = evaluate_candidate_path(
+                current.clone(),
+                request,
+                geometry,
+                source,
+                target,
+                candidate_rejections,
+            )? {
+                search.accepted_candidate_count += 1;
+                search.paths.push(candidate);
+            }
+        }
+        if remaining_waypoints > 1 && !search.path_truncated {
+            search_exposure_paths(
+                request,
+                geometry,
+                profile,
+                nodes,
+                source,
+                target,
+                remaining_waypoints - 1,
+                index + 1,
+                current,
+                search,
+                candidate_rejections,
+            )?;
+        }
+        current.pop();
+    }
+    Ok(())
+}
+
 fn consider_path(
     best: &mut Option<CandidatePath>,
     nodes: Vec<Node>,
@@ -679,12 +1207,36 @@ fn consider_path(
     target: Vec2,
     candidate_rejections: &mut CandidateRejections,
 ) -> Result<(), PlanningRejection> {
-    let capture_radius = ((target - source).length() * 0.08).clamp(35.0, 95.0);
-    if nodes
-        .windows(2)
-        .any(|pair| (pair[1].point - pair[0].point).length() <= capture_radius * 2.0)
-    {
+    let Some(candidate) = evaluate_candidate_path(
+        nodes,
+        request,
+        geometry,
+        source,
+        target,
+        candidate_rejections,
+    )?
+    else {
         return Ok(());
+    };
+    let replace = best
+        .as_ref()
+        .is_none_or(|current| candidate_precedes(&candidate, current));
+    if replace {
+        *best = Some(candidate);
+    }
+    Ok(())
+}
+
+fn evaluate_candidate_path(
+    nodes: Vec<Node>,
+    request: &RoutePlanningRequest,
+    geometry: &NormalizedRouteGeometry,
+    source: Vec2,
+    target: Vec2,
+    candidate_rejections: &mut CandidateRejections,
+) -> Result<Option<CandidatePath>, PlanningRejection> {
+    if !candidate_path_capture_allowed(source, target, &nodes) {
+        return Ok(None);
     }
     let normalized_points = std::iter::once(source)
         .chain(nodes.iter().map(|node| node.point))
@@ -695,7 +1247,7 @@ fn consider_path(
         Ok(route) => route,
         Err(rejection) => {
             return if reject_local_candidate(&rejection, candidate_rejections) {
-                Ok(())
+                Ok(None)
             } else {
                 Err(rejection)
             };
@@ -706,7 +1258,7 @@ fn consider_path(
         Err(error) => {
             let rejection = PlanningRejection::new(error.rejection_code(), error.to_string());
             return if reject_local_candidate(&rejection, candidate_rejections) {
-                Ok(())
+                Ok(None)
             } else {
                 Err(rejection)
             };
@@ -743,13 +1295,14 @@ fn consider_path(
         route_length_m,
         peak_extra_loft_m,
     };
-    let replace = best
-        .as_ref()
-        .is_none_or(|current| candidate_precedes(&candidate, current));
-    if replace {
-        *best = Some(candidate);
-    }
-    Ok(())
+    Ok(Some(candidate))
+}
+
+fn candidate_path_capture_allowed(source: Vec2, target: Vec2, nodes: &[Node]) -> bool {
+    let capture_radius = ((target - source).length() * 0.08).clamp(35.0, 95.0);
+    !nodes
+        .windows(2)
+        .any(|pair| (pair[1].point - pair[0].point).length() <= capture_radius * 2.0)
 }
 
 fn reject_local_candidate(
@@ -803,6 +1356,146 @@ fn candidate_identity(path: &CandidatePath) -> String {
         .map(|node| node.id.as_str())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn candidate_ordering(left: &CandidatePath, right: &CandidatePath) -> Ordering {
+    if candidate_precedes(left, right) {
+        Ordering::Less
+    } else if candidate_precedes(right, left) {
+        Ordering::Greater
+    } else {
+        Ordering::Equal
+    }
+}
+
+/// Reconstruct only the comparator's immutable path metadata from an exposed
+/// plan. The source/target endpoints are present in the canonical shaped
+/// centerline, so this does not need to recreate a planning request.
+fn candidate_path_from_plan(candidate: &PlannerCandidateV1) -> Result<CandidatePath, String> {
+    if candidate.plan.route.waypoints.len() != candidate.node_ids.len() {
+        return Err("waypoint count does not match node identity".to_owned());
+    }
+    let Some(source_world) = candidate
+        .plan
+        .diagnostics
+        .selected_centerline_m
+        .first()
+        .copied()
+    else {
+        return Err("selected centerline has no source endpoint".to_owned());
+    };
+    let Some(target_world) = candidate
+        .plan
+        .diagnostics
+        .selected_centerline_m
+        .last()
+        .copied()
+    else {
+        return Err("selected centerline has no target endpoint".to_owned());
+    };
+    let geometry = &candidate.plan.normalized_geometry;
+    let sign = f64::from(geometry.horizontal_sign);
+    let source = Vec2::new(0.0, source_world.y);
+    let target = Vec2::new(geometry.direct_horizontal_span_m, target_world.y);
+    let nodes = candidate
+        .plan
+        .route
+        .waypoints
+        .iter()
+        .zip(&candidate.node_ids)
+        .map(|(waypoint, node_id)| Node {
+            id: node_id.clone(),
+            point: Vec2::new(
+                sign * (waypoint.position_m.x - source_world.x),
+                waypoint.position_m.y,
+            ),
+            loft_cap_y: 0.0,
+        })
+        .collect::<Vec<_>>();
+    let minimum_handoff_speed_cap_mps = candidate
+        .plan
+        .diagnostics
+        .waypoint_authority
+        .iter()
+        .map(|authority| authority.handoff_speed_cap_mps)
+        .min_by(f64::total_cmp)
+        .unwrap_or(0.0);
+    let mut previous = source;
+    let mut route_length_m = 0.0;
+    let mut peak_extra_loft_m: f64 = 0.0;
+    for node in &nodes {
+        route_length_m += (node.point - previous).length();
+        peak_extra_loft_m =
+            peak_extra_loft_m.max(extra_loft(node.point, geometry, source.y, target.y));
+        previous = node.point;
+    }
+    route_length_m += (target - previous).length();
+    Ok(CandidatePath {
+        nodes,
+        minimum_handoff_speed_cap_mps,
+        route_length_m,
+        peak_extra_loft_m,
+    })
+}
+
+fn selected_candidate_path(
+    request: &RoutePlanningRequest,
+    geometry: &NormalizedRouteGeometry,
+    plan: &RoutePlan,
+) -> CandidatePath {
+    let source_x = request.source_pad().expect("validated source").center_x_m;
+    let sign = f64::from(geometry.horizontal_sign);
+    let loft_limit = request.policy.max_extra_loft_ratio * geometry.direct_distance_m;
+    let source = source_point(request, geometry);
+    let target = target_point(request, geometry);
+    let nodes = plan
+        .route
+        .waypoints
+        .iter()
+        .map(|waypoint| {
+            let point = Vec2::new(
+                sign * (waypoint.position_m.x - source_x),
+                waypoint.position_m.y,
+            );
+            let direct_y = lerp(
+                source.y,
+                target.y,
+                point.x / geometry.direct_horizontal_span_m,
+            );
+            Node {
+                id: waypoint.id.clone(),
+                point,
+                loft_cap_y: direct_y + loft_limit,
+            }
+        })
+        .collect::<Vec<_>>();
+    let minimum_handoff_speed_cap_mps = plan
+        .diagnostics
+        .waypoint_authority
+        .iter()
+        .map(|authority| authority.handoff_speed_cap_mps)
+        .min_by(f64::total_cmp)
+        .unwrap_or(0.0);
+    let mut previous = source;
+    let mut route_length_m = 0.0;
+    let mut peak_extra_loft_m: f64 = 0.0;
+    for node in &nodes {
+        route_length_m += (node.point - previous).length();
+        peak_extra_loft_m =
+            peak_extra_loft_m.max(extra_loft(node.point, geometry, source.y, target.y));
+        previous = node.point;
+    }
+    route_length_m += (target - previous).length();
+    CandidatePath {
+        nodes,
+        minimum_handoff_speed_cap_mps,
+        route_length_m,
+        peak_extra_loft_m,
+    }
+}
+
+fn exposure_rejection(message: String) -> PlanningRejection {
+    PlanningRejection::new(PlanningRejectionCode::UnsupportedGeometry, message)
 }
 
 fn edge_clear(
@@ -1385,6 +2078,176 @@ mod tests {
     }
 
     #[test]
+    fn candidate_exposure_direct_route_is_complete_and_selected() {
+        let mut request = request(vec![
+            Vec2::new(-200.0, 100.0),
+            Vec2::new(20.0, 100.0),
+            Vec2::new(50.0, 0.0),
+            Vec2::new(150.0, 0.0),
+            Vec2::new(180.0, 100.0),
+            Vec2::new(400.0, 100.0),
+        ]);
+        request.world.landing_pads[0].width_m = 40.0;
+        request.world.landing_pads[1].width_m = 40.0;
+        request.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-200.0, 100.0),
+                Vec2::new(20.0, 100.0),
+                Vec2::new(50.0, 0.0),
+                Vec2::new(150.0, 0.0),
+                Vec2::new(180.0, 100.0),
+                Vec2::new(400.0, 100.0),
+            ],
+        };
+        let exposure = expose_candidates(&request).unwrap();
+        assert!(exposure.complete);
+        assert_eq!(exposure.examined_path_count, 0);
+        assert_eq!(exposure.candidates.len(), 1);
+        assert!(!exposure.selected_plan_injected);
+        exposure.validate().unwrap();
+    }
+
+    #[test]
+    fn candidate_exposure_preserves_selected_rank_and_detects_plan_tamper() {
+        let mut request = request(vec![
+            Vec2::new(-100.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(20.0, -100.0),
+            Vec2::new(180.0, -100.0),
+            Vec2::new(190.0, 0.0),
+            Vec2::new(300.0, 0.0),
+        ]);
+        request.world.landing_pads[0].width_m = 2.0;
+        request.world.landing_pads[1].surface_y_m = 100.0;
+        request.world.landing_pads[1].width_m = 2.0;
+        request.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-100.0, 100.0),
+                Vec2::new(1.0, 100.0),
+                Vec2::new(2.0, 0.0),
+                Vec2::new(80.0, 0.0),
+                Vec2::new(100.0, 130.0),
+                Vec2::new(120.0, 0.0),
+                Vec2::new(198.0, 0.0),
+                Vec2::new(199.0, 100.0),
+                Vec2::new(300.0, 100.0),
+            ],
+        };
+        let selected = plan(&request).unwrap();
+        let exposure = expose_candidates(&request).unwrap();
+        assert_eq!(exposure.candidates[0].plan, selected);
+        assert_eq!(exposure.candidates[0].rank, 0);
+        exposure.validate().unwrap();
+
+        let selected_bytes = serde_json::to_vec(&selected).unwrap();
+        let selected_round_trip: RoutePlan = serde_json::from_slice(&selected_bytes).unwrap();
+        assert_eq!(selected_round_trip, selected);
+        assert_eq!(selected_round_trip.plan_digest, selected.plan_digest);
+        assert_eq!(
+            serde_json::to_vec(&selected_round_trip).unwrap(),
+            selected_bytes
+        );
+
+        let exposure_bytes = serde_json::to_vec(&exposure).unwrap();
+        let exposure_round_trip: PlannerCandidateExposureV1 =
+            serde_json::from_slice(&exposure_bytes).unwrap();
+        assert_eq!(exposure_round_trip, exposure);
+        exposure_round_trip.validate().unwrap();
+        assert_eq!(
+            candidate_exposure_digest(&exposure_round_trip),
+            exposure.exposure_digest
+        );
+        assert_eq!(
+            serde_json::to_vec(&exposure_round_trip).unwrap(),
+            exposure_bytes
+        );
+
+        let mut tampered = exposure.clone();
+        tampered.candidates[0].plan.route.route_angle_deg += 1.0;
+        assert!(tampered.validate().is_err());
+    }
+
+    #[test]
+    fn candidate_exposure_rejects_ranking_metric_and_count_tamper() {
+        let mut request = request(vec![
+            Vec2::new(-100.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(20.0, -100.0),
+            Vec2::new(180.0, -100.0),
+            Vec2::new(190.0, 0.0),
+            Vec2::new(300.0, 0.0),
+        ]);
+        request.world.landing_pads[0].width_m = 2.0;
+        request.world.landing_pads[1].surface_y_m = 100.0;
+        request.world.landing_pads[1].width_m = 2.0;
+        request.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-100.0, 100.0),
+                Vec2::new(1.0, 100.0),
+                Vec2::new(2.0, 0.0),
+                Vec2::new(80.0, 0.0),
+                Vec2::new(100.0, 130.0),
+                Vec2::new(120.0, 0.0),
+                Vec2::new(198.0, 0.0),
+                Vec2::new(199.0, 100.0),
+                Vec2::new(300.0, 100.0),
+            ],
+        };
+        let exposure = expose_candidates(&request).unwrap();
+
+        let mut metric_tampered = exposure.clone();
+        metric_tampered.candidates[0].route_length_m += 1.0;
+        metric_tampered.exposure_digest = candidate_exposure_digest(&metric_tampered);
+        assert!(metric_tampered.validate().is_err());
+
+        let mut count_tampered = exposure.clone();
+        count_tampered.accepted_candidate_count =
+            count_tampered.accepted_candidate_count.saturating_add(1);
+        count_tampered.exposure_digest = candidate_exposure_digest(&count_tampered);
+        assert!(count_tampered.validate().is_err());
+    }
+
+    #[test]
+    fn candidate_exposure_accepts_and_checks_synthetic_path_truncation() {
+        let mut request = request(vec![
+            Vec2::new(-100.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(20.0, -100.0),
+            Vec2::new(180.0, -100.0),
+            Vec2::new(190.0, 0.0),
+            Vec2::new(300.0, 0.0),
+        ]);
+        request.world.landing_pads[0].width_m = 2.0;
+        request.world.landing_pads[1].surface_y_m = 100.0;
+        request.world.landing_pads[1].width_m = 2.0;
+        request.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-100.0, 100.0),
+                Vec2::new(1.0, 100.0),
+                Vec2::new(2.0, 0.0),
+                Vec2::new(80.0, 0.0),
+                Vec2::new(100.0, 130.0),
+                Vec2::new(120.0, 0.0),
+                Vec2::new(198.0, 0.0),
+                Vec2::new(199.0, 100.0),
+                Vec2::new(300.0, 100.0),
+            ],
+        };
+        let exposure = expose_candidates(&request).unwrap();
+        let mut truncated = exposure.clone();
+        truncated.complete = false;
+        truncated.path_truncated = true;
+        truncated.truncation_reasons = vec!["path_budget_exhausted".to_owned()];
+        truncated.examined_path_count = truncated.limits.max_examined_paths;
+        truncated.exposure_digest = candidate_exposure_digest(&truncated);
+        truncated.validate().unwrap();
+
+        truncated.examined_path_count -= 1;
+        truncated.exposure_digest = candidate_exposure_digest(&truncated);
+        assert!(truncated.validate().is_err());
+    }
+
+    #[test]
     fn exact_validation_skips_higher_invalid_single_ridge_candidate() {
         let mut request = request(vec![
             Vec2::new(-100.0, 0.0),
@@ -1437,6 +2300,17 @@ mod tests {
                 .windows(2)
                 .all(|pair| pair[1].position_m.x > pair[0].position_m.x)
         );
+        let exposure = expose_candidates(&request).unwrap();
+        assert_eq!(exposure.candidates[0].plan, plan);
+        assert!(exposure.candidates.len() >= 3);
+        exposure.validate().unwrap();
+
+        let mut reordered = exposure.clone();
+        reordered.candidates.swap(1, 2);
+        reordered.candidates[1].rank = 1;
+        reordered.candidates[2].rank = 2;
+        reordered.exposure_digest = candidate_exposure_digest(&reordered);
+        assert!(reordered.validate().is_err());
     }
 
     #[test]
