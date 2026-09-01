@@ -2,6 +2,51 @@
 
 ## 2026-09-01
 
+### R1 bounded candidate-replay implementation
+
+- Added the research-only `planner_candidate_exposure_v1` API beside ordinary
+  planning. It reuses the production generator, exact route construction and
+  validation, comparator, and plan-digest machinery; rank zero is independently
+  required to equal `plan()`. The fixed `65,536`-path / `256`-candidate bounds,
+  truncation state, selected-plan injection, ordering metrics, and full exposure
+  are validated and digest-covered. Ordinary planner selection is unchanged.
+- Added the evaluator-only `candidate-replay` command with an explicit
+  single-case or `--all` scope. `paired_candidate_replay_v1` validates the full
+  committed D0 input corpus before filtering, substitutes only the exposed
+  route, gives every cadence lane and repeat fresh provenance, and persists
+  typed exposure, preparation, identity, parity, source, route, candidate,
+  case, and summary artifacts. Reload validation recomputes the exact planner
+  exposure and cross-checks every persisted case bundle before aggregation;
+  nonempty output roots are rejected.
+- Preserved typed JSON round trips for planner authority fields whose canonical
+  serialized representation is `null` for an unbounded positive turn-speed
+  cap. Deserialization reconstructs positive infinity only from the surrounding
+  authority/leg context. Serialized plan bytes and digests, planner behavior,
+  physics, controller behavior, and maintained fixtures are unchanged.
+- The canonical `36`-baseline / `24`-diagnostic run evaluated `145` exact
+  candidate pairs. It produced `47` `selected_pair_compatible` cases, `3`
+  `executor_selection_gap_witnessed` cases, `10`
+  `unknown/incomplete_candidate_diagnostic` cases, and zero invalid cases.
+  Candidate decisions were `50` supported, `83` unsupported, `12` unknown, and
+  zero invalid. All 60 path searches completed; five retained sets reached the
+  256-candidate cap, and every incomplete case exposed more than the fixed
+  eight-candidate replay budget.
+- The three positive witnesses are already-seen `r+60`, seed-2 diagnostic rows:
+  single-ridge empty and full handoff cases found supported alternatives at
+  ranks `7` and `5`, and the double-ridge full sequence case found one at rank
+  `3`. A second complete review run reproduced the scientific aggregate, all
+  60 case digests, and all 60 case artifacts byte-for-byte. The authoritative
+  summary digest is `3ea79b442c6caf2d`, over D0 input digest
+  `fnv1a64:4f3b0eb97bce8209` and pairing-config digest `321c0b7dbcc8cf82`.
+- R1 therefore witnesses a fixed-executor route-selection effect, but it does
+  not show that any selected route is physically infeasible, that a witnessed
+  alternative is robust, or that no compatible alternative exists in the ten
+  incomplete rows. It changes no planner ranking or runtime behavior and does
+  not advance D1b or unblock D2. The next capability design gate must still compare
+  a controller-neutral bounded convex certificate with a separately versioned
+  offline paired-reachability formulation; the three R1 witnesses are
+  descriptive requirements, not outcome-guided ranking targets.
+
 ### R1 post-D1b candidate-diagnostic design lock
 
 - Separated controller-neutral physical feasibility from versioned executor

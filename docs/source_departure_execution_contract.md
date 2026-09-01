@@ -822,6 +822,39 @@ or physical infeasibility. Every result stays evaluator/research-only; it may
 motivate a later design, but it changes no planner selection, controller,
 runtime screen, maintained fixture, D1 advancement result, or D2 gate.
 
+**R1 implementation result:** The additive `pd-plan` exposure and evaluator-only
+paired replay are implemented under the locked bounds. The canonical complete
+development run consumed the existing `36` baseline and `24` diagnostic rows,
+completed all 60 bounded path searches, and evaluated 145 candidates. Five
+exposures reached the 256-candidate retention cap; no path search exhausted the
+65,536-path bound. The result was:
+
+- `47` `selected_pair_compatible` cases;
+- `3` `executor_selection_gap_witnessed` cases;
+- `10` `unknown/incomplete_candidate_diagnostic` cases;
+- zero `no_exposed_pair_compatible` and zero invalid cases;
+- `50` supported, `83` unsupported, `12` unknown, and zero invalid candidate
+  decisions.
+
+Every selected result was decisive: 47 were supported and 13 were unsupported.
+The three witnesses found a supported alternative at rank 3, 5, or 7. The ten
+remaining unsupported selections all had more than eight exposed candidates,
+so their negative side is intentionally incomplete; source censoring also
+accounts for all 12 unknown candidate decisions. The unsupported decisions all
+resolved through the neutral waypoint-deadline rule. A second complete review
+run reproduced the aggregate, case-digest set, and every sealed case artifact.
+The authoritative summary digest is `3ea79b442c6caf2d`, with source D0 input
+digest `fnv1a64:4f3b0eb97bce8209` and pairing-config digest
+`321c0b7dbcc8cf82`.
+
+This result establishes an existential fixed-executor selection effect in three
+already-seen rows only. It does not label the selected route physically
+infeasible, establish a robustness neighborhood for the alternative, authorize
+outcome-guided ranking changes, or reduce the D2 block. The next capability
+design gate must still compare an independent bounded convex feasibility
+certificate with a separately versioned offline paired-reachability
+formulation.
+
 The selection gate is the evidence protocol below. Prototype both alternatives
 outside planner selection and compare their neutral outputs; this design
 checkpoint accepts neither result in advance. If Alternative A misses its

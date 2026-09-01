@@ -650,15 +650,16 @@ implementing a predictor. The remaining evidence-first sequence is:
    without retuning. A subsequent input-only terrain-equivalence spike also
    rejects the simple A2 unblock: its route-relative relief motif yields eight
    groups, only `30 / 60` eligible rows, eight maintained hull exclusions, and
-   `139` required cells with zero leave-one-out support. D1c may still be
+   `139` required cells with zero leave-one-out support. The evaluator-only R1
+   candidate-selection diagnostic is also complete: bounded production-planner
+   exposure plus up to eight exact paired replays found `47` selected-pair
+   compatible cases, `3` fixed-executor selection-gap witnesses, `10`
+   incomplete cases, and zero invalid cases. The witnesses show that route
+   selection contributes to three already-seen failures, but they are neither a
+   feasibility certificate nor a planner-ranking candidate. D1c may still be
    implemented as the declared paired-oracle benchmark, followed by the D1d
-   comparison lock. Before selecting the next capability design, the locked R1
-   candidate-selection diagnostic may expose the planner's bounded, statically valid
-   candidate prefix and replay up to eight exact executor pairs. That diagnostic
-   can distinguish a witnessed fixed-executor selection gap from an incomplete
-   or exhausted candidate search, but it is neither D1c nor a feasibility
-   certificate. Neither Alternative A nor the motif-based A2 concept advances
-   to D2;
+   comparison lock. Neither Alternative A, the motif-based A2 concept, nor R1
+   advances to D2;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after a new design checkpoint produces an integration-eligible alternative;
 6. D4-D5: promote a separately reviewed candidate interface or capability into
@@ -667,10 +668,13 @@ implementing a predictor. The remaining evidence-first sequence is:
    exposure does not satisfy this phase.
 
 The terrain-equivalence spike closes the empirical-envelope salvage question
-for the tested motif without outcome-guided tuning. The next design checkpoint
-must compare a small convex-feasibility formulation with offline paired
-reachability rather than invent another terrain grouping from the exposed
-development outcomes.
+for the tested motif without outcome-guided tuning. R1 additionally proves that
+three already-seen rows have an executor-compatible route inside the current
+planner's first eight candidates, while ten rows remain deliberately
+inconclusive at that budget. The next capability design checkpoint must compare
+a small controller-neutral convex-feasibility formulation with a separately
+versioned offline paired-reachability formulation rather than invent another
+terrain grouping or tune ranking against the exposed development outcomes.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this
