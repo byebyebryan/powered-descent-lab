@@ -416,9 +416,14 @@ Ownership is intentionally staged:
   alternative is accepted. Preserving the exact validated pure evaluator at a
   later integration boundary is an architecture gate, not permission to
   duplicate or tune it in another crate now.
-- `pd-plan` remains unchanged until acceptance. It may later consume only an
-  accepted, versioned physical capability and digest; it never depends on
-  `pd-control`, sees controller state, or receives route-family branches.
+- `pd-plan` remains unchanged through D1. It may later consume only an accepted,
+  versioned physical capability and digest; it never depends on `pd-control`,
+  sees controller state, or receives route-family branches. The post-D1b R1
+  diagnostic is one narrow exception: `pd-plan` owns an additive, research-only
+  candidate-exposure API so `pd-eval` can observe the exact existing generator,
+  validator, ranking, and plan digests without duplicating them. This API changes
+  no `plan()` result or rejection, consumes no capability or execution result,
+  and is not an integration surface.
 - `pd-control` is unchanged and remains the evidence subject. Its phases,
   thresholds, markers, and controller identity cannot define the transition
   boundary or enter pure planner prediction.
@@ -680,10 +685,11 @@ The oracle's decision is derived by applying the neutral D0 boundary and
 ordered-contract extraction semantics to its generated physical trace. It may
 not read controller phases/markers, mission outcome, or controller-private
 `WaypointGuidancePrediction` state. Completion of every scoped physical phase
-and contract supplies `supported`; a neutral decisive deadline or physical
-failure supplies `unsupported`; censoring, an out-of-domain input, or exhausted
-solver budget without either certificate supplies `unknown`. Trace/schema
-failure, nondeterminism, or parity mismatch is `invalid`.
+and contract supplies `supported`; a neutral decisive contract deadline or an
+authoritative crash before required completion supplies `unsupported`;
+non-decisive censoring, an out-of-domain input, or exhausted solver budget
+without either certificate supplies `unknown`. Trace/schema failure,
+nondeterminism, or parity mismatch is `invalid`.
 
 This oracle composes singleton states from one deterministic execution; it does
 not certify a neighborhood of possible initial or handoff states. Its
@@ -697,6 +703,124 @@ independent predictive evidence, make Alternative B eligible for D4, or justify
 a production setup-time simulation screen. An offline reusable paired
 reachability certificate would require a new capability version and design
 gate.
+
+### R1 — post-D1b bounded planner-candidate replay diagnostic
+
+The rejected interval envelope leaves two different questions that must not be
+collapsed into one capability claim:
+
+- **controller-neutral physical feasibility** asks whether some admissible
+  control trajectory exists for a route, including the carried state at every
+  handoff. A positive or negative answer needs an independent dynamics-based
+  certificate, such as a reviewed bounded convex formulation. No such
+  certificate is implemented by this checkpoint.
+- **versioned executor compatibility** asks whether one exact route/input pair
+  completes the neutral D0 contracts under one frozen controller, simulator,
+  numeric configuration, seed, and step budget. Deterministic replay can answer
+  that narrower empirical question, but a pass proves no neighborhood and a
+  failure does not prove physical infeasibility.
+
+Before choosing between a new physical formulation and deeper offline
+reachability work, action-plan checkpoint C may implement the R1 diagnostic.
+R1 asks whether the current planner selected an executor-incompatible route
+while an already-generated, statically valid alternative is compatible with the
+same frozen executor. It is not D1c, D2 held-out evidence, D4 planner
+integration, or a new capability candidate.
+
+Candidate exposure is input-only and versioned as
+`planner_candidate_exposure_v1`. An additive diagnostic API owned by `pd-plan`
+must reuse the production planner's exact candidate generation, validation,
+ranking, and digest construction rather than reconstructing routes in
+`pd-eval`. It may refactor shared private machinery but must neither consume
+executor data nor alter ordinary planning behavior; calling `plan()` remains
+byte-identical for successes and rejections.
+
+The exposure contains the request and selected-plan digests, retained candidate
+plans/digests in ranking order, examined and accepted counts, explicit limits,
+completeness/truncation state and reason, and its own digest. One examined path
+is one complete node sequence within the policy waypoint bound whose clear final
+edge causes it to be presented to the shared route-construction and exact-
+validation boundary. Partial prefixes, rejected edges, direct-path inspection,
+and the planner's over-complexity or uncapped rejection-only searches are not
+examined selection paths.
+
+Candidate rank zero is the independently computed ordinary selected plan. The
+exposure includes it even if its own bounded traversal has not reached that
+sequence, and every retained plan must rank after it. Duplicate plan digests
+are invalid. The initial development diagnostic freezes limits of `65,536`
+examined node paths and `256` retained valid candidates per input. The exposure
+keeps the best 256 candidates seen rather than stopping at the retention bound.
+Exhausting the finite selection-candidate search proves the retained set is the
+true ranked prefix; exhausting the path budget does not. If more than 256 valid
+candidates exist, retention is also truncated even after a complete search.
+Either truncation remains usable for finding a valid witness, but not for
+proving that no alternative exists. A direct selected route produces one
+complete direct exposure and an R1 `unknown/scope/direct_route` result; no
+waypoint alternatives are invented after the planner's direct-return decision.
+
+`paired_candidate_replay_v1` consumes that sealed exposure and the same base
+development rows already declared for D0/D1. Every candidate execution receives
+a new candidate-run identity covering the R1 schema, base row ID and base
+resolved-input digest, exposure digest, candidate rank and plan digest,
+pairing/config digest, cadence lane, and repeat index. Normal resolved-input and
+evidence-provenance digests are recomputed from the candidate scenario,
+candidate plan, and controller; they must not reuse the base row's digests.
+
+R1 evaluates at most the first `8` ranked candidates, including the selected
+route, with one frozen pairing. For each candidate it clones the resolved
+scenario only to substitute that candidate's route, then preserves controller,
+simulator, vehicle, world, initial state, mission limits, seed, and evidence
+cadence. Pairing identity, limits, candidate order, and evaluation budget are
+behavior-bearing, digest-covered configuration. Recorded D0 outcomes,
+comparison labels, and previous candidate results are not inputs to generation,
+ranking, or execution.
+
+Candidate routes must remain waypoint routes and the route-substituted scenario
+must satisfy its unchanged mission-goal validation. An otherwise valid planner
+candidate that cannot satisfy that case-specific goal is retained but receives
+`unknown/scope/mission_goal_incompatible` without execution. Each executed pair
+runs both ordinary-cadence and physics-rate captures, must pass the existing D0
+execution-parity comparison, and is repeated. After normalizing only
+run/artifact identities, both repeats must have byte-stable physical traces,
+neutral evidence, and decisions.
+
+Each exact pair is classified through the existing neutral D0 ordered-contract
+boundary. `supported` requires complete source and route evidence plus a
+`first_contract_pass` for every candidate waypoint. `unsupported` requires the
+first resolved waypoint without a contract pass to have an
+`initial_deadline`/`deadline` resolution, or an authoritative `crash` terminal
+reason before required completion. Valid source/route censoring for any other
+terminal reason, mission-goal incompatibility, or an exhausted evaluation
+budget is `unknown`. Malformed evidence, selected-plan mismatch, any cadence
+parity failure, nondeterminism, or digest inconsistency is `invalid`.
+
+Evaluation is ordered and fail-closed. An invalid exposure or selected replay
+makes the case invalid. A selected `supported` result stops with success; a
+selected `unknown` stops with an incomplete diagnosis. After a selected
+`unsupported` result, alternatives run in rank order: any invalid replay makes
+the case invalid, the first `supported` alternative supplies the existential
+witness and stops, and an `unknown` alternative is retained while later ranked
+alternatives may still be tried within the fixed budget.
+
+The case diagnosis is deliberately asymmetric:
+
+- selected `supported` -> `selected_pair_compatible`;
+- selected `unsupported` and any evaluated alternative `supported` ->
+  `executor_selection_gap_witnessed`;
+- selected and every alternative `unsupported`, with complete untruncated
+  exposure containing at most eight candidates ->
+  `no_exposed_pair_compatible`;
+- otherwise -> `unknown/incomplete_candidate_diagnostic`;
+- any invalid exposure or reached replay -> `invalid`, with precedence over a
+  later, unevaluated result.
+
+`executor_selection_gap_witnessed` is evidence about current ranking under the
+one frozen executor, not evidence that the selected route is physically
+infeasible or that the alternative is robust. `no_exposed_pair_compatible`
+cannot distinguish a candidate-generation limitation from executor limitation
+or physical infeasibility. Every result stays evaluator/research-only; it may
+motivate a later design, but it changes no planner selection, controller,
+runtime screen, maintained fixture, D1 advancement result, or D2 gate.
 
 The selection gate is the evidence protocol below. Prototype both alternatives
 outside planner selection and compare their neutral outputs; this design

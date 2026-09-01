@@ -1,5 +1,43 @@
 # Progress
 
+## 2026-09-01
+
+### R1 post-D1b candidate-diagnostic design lock
+
+- Separated controller-neutral physical feasibility from versioned executor
+  compatibility. The former still requires an independent dynamics-based
+  certificate; deterministic execution of one route/controller pair answers
+  only the latter and cannot prove robustness or physical infeasibility.
+- Locked the R1 candidate-selection diagnostic before further feasibility
+  spikes. `planner_candidate_exposure_v1` must reuse the production planner's
+  exact candidate generation, validation, ranking, and plan digests while
+  preserving byte-identical ordinary `plan()` behavior. The additive diagnostic
+  API is owned by `pd-plan`, consumed only by `pd-eval`, and is an explicit
+  post-D1b exception rather than D1c or D4. Rank zero must match the selected
+  plan.
+- Predeclared input-only bounds of `65,536` examined node paths and `256`
+  retained valid candidates per development input. The exposure retains the
+  best bounded set seen; it is a true global ranked prefix only when the path
+  search finishes. Truncation remains explicit: a valid retained candidate may
+  provide a positive witness but cannot support a negative candidate-set
+  conclusion.
+- Locked `paired_candidate_replay_v1` to the first eight ranked candidates,
+  including the selected route, under one digest-bound controller/simulator/
+  numeric/seed/step-budget pairing. Candidate generation and execution cannot
+  read recorded D0 outcomes or comparison labels; replay evidence and decisions
+  must pass ordinary/physics cadence parity and be deterministic after
+  normalizing only run/artifact identities. Candidate runs receive fresh
+  digests bound to their base row, exposure, rank, plan, pairing, cadence, and
+  repeat; base resolved-input provenance is never reused after route
+  substitution.
+- A selected `unsupported` result plus a supported alternative is only an
+  `executor_selection_gap_witnessed` result for the fixed pair. No supported
+  alternative can support `no_exposed_pair_compatible` only when the exposure
+  is complete, untruncated, contains at most eight routes, and every route is
+  decisively unsupported; even then the result cannot distinguish
+  candidate-generation, executor, and physical limitations. No result changes
+  planner selection, controller behavior, D1 advancement, or the D2 block.
+
 ## 2026-08-31
 
 ### D1b terrain-equivalence unblock spike
