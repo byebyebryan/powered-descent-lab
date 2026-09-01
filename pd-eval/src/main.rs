@@ -5,10 +5,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
-    resolve_pack_compare_baseline, run_pack_file_cached,
-    run_progress_interval_envelope_development_gate, run_route_execution_development_case,
-    run_route_execution_development_gate, run_source_transition_development_case,
-    run_source_transition_development_gate, run_terrain_equivalence_spike,
+    resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
+    run_pack_file_cached, run_progress_interval_envelope_development_gate,
+    run_route_execution_development_case, run_route_execution_development_gate,
+    run_source_transition_development_case, run_source_transition_development_gate,
+    run_terrain_equivalence_spike,
 };
 
 #[derive(Debug, Parser)]
@@ -29,6 +30,7 @@ enum Commands {
     RouteExecutionGate(RouteExecutionGateArgs),
     ProgressIntervalEnvelopeGate(ProgressIntervalEnvelopeGateArgs),
     TerrainEquivalenceSpike(TerrainEquivalenceSpikeArgs),
+    CandidateReplay(CandidateReplayArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -137,6 +139,32 @@ struct TerrainEquivalenceSpikeArgs {
 
     #[arg(long, value_name = "OUTPUT_DIR")]
     output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct CandidateReplayArgs {
+    #[arg(
+        long,
+        value_name = "MANIFEST_JSON",
+        default_value = "fixtures/manifests/source_transition_d0a_development.json"
+    )]
+    manifest: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: PathBuf,
+
+    /// Run exactly one named case.
+    #[arg(
+        long,
+        value_name = "RUN_ID",
+        conflicts_with = "all",
+        required_unless_present = "all"
+    )]
+    case: Option<String>,
+
+    /// Explicitly run the complete development corpus.
+    #[arg(long, conflicts_with = "case", required_unless_present = "case")]
+    all: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -252,6 +280,20 @@ fn main() -> Result<()> {
             let artifact = run_terrain_equivalence_spike(&args.evidence_dir, &args.output_dir)?;
             println!("{}", serde_json::to_string_pretty(&artifact)?);
         }
+        Commands::CandidateReplay(args) => {
+            let root = repo_root();
+            let summary = if args.all {
+                run_candidate_replay_development(&args.manifest, &root, &args.output_dir)?
+            } else {
+                let case_id = args.case.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "candidate-replay requires exactly one of --case RUN_ID or --all"
+                    )
+                })?;
+                run_candidate_replay_case(&args.manifest, &root, &args.output_dir, case_id)?
+            };
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
     }
 
     Ok(())
@@ -293,4 +335,32 @@ fn default_worker_count() -> usize {
     std::thread::available_parallelism()
         .map(|parallelism| parallelism.get())
         .unwrap_or(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn candidate_replay_requires_exactly_one_scope_selector() {
+        let common = [
+            "pd-eval",
+            "candidate-replay",
+            "--output-dir",
+            "/tmp/pd-eval-r1-cli-test",
+        ];
+        assert!(Cli::try_parse_from(common).is_err());
+
+        let mut case = common.to_vec();
+        case.extend(["--case", "row"]);
+        assert!(Cli::try_parse_from(case).is_ok());
+
+        let mut all = common.to_vec();
+        all.push("--all");
+        assert!(Cli::try_parse_from(all).is_ok());
+
+        let mut both = common.to_vec();
+        both.extend(["--case", "row", "--all"]);
+        assert!(Cli::try_parse_from(both).is_err());
+    }
 }

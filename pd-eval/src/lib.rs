@@ -72,6 +72,9 @@ pub use progress_interval_envelope::*;
 mod terrain_equivalence_spike;
 pub use terrain_equivalence_spike::*;
 
+mod candidate_replay;
+pub use candidate_replay::*;
+
 #[derive(Clone, Debug)]
 struct WorkspaceState {
     commit_key: String,
@@ -167,95 +170,13 @@ fn run_source_transition_development_gate_filtered(
     output_dir: &Path,
     case_filter: Option<&str>,
 ) -> Result<SourceTransitionDevelopmentGateSummary> {
-    let manifest = load_source_transition_development_manifest(manifest_path)?;
-    let baseline_pack_path = resolve_source_transition_path(repo_root, &manifest.baseline_pack);
-    let baseline_pack = load_pack(&baseline_pack_path)?;
-    let baseline_pack_digest = format!(
-        "fnv1a64:{}",
-        source_transition_canonical_digest(&baseline_pack)
-    );
-    if baseline_pack_digest != manifest.baseline_pack_digest {
-        bail!(
-            "D0a baseline pack digest drift: expected {}, resolved {}",
-            manifest.baseline_pack_digest,
-            baseline_pack_digest
-        );
-    }
-    let baseline_base_dir = baseline_pack_path
-        .parent()
-        .ok_or_else(|| anyhow!("baseline pack path has no parent"))?;
-    let baseline_runs = resolve_pack_runs(&baseline_pack, baseline_base_dir)?;
-    let baseline_expected_ids = manifest
-        .baseline_cases
-        .iter()
-        .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
-        .collect::<Vec<_>>();
-    let baseline_actual_ids = baseline_runs
-        .iter()
-        .map(|run| run.descriptor.run_id.clone())
-        .collect::<Vec<_>>();
-    validate_source_transition_resolved_ids(
-        "baseline",
-        baseline_expected_ids,
-        baseline_actual_ids,
-        manifest.baseline_expected_case_count,
-    )?;
-    let baseline_resolved_input_digest =
-        source_transition_resolved_input_corpus_digest(&baseline_runs)?;
-    if baseline_resolved_input_digest != manifest.baseline_resolved_input_digest {
-        bail!(
-            "D0a baseline resolved-input digest drift: expected {}, resolved {}",
-            manifest.baseline_resolved_input_digest,
-            baseline_resolved_input_digest
-        );
-    }
-
-    let diagnostic_pack_path =
-        resolve_source_transition_path(repo_root, &manifest.diagnostic_source_pack);
-    let diagnostic_pack = load_source_transition_diagnostic_input_pack(&diagnostic_pack_path)?;
-    if diagnostic_pack.source_commit != manifest.diagnostic_source_commit {
-        bail!(
-            "D0a diagnostic source commit mismatch: manifest {}, pack {}",
-            manifest.diagnostic_source_commit,
-            diagnostic_pack.source_commit
-        );
-    }
-    let diagnostic_pack_digest = format!(
-        "fnv1a64:{}",
-        source_transition_canonical_digest(&diagnostic_pack)
-    );
-    if diagnostic_pack_digest != manifest.diagnostic_pack_digest {
-        bail!(
-            "D0a diagnostic input-pack digest drift: expected {}, resolved {}",
-            manifest.diagnostic_pack_digest,
-            diagnostic_pack_digest
-        );
-    }
-    let diagnostic_expected_ids = manifest
-        .diagnostic_cases
-        .iter()
-        .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
-        .collect::<Vec<_>>();
-    let diagnostic_actual_ids = diagnostic_pack
-        .cases
-        .iter()
-        .map(|case| case.run_id.clone())
-        .collect::<Vec<_>>();
-    validate_source_transition_resolved_ids(
-        "diagnostic",
-        diagnostic_expected_ids,
-        diagnostic_actual_ids,
-        manifest.diagnostic_expected_case_count,
-    )?;
-    let diagnostic_resolved_input_digest =
-        source_transition_archived_input_corpus_digest(&diagnostic_pack.cases);
-    if diagnostic_resolved_input_digest != manifest.diagnostic_resolved_input_digest {
-        bail!(
-            "D0a diagnostic resolved-input digest drift: expected {}, resolved {}",
-            manifest.diagnostic_resolved_input_digest,
-            diagnostic_resolved_input_digest
-        );
-    }
+    let validated_inputs =
+        resolve_source_transition_development_inputs_with_label(manifest_path, repo_root, "D0a")?;
+    let SourceTransitionDevelopmentInputs {
+        manifest,
+        baseline_runs,
+        diagnostic_cases,
+    } = validated_inputs;
 
     fs::create_dir_all(output_dir).with_context(|| {
         format!(
@@ -268,8 +189,7 @@ fn run_source_transition_development_gate_filtered(
         .iter()
         .filter(|run| case_filter.is_none_or(|case_id| run.descriptor.run_id == case_id))
         .collect::<Vec<_>>();
-    let diagnostic_selected = diagnostic_pack
-        .cases
+    let diagnostic_selected = diagnostic_cases
         .iter()
         .filter(|case| case_filter.is_none_or(|case_id| case.run_id == case_id))
         .collect::<Vec<_>>();
@@ -346,6 +266,121 @@ fn resolve_source_transition_path(repo_root: &Path, path: &str) -> PathBuf {
     } else {
         repo_root.join(path)
     }
+}
+
+/// Fully resolved, input-only D0 development corpus shared by the D0 gates
+/// and research diagnostics.  Validation intentionally happens before any
+/// case filter is applied, so a one-case probe cannot silently run against a
+/// partially drifted manifest or corpus.
+pub(crate) struct SourceTransitionDevelopmentInputs {
+    pub(crate) manifest: SourceTransitionDevelopmentManifest,
+    pub(crate) baseline_runs: Vec<ResolvedBatchRun>,
+    pub(crate) diagnostic_cases: Vec<SourceTransitionDiagnosticInputCase>,
+}
+
+pub(crate) fn resolve_source_transition_development_inputs(
+    manifest_path: &Path,
+    repo_root: &Path,
+) -> Result<SourceTransitionDevelopmentInputs> {
+    resolve_source_transition_development_inputs_with_label(manifest_path, repo_root, "R1")
+}
+
+fn resolve_source_transition_development_inputs_with_label(
+    manifest_path: &Path,
+    repo_root: &Path,
+    drift_label: &str,
+) -> Result<SourceTransitionDevelopmentInputs> {
+    let manifest = load_source_transition_development_manifest(manifest_path)?;
+    let baseline_pack_path = resolve_source_transition_path(repo_root, &manifest.baseline_pack);
+    let baseline_pack = load_pack(&baseline_pack_path)?;
+    let baseline_pack_digest = format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&baseline_pack)
+    );
+    if baseline_pack_digest != manifest.baseline_pack_digest {
+        bail!(
+            "{drift_label} baseline pack digest drift: expected {}, resolved {}",
+            manifest.baseline_pack_digest,
+            baseline_pack_digest
+        );
+    }
+    let baseline_base_dir = baseline_pack_path
+        .parent()
+        .ok_or_else(|| anyhow!("baseline pack path has no parent"))?;
+    let baseline_runs = resolve_pack_runs(&baseline_pack, baseline_base_dir)?;
+    validate_source_transition_resolved_ids(
+        "baseline",
+        manifest
+            .baseline_cases
+            .iter()
+            .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
+            .collect(),
+        baseline_runs
+            .iter()
+            .map(|run| run.descriptor.run_id.clone())
+            .collect(),
+        manifest.baseline_expected_case_count,
+    )?;
+    let baseline_resolved_input_digest =
+        source_transition_resolved_input_corpus_digest(&baseline_runs)?;
+    if baseline_resolved_input_digest != manifest.baseline_resolved_input_digest {
+        bail!(
+            "{drift_label} baseline resolved-input digest drift: expected {}, resolved {}",
+            manifest.baseline_resolved_input_digest,
+            baseline_resolved_input_digest
+        );
+    }
+
+    let diagnostic_pack_path =
+        resolve_source_transition_path(repo_root, &manifest.diagnostic_source_pack);
+    let diagnostic_pack = load_source_transition_diagnostic_input_pack(&diagnostic_pack_path)?;
+    if diagnostic_pack.source_commit != manifest.diagnostic_source_commit {
+        bail!(
+            "{drift_label} diagnostic source commit mismatch: manifest {}, pack {}",
+            manifest.diagnostic_source_commit,
+            diagnostic_pack.source_commit
+        );
+    }
+    let diagnostic_pack_digest = format!(
+        "fnv1a64:{}",
+        source_transition_canonical_digest(&diagnostic_pack)
+    );
+    if diagnostic_pack_digest != manifest.diagnostic_pack_digest {
+        bail!(
+            "{drift_label} diagnostic input-pack digest drift: expected {}, resolved {}",
+            manifest.diagnostic_pack_digest,
+            diagnostic_pack_digest
+        );
+    }
+    validate_source_transition_resolved_ids(
+        "diagnostic",
+        manifest
+            .diagnostic_cases
+            .iter()
+            .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
+            .collect(),
+        diagnostic_pack
+            .cases
+            .iter()
+            .map(|case| case.run_id.clone())
+            .collect(),
+        manifest.diagnostic_expected_case_count,
+    )?;
+    let diagnostic_resolved_input_digest =
+        source_transition_archived_input_corpus_digest(&diagnostic_pack.cases);
+    if diagnostic_resolved_input_digest != manifest.diagnostic_resolved_input_digest {
+        bail!(
+            "{drift_label} diagnostic resolved-input digest drift: expected {}, resolved {}",
+            manifest.diagnostic_resolved_input_digest,
+            diagnostic_resolved_input_digest
+        );
+    }
+
+    Ok(SourceTransitionDevelopmentInputs {
+        manifest,
+        baseline_runs,
+        diagnostic_cases: diagnostic_pack.cases,
+    })
 }
 
 fn validate_source_transition_resolved_ids(
@@ -678,91 +713,13 @@ fn run_route_execution_development_gate_filtered(
     output_dir: &Path,
     case_filter: Option<&str>,
 ) -> Result<RouteExecutionDevelopmentGateSummary> {
-    let manifest = load_source_transition_development_manifest(manifest_path)?;
-    let baseline_pack_path = resolve_source_transition_path(repo_root, &manifest.baseline_pack);
-    let baseline_pack = load_pack(&baseline_pack_path)?;
-    let baseline_pack_digest = format!(
-        "fnv1a64:{}",
-        source_transition_canonical_digest(&baseline_pack)
-    );
-    if baseline_pack_digest != manifest.baseline_pack_digest {
-        bail!(
-            "D0b baseline pack digest drift: expected {}, resolved {}",
-            manifest.baseline_pack_digest,
-            baseline_pack_digest
-        );
-    }
-    let baseline_base_dir = baseline_pack_path
-        .parent()
-        .ok_or_else(|| anyhow!("baseline pack path has no parent"))?;
-    let baseline_runs = resolve_pack_runs(&baseline_pack, baseline_base_dir)?;
-    validate_source_transition_resolved_ids(
-        "baseline",
-        manifest
-            .baseline_cases
-            .iter()
-            .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
-            .collect(),
-        baseline_runs
-            .iter()
-            .map(|run| run.descriptor.run_id.clone())
-            .collect(),
-        manifest.baseline_expected_case_count,
-    )?;
-    let baseline_resolved_input_digest =
-        source_transition_resolved_input_corpus_digest(&baseline_runs)?;
-    if baseline_resolved_input_digest != manifest.baseline_resolved_input_digest {
-        bail!(
-            "D0b baseline resolved-input digest drift: expected {}, resolved {}",
-            manifest.baseline_resolved_input_digest,
-            baseline_resolved_input_digest
-        );
-    }
-
-    let diagnostic_pack_path =
-        resolve_source_transition_path(repo_root, &manifest.diagnostic_source_pack);
-    let diagnostic_pack = load_source_transition_diagnostic_input_pack(&diagnostic_pack_path)?;
-    if diagnostic_pack.source_commit != manifest.diagnostic_source_commit {
-        bail!(
-            "D0b diagnostic source commit mismatch: manifest {}, pack {}",
-            manifest.diagnostic_source_commit,
-            diagnostic_pack.source_commit
-        );
-    }
-    let diagnostic_pack_digest = format!(
-        "fnv1a64:{}",
-        source_transition_canonical_digest(&diagnostic_pack)
-    );
-    if diagnostic_pack_digest != manifest.diagnostic_pack_digest {
-        bail!(
-            "D0b diagnostic input-pack digest drift: expected {}, resolved {}",
-            manifest.diagnostic_pack_digest,
-            diagnostic_pack_digest
-        );
-    }
-    validate_source_transition_resolved_ids(
-        "diagnostic",
-        manifest
-            .diagnostic_cases
-            .iter()
-            .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
-            .collect(),
-        diagnostic_pack
-            .cases
-            .iter()
-            .map(|case| case.run_id.clone())
-            .collect(),
-        manifest.diagnostic_expected_case_count,
-    )?;
-    let diagnostic_resolved_input_digest =
-        source_transition_archived_input_corpus_digest(&diagnostic_pack.cases);
-    if diagnostic_resolved_input_digest != manifest.diagnostic_resolved_input_digest {
-        bail!(
-            "D0b diagnostic resolved-input digest drift: expected {}, resolved {}",
-            manifest.diagnostic_resolved_input_digest,
-            diagnostic_resolved_input_digest
-        );
-    }
+    let validated_inputs =
+        resolve_source_transition_development_inputs_with_label(manifest_path, repo_root, "D0b")?;
+    let SourceTransitionDevelopmentInputs {
+        manifest,
+        baseline_runs,
+        diagnostic_cases,
+    } = validated_inputs;
 
     fs::create_dir_all(output_dir).with_context(|| {
         format!(
@@ -774,8 +731,7 @@ fn run_route_execution_development_gate_filtered(
         .iter()
         .filter(|run| case_filter.is_none_or(|case_id| run.descriptor.run_id == case_id))
         .collect::<Vec<_>>();
-    let diagnostic_selected = diagnostic_pack
-        .cases
+    let diagnostic_selected = diagnostic_cases
         .iter()
         .filter(|case| case_filter.is_none_or(|case_id| case.run_id == case_id))
         .collect::<Vec<_>>();
