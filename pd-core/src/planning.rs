@@ -7,7 +7,7 @@
 
 use std::{f64::consts::PI, fmt};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::{
     math::Vec2,
@@ -351,7 +351,7 @@ pub struct NormalizedRouteGeometry {
     pub route_angle_deg: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct RouteLegDiagnostics {
     pub leg_index: usize,
     pub start_m: Vec2,
@@ -367,6 +367,76 @@ pub struct RouteLegDiagnostics {
     pub turn_ratio_at_handoff: Option<f64>,
 }
 
+#[derive(Deserialize)]
+struct RouteLegDiagnosticsFields {
+    leg_index: usize,
+    start_m: Vec2,
+    end_m: Vec2,
+    route_length_m: f64,
+    minimum_clearance_m: f64,
+    clearance: CorridorClearance,
+    stopping_speed_cap_mps: Option<f64>,
+    turn_speed_cap_mps: Option<f64>,
+    handoff_speed_cap_mps: Option<f64>,
+    available_distance_m: Option<f64>,
+    stopping_ratio_at_handoff: Option<f64>,
+    turn_ratio_at_handoff: Option<f64>,
+}
+
+impl<'de> Deserialize<'de> for RouteLegDiagnostics {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let fields = RouteLegDiagnosticsFields::deserialize(deserializer)?;
+        // `serde_json` represents `Some(+infinity)` as null. A leg with
+        // waypoint authority has an available-distance and turn-ratio value;
+        // in that context null is the canonical unbounded turn-speed cap.
+        // Legs without waypoint authority retain the ordinary None meaning.
+        let turn_speed_cap_mps = match fields.turn_speed_cap_mps {
+            Some(value) => Some(value),
+            None if fields.available_distance_m.is_some()
+                && fields.turn_ratio_at_handoff.is_some() =>
+            {
+                Some(f64::INFINITY)
+            }
+            None => None,
+        };
+        Ok(Self {
+            leg_index: fields.leg_index,
+            start_m: fields.start_m,
+            end_m: fields.end_m,
+            route_length_m: fields.route_length_m,
+            minimum_clearance_m: fields.minimum_clearance_m,
+            clearance: fields.clearance,
+            stopping_speed_cap_mps: fields.stopping_speed_cap_mps,
+            turn_speed_cap_mps,
+            handoff_speed_cap_mps: fields.handoff_speed_cap_mps,
+            available_distance_m: fields.available_distance_m,
+            stopping_ratio_at_handoff: fields.stopping_ratio_at_handoff,
+            turn_ratio_at_handoff: fields.turn_ratio_at_handoff,
+        })
+    }
+}
+
+/// The exact planner authority calculation uses positive infinity when a
+/// straight handoff has no turn-speed bound.  JSON has no representation for
+/// infinity, so serde_json emits that value as `null`.  Keep serialization
+/// unchanged while accepting that one intentional sentinel on input.
+fn deserialize_turn_speed_cap<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<f64>::deserialize(deserializer)?;
+    match value {
+        None => Ok(f64::INFINITY),
+        Some(value) if value.is_finite() && value > 0.0 => Ok(value),
+        Some(value) => Err(de::Error::custom(format!(
+            "turn speed cap must be positive finite or null, got {value}"
+        ))),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WaypointAuthorityDiagnostics {
     pub waypoint_index: usize,
@@ -374,7 +444,9 @@ pub struct WaypointAuthorityDiagnostics {
     pub available_outbound_distance_m: f64,
     pub inbound_stopping_speed_cap_mps: f64,
     pub outbound_stopping_speed_cap_mps: f64,
+    #[serde(deserialize_with = "deserialize_turn_speed_cap")]
     pub inbound_turn_speed_cap_mps: f64,
+    #[serde(deserialize_with = "deserialize_turn_speed_cap")]
     pub outbound_turn_speed_cap_mps: f64,
     pub handoff_speed_cap_mps: f64,
     pub inbound_stopping_ratio_at_handoff: f64,
@@ -1224,7 +1296,7 @@ mod tests {
     use crate::{
         math::Vec2,
         model::{LandingPadSpec, VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec},
-        terrain::TerrainDefinition,
+        terrain::{CorridorResidual, TerrainDefinition},
     };
 
     fn request(source_x_m: f64, target_x_m: f64) -> RoutePlanningRequest {
@@ -1530,6 +1602,109 @@ mod tests {
             compute_waypoint_authority(&infeasible, previous, waypoint, next, 35.0),
             Err(RouteValidationError::InsufficientAuthority(_))
         ));
+    }
+
+    #[test]
+    fn infinity_turn_authority_json_round_trips_without_byte_change() {
+        let request = request(0.0, 300.0);
+        let authority = compute_waypoint_authority(
+            &request,
+            Vec2::new(0.0, 105.0),
+            Vec2::new(100.0, 105.0),
+            Vec2::new(300.0, 105.0),
+            35.0,
+        )
+        .unwrap();
+        assert!(authority.inbound_turn_speed_cap_mps.is_infinite());
+        assert!(authority.outbound_turn_speed_cap_mps.is_infinite());
+        let bytes = serde_json::to_vec(&authority).unwrap();
+        let decoded: WaypointAuthorityDiagnostics = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(decoded, authority);
+        assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
+        let mut negative = serde_json::to_value(&authority).unwrap();
+        negative["inbound_turn_speed_cap_mps"] = serde_json::json!(-1.0);
+        assert!(serde_json::from_value::<WaypointAuthorityDiagnostics>(negative).is_err());
+
+        let mut route = one_waypoint_route(&request, Vec2::new(100.0, 150.0), Vec2::new(1.0, 0.0));
+        route.waypoints[0].max_speed_mps = 10.0;
+        set_canonical_tangents(&request, &mut route);
+        let geometry = normalized_geometry(&request).unwrap();
+        let clearance = CorridorClearance {
+            clear: true,
+            minimum_clearance_m: 1.0,
+            worst_residual: CorridorResidual {
+                residual_m: -1.0,
+                centerline_position_m: Vec2::new(0.0, 0.0),
+                terrain_position_m: Vec2::new(0.0, 0.0),
+                terrain_segment_index: 0,
+                required_envelope_y_m: 0.0,
+                centerline_y_m: 1.0,
+                vertical_extent_m: 1.0,
+            },
+        };
+        let infinity_leg = RouteLegDiagnostics {
+            leg_index: 0,
+            start_m: Vec2::new(0.0, 1.0),
+            end_m: Vec2::new(1.0, 1.0),
+            route_length_m: 1.0,
+            minimum_clearance_m: 1.0,
+            clearance: clearance.clone(),
+            stopping_speed_cap_mps: Some(1.0),
+            turn_speed_cap_mps: Some(f64::INFINITY),
+            handoff_speed_cap_mps: Some(1.0),
+            available_distance_m: Some(1.0),
+            stopping_ratio_at_handoff: Some(0.0),
+            turn_ratio_at_handoff: Some(0.0),
+        };
+        let ordinary_leg = RouteLegDiagnostics {
+            leg_index: 1,
+            start_m: Vec2::new(1.0, 1.0),
+            end_m: Vec2::new(2.0, 1.0),
+            route_length_m: 1.0,
+            minimum_clearance_m: 1.0,
+            clearance,
+            stopping_speed_cap_mps: None,
+            turn_speed_cap_mps: None,
+            handoff_speed_cap_mps: None,
+            available_distance_m: None,
+            stopping_ratio_at_handoff: None,
+            turn_ratio_at_handoff: None,
+        };
+        let plan = RoutePlan {
+            algorithm_id: HEIGHTFIELD_VISIBILITY_ALGORITHM_ID.to_owned(),
+            policy: request.policy.clone(),
+            request_digest: "request".to_owned(),
+            plan_digest: "plan".to_owned(),
+            topology: RouteTopology::Waypoint,
+            route,
+            normalized_geometry: geometry.clone(),
+            diagnostics: RoutePlanDiagnostics {
+                direct_path_clear: false,
+                direct_path_clearance: None,
+                route_length_m: geometry.direct_distance_m,
+                direct_distance_m: geometry.direct_distance_m,
+                excess_length_m: 0.0,
+                peak_extra_loft_m: 0.0,
+                minimum_planned_clearance_m: 1.0,
+                leg_diagnostics: vec![infinity_leg, ordinary_leg],
+                selected_node_ids: vec!["w0".to_owned()],
+                safe_profile_points_m: Vec::new(),
+                selected_centerline_m: vec![Vec2::new(0.0, 105.0), Vec2::new(300.0, 105.0)],
+                waypoint_authority: vec![authority],
+            },
+        };
+        let plan_bytes = serde_json::to_vec(&plan).unwrap();
+        let decoded_plan: RoutePlan = serde_json::from_slice(&plan_bytes).unwrap();
+        assert_eq!(decoded_plan, plan);
+        assert_eq!(
+            decoded_plan.diagnostics.leg_diagnostics[0].turn_speed_cap_mps,
+            Some(f64::INFINITY)
+        );
+        assert_eq!(
+            decoded_plan.diagnostics.leg_diagnostics[1].turn_speed_cap_mps,
+            None
+        );
+        assert_eq!(serde_json::to_vec(&decoded_plan).unwrap(), plan_bytes);
     }
 
     #[test]
