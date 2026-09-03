@@ -129,17 +129,8 @@ impl SimulationState {
             return Vec::new();
         }
 
-        let dt_s = ctx.sim.physics_dt_s();
-        self.apply_attitude_command(ctx, dt_s);
-        let throttle_frac = self.consume_fuel(ctx, dt_s);
-        self.integrate_translation(ctx, dt_s, throttle_frac);
-
-        self.physics_step += 1;
-        self.sim_time_s = self.physics_step as f64 / f64::from(ctx.sim.physics_hz);
-        self.update_extrema(ctx);
-
-        let contact_events =
-            apply_contact_classification(ctx, self, self.detect_contact_classification(ctx));
+        let contact = self.step_physics_and_classify_contact(ctx);
+        let contact_events = apply_contact_classification(ctx, self, contact);
         if self.is_terminal() {
             return contact_events;
         }
@@ -154,6 +145,27 @@ impl SimulationState {
         }
 
         contact_events.into_iter().chain(progress_events).collect()
+    }
+
+    /// Advance exactly one discrete plant transition and return the
+    /// authoritative post-step contact classification.
+    ///
+    /// This deliberately stops before mission contact handling, waypoint
+    /// progress, and the maximum-time terminal transition.  It is the narrow
+    /// neutral seam used by controller-independent proof/replay code.  The
+    /// caller must invoke it only while the state is non-terminal, matching
+    /// the guard used by [`Self::step`].
+    pub fn step_physics_and_classify_contact(&mut self, ctx: &RunContext) -> ContactClassification {
+        let dt_s = ctx.sim.physics_dt_s();
+        self.apply_attitude_command(ctx, dt_s);
+        let throttle_frac = self.consume_fuel(ctx, dt_s);
+        self.integrate_translation(ctx, dt_s, throttle_frac);
+
+        self.physics_step += 1;
+        self.sim_time_s = self.physics_step as f64 / f64::from(ctx.sim.physics_hz);
+        self.update_extrema(ctx);
+
+        self.detect_contact_classification(ctx)
     }
 
     fn apply_attitude_command(&mut self, ctx: &RunContext, dt_s: f64) {
@@ -894,6 +906,47 @@ mod tests {
         assert_eq!(replayed.manifest, original.manifest);
         assert_eq!(replayed.events, original.events);
         assert_eq!(replayed.actions, original.actions);
+    }
+
+    #[test]
+    fn neutral_physics_step_matches_the_ordinary_step_before_terminal_handling() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        let command = Command {
+            throttle_frac: 0.4,
+            target_attitude_rad: 0.25,
+        };
+        let mut ordinary = SimulationState::new(&ctx).unwrap();
+        let mut neutral = ordinary.clone();
+        ordinary.set_command(command);
+        neutral.set_command(command);
+
+        let events = ordinary.step(&ctx);
+        let contact = neutral.step_physics_and_classify_contact(&ctx);
+
+        assert!(events.is_empty());
+        assert_eq!(contact, ContactClassification::None);
+        assert_eq!(ordinary.sim_time_s, neutral.sim_time_s);
+        assert_eq!(ordinary.physics_step, neutral.physics_step);
+        assert_eq!(ordinary.position_m, neutral.position_m);
+        assert_eq!(ordinary.velocity_mps, neutral.velocity_mps);
+        assert_eq!(ordinary.attitude_rad, neutral.attitude_rad);
+        assert_eq!(ordinary.angular_rate_radps, neutral.angular_rate_radps);
+        assert_eq!(ordinary.fuel_kg, neutral.fuel_kg);
+        assert_eq!(
+            ordinary.min_touchdown_clearance_m,
+            neutral.min_touchdown_clearance_m
+        );
+        assert_eq!(ordinary.min_hull_clearance_m, neutral.min_hull_clearance_m);
+        assert_eq!(ordinary.max_speed_mps, neutral.max_speed_mps);
+        assert_eq!(ordinary.max_abs_attitude_rad, neutral.max_abs_attitude_rad);
+        assert_eq!(
+            ordinary.max_abs_angular_rate_radps,
+            neutral.max_abs_angular_rate_radps
+        );
+        assert_eq!(ordinary.held_command, neutral.held_command);
+        assert_eq!(ordinary.physical_outcome, PhysicalOutcome::Flying);
+        assert_eq!(ordinary.mission_outcome, MissionOutcome::InProgress);
+        assert_eq!(ordinary.end_reason, EndReason::Running);
     }
 
     #[test]
