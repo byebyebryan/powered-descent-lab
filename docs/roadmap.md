@@ -77,8 +77,9 @@ Current implementation status:
     deterministically with zero invalidations; D1a/D1b and the R1 bounded
     candidate-replay diagnostic are complete, and the post-R1 positive-only
     [bounded trajectory witness V1](bounded_trajectory_witness.md) W1 exact
-    verifier plus minimum W2 conformance matrix are implemented; W3 proposal
-    backend selection is next; see
+    verifier plus minimum W2 conformance matrix and the dependency-free W3
+    finite proposal spike are implemented; W4 development comparison is next;
+    see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
   - see [Waypoint Planning V1](waypoint_planning.md)
@@ -667,8 +668,9 @@ implementing a predictor. The remaining evidence-first sequence is:
    an independent positive-only physical lane: one exact command trace must
    replay in the `120 Hz` plant under a `60 Hz`, `130 s` bound; failure to find
    one is `unknown`, never physical `unsupported`. Its W1 typed artifacts and
-   exact verifier plus minimum W2 conformance checkpoint are complete; W3 must
-   next select and spike an untrusted proposal backend before W4 comparison;
+   exact verifier plus minimum W2 conformance checkpoint and the fixed W3
+   finite-template proposal spike are complete; W4 development comparison is
+   next;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -687,10 +689,11 @@ compatibility. The locked
 [bounded trajectory witness V1](bounded_trajectory_witness.md) therefore makes
 only a positive controller-neutral existence claim, verified against the exact
 discrete plant, and keeps R1 as the separate executor axis. W1 types/exact
-verification and the minimum W2 conformance matrix are now implemented. W3 is
-the next gate: select and spike a finite-search or sequential-convex proposal
-engine whose output remains subordinate to exact replay; solver failure can
-only produce `unknown`.
+verification, the minimum W2 conformance matrix, and the dependency-free W3
+finite command-template spike are now implemented. W4 is the next gate: freeze
+that input-only physical lane on already-seen development inputs before opening
+and joining R1 executor artifacts. The finite catalog claims no coverage, and
+proposal exhaustion can only produce `unknown`.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this

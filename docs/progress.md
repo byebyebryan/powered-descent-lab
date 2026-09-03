@@ -1,5 +1,29 @@
 # Progress
 
+## 2026-09-03
+
+### W3 finite bounded-trajectory proposal spike
+
+- Selected a dependency-free, serial finite command-template search as the
+  first untrusted W3 backend. Its sealed configuration fixes seven constant
+  command templates, five-second probe horizons, terminal reconstruction, exact
+  attempt accounting, and deterministic template/horizon order; the backend
+  rejects alternate IDs and budgets above its finite `189`-attempt space.
+- Routed every proposal through the W1 exact verifier. The first exact
+  `verified` witness produces `supported`; direct/out-of-scope inputs abstain,
+  and catalog or attempt-budget exhaustion produces
+  `unknown/coverage/bounded_search_exhausted`, never physical `unsupported`.
+- Added digest-covered spike results with ordered witness/verification attempts,
+  structural join and budget validation, and full deterministic re-execution on
+  exact load validation. Synthetic one- and two-waypoint cases reconstruct the
+  exact terminal at steps `960` and `1,560`; repeat bytes, bounded exhaustion,
+  scope abstention, configuration tamper, and mixed-input joins are covered.
+- Kept sequential-convex optimization as a separately versioned future
+  escalation rather than adding an unreviewed solver, linearization, tolerance,
+  or reconstruction model. This spike freezes a deliberately small W4 baseline
+  but claims no development coverage, changes no maintained evidence, planner,
+  controller, runtime screen, or dependency, and does not reduce the D2 block.
+
 ## 2026-09-01
 
 ### W1 exact trajectory witness and minimum W2 conformance

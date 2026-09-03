@@ -425,10 +425,13 @@ Implementation remains split into reviewable gates:
    tests, canonical round-trips, repeat determinism, and differential parity
    against the authoritative simulation path cover the initial conformance
    matrix. Additional cases may be added without weakening this gate.
-3. **W3 — proposal backend decision/spike:** compare a finite predeclared search
-   or sequential-convex proposal path under reproducible local dependencies.
-   The engine proposes only; exact replay owns every positive claim. No spike
-   output is a negative certificate.
+3. **W3 — proposal backend decision/spike (complete):** the first backend is a
+   dependency-free, serial
+   [finite command-template spike](bounded_trajectory_proposal_spike.md) with
+   fixed attempt ordering and budgets. Exact replay owns every positive claim;
+   exhaustion is `unknown`, and the deliberately small catalog claims no
+   development coverage. Sequential-convex remains a separately versioned
+   future escalation, not part of this result.
 4. **W4 — development comparison:** on already-seen development inputs only,
    seal the physical lane, then join it with R1/frozen-executor results using
    `PhysicalExecutorComparisonV1`. Do not change planner ranking or maintained
@@ -438,10 +441,11 @@ Implementation remains split into reviewable gates:
    thresholds, or any D2 work.
 
 W1 and the minimum W2 conformance checkpoint are implemented and validated.
-Backend/library choice, trajectory parameterization, warm starts,
-convexification details, and search budgets remain deferred to W3 because they
-do not alter the soundness boundary: a proposal becomes `supported` only after
-exact replay.
+W3 now freezes the first backend/library decision, finite parameterization, and
+search budget. Warm starts, convexification, solver tolerances, and numerical
+reconstruction remain deferred unless a separately versioned sequential-convex
+engine is reviewed. None alter the soundness boundary: a proposal becomes
+`supported` only after exact replay.
 
 ## Acceptance gates
 

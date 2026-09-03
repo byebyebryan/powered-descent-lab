@@ -98,6 +98,9 @@ without treating the old scenario files as fixtures to transliterate directly.
 - [Bounded Trajectory Witness V1](docs/bounded_trajectory_witness.md) owns the
   locked post-R1 controller-neutral exact-witness contract, its implemented W1
   verifier/minimum W2 conformance boundary, and the remaining staged gates.
+- [W3 Finite Proposal Spike](docs/bounded_trajectory_proposal_spike.md) owns the
+  fixed untrusted command-template backend and its exact-search budget;
+  proposal exhaustion remains `unknown`.
 - [Roadmap](docs/roadmap.md) owns current phase status and the next execution
   slice.
 - [Terminal Suite Design](docs/terminal_suite.md) and
