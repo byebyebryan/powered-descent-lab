@@ -74,8 +74,11 @@ Current implementation status:
   - the source-departure/acquisition and route-execution evidence prerequisites
     are implemented through D0a/D0b: all `60` development cases pass cadence
     parity, produce complete neutral source and route artifacts, and replay
-    deterministically with zero invalidations; the D1 capability design is
-    closed and implementation remains gated at D1a; see
+    deterministically with zero invalidations; D1a/D1b and the R1 bounded
+    candidate-replay diagnostic are complete, and the post-R1 positive-only
+    [bounded trajectory witness V1](bounded_trajectory_witness.md) W1 exact
+    verifier plus minimum W2 conformance matrix are implemented; W3 proposal
+    backend selection is next; see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
   - see [Waypoint Planning V1](waypoint_planning.md)
@@ -656,12 +659,19 @@ implementing a predictor. The remaining evidence-first sequence is:
    compatible cases, `3` fixed-executor selection-gap witnesses, `10`
    incomplete cases, and zero invalid cases. The witnesses show that route
    selection contributes to three already-seen failures, but they are neither a
-   feasibility certificate nor a planner-ranking candidate. D1c may still be
-   implemented as the declared paired-oracle benchmark, followed by the D1d
-   comparison lock. Neither Alternative A, the motif-based A2 concept, nor R1
-   advances to D2;
+   feasibility certificate nor a planner-ranking candidate. The previously
+   declared D1c remains an optional paired-oracle benchmark, not a prerequisite
+   or the current next slice; D1d cannot advance the failed Alternative A.
+   Neither Alternative A, the motif-based A2 concept, nor R1 advances to D2.
+   The post-R1 `bounded_trajectory_witness_v1` design now locks
+   an independent positive-only physical lane: one exact command trace must
+   replay in the `120 Hz` plant under a `60 Hz`, `130 s` bound; failure to find
+   one is `unknown`, never physical `unsupported`. Its W1 typed artifacts and
+   exact verifier plus minimum W2 conformance checkpoint are complete; W3 must
+   next select and spike an untrusted proposal backend before W4 comparison;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
-   after a new design checkpoint produces an integration-eligible alternative;
+   after W1-W4 are reviewed and a separate advancement checkpoint defines an
+   integration-eligible claim and held-out gate;
 6. D4-D5: promote a separately reviewed candidate interface or capability into
    planner-facing evaluation, and consider planner integration only after an
    alternative passes every declared gate. The evaluator-consumed R1
@@ -671,10 +681,16 @@ The terrain-equivalence spike closes the empirical-envelope salvage question
 for the tested motif without outcome-guided tuning. R1 additionally proves that
 three already-seen rows have an executor-compatible route inside the current
 planner's first eight candidates, while ten rows remain deliberately
-inconclusive at that budget. The next capability design checkpoint must compare
-a small controller-neutral convex-feasibility formulation with a separately
-versioned offline paired-reachability formulation rather than invent another
-terrain grouping or tune ranking against the exposed development outcomes.
+inconclusive at that budget. The subsequent design review rejected an
+unqualified equivalence between physical feasibility and frozen-executor
+compatibility. The locked
+[bounded trajectory witness V1](bounded_trajectory_witness.md) therefore makes
+only a positive controller-neutral existence claim, verified against the exact
+discrete plant, and keeps R1 as the separate executor axis. W1 types/exact
+verification and the minimum W2 conformance matrix are now implemented. W3 is
+the next gate: select and spike a finite-search or sequential-convex proposal
+engine whose output remains subordinate to exact replay; solver failure can
+only produce `unknown`.
 
 Do not expand to runtime replanning, randomized terrain, more than two
 waypoints, route/profile controller branches, or analytic fuel claims in this

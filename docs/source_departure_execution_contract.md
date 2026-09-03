@@ -14,8 +14,13 @@ deterministically misses its development gate and is not accepted. An
 input-only terrain-equivalence spike also rejects the tested route-relative
 relief motif as an A2 design basis; it changes no capability or prediction.
 D1c, D1d, every held-out comparison, and every planner-facing phase from D2
-onward remain unimplemented. D0a/D0b/D1a/D1b and the spike change no planner
-generation or ranking, controller behavior, or maintained fixture semantics.
+onward remain unimplemented. The post-R1
+[bounded trajectory witness V1](bounded_trajectory_witness.md) design is now
+implemented through its W1 exact verifier and minimum W2 conformance checkpoint
+as a separate positive-only physical-existence lane; all proposal engines
+remain unimplemented. D0a/D0b/D1a/D1b, the spikes, R1, and this witness
+checkpoint change no planner generation or ranking, controller behavior, or
+maintained fixture semantics.
 Simulation remains authoritative for flight outcomes, actual hull clearance,
 fuel, handoff success, and landing.
 
@@ -177,9 +182,10 @@ outcome:
 Terminal-before-boundary is valid right-censored transition evidence, not an
 invalid record. Preserve every available prefix state and extrema plus the
 terminal physics step and terminal reason for either censored status. A
-terminal-before-boundary run also has a scoped execution failure outcome. A
-`supported` prediction joined with either censored terminal failure is a false
-accept. A missing crossing in a run that does not provide a sound terminal
+terminal-before-boundary run also has a scoped execution failure outcome. For
+the original D1 `RouteExecutionPredictionV1` comparison, a `supported`
+prediction joined with either censored terminal failure is a false accept. A
+missing crossing in a run that does not provide a sound terminal
 censoring point, or a missing/unverifiable bracket, is `invalid` instead.
 
 Only `invalid` contributes to the invalidation count. Invalid records retain
@@ -851,17 +857,20 @@ This result establishes an existential fixed-executor selection effect in three
 already-seen rows only. It does not label the selected route physically
 infeasible, establish a robustness neighborhood for the alternative, authorize
 outcome-guided ranking changes, or reduce the D2 block. The next capability
-design gate must still compare an independent bounded convex feasibility
-certificate with a separately versioned offline paired-reachability
-formulation.
+design gate is now closed by
+[`bounded_trajectory_witness_v1`](bounded_trajectory_witness.md): one exact
+verified singleton command trace may support controller-neutral physical
+existence, while search/solver failure remains `unknown`. Physical existence and
+this exact frozen-executor result are orthogonal comparison axes. W1 exact
+verification and the minimum W2 conformance matrix are complete;
+proposal-backend selection is the next gate. Neither this implementation nor R1
+reduces the D2 block.
 
-The selection gate is the evidence protocol below. Prototype both alternatives
-outside planner selection and compare their neutral outputs; this design
-checkpoint accepts neither result in advance. If Alternative A misses its
-development gate, stop and compare a small convex-feasibility formulation with
-an offline paired-reachability certificate rather than adding scalar reserves
-or retuning a profile. The D1 paired oracle remains a benchmark regardless of
-its development score.
+The selection gate below records the original D0/D1 evidence protocol. Its
+Alternative A path failed as recorded, and its prescribed follow-up design gate
+is superseded by the positive-only witness contract linked above. The D1 paired
+oracle and R1 remain executor benchmarks; neither becomes the physical proof
+lane or a planner integration candidate.
 
 ## Development input and extractor-fidelity gate
 
@@ -962,10 +971,12 @@ The minimum D0a/D0b test matrix covers:
    statuses remain valid evidence; their separate scoped terminal-failure
    labels may participate in confusion rows when a prediction exists.
 
-For comparison, `supported` versus a scoped failure is a false accept, and
-`unsupported` versus a scoped pass is a false reject. `unknown` makes no class
-claim. Zero observed held-out false accepts is necessary for a finite-corpus
-rejection claim, but it is not a production safety proof.
+For the original D1 `RouteExecutionPredictionV1` comparison only, `supported`
+versus a scoped failure is a false accept, and `unsupported` versus a scoped
+pass is a false reject. `unknown` makes no class claim. Zero observed held-out
+false accepts is necessary for a finite-corpus rejection claim, but it is not a
+production safety proof. Those rules do not apply to the separately typed
+positive-only witness/executor matrix.
 
 The hard gates are all required:
 
@@ -1086,9 +1097,11 @@ out-of-fold `unknown/domain/missing_physical_stratum` predictions: the exact
 terrain-geometry key creates one-member strata, so excluding each query digest
 removes the only training member. The advancement gate failed, the candidate
 was not retuned after the outcome join, and Alternative A cannot advance to D2.
-The prescribed next design checkpoint is a comparison of small
-convex-feasibility and offline paired-reachability formulations; D1c remains
-useful only as the already-declared oracle benchmark.
+The prescribed follow-up design checkpoint has since closed as
+[`bounded_trajectory_witness_v1`](bounded_trajectory_witness.md). D1c remains
+optional and useful only as the already-declared oracle benchmark; W1 exact
+positive-witness verification and the minimum W2 conformance checkpoint are
+complete, with W3 proposal-backend selection next.
 
 **D1b terrain-equivalence follow-up:** Implemented as a non-normative,
 input-only support spike, not a new predictor. The existing exact key again
@@ -1112,9 +1125,9 @@ the `exact_pair_oracle` result visibly separate from integration eligibility.
 model/config, capability-artifact, prediction, and comparison digests, coverage
 by declared domain and stratum, and all first-decisive reasons. Alternative A
 advances to D2 only if it passes every development gate. Alternative B remains
-an oracle benchmark; if A fails, no predictor advances and the next design
-checkpoint compares an offline paired-reachability certificate with the small
-convex-feasibility escalation.
+an oracle benchmark. Alternative A failed and no D1 predictor advanced. The
+later positive-witness design does not retroactively advance either
+alternative.
 
 **Exit:** Both alternatives expose byte-stable predictions, reasons, and
 digests. Terminal state-set composition is explicit from the initial source
@@ -1122,11 +1135,24 @@ state through every handoff, out-of-fold comparison is outcome-isolated, and
 phase-indexed reasons preserve the first decisive unsupported/unknown boundary.
 No per-candidate production screen or planner integration exists.
 
+### W — post-R1 bounded trajectory witness
+
+The current continuation is the separately versioned
+[`bounded_trajectory_witness_v1`](bounded_trajectory_witness.md), not a retune
+of Alternative A or an implementation of executor replay as physical truth.
+W1 adds typed positive-witness artifacts and exact verification, W2 closes
+verifier conformance, W3 chooses and spikes an untrusted proposal engine, and
+W4 performs an already-seen two-axis physical/executor comparison. W1 and the
+minimum W2 conformance matrix are complete; W3 is next. Search or
+solver failure remains `unknown`; physical V1 has no `unsupported` decision.
+D1c is not a prerequisite for W1 because existing D0/R1 exact-pair results can
+supply the development executor axis when W4 is reached.
+
 ### D2 — freeze held-out inputs and seal predictions
 
-**Entry:** D1 development prototypes are reproducible, the seen-input/exposure
-registry is reviewable, and the predeclared class-support/stratification/
-confidence plan is reviewable.
+**Entry:** D1 development prototypes are reproducible, W1-W4 have passed a
+separate review, the seen-input/exposure registry is reviewable, and the
+predeclared class-support/stratification/confidence plan is reviewable.
 
 **Work:** Freeze and separately hash the exposure registry and genuinely
 uninspected input-only matrix. Reject contaminated rows before simulation.
@@ -1153,10 +1179,11 @@ confidence reports.
 
 **Exit:** The hard gates are evaluated without counting `unknown`, invalid, or
 analytic-invalidation rows as true negatives; censored terminal failures are
-valid outcome rows and a `supported` prediction joined to either one is a
-false accept. Alternative A may be accepted only if the evidence justifies its
-capability; B remains an oracle report and this document itself makes no
-selection.
+valid outcome rows and a supported D1 `RouteExecutionPredictionV1` joined to
+either one is a false accept. Alternative A may be accepted only if the
+evidence justifies its capability; B remains an oracle report and this document
+itself makes no selection. This exit rule does not classify the separate
+positive-only witness lane.
 
 ### D4 — bounded candidate exposure
 

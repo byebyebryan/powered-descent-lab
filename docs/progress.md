@@ -2,6 +2,53 @@
 
 ## 2026-09-01
 
+### W1 exact trajectory witness and minimum W2 conformance
+
+- Implemented dedicated positive-only bounded-trajectory configuration,
+  command-witness, exact-verification, and physical-prediction artifacts in
+  `pd-eval`. Only an exactly replayed singleton witness can produce
+  `supported`; rejected traces and out-of-scope routes map to `unknown`, and
+  malformed or nondeterministic artifacts remain `invalid`. The schema has no
+  physical `unsupported` variant.
+- Added a narrow `pd-core` seam for one authoritative discrete plant transition
+  plus exact post-step contact classification. Ordinary simulation retains
+  contact outcome, mission progress, and timeout ownership, avoiding a copied
+  plant inside the verifier.
+- Reused the D0 physics-rate source-transition and route-execution kernels for
+  ordered crossings, sticky waypoint opportunity, initial-deadline behavior,
+  and first contract pass. Canonical trajectory and verification identities
+  cover the replayed states, command installations, and normalized phase and
+  boundary resolutions without admitting synthetic adapter IDs as proof input.
+- Closed the minimum W2 matrix with synthetic one/two-waypoint positive traces,
+  odd/even command cadence and final-horizon cases, contact/deadline/nonminimal
+  rejections, D0 kernel parity, canonical/tamper validation, repeated replay,
+  and differential parity against the ordinary simulation path. No proposal
+  solver, maintained evidence run, ranking change, controller change, or
+  runtime screen was added; W3 proposal-backend selection is next and D2 stays
+  blocked.
+
+### Post-R1 bounded trajectory witness design lock
+
+- Locked `bounded_trajectory_witness_v1` as a positive-only,
+  controller-neutral existence claim: `supported` requires one exact singleton
+  command trace replayed in the authoritative `120 Hz` discrete plant with
+  `60 Hz` commands held for two steps and a `130 s` bound. The claim is neither
+  continuous-time nor robust, and V1 has no physical `unsupported` result.
+- Kept `RouteCapabilityInputV1` unchanged and moved plant cadence, horizon,
+  command schedule, phase/crossing, rotated-hull contact, numeric, and verifier
+  semantics into typed digest-covered configuration. The exact verifier, not a
+  solver, owns every positive decision; bounded search exhaustion,
+  nonconvergence, or rejected reconstruction remains `unknown`.
+- Separated physical existence from R1 frozen-executor compatibility in a
+  two-axis comparison. A verified physical witness plus executor failure is an
+  executor gap, not a physical false accept. Existing R1 evidence remains an
+  exact-pair oracle and descriptive development context only.
+- Staged the work as W1 typed artifacts/exact verifier, W2 conformance and
+  differential tests, W3 proposal-backend spike, and W4 already-seen two-axis
+  comparison. That design-only checkpoint added no implementation, solver,
+  evidence run, ranking change, or runtime screen; W1 and the minimum W2 matrix
+  are now implemented as recorded above, while D2 remains blocked.
+
 ### R1 bounded candidate-replay implementation
 
 - Added the research-only `planner_candidate_exposure_v1` API beside ordinary
@@ -111,9 +158,11 @@
   `fnv1a64:85236d37129f5efd`.
 - The motif therefore does not justify an A2 envelope design. Exact query
   terrain remains mandatory, no D1b parameter or outcome gate was retuned, and
-  D2 remains blocked. The next design checkpoint compares a small
-  convex-feasibility formulation with offline paired reachability; the paired
-  executor remains a research oracle rather than an integration candidate.
+  D2 remains blocked. At that checkpoint, the prescribed next design step was
+  to compare a small convex-feasibility formulation with offline paired
+  reachability; the paired executor remained a research oracle rather than an
+  integration candidate. The later bounded-witness design lock and W1/W2 status
+  are recorded above.
 
 ### D1a contracts and D1b Alternative A checkpoint
 
