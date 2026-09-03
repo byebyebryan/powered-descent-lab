@@ -69,6 +69,9 @@ pub use route_capability::*;
 mod bounded_trajectory_witness;
 pub use bounded_trajectory_witness::*;
 
+mod bounded_trajectory_proposal_spike;
+pub use bounded_trajectory_proposal_spike::*;
+
 mod progress_interval_envelope;
 pub use progress_interval_envelope::*;
 
