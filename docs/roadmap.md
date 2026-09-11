@@ -78,8 +78,10 @@ Current implementation status:
     candidate-replay diagnostic are complete, and the post-R1 positive-only
     [bounded trajectory witness V1](bounded_trajectory_witness.md) W1-W4 gates
     are implemented; the full finite catalog found zero supported development
-    witnesses, so a fresh proposal-backend design review is next and D2 stays
-    blocked;
+    witnesses. Research-grade D2 stays blocked; the next product-oriented
+    checkpoint is the CB0 final-landing audit in
+    [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md),
+    not another command-witness proposal backend;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -672,7 +674,9 @@ implementing a predictor. The remaining evidence-first sequence is:
    exact verifier, minimum W2 conformance checkpoint, fixed W3 finite-template
    proposal spike, and outcome-isolated W4 comparison are complete. W4 found
    zero supported physical witnesses and retains all 60 results as `unknown`;
-   a fresh proposal-backend design review is next;
+   the research lane stops there unless a separate need justifies resuming it.
+   The immediate product checkpoint is the conservative-ballistic CB0
+   final-landing audit;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -695,19 +699,26 @@ now complete. The outcome-isolated W4 run exhausted the full finite catalog on
 all 60 already-seen rows, producing 47 `unknown/supported` and 13
 `unknown/unsupported` physical/executor joins with zero invalid comparisons.
 This closes the comparison mechanism but supplies no physical coverage or
-negative certificate. The next gate is a fresh design review of a separately
-versioned proposal escalation; D2 remains blocked.
+negative certificate. Research-grade D2 remains blocked. The immediate
+product-oriented path is now the separately versioned
+[Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md)
+design: first audit the same current cases under final-landing semantics, then
+only if route-caused landing failures remain, spike exact discrete ballistic
+legs, conservative state gates, and bounded backward repair.
 
-Do not expand to runtime replanning, randomized terrain, more than two
-waypoints, route/profile controller branches, or analytic fuel claims in this
-slice. Keep a later terminal-arrival extension on the roadmap: a signed
-climb/descent arrival family that expands the current one-sided quarter-arc into
-a half-arc around the target and exercises climbing arrivals.
+Do not expand the research lane to runtime replanning, randomized terrain, more
+than two waypoints, or route/profile controller branches. The new analytical
+design may use a conservative fuel upper bound as planner policy, but ordinary
+simulation remains authoritative for actual fuel use. Keep a later
+terminal-arrival extension on the roadmap: a signed climb/descent arrival
+family that expands the current one-sided quarter-arc into a half-arc around
+the target and exercises climbing arrivals.
 
 Direct transfer, authored waypoint guidance, and the focused generated-route
 matrix are clean across their maintained scopes. Schema-34 window and
 terminal-recovery evidence keeps contract quality separate from final touchdown
 reliability; schema 36 adds planner provenance and compute evidence without
 changing that boundary. Any next expansion should remain planner-generated
-geometry backed by an explicit execution-capability contract, not route-specific
-guidance recovery heuristics.
+geometry backed by a versioned analytical execution policy and ordinary
+full-simulation landing evidence, not route-specific guidance recovery
+heuristics.

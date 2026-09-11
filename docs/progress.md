@@ -1,5 +1,26 @@
 # Progress
 
+## 2026-09-10
+
+### Conservative ballistic route-planning design
+
+- Reframed the immediate product question around useful game routes rather
+  than another controller-neutral command-witness backend. The W1-W4 research
+  result and D2 block remain unchanged.
+- Chose a deterministic analytical policy: try fixed-duration direct ballistic
+  coasts between source-acquisition and terminal-capture state gates, disprove
+  them with exact terrain and conservative transition screens, then use
+  failure-guided bounded backward search for at most two staging waypoints.
+- Kept planner inputs independent of controller identity and configuration.
+  The real controller enters only through a later frozen full-simulation shadow
+  comparison, where final landing is primary and waypoint-contract results are
+  diagnostic.
+- Mapped CB0-CB5 in
+  [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md).
+  CB0 is next: refresh final-landing outcomes for the exact current 36
+  maintained and 24 already-seen diagnostic cases, and stop before planner
+  implementation if the gameplay objective is already clean.
+
 ## 2026-09-04
 
 ### W4 physical/executor development comparison
