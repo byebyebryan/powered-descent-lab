@@ -1,5 +1,31 @@
 # Progress
 
+## 2026-09-11
+
+### CB1 analytical route-necessity canary gate
+
+- Added a private, test-only `pd-plan` analytical kernel and a four-case
+  input-only fixture using the canonical Earth-gravity vehicle and one shared
+  policy. The kernel constructs exact semi-implicit ballistic legs, checks each
+  step with exact terrain corridors, and retains source, transition, terminal,
+  fuel, time, and decisive-reason margins under stable identities.
+- Rejected the first passing draft during review because it reused complete
+  ballistic coast spans as powered-transition room. The corrected topology
+  gives source acquisition, intermediate redirect, and terminal capture
+  explicit powered polylines with disjoint coast anchors and exact
+  hull-plus-gate-radius clearance.
+- Closed the frozen truth table with robust margin slack: the clear control has
+  `4 / 4` direct survivors; the long-span case has `0 / 4` direct and `8 / 16`
+  authored one-gate survivors; the late-ridge case has `0 / 4` direct and
+  `2 / 16` authored one-gate survivors; and the authority control has `0 / 4`
+  direct and `0 / 16` one-gate survivors. Every accepted candidate's minimum
+  normalized margin is at least `0.10` against a declared `0.075` threshold.
+- Kept CB1 controller-independent and private: it adds no search, simulation,
+  public planner API, production behavior, or existing-fixture change. Its
+  result is a conservative maneuver-room screen, not command integration or a
+  physical-feasibility proof. CB2 bounded zero/one-waypoint search is next;
+  real-controller landing validation remains CB3.
+
 ## 2026-09-10
 
 ### One-waypoint route-necessity canary design

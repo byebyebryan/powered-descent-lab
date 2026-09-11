@@ -1,0 +1,111 @@
+{
+  "schema_id": "conservative_ballistic_cb1_canaries_v1",
+  "schema_version": 1,
+  "policy": {
+    "physics_hz": 120,
+    "gravity_mps2": 9.81,
+    "duration_multipliers": [0.75, 1.0, 1.25, 1.5],
+    "source_gate_height_m": 800.0,
+    "source_exit_distance_m": 800.0,
+    "source_lift_exit_speed_mps": 65.0,
+    "intermediate_entry_distance_m": 400.0,
+    "intermediate_exit_distance_m": 400.0,
+    "terminal_gate_offset_m": 450.0,
+    "terminal_gate_height_m": 800.0,
+    "terminal_entry_distance_m": 800.0,
+    "terminal_state_height_m": 60.0,
+    "gate_capture_radius_m": 10.0,
+    "corridor_horizontal_extent_m": 4.0,
+    "corridor_vertical_extent_m": 5.0,
+    "minimum_clearance_m": 5.0,
+    "maximum_nonterminal_gate_speed_mps": 260.0,
+    "maximum_nonterminal_gate_cross_speed_mps": 230.0,
+    "maximum_nonterminal_gate_vertical_speed_mps": 230.0,
+    "maximum_terminal_speed_mps": 110.0,
+    "maximum_terminal_vertical_speed_mps": 90.0,
+    "maximum_terminal_cross_speed_mps": 70.0,
+    "terminal_descent_speed_mps": 5.0,
+    "maximum_transition_delta_v_mps": 240.0,
+    "usable_transition_distance_fraction": 0.81,
+    "maximum_mission_time_s": 180.0,
+    "mission_time_reserve_s": 10.0,
+    "thrust_derate": 0.81,
+    "declared_robustness_margin": 0.075,
+    "maximum_source_acquisition_burn_time_s": 65.0,
+    "maximum_transition_burn_time_s": 36.0,
+    "maximum_transition_slew_time_s": 5.0
+  },
+  "vehicle": {
+    "geometry": {
+      "hull_width_m": 8.0,
+      "hull_height_m": 10.0,
+      "touchdown_half_span_m": 4.0,
+      "touchdown_base_offset_m": 5.0
+    },
+    "dry_mass_kg": 7200.0,
+    "initial_fuel_kg": 6300.0,
+    "max_fuel_kg": 6300.0,
+    "max_fuel_burn_kgps": 49.5,
+    "max_thrust_n": 240000.0,
+    "min_throttle_frac": 0.25,
+    "max_rotation_rate_radps": 1.5707963267948966,
+    "safe_touchdown_normal_speed_mps": 3.0,
+    "safe_touchdown_tangential_speed_mps": 2.0,
+    "safe_touchdown_attitude_error_rad": 0.15,
+    "safe_touchdown_angular_rate_radps": 0.35
+  },
+  "cases": [
+    {
+      "id": "clear_direct_control",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 2500.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 2540.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 },
+      "authored_one_gate": null
+    },
+    {
+      "id": "long_span_capture_split",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 3500.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 3540.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 },
+      "authored_one_gate": { "x": 1700.0, "y": 1400.0 }
+    },
+    {
+      "id": "late_ridge_capture_split",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 4000.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 2300.0, "y": 0.0 },
+        { "x": 2350.0, "y": 1200.0 },
+        { "x": 2500.0, "y": 1200.0 },
+        { "x": 2600.0, "y": 0.0 },
+        { "x": 4040.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 },
+      "authored_one_gate": { "x": 1700.0, "y": 1500.0 }
+    },
+    {
+      "id": "insufficient_authority_control",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 7000.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 7040.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 },
+      "authored_one_gate": { "x": 3600.0, "y": 800.0 }
+    }
+  ]
+}

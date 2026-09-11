@@ -84,10 +84,13 @@ Current implementation status:
     is complete: the exact `36` maintained and `24` already-seen diagnostic
     inputs produced `60 / 60` target touchdowns and zero fuel-depletion
     diagnostics in two byte-identical summary runs. That closes claims of a
-    current-corpus repair need. A subsequent product decision authorizes CB1
-    only as forward-looking capability work: establish frozen direct-green,
-    one-waypoint-solvable, and honest-rejection analytical canaries before any
-    search or controller validation;
+    current-corpus repair need. The subsequent forward-looking CB1 capability
+    gate is now complete in a private, controller-independent analytical
+    kernel: its four frozen canaries robustly separate direct-green,
+    one-waypoint-solvable, and honest-rejection cases using disjoint powered
+    maneuver regions and exact ballistic coast corridors. CB2 bounded
+    zero/one-waypoint search is next; controller validation remains gated to
+    CB3;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)

@@ -16,6 +16,9 @@ use pd_core::{
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+mod conservative_ballistic;
+
 pub const ALGORITHM_ID: &str = pd_core::HEIGHTFIELD_VISIBILITY_ALGORITHM_ID;
 
 /// Versioned, input-only planner candidate exposure consumed by research

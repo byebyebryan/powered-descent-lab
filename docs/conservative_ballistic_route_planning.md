@@ -2,11 +2,12 @@
 
 ## Status
 
-The CB0 gameplay audit is implemented and complete. It adds an evaluator-owned
-final-landing audit, but no planner behavior, controller behavior, fixture,
-dependency, or held-out evidence. The analytical planner remains unimplemented;
-the route-necessity canary gate below is now the next design-bounded capability
-checkpoint rather than a repair of existing missions.
+The CB0 gameplay audit and private CB1 analytical canary gate are implemented
+and complete. CB0 adds an evaluator-owned final-landing audit, while CB1 adds
+only test-private `pd-plan` inputs and analytical evidence. Neither changes
+production planner behavior, controller behavior, existing fixtures, or
+held-out evidence. The bounded one-waypoint solver in CB2 is now the next
+design-bounded capability checkpoint rather than a repair of existing missions.
 
 On the exact current `36` maintained and `24` already-seen diagnostic inputs,
 all `60 / 60` ordinary full-simulation runs reached the target pad and none
@@ -14,13 +15,13 @@ reported fuel depletion. An independent repeat produced the same summary bytes
 and all case identities. The first stop rule therefore applies to claims that
 the current corpus needs repair.
 
-A subsequent product decision authorizes one forward-looking capability path:
+A subsequent product decision authorized one forward-looking capability path:
 define intentionally synthetic game missions where a conservative direct
 ballistic leg is unsuitable but a single staging gate is suitable. This does
 not turn the clean CB0 rows into failures, reopen research-grade D2, or
-authorize production integration. CB1 must first establish the route-necessity
-canaries below without using controller outcomes; CB2 and later phases remain
-gated on that result.
+authorize production integration. CB1 now establishes the route-necessity
+canaries below without using controller outcomes. CB2 is authorized only as a
+private bounded solver; later phases remain gated on its result.
 
 The earlier [bounded trajectory witness](bounded_trajectory_witness.md) remains
 a valid positive-only research contract, and its W4 result remains valid: the
@@ -397,6 +398,38 @@ the authority control has neither; every result and reason recomputes exactly;
 and no controller type or configuration enters `pd-plan`. Otherwise stop and
 revise the model before search work.
 
+**Result (2026-09-11): complete.** The private, test-only CB1 kernel uses the
+canonical Earth-gravity vehicle, four shared duration multipliers, exact
+semi-implicit ballistic legs, and exact piecewise-linear corridor queries. Its
+powered phases are explicit, non-overlapping source, intermediate, and terminal
+polylines: coast legs meet those regions only at their entry or exit anchors,
+so no route distance is counted as both exact coast and maneuver room. Powered
+maneuver clearance inflates the vehicle corridor by the shared `10 m` gate
+radius; only the upright source lift uses the hull corridor with an explicit
+supported-pad release boundary.
+
+| Canary | Direct survivors | Authored one-gate survivors | Decisive result |
+| --- | ---: | ---: | --- |
+| `clear_direct_control` | `4 / 4` | not applicable | direct green |
+| `long_span_capture_split` | `0 / 4` | `8 / 16` | direct terminal capture fails; staged route passes |
+| `late_ridge_capture_split` | `0 / 4` | `2 / 16` | direct terrain/terminal conflict; staged route passes |
+| `insufficient_authority_control` | `0 / 4` | `0 / 16` | direct and staged authority reject |
+
+Every accepted candidate has a minimum normalized component margin of at least
+`0.10`, strictly above the declared `0.075` robustness threshold and the test's
+`0.10` anti-threshold floor. Every direct candidate in either solvable-red case, and
+every candidate in the authority control, is robustly rejected. The complete
+duration cross-products, powered-path anchors and inflation, vehicle and policy,
+component evidence, result ordering, and evaluation are identity-bound and
+reject tampering.
+
+The review rejected an earlier false-green draft because it lent whole coast
+legs to powered transitions without shortening those coasts. The accepted CB1
+model removes that double allocation. It remains a conservative
+maneuver-room screen rather than command integration or a physical-feasibility
+proof; CB3 still owns the real-controller landing claim after CB2 freezes a
+solver.
+
 ### CB2 — bounded one-waypoint solver
 
 - Reuse the existing graph and route validator.
@@ -449,14 +482,16 @@ not a revival of the broader D2 physical-feasibility program.
 ## Recommended Checkpoint
 
 CB0 remains complete and establishes that the current development corpus needs
-no route repair. The next sensible forward-looking checkpoint is **CB1 only**:
-build the analytical kernel and establish the four frozen route-necessity
-canaries. This is capability development for intentional future game content,
-not remediation of the CB0 cases.
+no route repair. CB1 now robustly distinguishes zero-waypoint,
+one-waypoint-solvable, and honest-rejection cases. The next sensible
+forward-looking checkpoint is **CB2 only**: reuse the private kernel in a
+bounded zero/one-waypoint solver that must rediscover suitable gates without
+reading the authored property-oracle coordinates.
 
-CB2 begins only if CB1 robustly distinguishes zero-waypoint, one-waypoint, and
-honest-rejection cases. CB3 remains a separate review gate because it opens
-controller outcomes after the planner inputs, policy, and solver are frozen.
+This remains capability development for intentional future game content, not
+remediation of the CB0 cases. CB3 remains a separate review gate because it
+opens controller outcomes only after the planner inputs, policy, and solver are
+frozen.
 
 ## Stop Rules
 
