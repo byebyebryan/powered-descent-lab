@@ -37,7 +37,7 @@ pub(super) fn load_controller_spec(
         .ok_or_else(|| anyhow!("unknown controller '{}'", controller_name))
 }
 
-pub(super) fn write_artifact_bundle(
+pub(crate) fn write_artifact_bundle(
     path: &Path,
     scenario: &ScenarioSpec,
     controller_spec: &ControllerSpec,
@@ -713,14 +713,14 @@ pub(super) fn find_latest_dirty_workspace_key(
     Ok(candidates.pop().map(|(_, key)| key))
 }
 
-pub(super) fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
+pub(crate) fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
     let raw = fs::read_to_string(path)
         .with_context(|| format!("failed to read json file {}", path.display()))?;
     serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse json file {}", path.display()))
 }
 
-pub(super) fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
+pub(crate) fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
     let raw = serde_json::to_string_pretty(value)?;
     fs::write(path, raw)
         .with_context(|| format!("failed to write json file {}", path.display()))?;

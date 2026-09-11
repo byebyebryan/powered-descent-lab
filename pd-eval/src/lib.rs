@@ -84,6 +84,9 @@ pub use terrain_equivalence_spike::*;
 mod candidate_replay;
 pub use candidate_replay::*;
 
+mod final_landing_audit;
+pub use final_landing_audit::*;
+
 #[derive(Clone, Debug)]
 struct WorkspaceState {
     commit_key: String,

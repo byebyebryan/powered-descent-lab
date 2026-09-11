@@ -96,8 +96,8 @@ without treating the old scenario files as fixtures to transliterate directly.
 - [Waypoint Planning V1](docs/waypoint_planning.md) owns the implemented bounded
   planner contract, search policy, evidence model, and closure sequence.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
-  owns the design-only game-oriented follow-up, its analytical state-gate
-  model, and the CB0-CB5 execution plan.
+  owns the game-oriented analytical contingency, its completed CB0 gameplay
+  audit, and the stop rule that currently defers CB1-CB5.
 - [Bounded Trajectory Witness V1](docs/bounded_trajectory_witness.md) owns the
   locked post-R1 controller-neutral exact-witness contract and its implemented
   W1-W4 gates.

@@ -2,6 +2,23 @@
 
 ## 2026-09-10
 
+### CB0 final-landing audit
+
+- Added an evaluator-owned `final-landing-audit` command for the exact current
+  `36` maintained and `24` already-seen diagnostic D0 inputs. It changes only
+  the evaluation goal to ordinary `landing_on_pad`, preserves and validates
+  scenario, route-plan, controller, and execution identities, and writes
+  reloadable per-case full-run bundles plus compact sealed case and summary
+  artifacts.
+- Both fresh canonical runs produced `60 / 60` target touchdowns with zero
+  fuel-depletion diagnostics. Their summary identity was
+  `be08b90305456370`, and their `summary.json` files were byte-identical at
+  SHA-256
+  `1bafe7028b7d51f7a27fada5c7c3136e9d3453842c7a99a16dba438de6e0df9f`.
+- Applied the design stop rule. The strict intermediate-contract expansion is
+  not a current gameplay landing failure, so CB1-CB5 remain deferred and no
+  conservative-ballistic planner behavior is justified by this corpus.
+
 ### Conservative ballistic route-planning design
 
 - Reframed the immediate product question around useful game routes rather

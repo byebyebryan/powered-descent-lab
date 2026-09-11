@@ -6,10 +6,11 @@ use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
     resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
-    run_pack_file_cached, run_physical_executor_comparison, run_physical_witness_development,
-    run_progress_interval_envelope_development_gate, run_route_execution_development_case,
-    run_route_execution_development_gate, run_source_transition_development_case,
-    run_source_transition_development_gate, run_terrain_equivalence_spike,
+    run_final_landing_audit, run_pack_file_cached, run_physical_executor_comparison,
+    run_physical_witness_development, run_progress_interval_envelope_development_gate,
+    run_route_execution_development_case, run_route_execution_development_gate,
+    run_source_transition_development_case, run_source_transition_development_gate,
+    run_terrain_equivalence_spike,
 };
 
 #[derive(Debug, Parser)]
@@ -31,6 +32,7 @@ enum Commands {
     ProgressIntervalEnvelopeGate(ProgressIntervalEnvelopeGateArgs),
     TerrainEquivalenceSpike(TerrainEquivalenceSpikeArgs),
     CandidateReplay(CandidateReplayArgs),
+    FinalLandingAudit(FinalLandingAuditArgs),
     /// Generate and seal the physical W4 lane before any executor artifacts
     /// are opened.
     BoundedTrajectoryPhysical(BoundedTrajectoryPhysicalArgs),
@@ -170,6 +172,19 @@ struct CandidateReplayArgs {
     /// Explicitly run the complete development corpus.
     #[arg(long, conflicts_with = "case", required_unless_present = "case")]
     all: bool,
+}
+
+#[derive(Debug, Parser)]
+struct FinalLandingAuditArgs {
+    #[arg(
+        long,
+        value_name = "MANIFEST_JSON",
+        default_value = "fixtures/manifests/source_transition_d0a_development.json"
+    )]
+    manifest: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -324,6 +339,10 @@ fn main() -> Result<()> {
             };
             println!("{}", serde_json::to_string_pretty(&summary)?);
         }
+        Commands::FinalLandingAudit(args) => {
+            let summary = run_final_landing_audit(&args.manifest, &repo_root(), &args.output_dir)?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
         Commands::BoundedTrajectoryPhysical(args) => {
             let summary =
                 run_physical_witness_development(&args.manifest, &repo_root(), &args.output_dir)?;
@@ -405,6 +424,28 @@ mod tests {
         let mut both = common.to_vec();
         both.extend(["--case", "row", "--all"]);
         assert!(Cli::try_parse_from(both).is_err());
+    }
+
+    #[test]
+    fn final_landing_audit_requires_output_and_accepts_manifest() {
+        let common = [
+            "pd-eval",
+            "final-landing-audit",
+            "--output-dir",
+            "/tmp/pd-eval-cb0-cli-test",
+        ];
+        assert!(Cli::try_parse_from(common).is_ok());
+
+        let with_manifest = [
+            "pd-eval",
+            "final-landing-audit",
+            "--manifest",
+            "manifest.json",
+            "--output-dir",
+            "/tmp/pd-eval-cb0-cli-test",
+        ];
+        assert!(Cli::try_parse_from(with_manifest).is_ok());
+        assert!(Cli::try_parse_from(["pd-eval", "final-landing-audit"]).is_err());
     }
 
     #[test]

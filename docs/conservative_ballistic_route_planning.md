@@ -2,10 +2,16 @@
 
 ## Status
 
-This is a design-only checkpoint. It defines a simpler, game-oriented route
-planning direction after the finite bounded-trajectory proposal catalog found
-no development witnesses. It adds no planner behavior, controller behavior,
-artifact schema, fixture, dependency, or held-out evidence.
+The CB0 gameplay audit is implemented and complete. It adds an evaluator-owned
+final-landing audit, but no planner behavior, controller behavior, fixture,
+dependency, or held-out evidence. The analytical planner described below is
+retained as a reviewed contingency rather than the next implementation target.
+
+On the exact current `36` maintained and `24` already-seen diagnostic inputs,
+all `60 / 60` ordinary full-simulation runs reached the target pad and none
+reported fuel depletion. An independent repeat produced the same summary bytes
+and all case identities. The first stop rule therefore applies: CB1-CB5 are
+deferred unless new final-landing evidence establishes a route-shape problem.
 
 The earlier [bounded trajectory witness](bounded_trajectory_witness.md) remains
 a valid positive-only research contract, and its W4 result remains valid: the
@@ -296,6 +302,25 @@ useful. Broader held-out work is optional after product value is demonstrated.
 a concrete set of current landing failures for which route shape is a plausible
 cause. No planner code changes.
 
+**Result (2026-09-10): complete; stop.** `pd-eval final-landing-audit` applies
+only an exact `landing_on_pad` goal overlay, then validates the unchanged
+scenario, route-plan, controller, manifest, and raw persisted execution bundle
+for every case. The sealed result was:
+
+- source D0 input: `fnv1a64:4f3b0eb97bce8209`;
+- resolved maintained input: `36` cases,
+  `fnv1a64:ba258fb11d2fc36e`;
+- resolved diagnostic input: `24` cases,
+  `fnv1a64:85236d37129f5efd`;
+- terminal outcomes: `60` target touchdowns and no other terminal class;
+- fuel-depletion diagnostic: `0`; and
+- summary identity: `be08b90305456370`.
+
+Two fresh output roots produced byte-identical `summary.json` files with SHA-256
+`1bafe7028b7d51f7a27fada5c7c3136e9d3453842c7a99a16dba438de6e0df9f`.
+The strict intermediate-contract shortfall is therefore not a current gameplay
+landing failure. No route-caused failure set exists to authorize CB1 or CB2.
+
 ### CB1 — analytical kernel spike
 
 - Add a private `pd-plan` spike for discrete ballistic leg construction,
@@ -358,13 +383,14 @@ D2 physical-feasibility program.
 
 ## Recommended Checkpoint
 
-The next sensible checkpoint is **CB0 only**. It is cheap, answers whether the
-gameplay problem still exists under final-landing semantics, and can prevent
-another unnecessary planner spike.
+CB0 was the sensible checkpoint and is now complete. It answered that the
+suspected gameplay problem does not exist on the exact current development
+inputs under final-landing semantics.
 
-If CB0 finds route-caused landing failures, CB1 and CB2 form the next coherent
-implementation loop. CB3 is a separate review gate because it opens real
-controller outcomes and decides whether the frozen analytical model was useful.
+The sequence stops here. CB1 and CB2 become a coherent future implementation
+loop only if new ordinary full-simulation evidence exposes route-caused landing
+failures. CB3 remains a separate review gate after such an implementation; it
+is not independently actionable while CB1 and CB2 are deferred.
 
 ## Stop Rules
 

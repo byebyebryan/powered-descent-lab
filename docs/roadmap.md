@@ -78,10 +78,14 @@ Current implementation status:
     candidate-replay diagnostic are complete, and the post-R1 positive-only
     [bounded trajectory witness V1](bounded_trajectory_witness.md) W1-W4 gates
     are implemented; the full finite catalog found zero supported development
-    witnesses. Research-grade D2 stays blocked; the next product-oriented
-    checkpoint is the CB0 final-landing audit in
-    [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md),
-    not another command-witness proposal backend;
+    witnesses. Research-grade D2 stays blocked. The evaluator-owned CB0 audit
+    in
+    [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md)
+    is complete: the exact `36` maintained and `24` already-seen diagnostic
+    inputs produced `60 / 60` target touchdowns and zero fuel-depletion
+    diagnostics in two byte-identical summary runs. The gameplay stop rule is
+    active, so CB1-CB5 are deferred rather than becoming the next planner
+    implementation sequence;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -675,8 +679,9 @@ implementing a predictor. The remaining evidence-first sequence is:
    proposal spike, and outcome-isolated W4 comparison are complete. W4 found
    zero supported physical witnesses and retains all 60 results as `unknown`;
    the research lane stops there unless a separate need justifies resuming it.
-   The immediate product checkpoint is the conservative-ballistic CB0
-   final-landing audit;
+   The subsequent conservative-ballistic CB0 final-landing audit is also
+   complete: all 60 exact current development inputs land on target, so its
+   gameplay stop rule defers CB1-CB5 unless new route-caused failures appear;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -699,12 +704,13 @@ now complete. The outcome-isolated W4 run exhausted the full finite catalog on
 all 60 already-seen rows, producing 47 `unknown/supported` and 13
 `unknown/unsupported` physical/executor joins with zero invalid comparisons.
 This closes the comparison mechanism but supplies no physical coverage or
-negative certificate. Research-grade D2 remains blocked. The immediate
-product-oriented path is now the separately versioned
+negative certificate. Research-grade D2 remains blocked. The separately
+versioned
 [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md)
-design: first audit the same current cases under final-landing semantics, then
-only if route-caused landing failures remain, spike exact discrete ballistic
-legs, conservative state gates, and bounded backward repair.
+design is now an audited contingency: CB0 found no current final-landing
+failure, so no immediate planner implementation follows. Exact discrete
+ballistic legs, conservative state gates, and bounded backward repair become
+actionable only if new route-caused landing failures appear.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical
