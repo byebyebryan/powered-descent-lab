@@ -2,6 +2,21 @@
 
 ## 2026-09-10
 
+### One-waypoint route-necessity canary design
+
+- Preserved CB0's result that the current `60` development inputs need no route
+  repair, while explicitly defining a separate forward-looking capability path
+  for intentional game missions that require one staging gate.
+- Replaced a generic blocking-ridge claim with four frozen analytical canaries:
+  a direct-green control, a long-span energy/capture split, a late-ridge
+  clearance/capture split, and an insufficient-authority rejection control.
+  One policy applies to all cases; controller outcomes, per-case thresholds,
+  and coordinate goldens are excluded.
+- Narrowed the next checkpoint to CB1's private analytical kernel and authored
+  one-gate property oracles. CB2 is now a bounded zero/one-waypoint solver, and
+  full simulation does not open until CB3 after the policy, inputs, and solver
+  are frozen. Two-waypoint and broader content remain deferred.
+
 ### CB0 final-landing audit
 
 - Added an evaluator-owned `final-landing-audit` command for the exact current

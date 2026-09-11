@@ -97,7 +97,7 @@ without treating the old scenario files as fixtures to transliterate directly.
   planner contract, search policy, evidence model, and closure sequence.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
-  audit, and the stop rule that currently defers CB1-CB5.
+  audit, and the forward-looking one-waypoint route-necessity canary gate.
 - [Bounded Trajectory Witness V1](docs/bounded_trajectory_witness.md) owns the
   locked post-R1 controller-neutral exact-witness contract and its implemented
   W1-W4 gates.

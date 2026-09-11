@@ -83,9 +83,11 @@ Current implementation status:
     [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md)
     is complete: the exact `36` maintained and `24` already-seen diagnostic
     inputs produced `60 / 60` target touchdowns and zero fuel-depletion
-    diagnostics in two byte-identical summary runs. The gameplay stop rule is
-    active, so CB1-CB5 are deferred rather than becoming the next planner
-    implementation sequence;
+    diagnostics in two byte-identical summary runs. That closes claims of a
+    current-corpus repair need. A subsequent product decision authorizes CB1
+    only as forward-looking capability work: establish frozen direct-green,
+    one-waypoint-solvable, and honest-rejection analytical canaries before any
+    search or controller validation;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -680,8 +682,9 @@ implementing a predictor. The remaining evidence-first sequence is:
    zero supported physical witnesses and retains all 60 results as `unknown`;
    the research lane stops there unless a separate need justifies resuming it.
    The subsequent conservative-ballistic CB0 final-landing audit is also
-   complete: all 60 exact current development inputs land on target, so its
-   gameplay stop rule defers CB1-CB5 unless new route-caused failures appear;
+   complete: all 60 exact current development inputs land on target, so it
+   closes the repair claim. Forward-looking CB1 capability work is separately
+   authorized only for the frozen route-necessity canaries;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -707,10 +710,12 @@ This closes the comparison mechanism but supplies no physical coverage or
 negative certificate. Research-grade D2 remains blocked. The separately
 versioned
 [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md)
-design is now an audited contingency: CB0 found no current final-landing
-failure, so no immediate planner implementation follows. Exact discrete
-ballistic legs, conservative state gates, and bounded backward repair become
-actionable only if new route-caused landing failures appear.
+design now distinguishes two claims: CB0 found no current final-landing failure,
+while intentional future game content may still require staging. The immediate
+checkpoint is therefore the CB1 analytical kernel and frozen route-necessity
+canary gate. Bounded zero/one-waypoint search becomes actionable only if that
+gate robustly separates direct, one-gate-solvable, and rejected inputs without
+controller data or per-case policy.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical

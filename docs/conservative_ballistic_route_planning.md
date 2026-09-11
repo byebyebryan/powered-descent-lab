@@ -4,14 +4,23 @@
 
 The CB0 gameplay audit is implemented and complete. It adds an evaluator-owned
 final-landing audit, but no planner behavior, controller behavior, fixture,
-dependency, or held-out evidence. The analytical planner described below is
-retained as a reviewed contingency rather than the next implementation target.
+dependency, or held-out evidence. The analytical planner remains unimplemented;
+the route-necessity canary gate below is now the next design-bounded capability
+checkpoint rather than a repair of existing missions.
 
 On the exact current `36` maintained and `24` already-seen diagnostic inputs,
 all `60 / 60` ordinary full-simulation runs reached the target pad and none
 reported fuel depletion. An independent repeat produced the same summary bytes
-and all case identities. The first stop rule therefore applies: CB1-CB5 are
-deferred unless new final-landing evidence establishes a route-shape problem.
+and all case identities. The first stop rule therefore applies to claims that
+the current corpus needs repair.
+
+A subsequent product decision authorizes one forward-looking capability path:
+define intentionally synthetic game missions where a conservative direct
+ballistic leg is unsuitable but a single staging gate is suitable. This does
+not turn the clean CB0 rows into failures, reopen research-grade D2, or
+authorize production integration. CB1 must first establish the route-necessity
+canaries below without using controller outcomes; CB2 and later phases remain
+gated on that result.
 
 The earlier [bounded trajectory witness](bounded_trajectory_witness.md) remains
 a valid positive-only research contract, and its W4 result remains valid: the
@@ -86,6 +95,54 @@ This audit is the first stop rule:
 
 Historical results suggest this audit may collapse the problem substantially,
 but historical output is not current acceptance evidence.
+
+## Route-Necessity Canary Contract
+
+The existing `single_mid_ridge` fixture proves that the straight-segment
+visibility planner selects one waypoint. It does not prove that a direct
+ballistic coast needs staging: a ballistic arc can already loft over a narrow
+obstacle. The new canaries must isolate the additional powered transition that
+a waypoint provides.
+
+For a one-waypoint-solvable canary, the frozen analytical policy must establish:
+
+```text
+accepted zero-waypoint candidates = 0
+accepted one-waypoint candidates  > 0
+```
+
+The initial corpus is deliberately limited to four input-only cases:
+
+| Canary | Required classification | Purpose |
+| --- | --- | --- |
+| `clear_direct_control` | at least one direct candidate passes; select zero waypoints | prove the policy does not add unnecessary staging |
+| `long_span_capture_split` | every direct duration fails the source/terminal energy envelope; an authored midpoint staging gate passes | isolate the value of a powered energy reset without terrain |
+| `late_ridge_capture_split` | every direct duration either violates terrain clearance or terminal capture; an authored gate near or just beyond the crest passes | prove a terrain-driven clearance/capture conflict can be repaired |
+| `insufficient_authority_control` | neither direct nor one-waypoint candidates pass | prove the policy rejects instead of forcing a waypoint |
+
+All four use the same vehicle and one frozen policy. Scenario geometry may
+change, but no case may carry a private duration set, threshold override,
+controller identity, route-family branch, or expected-outcome exception. Red
+and green classifications must clear a declared nonzero robustness margin;
+cases that sit on floating-point or policy thresholds are invalid canaries.
+
+CB1 may carry the successful one-waypoint gates as authored property oracles.
+Their coordinates are not planner goldens: they prove only that at least one
+gate inside the policy exists. CB2 must rediscover a suitable gate from its
+bounded, failure-guided candidate set. Every rejected direct duration retains
+its decisive analytical reason, and every accepted one-waypoint result retains
+separate source-leg, transition, target-leg, and terminal-capture margins.
+
+Controller simulation does not define whether a canary is analytically red or
+green. After the policy and solver are frozen, ordinary full simulation checks
+whether each accepted route lands with the existing topology-compatible game
+controller. A failed simulation can reject the route policy, but it may not be
+fed back as a per-case planner threshold or candidate exception.
+
+Target craters, source-side walls, broad mesas, payload/radius matrices, and
+two-waypoint missions are deferred. They mix endpoint ownership, duplicate the
+first terrain/energy interaction, or expand scope before the basic direct
+versus one-staging-gate distinction is proven.
 
 ## Planning Model
 
@@ -319,48 +376,55 @@ for every case. The sealed result was:
 Two fresh output roots produced byte-identical `summary.json` files with SHA-256
 `1bafe7028b7d51f7a27fada5c7c3136e9d3453842c7a99a16dba438de6e0df9f`.
 The strict intermediate-contract shortfall is therefore not a current gameplay
-landing failure. No route-caused failure set exists to authorize CB1 or CB2.
+landing failure. No current-corpus failure set authorizes planner work; CB1 is
+separately authorized only by the forward-looking route-necessity decision, and
+CB2 remains gated on CB1.
 
-### CB1 — analytical kernel spike
+### CB1 — analytical kernel and canary gate
 
 - Add a private `pd-plan` spike for discrete ballistic leg construction,
   per-step exact corridor clearance, state gates, and conservative transition
   checks.
-- Freeze a tiny duration-candidate set before running controller comparisons.
-- Cover unobstructed direct transfer, one blocking ridge, excessive arrival
-  speed, invalid redirect, insufficient authority, fuel/time exhaustion, and
-  deterministic repeat canaries.
+- Freeze one policy and a tiny duration-candidate set before running any
+  controller simulation.
+- Materialize the four route-necessity canaries above as input-only test data.
+- Evaluate direct candidates and authored one-gate property oracles, retaining
+  decisive rejection reasons and component margins.
 
-**Exit:** obvious easy cases pass, obvious impossible-under-policy cases reject
-for the correct reason, all accepted witnesses recompute exactly, and no
-controller type or configuration enters `pd-plan`. Otherwise stop and revise
-the model before search work.
+**Exit:** the direct control has a zero-waypoint survivor; both solvable cases
+have zero direct survivors and at least one robust authored one-gate survivor;
+the authority control has neither; every result and reason recomputes exactly;
+and no controller type or configuration enters `pd-plan`. Otherwise stop and
+revise the model before search work.
 
-### CB2 — bounded backward route spike
+### CB2 — bounded one-waypoint solver
 
 - Reuse the existing graph and route validator.
 - Add failure-guided staging candidates and an exact bounded reverse search
-  over zero, one, or two waypoints.
+  over zero or one waypoint only.
 - Emit candidate `TransferRouteSpec` values and private analytical diagnostics;
   do not replace production planning or change fixtures.
 
-**Exit:** synthetic direct, one-waypoint, and two-waypoint missions resolve
-deterministically; unsafe and out-of-scope canaries reject; search bounds and
-ordering are explicit.
+**Exit:** the solver chooses direct for the direct control, rediscovers a
+policy-valid one-gate route for both solvable canaries without reading their
+authored coordinates, and rejects the authority control. Search bounds,
+ordering, and deterministic identities are explicit. Two-waypoint search does
+not begin in this checkpoint.
 
-### CB3 — already-seen full-simulation shadow comparison
+### CB3 — frozen full-simulation validation
 
-- Freeze the CB2 algorithm and policy first.
-- Compare current and candidate routes on the CB0 cases with the same real
-  controller and ordinary full simulation.
-- Require zero maintained landing regressions. If CB0 exposed current landing
-  failures, require at least one additional landing without introducing a new
-  failure. Treat intermediate contract scores as diagnostics, not the primary
-  gate.
+- Freeze the CB2 algorithm, policy, canary inputs, and analytical results first.
+- Run the selected routes for the direct control and two one-waypoint canaries
+  with the existing topology-compatible controller and ordinary full
+  simulation.
+- Require target touchdown for all three accepted routes and rerun the existing
+  maintained gates as no-regression evidence. Treat intermediate waypoint
+  contracts, tracking, clearance, fuel, and time as diagnostics.
 
 **Exit:** advance only if the analytical acceptances reliably predict real
-controller landings and the new plan has practical value. Otherwise retain the
-negative spike and stop; do not tune by route label or individual outcome.
+controller landings and the staged routes demonstrate practical value.
+Otherwise retain the negative spike and stop; do not tune by route label or
+individual outcome.
 
 ### CB4 — production integration decision
 
@@ -374,29 +438,34 @@ negative spike and stop; do not tune by route label or individual outcome.
 **Exit:** the selected production planner is deterministic, bounded,
 controller-independent in its inputs, and covered by ordinary landing evidence.
 
-### CB5 — optional broader validation
+### CB5 — optional scope expansion
 
-Only after CB4 is worthwhile, freeze a small genuinely uninspected gameplay
-matrix to measure accepted-route landing precision and conservative rejection.
-This is confidence-building for the game planner, not a revival of the broader
-D2 physical-feasibility program.
+Only after CB4 is worthwhile, review whether two-waypoint search, target
+craters, source-side walls, broad mesas, payload/radius variation, or a small
+genuinely uninspected gameplay matrix has product value. Any broader matrix
+measures accepted-route landing precision and conservative rejection; it is
+not a revival of the broader D2 physical-feasibility program.
 
 ## Recommended Checkpoint
 
-CB0 was the sensible checkpoint and is now complete. It answered that the
-suspected gameplay problem does not exist on the exact current development
-inputs under final-landing semantics.
+CB0 remains complete and establishes that the current development corpus needs
+no route repair. The next sensible forward-looking checkpoint is **CB1 only**:
+build the analytical kernel and establish the four frozen route-necessity
+canaries. This is capability development for intentional future game content,
+not remediation of the CB0 cases.
 
-The sequence stops here. CB1 and CB2 become a coherent future implementation
-loop only if new ordinary full-simulation evidence exposes route-caused landing
-failures. CB3 remains a separate review gate after such an implementation; it
-is not independently actionable while CB1 and CB2 are deferred.
+CB2 begins only if CB1 robustly distinguishes zero-waypoint, one-waypoint, and
+honest-rejection cases. CB3 remains a separate review gate because it opens
+controller outcomes after the planner inputs, policy, and solver are frozen.
 
 ## Stop Rules
 
 Stop or narrow the work when any of the following occurs:
 
-- the current final-landing audit is already clean;
+- work is presented as repair of the current corpus despite the clean CB0
+  final-landing audit;
+- the frozen policy cannot robustly separate the direct and one-waypoint
+  canaries without per-case thresholds;
 - failures are controller/contact bugs rather than route-shape problems;
 - the analytical kernel needs controller IDs, phase names, or per-route
   exceptions to classify basic canaries;
