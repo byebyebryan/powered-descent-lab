@@ -101,10 +101,12 @@ No maintained evidence corpus was run or changed. No R1 actions or outcomes
 were opened by the proposal engine, and no planner ranking, controller,
 runtime screen, dependency, or D2 artifact changed.
 
-## Next gate
+## W4 result
 
-W4 may run this already-frozen input-only proposal on the already-seen
-development inputs, seal its physical `supported`/`unknown` results before
-opening the corresponding R1 frozen-executor artifacts, and then build the
-two-axis comparison. W4 must report low coverage honestly and may not retune
-this W3 configuration after seeing executor outcomes.
+W4 ran this already-frozen input-only proposal over the complete `189`-attempt
+catalog on all 60 already-seen development inputs. The physical lane was sealed
+before a fresh R1 run was opened for the two-axis join. Every row exhausted the
+catalog as `unknown/coverage/bounded_search_exhausted`; none produced a
+supported witness. No W3 parameter was retuned. See the
+[W4 physical/executor comparison](physical_executor_comparison.md) for the
+sealed digests and interpretation.

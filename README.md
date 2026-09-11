@@ -96,11 +96,13 @@ without treating the old scenario files as fixtures to transliterate directly.
 - [Waypoint Planning V1](docs/waypoint_planning.md) owns the implemented bounded
   planner contract, search policy, evidence model, and closure sequence.
 - [Bounded Trajectory Witness V1](docs/bounded_trajectory_witness.md) owns the
-  locked post-R1 controller-neutral exact-witness contract, its implemented W1
-  verifier/minimum W2 conformance boundary, and the remaining staged gates.
+  locked post-R1 controller-neutral exact-witness contract and its implemented
+  W1-W4 gates.
 - [W3 Finite Proposal Spike](docs/bounded_trajectory_proposal_spike.md) owns the
   fixed untrusted command-template backend and its exact-search budget;
   proposal exhaustion remains `unknown`.
+- [W4 Physical/Executor Comparison](docs/physical_executor_comparison.md) owns
+  the outcome-isolated already-seen result and its strict selected-route join.
 - [Roadmap](docs/roadmap.md) owns current phase status and the next execution
   slice.
 - [Terminal Suite Design](docs/terminal_suite.md) and

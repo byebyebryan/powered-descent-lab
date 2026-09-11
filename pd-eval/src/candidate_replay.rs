@@ -989,9 +989,8 @@ fn require_empty_output_dir(output_dir: &Path) -> Result<()> {
     }
 }
 
-fn prepare_candidate_replay_case_from_selected(
+fn build_candidate_replay_preparation_from_selected(
     selected: CandidateReplayResolvedInput,
-    output_dir: &Path,
     case_id: &str,
 ) -> Result<CandidateReplayPreparationV1> {
     let request = planning_request(&selected.scenario, &selected.selected_plan);
@@ -1044,6 +1043,13 @@ fn prepare_candidate_replay_case_from_selected(
         preparation_digest: String::new(),
     };
     preparation.seal().map_err(anyhow::Error::msg)?;
+    Ok(preparation)
+}
+
+fn persist_candidate_replay_preparation(
+    preparation: &CandidateReplayPreparationV1,
+    output_dir: &Path,
+) -> Result<CandidateReplayPreparationV1> {
     fs::create_dir_all(output_dir).with_context(|| {
         format!(
             "failed to create candidate replay preparation directory {}",
@@ -1057,10 +1063,41 @@ fn prepare_candidate_replay_case_from_selected(
         })?;
     let preparation_path = output_dir.join("preparation.json");
     let round_trip_preparation: CandidateReplayPreparationV1 =
-        write_json_round_trip(&preparation_path, &preparation, |value| {
+        write_json_round_trip(&preparation_path, preparation, |value| {
             value.validate().map_err(anyhow::Error::msg)
         })?;
     Ok(round_trip_preparation)
+}
+
+fn prepare_candidate_replay_case_from_selected(
+    selected: CandidateReplayResolvedInput,
+    output_dir: &Path,
+    case_id: &str,
+) -> Result<CandidateReplayPreparationV1> {
+    let preparation = build_candidate_replay_preparation_from_selected(selected, case_id)?;
+    persist_candidate_replay_preparation(&preparation, output_dir)
+}
+
+/// Build every canonical development-row preparation without writing files or
+/// opening any controller/simulator result.  The W4 physical lane uses this
+/// boundary so proposal generation has no path to R1 outcome artifacts.
+pub(crate) fn build_candidate_replay_development_preparations(
+    manifest_path: &Path,
+    repo_root: &Path,
+) -> Result<Vec<CandidateReplayPreparationV1>> {
+    let inputs = crate::resolve_source_transition_development_inputs(manifest_path, repo_root)?;
+    let source_d0_input_digest = inputs.manifest.input_digest.clone();
+    candidate_replay_inputs_in_manifest_order(&inputs)?
+        .into_iter()
+        .map(|selected| {
+            let case_id = selected.row_id.clone();
+            let preparation = build_candidate_replay_preparation_from_selected(selected, &case_id)?;
+            if preparation.source_d0_input_digest != source_d0_input_digest {
+                bail!("candidate replay bulk preparation source digest drift for {case_id}");
+            }
+            Ok(preparation)
+        })
+        .collect()
 }
 
 /// Resolve and seal one R1 input row after validating the complete D0
@@ -1402,6 +1439,112 @@ fn validate_candidate_replay_case_bundle(
         )?;
     }
     Ok(persisted_case)
+}
+
+/// A completely validated R1 candidate-replay root.  This loader is kept at
+/// the R1 boundary so later evaluator stages cannot accidentally validate only
+/// a summary and then consume an unchecked candidate bundle.  It opens no
+/// controller or simulator state; every nested artifact is checked by the
+/// existing case-bundle validator.
+pub(crate) struct CandidateReplayRootV1 {
+    pub(crate) summary: CandidateReplaySummaryV1,
+    pub(crate) cases: Vec<(CandidateReplayPreparationV1, CandidateReplayCaseV1)>,
+}
+
+pub(crate) fn load_candidate_replay_root(root: &Path) -> Result<CandidateReplayRootV1> {
+    let expected_root_entries = BTreeSet::from(["case".to_owned(), "summary.json".to_owned()]);
+    require_directory_entries(root, &expected_root_entries, "candidate replay root")?;
+
+    let summary: CandidateReplaySummaryV1 = read_json_validate(
+        &root.join("summary.json"),
+        |value: &CandidateReplaySummaryV1| value.validate().map_err(anyhow::Error::msg),
+    )?;
+    let case_root = root.join("case");
+    let case_names = directory_entries(&case_root)?;
+    if case_names.len() != summary.case_count {
+        bail!(
+            "candidate replay root case count differs from summary: summary {}, directories {}",
+            summary.case_count,
+            case_names.len()
+        );
+    }
+
+    let mut cases = Vec::with_capacity(case_names.len());
+    let mut case_digests = Vec::with_capacity(case_names.len());
+    let mut baseline_count = 0_usize;
+    let mut diagnostic_count = 0_usize;
+    let mut row_ids = BTreeSet::new();
+    for case_name in case_names {
+        validate_case_id_output_component(&case_name)?;
+        let case_dir = case_root.join(&case_name);
+        let expected_preparation: CandidateReplayPreparationV1 = read_json_validate(
+            &case_dir.join("preparation.json"),
+            |value: &CandidateReplayPreparationV1| value.validate().map_err(anyhow::Error::msg),
+        )?;
+        let expected_case: CandidateReplayCaseV1 = read_json_validate(
+            &case_dir.join("case.json"),
+            |value: &CandidateReplayCaseV1| value.validate().map_err(anyhow::Error::msg),
+        )?;
+        if expected_preparation.row_id != case_name || expected_case.row_id != case_name {
+            bail!("candidate replay case directory {case_name} does not match its row identity");
+        }
+        let persisted_case = validate_candidate_replay_case_bundle(
+            &case_dir,
+            &expected_preparation,
+            &expected_case,
+        )?;
+        if !row_ids.insert(expected_case.row_id.clone()) {
+            bail!(
+                "candidate replay root contains duplicate row {}",
+                expected_case.row_id
+            );
+        }
+        match expected_case.corpus {
+            ProgressIntervalDevelopmentCorpusV1::Baseline => baseline_count += 1,
+            ProgressIntervalDevelopmentCorpusV1::Diagnostic => diagnostic_count += 1,
+        }
+        case_digests.push(persisted_case.case_digest.clone());
+        cases.push((expected_preparation, persisted_case));
+    }
+
+    case_digests.sort();
+    if case_digests != summary.case_digests {
+        bail!("candidate replay root case digests differ from summary");
+    }
+    if baseline_count != summary.baseline_count || diagnostic_count != summary.diagnostic_count {
+        bail!("candidate replay root corpus counts differ from summary");
+    }
+    let evaluated_candidate_count = cases
+        .iter()
+        .try_fold(0_usize, |total, (_, case)| {
+            total.checked_add(case.evaluated_candidate_count)
+        })
+        .ok_or_else(|| anyhow!("candidate replay root evaluated count overflow"))?;
+    if evaluated_candidate_count != summary.evaluated_candidate_count {
+        bail!("candidate replay root evaluated candidate count differs from summary");
+    }
+    for (preparation, case) in &cases {
+        if preparation.source_d0_input_digest != summary.source_d0_input_digest {
+            bail!("candidate replay root preparation source digest differs from summary");
+        }
+        if case.base_input_digest != preparation.base_input_digest
+            || case.base_resolved_input_digest != preparation.base_resolved_input_digest
+            || case.exposure_digest != preparation.exposure.exposure_digest
+            || case.selected_plan_digest != preparation.selected_plan.plan_digest
+        {
+            bail!("candidate replay root case and preparation identities disagree");
+        }
+    }
+    let loaded_cases = cases
+        .iter()
+        .map(|(_, case)| case.clone())
+        .collect::<Vec<_>>();
+    let rebuilt_summary =
+        build_candidate_replay_summary(&summary.source_d0_input_digest, &loaded_cases)?;
+    if rebuilt_summary != summary {
+        bail!("candidate replay root summary differs from its validated case artifacts");
+    }
+    Ok(CandidateReplayRootV1 { summary, cases })
 }
 
 fn validate_case_preparation_links(

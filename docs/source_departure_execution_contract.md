@@ -17,10 +17,11 @@ D1c, D1d, every held-out comparison, and every planner-facing phase from D2
 onward remain unimplemented. The post-R1
 [bounded trajectory witness V1](bounded_trajectory_witness.md) design is now
 implemented through its W1 exact verifier, minimum W2 conformance checkpoint,
-and dependency-free W3 finite proposal spike as a separate positive-only
-physical-existence lane. D0a/D0b/D1a/D1b, the spikes, R1, and this witness
-checkpoint change no planner generation or ranking, controller behavior, or
-maintained fixture semantics.
+dependency-free W3 finite proposal spike, and outcome-isolated W4 development
+comparison as a separate positive-only physical-existence lane. The full
+finite catalog found no development witness, so D2 remains blocked.
+D0a/D0b/D1a/D1b, the spikes, R1, and this witness checkpoint change no planner
+generation or ranking, controller behavior, or maintained fixture semantics.
 Simulation remains authoritative for flight outcomes, actual hull clearance,
 fuel, handoff success, and landing.
 
@@ -862,9 +863,10 @@ design gate is now closed by
 verified singleton command trace may support controller-neutral physical
 existence, while search/solver failure remains `unknown`. Physical existence and
 this exact frozen-executor result are orthogonal comparison axes. W1 exact
-verification, the minimum W2 conformance matrix, and the fixed W3 finite
-proposal spike are complete; W4 development comparison is the next gate.
-Neither this implementation nor R1 reduces the D2 block.
+verification, the minimum W2 conformance matrix, the fixed W3 finite proposal
+spike, and the W4 development comparison are complete. The W4 physical lane
+exhausted the full catalog on all 60 rows, so neither this implementation nor
+R1 reduces the D2 block.
 
 The selection gate below records the original D0/D1 evidence protocol. Its
 Alternative A path failed as recorded, and its prescribed follow-up design gate
@@ -1101,7 +1103,9 @@ The prescribed follow-up design checkpoint has since closed as
 [`bounded_trajectory_witness_v1`](bounded_trajectory_witness.md). D1c remains
 optional and useful only as the already-declared oracle benchmark; W1 exact
 positive-witness verification, the minimum W2 conformance checkpoint, and the
-W3 finite proposal spike are complete, with W4 development comparison next.
+W3 finite proposal spike and W4 development comparison are complete. W4 found
+no supported physical witness, so a new proposal direction requires a fresh
+design review and D2 remains blocked.
 
 **D1b terrain-equivalence follow-up:** Implemented as a non-normative,
 input-only support spike, not a new predictor. The existing exact key again
@@ -1144,10 +1148,13 @@ W1 adds typed positive-witness artifacts and exact verification, W2 closes
 verifier conformance, W3 chooses and spikes an untrusted proposal engine, and
 W4 performs an already-seen two-axis physical/executor comparison. W1, the
 minimum W2 conformance matrix, and the fixed dependency-free W3 finite proposal
-spike are complete; W4 is next. Search or solver failure remains `unknown`;
-physical V1 has no `unsupported` decision.
-D1c is not a prerequisite for W1 because existing D0/R1 exact-pair results can
-supply the development executor axis when W4 is reached.
+spike are complete, and W4 joined 60 full-catalog physical `unknown` results to
+47 selected executor `supported` and 13 selected executor `unsupported`
+results with zero invalid comparisons. Search or solver failure remains
+`unknown`; physical V1 has no `unsupported` decision. A fresh proposal design
+review is next and D2 remains blocked.
+D1c was not a prerequisite for W1 because the existing D0/R1 exact-pair result
+supplied W4's development executor axis.
 
 ### D2 — freeze held-out inputs and seal predictions
 

@@ -1,5 +1,44 @@
 # Progress
 
+## 2026-09-04
+
+### W4 physical/executor development comparison
+
+- Added two explicit evaluator phases. `bounded-trajectory-physical` accepts
+  only the existing development manifest and an empty output root, fixes the
+  complete `189`-attempt W3 catalog, and seals selected-route physical
+  predictions without an R1 result path. Independent rows run in parallel but
+  each W3 search retains its locked serial template/horizon order.
+- Added compact physical case/summary artifacts and exact reload validation.
+  Persisted cases retain the input-only preparation, W3 configuration,
+  prediction, result digest, and exact joins; reload recomputes the
+  `RouteCapabilityInputV1` and reruns the deterministic W3 proposal rather than
+  trusting omitted rejected traces.
+- Added `PhysicalExecutorComparisonV1` and a batch comparison summary. The join
+  exactly validates the complete physical root before opening the R1 root,
+  validates every nested R1 artifact and reconstructs its summary, and joins
+  only candidate rank zero on both axes. Source, row/corpus, preparation,
+  exposure, base-resolved input, route, physical input, configuration, source
+  artifact, pairing, unchanged decision/reason, diagnosis, status, and
+  interpretation identities are digest-covered.
+- Ran the physical lane first on all `36` baseline and `24` diagnostic rows
+  with source D0 digest `fnv1a64:4f3b0eb97bce8209`. All `60` searches exhausted
+  the full finite catalog as `unknown/coverage/bounded_search_exhausted`; none
+  produced a supported witness. The witness/proposal configuration digests are
+  `e0e1de0892943ad6` / `9ad52069df8609c3`, and the physical summary digest is
+  `e25aea24b7a578c6`.
+- Only after that seal, a fresh R1 run reproduced summary digest
+  `3ea79b442c6caf2d`. The W4 join produced `47`
+  `physical_unknown_executor_supported` and `13`
+  `physical_unknown_executor_unsupported` rows, with zero invalid or other
+  cells and summary digest `a007dc927399126c`. The three known selection-gap
+  rows remain descriptive; their supported alternatives never replace the
+  unsupported selected executor result.
+- W4 therefore closes the artifact/comparison gate but confirms zero useful
+  development coverage for this deliberately small proposal backend. It does
+  not establish physical infeasibility, change planner/controller/fixtures, or
+  unblock D2. A fresh proposal-backend design review is next.
+
 ## 2026-09-03
 
 ### W3 finite bounded-trajectory proposal spike

@@ -6,10 +6,10 @@ use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
     resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
-    run_pack_file_cached, run_progress_interval_envelope_development_gate,
-    run_route_execution_development_case, run_route_execution_development_gate,
-    run_source_transition_development_case, run_source_transition_development_gate,
-    run_terrain_equivalence_spike,
+    run_pack_file_cached, run_physical_executor_comparison, run_physical_witness_development,
+    run_progress_interval_envelope_development_gate, run_route_execution_development_case,
+    run_route_execution_development_gate, run_source_transition_development_case,
+    run_source_transition_development_gate, run_terrain_equivalence_spike,
 };
 
 #[derive(Debug, Parser)]
@@ -31,6 +31,11 @@ enum Commands {
     ProgressIntervalEnvelopeGate(ProgressIntervalEnvelopeGateArgs),
     TerrainEquivalenceSpike(TerrainEquivalenceSpikeArgs),
     CandidateReplay(CandidateReplayArgs),
+    /// Generate and seal the physical W4 lane before any executor artifacts
+    /// are opened.
+    BoundedTrajectoryPhysical(BoundedTrajectoryPhysicalArgs),
+    /// Join a sealed physical W4 lane with a separately sealed R1 lane.
+    PhysicalExecutorComparison(PhysicalExecutorComparisonArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -167,6 +172,31 @@ struct CandidateReplayArgs {
     all: bool,
 }
 
+#[derive(Debug, Parser)]
+struct BoundedTrajectoryPhysicalArgs {
+    #[arg(
+        long,
+        value_name = "MANIFEST_JSON",
+        default_value = "fixtures/manifests/source_transition_d0a_development.json"
+    )]
+    manifest: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct PhysicalExecutorComparisonArgs {
+    #[arg(long, value_name = "PHYSICAL_DIR")]
+    physical_dir: PathBuf,
+
+    #[arg(long, value_name = "EXECUTOR_DIR")]
+    executor_dir: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: PathBuf,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -294,6 +324,19 @@ fn main() -> Result<()> {
             };
             println!("{}", serde_json::to_string_pretty(&summary)?);
         }
+        Commands::BoundedTrajectoryPhysical(args) => {
+            let summary =
+                run_physical_witness_development(&args.manifest, &repo_root(), &args.output_dir)?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
+        Commands::PhysicalExecutorComparison(args) => {
+            let summary = run_physical_executor_comparison(
+                &args.physical_dir,
+                &args.executor_dir,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
     }
 
     Ok(())
@@ -362,5 +405,80 @@ mod tests {
         let mut both = common.to_vec();
         both.extend(["--case", "row", "--all"]);
         assert!(Cli::try_parse_from(both).is_err());
+    }
+
+    #[test]
+    fn physical_w4_command_has_only_input_manifest_and_output_scope() {
+        let common = [
+            "pd-eval",
+            "bounded-trajectory-physical",
+            "--output-dir",
+            "/tmp/w4",
+        ];
+        assert!(Cli::try_parse_from(common).is_ok());
+
+        let with_manifest = [
+            "pd-eval",
+            "bounded-trajectory-physical",
+            "--manifest",
+            "manifest.json",
+            "--output-dir",
+            "/tmp/w4",
+        ];
+        assert!(Cli::try_parse_from(with_manifest).is_ok());
+
+        let with_executor = [
+            "pd-eval",
+            "bounded-trajectory-physical",
+            "--executor-dir",
+            "/tmp/r1",
+            "--output-dir",
+            "/tmp/w4",
+        ];
+        assert!(Cli::try_parse_from(with_executor).is_err());
+    }
+
+    #[test]
+    fn physical_executor_comparison_requires_three_roots() {
+        let common = [
+            "pd-eval",
+            "physical-executor-comparison",
+            "--physical-dir",
+            "/tmp/physical",
+            "--executor-dir",
+            "/tmp/r1",
+            "--output-dir",
+            "/tmp/comparison",
+        ];
+        assert!(Cli::try_parse_from(common).is_ok());
+
+        for missing in [
+            [
+                "pd-eval",
+                "physical-executor-comparison",
+                "--executor-dir",
+                "/tmp/r1",
+                "--output-dir",
+                "/tmp/comparison",
+            ],
+            [
+                "pd-eval",
+                "physical-executor-comparison",
+                "--physical-dir",
+                "/tmp/physical",
+                "--output-dir",
+                "/tmp/comparison",
+            ],
+            [
+                "pd-eval",
+                "physical-executor-comparison",
+                "--physical-dir",
+                "/tmp/physical",
+                "--executor-dir",
+                "/tmp/r1",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(missing).is_err());
+        }
     }
 }

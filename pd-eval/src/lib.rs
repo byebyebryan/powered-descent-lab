@@ -72,6 +72,9 @@ pub use bounded_trajectory_witness::*;
 mod bounded_trajectory_proposal_spike;
 pub use bounded_trajectory_proposal_spike::*;
 
+mod physical_executor_comparison;
+pub use physical_executor_comparison::*;
+
 mod progress_interval_envelope;
 pub use progress_interval_envelope::*;
 

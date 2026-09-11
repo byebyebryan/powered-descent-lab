@@ -3,9 +3,10 @@
 ## Status and decision
 
 This document locks the post-R1 design for
-`bounded_trajectory_witness_v1`. W1 and the minimum W2 conformance checkpoint
-now implement its typed artifacts and exact verifier; this is not a proposal
-engine, an empirical capability result, or an integration decision.
+`bounded_trajectory_witness_v1`. W1 through W4 now implement its typed exact
+verifier, minimum conformance matrix, finite proposal baseline, and
+outcome-isolated development comparison. This remains neither a robust
+capability claim nor an integration decision.
 
 V1 answers one narrow, controller-neutral question:
 
@@ -26,10 +27,11 @@ held for exactly two physics transitions, and bounded by `130 s`: at most
 behavior-bearing configuration, not features added to
 `RouteCapabilityInputV1`.
 
-This checkpoint adds the exact verifier and synthetic conformance tests, but no
-solver, external dependency, maintained evidence fixture or run, planner
-ranking change, controller change, or runtime screen. Existing R1 candidate
-replay remains the exact frozen-executor oracle. D2 remains blocked.
+The implemented path adds no external solver, maintained evidence fixture,
+planner ranking change, controller change, or runtime screen. Existing R1
+candidate replay remains the exact frozen-executor oracle. W4's disposable
+already-seen run found no physical witness with the finite W3 backend, and D2
+remains blocked.
 
 V1 accepts a valid planner-V1 waypoint route with one or two emitted waypoints.
 A valid direct route returns `unknown/scope/direct_route`; target flight after
@@ -432,20 +434,21 @@ Implementation remains split into reviewable gates:
    exhaustion is `unknown`, and the deliberately small catalog claims no
    development coverage. Sequential-convex remains a separately versioned
    future escalation, not part of this result.
-4. **W4 — development comparison:** on already-seen development inputs only,
-   seal the physical lane, then join it with R1/frozen-executor results using
-   `PhysicalExecutorComparisonV1`. Do not change planner ranking or maintained
-   fixtures.
+4. **W4 — development comparison (complete):** the
+   [outcome-isolated development comparison](physical_executor_comparison.md)
+   sealed the physical lane on already-seen inputs before a fresh R1 run, then
+   joined exact selected-route pairs with `PhysicalExecutorComparisonV1`.
+   Planner ranking and maintained fixtures were unchanged.
 5. **Later evidence gate:** only after W1-W4 and a fresh design review may the
    project define a new exposure registry, held-out corpus, advancement
    thresholds, or any D2 work.
 
-W1 and the minimum W2 conformance checkpoint are implemented and validated.
-W3 now freezes the first backend/library decision, finite parameterization, and
-search budget. Warm starts, convexification, solver tolerances, and numerical
-reconstruction remain deferred unless a separately versioned sequential-convex
-engine is reviewed. None alter the soundness boundary: a proposal becomes
-`supported` only after exact replay.
+W1 through W4 are implemented and validated. The full W3 finite catalog found
+zero supported physical witnesses across the 60 already-seen development rows;
+all physical results were coverage `unknown`. Warm starts, convexification,
+solver tolerances, and numerical reconstruction remain deferred unless a
+separately versioned sequential-convex engine is reviewed. None alter the
+soundness boundary: a proposal becomes `supported` only after exact replay.
 
 ## Acceptance gates
 
@@ -468,6 +471,8 @@ The W1/W2 checkpoint is complete only when:
 - workspace tests, strict linting, formatting, and documentation checks pass
   with zero invalid artifacts.
 
-Passing W1/W2 establishes a trustworthy positive-certificate mechanism, not a
-useful proposal algorithm. D2, production integration, and any negative
-feasibility claim remain blocked until separately designed and reviewed.
+Passing W1/W2 establishes a trustworthy positive-certificate mechanism. W3/W4
+confirm that the first finite backend is not a useful development proposal
+algorithm, while preserving the two-axis comparison boundary. D2, production
+integration, and any negative feasibility claim remain blocked until a new
+proposal direction is separately designed and reviewed.
