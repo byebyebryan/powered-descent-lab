@@ -97,8 +97,10 @@ without treating the old scenario files as fixtures to transliterate directly.
   planner contract, search policy, evidence model, and closure sequence.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
-  audit, its completed private CB1 one-waypoint route-necessity canary gate,
-  and the CB2 bounded-solver checkpoint now next.
+  audit, the V2 direct-ballistic bridge certificate, and the bounded ridge
+  canary. The canary establishes a scoped flat-control-green, committed-
+  nominal-direct-red, terrain-derived-one-waypoint-green result while retaining
+  higher direct arcs as global-replan diagnostics.
 - [Bounded Trajectory Witness V1](docs/bounded_trajectory_witness.md) owns the
   locked post-R1 controller-neutral exact-witness contract and its implemented
   W1-W4 gates.
@@ -137,6 +139,8 @@ Use the report site in this order:
   the responsibility-specific scorecards.
 - `/reports/eval/` is the complete fixture-backed batch index, including
   supporting and diagnostic captures.
+- `/reports/setups/` contains controller-independent analytical mission setup
+  reports; these are not simulation results.
 
 The guidance catalog treats smoke matrices as the primary controller-iteration
 surface. Full-seed packs are supporting reliability evidence; focused frontier
@@ -172,6 +176,7 @@ Stable HTML entrypoints also live under `outputs/reports/`, for example:
 - `outputs/reports/guidance/waypoint/index.html`
 - `outputs/reports/guidance/planner/index.html`
 - `outputs/reports/eval/index.html`
+- `outputs/reports/setups/conservative-ballistic-direct-bridge-v2/index.html`
 - `outputs/reports/runs/latest/`
 - `outputs/reports/eval/latest/`
 
@@ -186,6 +191,21 @@ simulations:
 cargo run -p pd-eval -- refresh-reports
 cargo run -p pd-eval -- refresh-reports --all
 ```
+
+To recompute the four V2 direct-ballistic probes, the bounded ridge canary, and
+their setup-only HTML/SVG report without running a controller or simulation:
+
+```bash
+cargo run -p pd-eval -- conservative-ballistic-report
+```
+
+When run, this writes the reloadable analytical summary under
+`outputs/setups/conservative-ballistic-direct-bridge-v2/` and the stable visual
+entrypoint under
+`outputs/reports/setups/conservative-ballistic-direct-bridge-v2/`. These are
+setup evidence only, not controller or simulation results. The ridge result is
+scoped to the flat-derived nominal lane plus its optimistic post-commit local-
+correction envelope; it does not claim that every global direct replan fails.
 
 The default refresh covers packs in the guidance catalog. `--all` covers every
 captured fixture-backed pack. Both rebuild batch and per-run HTML from existing

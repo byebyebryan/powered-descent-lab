@@ -432,12 +432,15 @@ late polish.
 
 The current split is:
 
-- `pd-report` owns reusable single-run static report and trajectory rendering
+- `pd-report` owns reusable single-run static report and trajectory rendering,
+  plus dedicated setup-only analytical planning reports
 - `pd-report::site` owns stable report paths, latest links, and shared site
   index generation
 - `pd-cli` invokes that path for targeted one-run inspection
 - `pd-eval` owns aggregate batch pages, review trees, comparisons, and report
-  indexes over the same captured artifacts
+  indexes over the same captured artifacts; it also orchestrates deterministic
+  setup reports from feature-gated planner projections without invoking a
+  controller or simulator
 - `fixtures/reports/guidance_catalog.json` declares the curated terminal,
   direct-transfer, and waypoint evidence scorecards without making generated
   outputs source-controlled truth
@@ -448,6 +451,7 @@ Responsibilities:
 - trace and replay inspection pages
 - single-run trajectory and state inspection
 - batch summary and candidate-vs-baseline compare pages
+- setup-only analytical mission geometry and candidate classification
 - lightweight interaction over precomputed run data
 - trajectory scrubbing, hover, or drag-based state inspection
 
@@ -472,6 +476,14 @@ Report information architecture is evidence-first:
   full-seed evidence
 - `outputs/reports/eval/` is the complete fixture-backed report inventory,
   including diagnostics and experiments
+- `outputs/reports/setups/` contains deterministic analytical setup evidence
+  that is explicitly separate from controller runs and simulation claims
+- the current conservative-ballistic setup contains the V2 direct-bridge
+  certificate and one bounded ridge canary; the canary keeps flat-derived
+  nominal-lane status, optimistic post-commit correction evidence, derived
+  blocking terrain, terrain-derived waypoint evidence, and higher global-
+  replan diagnostics distinct, and its report path is versioned so superseded
+  analytical projections cannot be mistaken for current evidence
 - batch pages lead with outcome totals and selector coverage, while provenance,
   context, and guidance-specific diagnostics remain available in collapsed
   sections

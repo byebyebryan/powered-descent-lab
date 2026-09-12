@@ -2,33 +2,80 @@
 
 ## 2026-09-11
 
-### CB1 analytical route-necessity canary gate
+### V2 direct-ballistic bridge and ridge-canary checkpoint
 
-- Added a private, test-only `pd-plan` analytical kernel and a four-case
-  input-only fixture using the canonical Earth-gravity vehicle and one shared
-  policy. The kernel constructs exact semi-implicit ballistic legs, checks each
-  step with exact terrain corridors, and retains source, transition, terminal,
-  fuel, time, and decisive-reason margins under stable identities.
-- Rejected the first passing draft during review because it reused complete
-  ballistic coast spans as powered-transition room. The corrected topology
-  gives source acquisition, intermediate redirect, and terminal capture
-  explicit powered polylines with disjoint coast anchors and exact
-  hull-plus-gate-radius clearance.
-- Closed the frozen truth table with robust margin slack: the clear control has
-  `4 / 4` direct survivors; the long-span case has `0 / 4` direct and `8 / 16`
-  authored one-gate survivors; the late-ridge case has `0 / 4` direct and
-  `2 / 16` authored one-gate survivors; and the authority control has `0 / 4`
-  direct and `0 / 16` one-gate survivors. Every accepted candidate's minimum
-  normalized margin is at least `0.10` against a declared `0.075` threshold.
-- Kept CB1 controller-independent and private: it adds no search, simulation,
-  public planner API, production behavior, or existing-fixture change. Its
-  result is a conservative maneuver-room screen, not command integration or a
-  physical-feasibility proof. CB2 bounded zero/one-waypoint search is next;
-  real-controller landing validation remains CB3.
+- Replaced the superseded fixed-gate/one-gate CB1 model with a direct-only,
+  controller-independent analytical certificate. Each candidate is an exact
+  semi-implicit ballistic arc from a source release reference derived from pad
+  contact geometry and minimum clearance to the target touchdown reference.
+- Added deterministic source/terminal handoff sampling and exact closed-form
+  affine-net-acceleration bridges that reproduce complete position and velocity
+  states. The certificate checks coupled thrust, minimum throttle, powered and
+  coast slew, rotated-hull free-flight terrain, the declared flat-pad
+  launch/landing corridor, exact endpoint contact, fuel, time, touchdown state,
+  worst-case mass, and dimensionless nonzero robustness margins.
+- The four neutral probes currently classify as: `clear_direct_probe` `3 / 4`,
+  `long_span_probe` `3 / 4`, `long_range_probe` `3 / 4`, and `ridge_probe`
+  `2 / 4` direct certificates. Shorter arcs fail honestly while longer arcs
+  clear. Those original direct-only rows still do not demonstrate universal
+  waypoint necessity.
+- Added one bounded ridge canary above those diagnostics. A flat twin selects
+  the shortest robust `1.0x` direct certificate without a preferred label. Its
+  source handoff is the explicit commitment boundary; from there, a controller-
+  neutral envelope grants full derated thrust acceleration in any direction,
+  ignores slew and throttle granularity, preserves terminal and mission fuel
+  reserves, and covers the ridge-crossing time plus the existing analytical
+  sampling allowance. The bound now carries nominal ballistic drift through
+  that allowance and constructs an exact crossing cut from every physics tick
+  whose reachable horizontal interval contains the ridge center.
+- Derived a broad mesa from that envelope rather than authoring a winning
+  geometry. The current envelope permits approximately `309 m` horizontal and
+  `314 m` vertical full-thrust-plus-hull displacement at the horizon, plus up
+  to about `106 m` of separately bounded horizontal time-shift drift. The `318`
+  exact crossing-cut samples produce a derived mesa top spanning about
+  `x = 2003 .. 2840 m` at `y = 1278 m`. Mission-level direct status is red only
+  when the nominal candidate is rejected and both the envelope and full-width
+  crossing-cut blocking evidence validate. The `1.25x` and `1.5x` direct
+  candidates remain green as explicit global-replan diagnostics.
+- Added a finite canary-only one-waypoint witness search. Candidate positions
+  come from the derived mesa edges and vehicle clearance, duration pairs come
+  from the shared ballistic policy, and source/intermediate/terminal joins use
+  the exact affine bridge screens. A generic route-progress screen also rejects
+  looping or materially backtracking joins. The search examines `12` candidates
+  before certifying a witness near `(1984, 1301) m`, with approximately `2932
+  kg` fuel burn and `105.1 s` elapsed time. Its coasts and intermediate bridge
+  progress strictly toward the target; the two endpoint bridges use about
+  `1.50 m` total local pad-alignment motion within their physical `4 m`
+  touchdown-half-span allowances. This is a scoped nominal-direct-red/one-
+  waypoint-green analytical result, not a production planner, universal direct
+  infeasibility, or controller result.
+- The setup-only report command remains
+  `cargo run -p pd-eval -- conservative-ballistic-report`. When run, it writes
+  the V2 contract under
+  `outputs/setups/conservative-ballistic-direct-bridge-v2/` and the stable
+  visual under `outputs/reports/setups/conservative-ballistic-direct-bridge-v2/`.
+  The reloadable summary keeps compact affine coefficients and scalar evidence;
+  report geometry is reconstructed without a per-tick sample stream. These are
+  analytical setup artifacts, not controller or simulation results.
+- This checkpoint reviews and freezes the single canary and its visual evidence.
+  The next checkpoint is to extract the canary-only construction behind a small
+  private planner-facing candidate API. Mission-matrix expansion and focused
+  controller simulation remain later, after the analytical policy is stable.
+  D2 remains blocked and distinct.
+
+### Superseded V1 negative experiment
+
+- The rejected V1 experiment fixed source/intermediate/terminal gate geometry
+  at arbitrary `800 m`, `400 m`, and `450 m` values and carried authored
+  one-gate coordinates. That geometry manufactured route-necessity evidence
+  instead of discovering it from the mission, while powered polylines were not
+  controller-independent trajectories.
+- V1's fixture and test-only implementation remain as historical context, but
+  its success table and one-gate claims are not current evidence.
 
 ## 2026-09-10
 
-### One-waypoint route-necessity canary design
+### Historical V1 one-waypoint route-necessity design (superseded)
 
 - Preserved CB0's result that the current `60` development inputs need no route
   repair, while explicitly defining a separate forward-looking capability path
@@ -38,10 +85,11 @@
   clearance/capture split, and an insufficient-authority rejection control.
   One policy applies to all cases; controller outcomes, per-case thresholds,
   and coordinate goldens are excluded.
-- Narrowed the next checkpoint to CB1's private analytical kernel and authored
-  one-gate property oracles. CB2 is now a bounded zero/one-waypoint solver, and
-  full simulation does not open until CB3 after the policy, inputs, and solver
-  are frozen. Two-waypoint and broader content remain deferred.
+- Narrowed the then-proposed checkpoint to a private analytical kernel and
+  authored one-gate property oracles. The fixed-gate/one-gate model was later
+  rejected because it manufactured route necessity; the V2 direct certificate
+  supersedes this design. Full simulation remains later, after a valid canary
+  and any bounded solver are frozen.
 
 ### CB0 final-landing audit
 
@@ -57,10 +105,11 @@
   SHA-256
   `1bafe7028b7d51f7a27fada5c7c3136e9d3453842c7a99a16dba438de6e0df9f`.
 - Applied the design stop rule. The strict intermediate-contract expansion is
-  not a current gameplay landing failure, so CB1-CB5 remain deferred and no
-  conservative-ballistic planner behavior is justified by this corpus.
+  not a current gameplay landing failure, so no conservative-ballistic planner
+  behavior is justified by this corpus; later analytical work is explicitly
+  forward-looking game content.
 
-### Conservative ballistic route-planning design
+### Historical conservative-ballistic route-planning design (superseded)
 
 - Reframed the immediate product question around useful game routes rather
   than another controller-neutral command-witness backend. The W1-W4 research
@@ -69,15 +118,17 @@
   coasts between source-acquisition and terminal-capture state gates, disprove
   them with exact terrain and conservative transition screens, then use
   failure-guided bounded backward search for at most two staging waypoints.
+  The fixed-gate version of this design is historical; V2 now certifies direct
+  source/terminal bridges without authored gates or waypoint search.
 - Kept planner inputs independent of controller identity and configuration.
   The real controller enters only through a later frozen full-simulation shadow
   comparison, where final landing is primary and waypoint-contract results are
   diagnostic.
-- Mapped CB0-CB5 in
+- Mapped the CB0-CB5 questions in
   [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md).
-  CB0 is next: refresh final-landing outcomes for the exact current 36
-  maintained and 24 already-seen diagnostic cases, and stop before planner
-  implementation if the gameplay objective is already clean.
+  CB0 subsequently closed cleanly. V2 first landed as a direct-only
+  certificate; the later bounded ridge canary now supplies the scoped nominal-
+  direct-red/one-waypoint-green pair without changing the production planner.
 
 ## 2026-09-04
 

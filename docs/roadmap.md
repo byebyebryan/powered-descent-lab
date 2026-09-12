@@ -84,13 +84,22 @@ Current implementation status:
     is complete: the exact `36` maintained and `24` already-seen diagnostic
     inputs produced `60 / 60` target touchdowns and zero fuel-depletion
     diagnostics in two byte-identical summary runs. That closes claims of a
-    current-corpus repair need. The subsequent forward-looking CB1 capability
-    gate is now complete in a private, controller-independent analytical
-    kernel: its four frozen canaries robustly separate direct-green,
-    one-waypoint-solvable, and honest-rejection cases using disjoint powered
-    maneuver regions and exact ballistic coast corridors. CB2 bounded
-    zero/one-waypoint search is next; controller validation remains gated to
-    CB3;
+    current-corpus repair need. The forward-looking V2 checkpoint now combines
+    a private-by-default, controller-independent direct-ballistic bridge
+    certificate with one bounded ridge canary. The original direct rows remain
+    `clear_direct_probe` `3 / 4`, `long_span_probe` `3 / 4`,
+    `long_range_probe` `3 / 4`, and `ridge_probe` `2 / 4`. Above them, a flat
+    twin selects the shortest robust `1.0x` lane, an optimistic physics-derived
+    post-commit envelope bounds local correction, and a derived broad mesa
+    blocks the exact center-crossing cut. A finite terrain-derived search finds
+    a forward-progressing one-waypoint certificate while `1.25x` and `1.5x`
+    remain green global-replan diagnostics. This is a scoped nominal-direct-red/
+    one-waypoint-green result, not universal direct infeasibility. The
+    recomputable setup projection feeds dedicated HTML/SVG reports without
+    running a controller or simulation. The single canary is now frozen behind
+    focused correctness and visual gates; next, extract its construction behind
+    a small private planner-facing candidate API. Controller validation and
+    mission-matrix expansion remain later;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -686,8 +695,10 @@ implementing a predictor. The remaining evidence-first sequence is:
    the research lane stops there unless a separate need justifies resuming it.
    The subsequent conservative-ballistic CB0 final-landing audit is also
    complete: all 60 exact current development inputs land on target, so it
-   closes the repair claim. Forward-looking CB1 capability work is separately
-   authorized only for the frozen route-necessity canaries;
+   closes the repair claim. The separate forward-looking V2 ballistic-first
+   checkpoint now freezes one scoped ridge canary with a nominal-direct-red,
+   one-waypoint-green analytical certificate. Its next slice is the small
+   private planner-facing candidate API described above;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -713,12 +724,14 @@ This closes the comparison mechanism but supplies no physical coverage or
 negative certificate. Research-grade D2 remains blocked. The separately
 versioned
 [Conservative Ballistic Route Planning](conservative_ballistic_route_planning.md)
-design now distinguishes two claims: CB0 found no current final-landing failure,
-while intentional future game content may still require staging. The immediate
-checkpoint is therefore the CB1 analytical kernel and frozen route-necessity
-canary gate. Bounded zero/one-waypoint search becomes actionable only if that
-gate robustly separates direct, one-gate-solvable, and rejected inputs without
-controller data or per-case policy.
+design now distinguishes two claims: CB0 found no current final-landing
+failure, while intentional future game content may still require staging. The
+V2 direct rows remain neutral diagnostics, and the bounded ridge canary now
+adds a controller-independent scoped result: the shortest robust flat-derived
+nominal lane plus optimistic post-commit correction is red on a derived mesa,
+while a finite terrain-derived one-waypoint witness is green. Higher global
+direct replans remain possible. This makes a small private planner-facing
+extraction actionable without claiming universal route necessity.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical
