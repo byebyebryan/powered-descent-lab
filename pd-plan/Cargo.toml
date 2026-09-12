@@ -3,6 +3,10 @@ name = "pd-plan"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+conservative-ballistic-report = []
+
 [dependencies]
 pd-core = { path = "../pd-core" }
 serde.workspace = true

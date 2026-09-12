@@ -1,0 +1,86 @@
+{
+  "schema_id": "conservative_ballistic_direct_bridge_probes_v2",
+  "schema_version": 2,
+  "policy": {
+    "physics_hz": 120,
+    "gravity_mps2": 9.81,
+    "duration_multipliers": [0.75, 1.0, 1.25, 1.5],
+    "minimum_clearance_m": 5.0,
+    "maximum_mission_time_s": 180.0,
+    "mission_time_reserve_s": 10.0,
+    "thrust_derate": 0.81,
+    "declared_robustness_margin": 0.075,
+    "handoff_interval_s": 0.25,
+    "bridge_duration_interval_s": 0.5,
+    "terminal_target_downward_speed_fraction": 0.5
+  },
+  "vehicle": {
+    "geometry": {
+      "hull_width_m": 8.0,
+      "hull_height_m": 10.0,
+      "touchdown_half_span_m": 4.0,
+      "touchdown_base_offset_m": 5.0
+    },
+    "dry_mass_kg": 7200.0,
+    "initial_fuel_kg": 6300.0,
+    "max_fuel_kg": 6300.0,
+    "max_fuel_burn_kgps": 49.5,
+    "max_thrust_n": 240000.0,
+    "min_throttle_frac": 0.25,
+    "max_rotation_rate_radps": 1.5707963267948966,
+    "safe_touchdown_normal_speed_mps": 3.0,
+    "safe_touchdown_tangential_speed_mps": 2.0,
+    "safe_touchdown_attitude_error_rad": 0.15,
+    "safe_touchdown_angular_rate_radps": 0.35
+  },
+  "cases": [
+    {
+      "id": "clear_direct_probe",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 2500.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 2540.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 }
+    },
+    {
+      "id": "long_span_probe",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 3500.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 3540.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 }
+    },
+    {
+      "id": "ridge_probe",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 4000.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 2300.0, "y": 0.0 },
+        { "x": 2350.0, "y": 1200.0 },
+        { "x": 2500.0, "y": 1200.0 },
+        { "x": 2600.0, "y": 0.0 },
+        { "x": 4040.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 }
+    },
+    {
+      "id": "long_range_probe",
+      "source": { "center_x_m": 18.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "target": { "center_x_m": 7000.0, "surface_y_m": 0.0, "width_m": 36.0 },
+      "terrain_points_m": [
+        { "x": -40.0, "y": 0.0 },
+        { "x": 7040.0, "y": 0.0 }
+      ],
+      "initial_position_m": { "x": 18.0, "y": 5.0 },
+      "initial_velocity_mps": { "x": 0.0, "y": 0.0 }
+    }
+  ]
+}

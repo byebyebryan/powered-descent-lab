@@ -16,8 +16,14 @@ use pd_core::{
 };
 use serde::{Deserialize, Serialize};
 
+// Superseded V1 fixed-gate experiment; retained only as historical tests.
 #[cfg(test)]
 mod conservative_ballistic;
+
+/// Versioned V2 ballistic-first analytical direct certificate. This remains
+/// isolated from production planner behavior and the historical V1 model.
+#[cfg(any(test, feature = "conservative-ballistic-report"))]
+pub mod conservative_ballistic_bridge;
 
 pub const ALGORITHM_ID: &str = pd_core::HEIGHTFIELD_VISIBILITY_ALGORITHM_ID;
 
