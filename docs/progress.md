@@ -2,6 +2,38 @@
 
 ## 2026-09-12
 
+### CB3 route-projection design closure (documentation-only)
+
+- Closed the CB3 design for a feature-gated `pd-plan` runtime-route projection
+  over the frozen `ExperimentalRidgeCandidateProjectionV2` /
+  `WaypointCandidateV2` decision and `ExactIntermediateBridgeCrossingV2`
+  evidence. The next implementation must emit the controller-facing
+  `TransferRouteSpec`, exact handoff state, authority and canonical handoff
+  evidence, structural validation, stable typed invalid/unsupported reasons,
+  and identities without importing controller IDs, phases, simulator outcomes,
+  run artifacts, or report labels.
+- The ballistic certificate remains the controller-independent end-to-end
+  reference-path feasibility proof. Ordinary `pd_core::validate_route` remains
+  unchanged: its equal zero-/one-waypoint source-taper rejection stays outside
+  planner acceptance, not a certified-prefix exception or a reason to weaken
+  shared route validation. `pd-eval` retains it as a frozen canary
+  artifact-integrity/preflight gate. `pd-core`, `pd-control`, production
+  `pd-plan::plan`, controller-shadow schema `v4`, semantic identity
+  `a69de7872ad039fd`, and the frozen flat-direct/mesa-direct/mesa-waypoint
+  outcomes remain unchanged.
+- The next code slice is explicitly bounded by fail-closed planner tests,
+  evaluator migration preserving route bytes and the frozen artifact, then
+  focused tests plus workspace fmt/test/strict Clippy, diff, and canonical
+  identity/regeneration gates. Only after that passes may a small predeclared
+  same-family held-out matrix seal cases, predictions, and identities before
+  simulation. It must use the same algorithm with no case branches; waypoint
+  projections require handoff-contract pass plus target landing, and any
+  mismatch stops advancement without retuning. A second topology is deferred
+  because existing production evidence already covers direct/single/double
+  ridges and terminal-energy cases need new candidate generation. This
+  documentation-only closure does not advance the blocked generic
+  source-departure D2 or D4-D5 staging.
+
 ### Experimental ridge-candidate API checkpoint
 
 - Extracted the frozen V2 ridge decision behind the feature-gated,
@@ -26,10 +58,9 @@
   `a69de7872ad039fd`, and its lanes remain flat-direct target landing,
   mesa-direct terrain crash, and mesa-waypoint target landing.
 - The API is intentionally an embedded V2 canary projection, not an arbitrary
-  mission planner or production integration. The next checkpoint is a design
-  decision on whether one materially different topology is needed before a
-  separately declared held-out/integration gate. D2 remains blocked and
-  distinct.
+  mission planner or production integration. CB3 now design-closes the narrow
+  feature-gated route-projection implementation and its later same-family
+  held-out gate. D2 remains blocked and distinct.
 
 ## 2026-09-11
 

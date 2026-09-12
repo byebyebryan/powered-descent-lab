@@ -351,34 +351,102 @@ run artifacts live under
 report lives under
 `outputs/reports/eval/conservative-ballistic-controller-shadow-v1/`.
 
-## Plan from here
+## CB3 route-projection contract (design closed; implementation unstarted)
 
-The V2 analytical contract, composed evaluator preflight, three frozen
-controller lanes, and experimental candidate extraction are now complete.
-`ExperimentalRidgeCandidateProjectionV2` is feature-gated and deliberately
-non-production. It preserves the flat-derived nominal policy with explicit
-`Direct`, `OneWaypoint`, and `Unsupported` outcomes, exact analytical crossing
-evidence, deterministic candidate ordering and identities, and fail-closed
-certificate/selection checks. The controller shadow consumes this projection
-without inspecting `DirectBridgeReportV2`; runtime route shaping, authority,
-handoff assessment, route-validation diagnostics, and controller execution
-remain downstream.
+CB3 closes the next experimental contract as documentation only. The narrow
+implementation target is a feature-gated, `pd-plan`-owned runtime-route
+projection over the already validated
+`ExperimentalRidgeCandidateProjectionV2` / `WaypointCandidateV2` decision and
+its `ExactIntermediateBridgeCrossingV2` evidence. It does not promote the
+result into the production `plan()` API or a `RoutePlan`.
 
-The next work is a decision gate rather than more implementation by default:
+The ballistic certificate remains the sole controller-independent proof of
+end-to-end reference-path feasibility. CB3 must neither reinterpret nor weaken
+`pd_core::validate_route`, and it must not introduce a certified-prefix
+exception to that ordinary full-pad validator. Its known source-taper rejection
+is an honest diagnostic about that contract, not an invalidation of the
+analytical witness or a reason to alter `pd-core` terrain semantics.
 
-1. Review whether one additional topology is necessary to distinguish a real
-   capability from ridge-specific construction. It must exercise a materially
-   different analytical failure, not merely another ridge size.
-2. If such a topology is justified, freeze its inputs and pass/fail contract
-   before evaluating outcomes. Keep the controller result downstream and out
-   of candidate selection.
-3. Define a separately reviewed held-out/integration gate before considering
-   production planner selection. Mission-matrix expansion, runtime replanning,
-   and broader waypoint counts remain later work.
+### Ownership and emitted evidence
 
-No arbitrary waypoint count, production planner wiring, controller-specific
-branch, or simulated-pilot claim is part of the completed extraction
-checkpoint.
+The feature-gated planner projection will emit only the controller-facing
+runtime projection and its planner-neutral evidence:
+
+- the selected `TransferRouteSpec` and exact bridge-crossing/handoff state;
+- waypoint authority diagnostics plus canonical handoff kinematics and
+  assessment;
+- structural route validation;
+- stable candidate, selection, crossing, and projection identities; and
+- stable typed invalid and unsupported reasons that fail closed when a required
+  analytical selection, bridge, or join is missing or altered.
+
+It must not carry controller IDs, controller phases, simulator outcomes, run
+artifacts, or evaluator report labels. `pd-core` continues to own neutral route
+structures, normalized geometry, endpoint profiles/centerlines, authority, and
+waypoint-handoff semantics. A reusable `pd-core` handoff-kinematics helper may
+be a useful implementation refinement, but it is neither required by this
+contract nor authorization to change `pd-core` now.
+
+`pd-eval` will consume the projection rather than reconstruct planner
+certificate validity as an independent decision. The ordinary zero- and
+one-waypoint full-route source-taper comparison remains outside the planner
+projection and never affects planner acceptance. `pd-eval` retains that
+comparison, including evaluator-local error-string parsing, as a frozen-canary
+artifact-integrity/preflight gate: a changed diagnostic invalidates v4
+compatibility but does not alter the projection's decision. It will map the
+result to the unchanged controller-shadow v4 artifact and run the same frozen
+controller lanes. `pd-control` remains unchanged.
+
+CB3 therefore claims exactly:
+
+> A certified controller-independent ballistic reference trajectory projects
+> to a structurally, authority-, and handoff-compatible controller route.
+
+It does **not** claim ordinary `RouteValidation`, a replayed command stream, a
+guaranteed real-controller landing, arbitrary-mission support, or universal
+waypoint necessity. Generic source-departure D2 remains blocked; CB3 does not
+repair or advance it.
+
+### Implementation sequence and exit gates
+
+The first implementation stays one bounded feature-gated slice:
+
+1. `pd-plan` constructs the projection and adds fail-closed unit tests for
+   valid direct/one-waypoint selections, altered or missing certificate joins,
+   unsupported finite search, stable reasons, and identities.
+2. `pd-eval` migrates its route adaptation to that projection while preserving
+   the exact runtime route bytes, controller-shadow schema `v4`, semantic
+   identity `a69de7872ad039fd`, unchanged three lane outcomes, and the ordinary
+   source-taper diagnostic.
+3. Focused planner and evaluator tests pass, followed once by workspace
+   formatting, tests, strict Clippy, a clean diff review, and canonical artifact
+   identity plus regeneration checks.
+
+No code, generated artifact, fixture, controller, production planner path, or
+generic source-departure contract changes as part of this design closure.
+
+### Held-out gate after CB3 implementation
+
+After the projection passes its frozen canary gates, the next evidence step is
+a small, predeclared same-family variation matrix. Its exact inputs remain a
+separately reviewed freeze, but each case must be genuinely outside the
+embedded canary and use the same algorithm with no case IDs or branches. Cases,
+analytical predictions, and identities must be sealed before any controller
+simulation. Each direct or one-waypoint projection needs a predeclared
+downstream expectation; a waypoint projection specifically requires both a
+handoff-contract pass and a target landing. A mismatch stops advancement and
+is recorded without retuning. `Unsupported` or `unknown` is not a true-negative
+controller result. Repeated execution establishes deterministic identity, not
+additional planner authority. Only then should the project reconsider a
+materially distinct topology.
+
+A second topology is deferred, not rejected forever. The production planner
+already retains direct, single-ridge, and double-ridge topology evidence, so
+another ridge alone would not settle the planner/evaluator ownership boundary.
+Terminal-energy or approach-shaping cases require new candidate-generation
+concepts rather than a small variation of the current terrain-derived search.
+Mission-matrix expansion, runtime replanning, broader waypoint counts, and
+production planner selection remain later work.
 
 ## Research and expansion boundary
 
