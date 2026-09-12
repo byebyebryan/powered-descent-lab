@@ -313,12 +313,36 @@ The corrected paired result validates the **direct red half** of the canary:
   `536.36 m`; its `-108.99 m` residual exactly matches the recorded minimum
   hull clearance.
 
-The analytical waypoint near `(1983.6, 1301.1) m` still does not map to a valid
-existing `TransferRouteSpec`: the endpoint-shaped source leg intersects
-terrain near `x = 105.6 m`. No waypoint-controller lane is run after that
-validation failure. The full nominal-direct-red/one-waypoint-green controller
-claim therefore remains open even though mesa-caused direct failure is now
-established.
+The virtual analytical anchor near `(1983.6, 1301.1) m` is not itself traversed
+by the certified powered join. The ordinary full-pad `validate_route` contract
+also rejects both the zero-waypoint and one-waypoint routes identically on the
+fixed source taper: the derived transition spans directed progress `[22, 118]
+m`, and the reported terrain point at world `x = 105.597 m` is progress
+`87.597 m` from the source. That failure is therefore waypoint-invariant and
+is retained as a separate diagnostic rather than relabeled as an adapter
+result.
+
+The evaluator-scoped composed preflight closes this mismatch without changing
+the ordinary validator. It splits the still-certified analytical witness at
+the first exact intermediate-bridge state whose directed `x` reaches the
+virtual-anchor plane. The crossing is bracketed by applied steps `971 -> 972`
+of `1980`; the selected state is approximately `(1983.821, 1566.110) m` with
+velocity `(66.125, 1.347) m/s`. A runtime waypoint at that actual state uses
+the existing `95 m` capture/cross-track bounds, canonical route-bisector
+tangent, and `104.139 m/s` authority cap. The exact analytical state passes
+`TransferWaypointSpec::assess_handoff`. This is explicitly a composition of an
+analytical path certificate and a structurally valid runtime handoff contract,
+not an ordinary `RouteValidation`, a replayed command trace, or a prediction
+that the controller must succeed.
+
+The one permitted frozen mesa-waypoint lane then provides the separate runtime
+result: the unchanged `transfer_waypoint_pdg` controller passes the waypoint
+contract at `34.467 s`, lands on the target at `86.692 s`, and retains
+approximately `4042.6 kg` of fuel. Together with the unchanged mesa-direct
+crash, this establishes the scoped controller-level nominal-direct-red/
+one-waypoint-green canary without controller, terrain, vehicle, cadence, or
+parameter tuning. Higher global direct replans remain possible, so this is not
+a universal route-necessity claim.
 
 The shadow is generated with
 `cargo run -p pd-eval -- controller-shadow`. Its sealed summary and per-lane
@@ -329,24 +353,23 @@ report lives under
 
 ## Plan from here
 
-The V2 analytical contract and corrected direct controller pair are now frozen.
-The next work is bounded and staged:
+The V2 analytical contract, composed evaluator preflight, and three frozen
+controller lanes are now complete. The next work is bounded and staged:
 
-1. Define a small shared analytical-to-runtime route adapter. The analytical
-   anchor is a virtual leg junction, while the certified powered intermediate
-   bridge passes over it; the adapter must target states actually traversed by
-   the witness and represent the powered source/intermediate joins honestly.
-2. Reconcile that mapping with the existing source-departure/tracking-entry and
-   runtime route-validation contracts. Inflating a capture radius, lowering
-   terrain clearance, bypassing validation, or copying a winning command trace
-   remains out of scope.
-3. Run only the frozen mesa one-waypoint lane after the adapter validates. It
-   must pass the waypoint contract, clear the derived mesa, retain fuel, and
-   land on the target; otherwise record the exact mismatch without tuning.
-4. Extract a private planner-facing candidate API only after the controller
-   shadow has both direct-red and waypoint-green evidence. Consider an
-   additional topology later, and only when it exercises a materially
-   different analytical failure.
+1. Extract the frozen canary construction and actual-bridge-state mapping
+   behind a small private planner-facing candidate API. Preserve the same
+   finite ordering, certificate identities, composed evidence, and stable
+   invalid reasons; do not wire it into ordinary planner selection yet.
+2. Add focused API-level tests proving deterministic candidate identity,
+   direct-green passthrough, ridge repair construction, and rejection when any
+   certificate or handoff invariant is absent. The controller result remains a
+   downstream validation fixture, not an input to candidate selection.
+3. Decide whether one additional topology is needed to prevent overfitting.
+   Add it only if it exercises a materially different analytical failure, not
+   merely another ridge size.
+4. Consider production planner integration only after the private API and any
+   separately approved held-out gate pass. Mission-matrix expansion, runtime
+   replanning, and broader waypoint counts remain later work.
 
 No arbitrary waypoint count, production planner wiring, controller-specific
 branch, or simulated-pilot claim is part of this checkpoint.

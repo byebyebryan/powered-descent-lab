@@ -72,12 +72,27 @@
   `-108.99 m` residual exactly reproduces the simulator's recorded hull
   clearance. This validates the controller-level direct-red half without
   changing controller defaults or mesa geometry.
-- The analytical anchor still fails the runtime route validator because its
-  endpoint-shaped source leg intersects terrain near `x = 105.6 m`, so the
-  waypoint controller is not run. The next checkpoint is the honest powered-
-  join/actual-traversed-state route mapping, followed by only the frozen
-  waypoint lane. Private planner extraction and mission-matrix expansion wait
-  for waypoint-green evidence. D2 remains blocked and distinct.
+- The virtual analytical anchor near `(1983.6, 1301.1) m` is not a traversed
+  powered-bridge state. Ordinary `validate_route` rejects both zero-waypoint
+  and one-waypoint versions identically on the source taper: its `[22, 118] m`
+  directed-progress interval contains the reported world `x = 105.597 m`
+  corridor intersection at source-relative progress `87.597 m`. The evaluator
+  therefore records that waypoint-invariant diagnostic separately instead of
+  treating it as the composed adapter result.
+- A versioned evaluator-only composed preflight now selects the first exact
+  intermediate-bridge state across the virtual-anchor plane, bracketed at
+  steps `971 -> 972` of `1980`. The actual state near `(1983.821, 1566.110) m`
+  passes the existing structural, authority, and canonical waypoint-handoff
+  checks with no new threshold. This composes the frozen analytical prefix/
+  suffix certificate with a runtime waypoint contract; it is not ordinary
+  `RouteValidation` or a controller prediction.
+- The one permitted unchanged mesa-waypoint shadow passes its runtime contract
+  at `34.467 s` and lands on target at `86.692 s` with about `4042.6 kg` fuel
+  remaining. The frozen controller canary is therefore flat-direct-green,
+  mesa-direct-red, and mesa-waypoint-green. The next checkpoint is a small
+  private planner-facing candidate API preserving this finite construction and
+  evidence; production wiring and mission-matrix expansion remain later. D2
+  remains blocked and distinct.
 
 ### Superseded V1 negative experiment
 
