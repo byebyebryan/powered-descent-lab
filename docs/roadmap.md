@@ -97,9 +97,13 @@ Current implementation status:
     one-waypoint-green result, not universal direct infeasibility. The
     recomputable setup projection feeds dedicated HTML/SVG reports without
     running a controller or simulation. The single canary is now frozen behind
-    focused correctness and visual gates; next, extract its construction behind
-    a small private planner-facing candidate API. Controller validation and
-    mission-matrix expansion remain later;
+    focused correctness and visual gates. The corrected frozen full-controller
+    shadow now supplies the direct pair: the flat twin lands, while the mesa
+    twin makes reconstructed rotated-hull contact with the derived left wall.
+    The analytical waypoint still fails the existing runtime route validator
+    on its source leg and is not executed. Next, close only the powered-join/
+    actual-traversed-state route-adapter contract and run the frozen waypoint
+    lane. Private planner extraction and mission-matrix expansion remain later;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -697,8 +701,10 @@ implementing a predictor. The remaining evidence-first sequence is:
    complete: all 60 exact current development inputs land on target, so it
    closes the repair claim. The separate forward-looking V2 ballistic-first
    checkpoint now freezes one scoped ridge canary with a nominal-direct-red,
-   one-waypoint-green analytical certificate. Its next slice is the small
-   private planner-facing candidate API described above;
+   one-waypoint-green analytical certificate. Its corrected full-controller
+   shadow validates flat-direct-green/mesa-direct-red; waypoint execution is
+   blocked at the route-adapter seam. Its next slice is the bounded mapping
+   work described above, not planner extraction;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -730,8 +736,12 @@ V2 direct rows remain neutral diagnostics, and the bounded ridge canary now
 adds a controller-independent scoped result: the shortest robust flat-derived
 nominal lane plus optimistic post-commit correction is red on a derived mesa,
 while a finite terrain-derived one-waypoint witness is green. Higher global
-direct replans remain possible. This makes a small private planner-facing
-extraction actionable without claiming universal route necessity.
+direct replans remain possible. The corrected full-controller shadow now
+validates the direct gameplay distinction: the flat twin lands and the mesa
+twin crashes on the derived wall. It does not yet validate waypoint repair
+because the analytical anchor does not satisfy the runtime route validator.
+Resolve that single mapping seam and run the frozen waypoint lane before
+considering a private planner-facing extraction.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical

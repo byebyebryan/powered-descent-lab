@@ -58,10 +58,26 @@
   report geometry is reconstructed without a per-tick sample stream. These are
   analytical setup artifacts, not controller or simulation results.
 - This checkpoint reviews and freezes the single canary and its visual evidence.
-  The next checkpoint is to extract the canary-only construction behind a small
-  private planner-facing candidate API. Mission-matrix expansion and focused
-  controller simulation remain later, after the analytical policy is stable.
-  D2 remains blocked and distinct.
+  A subsequent frozen full-controller shadow now derives the same vehicle,
+  pads, terrain, and analytical waypoint, runs at `120 Hz` physics / `60 Hz`
+  control, persists reloadable lane artifacts, and renders an analytical-versus-
+  simulated overlay. Its first harness attempt incorrectly represented a
+  direct route as `None`; the resulting source-pad crash is superseded setup
+  evidence. The corrected lanes share a pad-derived `0 deg`, `3982 m`, zero-
+  waypoint route, enter upright takeoff, and survive launch.
+- The corrected flat direct control lands on target in `101.8 s` with about
+  `3615.1 kg` fuel remaining. The mesa direct twin crashes after `27.692 s` on
+  the derived rising wall. Reconstructed rotated-hull contact identifies the
+  worst vertex near `(1999.07, 427.36) m` against terrain near `536.36 m`; the
+  `-108.99 m` residual exactly reproduces the simulator's recorded hull
+  clearance. This validates the controller-level direct-red half without
+  changing controller defaults or mesa geometry.
+- The analytical anchor still fails the runtime route validator because its
+  endpoint-shaped source leg intersects terrain near `x = 105.6 m`, so the
+  waypoint controller is not run. The next checkpoint is the honest powered-
+  join/actual-traversed-state route mapping, followed by only the frozen
+  waypoint lane. Private planner extraction and mission-matrix expansion wait
+  for waypoint-green evidence. D2 remains blocked and distinct.
 
 ### Superseded V1 negative experiment
 

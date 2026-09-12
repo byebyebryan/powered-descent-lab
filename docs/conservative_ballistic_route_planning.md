@@ -289,22 +289,64 @@ so the result is deliberately about the selected nominal lane plus local
 correction allowance. Rejections remain analytical diagnostics, not physical
 impossibility or controller-failure claims.
 
+## Frozen full-controller shadow
+
+The first full-controller shadow deliberately reuses the V2 fixture without
+retuning it. It runs at `120 Hz` physics and `60 Hz` control with the built-in
+`transfer_pdg` and `transfer_waypoint_pdg` controllers, persists ordinary run
+artifacts, and overlays the analytical witnesses with the simulated paths.
+
+The first harness attempt omitted the required direct `TransferRouteSpec` and
+therefore entered terminal guidance on the source pad. That step-one crash was
+a setup error, not controller or canary evidence. The corrected shadow derives
+one identical controller-facing direct route from the two pads (`0 deg`,
+`3982 m`, zero waypoints) and attaches it to both direct lanes. Both then begin
+in the built-in takeoff phase with an upright command and survive launch.
+
+The corrected paired result validates the **direct red half** of the canary:
+
+- the flat direct control lands on the target in `101.8 s` with approximately
+  `3615.1 kg` fuel remaining; and
+- the mesa direct lane crashes after `27.692 s` on the derived mesa's rising
+  left wall. Simulator-equivalent rotated-hull reconstruction identifies a
+  hull vertex near `(1999.07, 427.36) m`, where terrain is approximately
+  `536.36 m`; its `-108.99 m` residual exactly matches the recorded minimum
+  hull clearance.
+
+The analytical waypoint near `(1983.6, 1301.1) m` still does not map to a valid
+existing `TransferRouteSpec`: the endpoint-shaped source leg intersects
+terrain near `x = 105.6 m`. No waypoint-controller lane is run after that
+validation failure. The full nominal-direct-red/one-waypoint-green controller
+claim therefore remains open even though mesa-caused direct failure is now
+established.
+
+The shadow is generated with
+`cargo run -p pd-eval -- controller-shadow`. Its sealed summary and per-lane
+run artifacts live under
+`outputs/eval/conservative-ballistic-controller-shadow-v1/`; the HTML/SVG
+report lives under
+`outputs/reports/eval/conservative-ballistic-controller-shadow-v1/`.
+
 ## Plan from here
 
-The V2 ridge-canary contract, numerical margins, identity/tamper checks, and
-report visuals have passed their review-and-freeze gate. The remaining work is
-bounded and staged:
+The V2 analytical contract and corrected direct controller pair are now frozen.
+The next work is bounded and staged:
 
-1. Extract the canary-only waypoint construction behind a small planner-facing
-   candidate API. Preserve the same finite ordering and evidence, but keep it
-   private until its direct-green/repair-red behavior is tested independently
-   of the embedded report fixture.
-2. Decide whether one additional topology is needed to prevent overfitting.
-   Add it only if it exercises a materially different analytical failure, not
-   merely another ridge size.
-3. After the policy and minimal repair path are frozen, optionally run a
-   focused full-simulation shadow check with the existing controller. That is
-   validation of gameplay usefulness, not an oracle for retuning the canary.
+1. Define a small shared analytical-to-runtime route adapter. The analytical
+   anchor is a virtual leg junction, while the certified powered intermediate
+   bridge passes over it; the adapter must target states actually traversed by
+   the witness and represent the powered source/intermediate joins honestly.
+2. Reconcile that mapping with the existing source-departure/tracking-entry and
+   runtime route-validation contracts. Inflating a capture radius, lowering
+   terrain clearance, bypassing validation, or copying a winning command trace
+   remains out of scope.
+3. Run only the frozen mesa one-waypoint lane after the adapter validates. It
+   must pass the waypoint contract, clear the derived mesa, retain fuel, and
+   land on the target; otherwise record the exact mismatch without tuning.
+4. Extract a private planner-facing candidate API only after the controller
+   shadow has both direct-red and waypoint-green evidence. Consider an
+   additional topology later, and only when it exercises a materially
+   different analytical failure.
 
 No arbitrary waypoint count, production planner wiring, controller-specific
 branch, or simulated-pilot claim is part of this checkpoint.
@@ -331,6 +373,8 @@ Stop or narrow the work when:
 - fixed altitude/distance gates reappear as route-necessity evidence;
 - the analytical model needs controller IDs, phases, or outcomes;
 - accepted routes regress maintained landings once simulation validation opens;
+- the flat control cannot establish an ordinary target landing;
+- a powered analytical join is silently treated as a runtime spatial capture;
 - search becomes unbounded or requires more than the declared waypoint bound; or
 - repeated outcome-guided retuning is needed to make the capability appear
   useful.
