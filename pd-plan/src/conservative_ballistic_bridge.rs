@@ -608,6 +608,155 @@ pub struct DirectBridgeReportV2 {
     pub identity: String,
 }
 
+/// A deliberately narrow, non-production decision exposed for the frozen V2
+/// ridge experiment.  This is not the production mission planner: `Direct`
+/// always means the shortest robust flat-derived nominal lane, while
+/// `OneWaypoint` is the finite terrain-derived repair selected only after that
+/// same nominal lane is rejected on the derived mesa.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExperimentalRidgeCandidateOutcomeV2 {
+    Direct {
+        candidate: Box<DirectBridgeCandidateV2>,
+    },
+    OneWaypoint {
+        candidate: Box<WaypointCandidateV2>,
+        crossing: Box<ExactIntermediateBridgeCrossingV2>,
+    },
+    Unsupported {
+        reason: ExperimentalRidgeUnsupportedReasonV2,
+        rejection_reasons: Vec<DirectBridgeReasonV2>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperimentalRidgeUnsupportedReasonV2 {
+    NoCertifiedNominalDirect,
+    NominalLaneNotRobustlyBlocked,
+    FiniteWaypointSearchExhausted,
+}
+
+/// Exact analytical crossing selected from the certified intermediate bridge.
+/// The virtual anchor is provenance only and is never substituted for a state
+/// actually traversed by the discrete bridge.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExactIntermediateBridgeCrossingV2 {
+    pub selection_rule: String,
+    pub candidate_identity: String,
+    pub intermediate_bridge_identity: String,
+    pub virtual_anchor_m: Vec2,
+    pub intermediate_entry_handoff: HandoffV2,
+    pub intermediate_exit_handoff: HandoffV2,
+    pub intermediate_bridge_total_applied_steps: u64,
+    pub certified_prefix_end_applied_steps: u64,
+    pub certified_suffix_start_applied_steps: u64,
+    pub previous_applied_steps: u64,
+    pub selected_applied_steps: u64,
+    pub previous_state: KinematicStateV2,
+    pub selected_state: KinematicStateV2,
+    pub previous_directed_offset_m: f64,
+    pub selected_directed_offset_m: f64,
+    pub strict_directed_crossing: bool,
+}
+
+/// Compact projection consumed by the controller-shadow evaluator.  It keeps
+/// the frozen analytical inputs, candidate ordering/provenance, and the two
+/// scoped decisions without exposing the complete setup-report artifact.
+///
+/// This API exists only under the `conservative-ballistic-report` feature and
+/// must not be treated as a general or production route-planning interface.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExperimentalRidgeCandidateProjectionV2 {
+    pub policy: DirectBridgePolicyV2,
+    pub vehicle: VehicleInputV2,
+    pub case: DirectBridgeProbeV2,
+    pub mesa: MesaGeometryV2,
+    pub analytical_report_identity: String,
+    pub analytical_canary_identity: String,
+    pub flat_candidate_identities: Vec<String>,
+    pub ridge_direct_candidate_identities: Vec<String>,
+    pub waypoint_search_identity: String,
+    pub waypoint_candidate_identities: Vec<String>,
+    pub flat_control: ExperimentalRidgeCandidateOutcomeV2,
+    pub derived_mesa: ExperimentalRidgeCandidateOutcomeV2,
+}
+
+/// Stable fail-closed reasons for malformed experimental candidate evidence.
+/// A valid but exhausted finite search is represented by
+/// [`ExperimentalRidgeCandidateOutcomeV2::Unsupported`], not this error type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperimentalRidgeCandidateErrorV2 {
+    EmbeddedReportInvalid,
+    ProjectionMismatch,
+    FlatNominalIdentityMismatch,
+    FlatNominalCertificateInvalid,
+    DerivedNominalEvidenceMismatch,
+    WaypointSelectionIdentityMismatch,
+    WaypointCertificateMissing,
+    WaypointCertificateInvalid,
+    IntermediateBridgeMissing,
+    IntermediateHandoffMissing,
+    IntermediateBridgeJoinMismatch,
+    IntermediateBridgeHasNoSteps,
+    IntermediateBridgeStartsAtOrBeyondAnchor,
+    IntermediateBridgeDoesNotCrossAnchor,
+    IntermediateCrossingMismatch,
+}
+
+impl std::fmt::Display for ExperimentalRidgeCandidateErrorV2 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            Self::EmbeddedReportInvalid => "embedded V2 report failed canonical validation",
+            Self::ProjectionMismatch => {
+                "experimental ridge candidate projection does not match the embedded V2 evidence"
+            }
+            Self::FlatNominalIdentityMismatch => {
+                "flat nominal candidate identity or deterministic ordering is inconsistent"
+            }
+            Self::FlatNominalCertificateInvalid => {
+                "flat nominal candidate certificate is not valid"
+            }
+            Self::DerivedNominalEvidenceMismatch => {
+                "derived-mesa nominal candidate does not match its analytical diagnostic"
+            }
+            Self::WaypointSelectionIdentityMismatch => {
+                "selected waypoint identity or deterministic ordering is inconsistent"
+            }
+            Self::WaypointCertificateMissing => {
+                "ridge repair decision is missing its selected waypoint certificate"
+            }
+            Self::WaypointCertificateInvalid => {
+                "selected waypoint certificate does not pass every analytical invariant"
+            }
+            Self::IntermediateBridgeMissing => {
+                "selected waypoint certificate has no intermediate bridge"
+            }
+            Self::IntermediateHandoffMissing => {
+                "selected waypoint certificate has incomplete intermediate handoffs"
+            }
+            Self::IntermediateBridgeJoinMismatch => {
+                "selected intermediate bridge does not exactly join its recorded handoffs"
+            }
+            Self::IntermediateBridgeHasNoSteps => {
+                "selected intermediate bridge has no applied-step crossing bracket"
+            }
+            Self::IntermediateBridgeStartsAtOrBeyondAnchor => {
+                "selected intermediate bridge does not begin before the virtual-anchor plane"
+            }
+            Self::IntermediateBridgeDoesNotCrossAnchor => {
+                "selected intermediate bridge never reaches the virtual-anchor plane"
+            }
+            Self::IntermediateCrossingMismatch => {
+                "recorded intermediate crossing is not the first exact directed crossing"
+            }
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for ExperimentalRidgeCandidateErrorV2 {}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BridgeSampleV2 {
     /// Zero-based acceleration sample index.  `state_m` is the exact state
@@ -4979,6 +5128,361 @@ pub fn validate_report_artifact_v2(report: &DirectBridgeReportV2) -> Result<(), 
     Ok(())
 }
 
+/// Build the compact, feature-gated candidate projection used by the frozen
+/// ridge controller shadow.  The production planner and its `plan()` entry
+/// point are not consulted or modified.
+pub fn evaluate_embedded_experimental_ridge_candidate_v2()
+-> Result<ExperimentalRidgeCandidateProjectionV2, ExperimentalRidgeCandidateErrorV2> {
+    static PROJECTION: std::sync::OnceLock<
+        Result<ExperimentalRidgeCandidateProjectionV2, ExperimentalRidgeCandidateErrorV2>,
+    > = std::sync::OnceLock::new();
+    PROJECTION
+        .get_or_init(|| {
+            let report = embedded_report_artifact_v2();
+            validate_report_artifact_v2(report)
+                .map_err(|_| ExperimentalRidgeCandidateErrorV2::EmbeddedReportInvalid)?;
+            let projection = experimental_ridge_projection_from_report_v2(report)?;
+            validate_experimental_ridge_projection_structure_v2(&projection)?;
+            Ok(projection)
+        })
+        .clone()
+}
+
+/// Reject altered candidate evidence before it reaches an evaluator.  The
+/// structural pass returns specific certificate/crossing failures; the final
+/// canonical comparison catches all other changes to the frozen projection.
+pub fn validate_embedded_experimental_ridge_candidate_v2(
+    projection: &ExperimentalRidgeCandidateProjectionV2,
+) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
+    validate_experimental_ridge_projection_structure_v2(projection)?;
+    let expected = evaluate_embedded_experimental_ridge_candidate_v2()?;
+    if projection != &expected {
+        return Err(ExperimentalRidgeCandidateErrorV2::ProjectionMismatch);
+    }
+    Ok(())
+}
+
+fn experimental_ridge_projection_from_report_v2(
+    report: &DirectBridgeReportV2,
+) -> Result<ExperimentalRidgeCandidateProjectionV2, ExperimentalRidgeCandidateErrorV2> {
+    let canary = &report.evaluation.ridge_canary;
+    let case = report
+        .fixture
+        .cases
+        .iter()
+        .find(|case| case.id == canary.source_case_id)
+        .ok_or(ExperimentalRidgeCandidateErrorV2::EmbeddedReportInvalid)?;
+    let nominal = canary.flat_control.nominal_candidate.clone();
+    let flat_control = if canary.flat_control.status == MissionStatusV2::Green {
+        ExperimentalRidgeCandidateOutcomeV2::Direct {
+            candidate: Box::new(nominal.clone()),
+        }
+    } else {
+        ExperimentalRidgeCandidateOutcomeV2::Unsupported {
+            reason: ExperimentalRidgeUnsupportedReasonV2::NoCertifiedNominalDirect,
+            rejection_reasons: nominal.reasons.clone(),
+        }
+    };
+    let derived_mesa = project_derived_mesa_outcome_v2(
+        &report.fixture.policy,
+        &report.fixture.vehicle,
+        case,
+        canary,
+    )?;
+    let ridge_direct_candidate_identities =
+        std::iter::once(canary.direct_nominal_candidate.candidate_identity.clone())
+            .chain(
+                canary
+                    .direct_global_replans
+                    .iter()
+                    .map(|candidate| candidate.candidate_identity.clone()),
+            )
+            .collect();
+    Ok(ExperimentalRidgeCandidateProjectionV2 {
+        policy: report.fixture.policy.clone(),
+        vehicle: report.fixture.vehicle.clone(),
+        case: case.clone(),
+        mesa: canary.mesa.clone(),
+        analytical_report_identity: report.identity.clone(),
+        analytical_canary_identity: canary.identity.clone(),
+        flat_candidate_identities: canary.flat_control.candidate_identities.clone(),
+        ridge_direct_candidate_identities,
+        waypoint_search_identity: canary.waypoint_search.identity.clone(),
+        waypoint_candidate_identities: canary
+            .waypoint_search
+            .candidates
+            .iter()
+            .map(|candidate| candidate.identity.clone())
+            .collect(),
+        flat_control,
+        derived_mesa,
+    })
+}
+
+fn project_derived_mesa_outcome_v2(
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+    case: &DirectBridgeProbeV2,
+    canary: &RidgeCanaryEvidenceV2,
+) -> Result<ExperimentalRidgeCandidateOutcomeV2, ExperimentalRidgeCandidateErrorV2> {
+    let derived_case = DirectBridgeProbeV2 {
+        id: format!("{}_derived_mesa", case.id),
+        source: case.source.clone(),
+        target: case.target.clone(),
+        terrain_points_m: canary.mesa.terrain_points_m.clone(),
+        initial_position_m: case.initial_position_m,
+        initial_velocity_mps: case.initial_velocity_mps,
+    };
+    let nominal_diagnostic = &canary.direct_nominal_candidate;
+    let derived_nominal = evaluate_direct_candidate_with_duration_steps(
+        policy,
+        vehicle,
+        &derived_case,
+        nominal_diagnostic.duration_multiplier,
+        nominal_diagnostic.arc_steps,
+        &canary_bridge_duration_steps(policy),
+    );
+    if ridge_direct_diagnostic(&derived_nominal) != *nominal_diagnostic {
+        return Err(ExperimentalRidgeCandidateErrorV2::DerivedNominalEvidenceMismatch);
+    }
+    if derived_nominal.classification == CertificationV2::Certified {
+        return Ok(ExperimentalRidgeCandidateOutcomeV2::Direct {
+            candidate: Box::new(derived_nominal),
+        });
+    }
+    if !canary.blocking_lane_valid {
+        return Ok(ExperimentalRidgeCandidateOutcomeV2::Unsupported {
+            reason: ExperimentalRidgeUnsupportedReasonV2::NominalLaneNotRobustlyBlocked,
+            rejection_reasons: canary.direct_nominal_candidate.reasons.clone(),
+        });
+    }
+    let Some(candidate) = canary.waypoint_search.selected_candidate.clone() else {
+        if canary.waypoint_search.selected_candidate_identity.is_some()
+            || canary.waypoint_search.certified_candidate_count != 0
+            || !canary.waypoint_search.candidates.is_empty()
+        {
+            return Err(ExperimentalRidgeCandidateErrorV2::WaypointCertificateMissing);
+        }
+        return Ok(ExperimentalRidgeCandidateOutcomeV2::Unsupported {
+            reason: ExperimentalRidgeUnsupportedReasonV2::FiniteWaypointSearchExhausted,
+            rejection_reasons: canary
+                .waypoint_search
+                .rejection_counts
+                .iter()
+                .map(|(reason, _)| *reason)
+                .collect(),
+        });
+    };
+    if canary
+        .waypoint_search
+        .selected_candidate_identity
+        .as_deref()
+        != Some(candidate.identity.as_str())
+        || canary.waypoint_search.certified_candidate_count != 1
+        || canary.waypoint_search.candidates.first() != Some(&candidate)
+    {
+        return Err(ExperimentalRidgeCandidateErrorV2::WaypointSelectionIdentityMismatch);
+    }
+    validate_waypoint_certificate_v2(policy, &candidate)?;
+    let horizontal_sign = if case.target.center_x_m > case.source.center_x_m {
+        1
+    } else {
+        -1
+    };
+    let crossing = select_exact_intermediate_bridge_crossing_v2(&candidate, horizontal_sign)?;
+    Ok(ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
+        candidate: Box::new(candidate),
+        crossing: Box::new(crossing),
+    })
+}
+
+fn validate_experimental_ridge_projection_structure_v2(
+    projection: &ExperimentalRidgeCandidateProjectionV2,
+) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
+    match &projection.flat_control {
+        ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } => {
+            if candidate.identity != candidate_identity(candidate)
+                || !projection
+                    .flat_candidate_identities
+                    .iter()
+                    .any(|identity| identity == &candidate.identity)
+            {
+                return Err(ExperimentalRidgeCandidateErrorV2::FlatNominalIdentityMismatch);
+            }
+            if candidate.classification != CertificationV2::Certified {
+                return Err(ExperimentalRidgeCandidateErrorV2::FlatNominalCertificateInvalid);
+            }
+        }
+        ExperimentalRidgeCandidateOutcomeV2::Unsupported { .. } => {}
+        ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { .. } => {
+            return Err(ExperimentalRidgeCandidateErrorV2::FlatNominalCertificateInvalid);
+        }
+    }
+    if let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
+        candidate,
+        crossing,
+    } = &projection.derived_mesa
+    {
+        if projection.waypoint_candidate_identities.first() != Some(&candidate.identity) {
+            return Err(ExperimentalRidgeCandidateErrorV2::WaypointSelectionIdentityMismatch);
+        }
+        validate_waypoint_certificate_v2(&projection.policy, candidate)?;
+        let horizontal_sign =
+            if projection.case.target.center_x_m > projection.case.source.center_x_m {
+                1
+            } else {
+                -1
+            };
+        let expected = select_exact_intermediate_bridge_crossing_v2(candidate, horizontal_sign)?;
+        if **crossing != expected {
+            return Err(ExperimentalRidgeCandidateErrorV2::IntermediateCrossingMismatch);
+        }
+    }
+    Ok(())
+}
+
+fn validate_waypoint_certificate_v2(
+    policy: &DirectBridgePolicyV2,
+    candidate: &WaypointCandidateV2,
+) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
+    let intermediate_bridge = candidate
+        .intermediate_bridge
+        .as_ref()
+        .ok_or(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeMissing)?;
+    let intermediate_entry = candidate
+        .intermediate_entry_handoff
+        .ok_or(ExperimentalRidgeCandidateErrorV2::IntermediateHandoffMissing)?;
+    let intermediate_exit = candidate
+        .intermediate_exit_handoff
+        .ok_or(ExperimentalRidgeCandidateErrorV2::IntermediateHandoffMissing)?;
+    if intermediate_bridge.start_state != intermediate_entry.state
+        || intermediate_bridge.end_state != intermediate_exit.state
+    {
+        return Err(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeJoinMismatch);
+    }
+    let bridges = [
+        candidate.source_bridge.as_ref(),
+        Some(intermediate_bridge),
+        candidate.terminal_bridge.as_ref(),
+    ];
+    let environments = [
+        candidate.source_environment.as_ref(),
+        candidate.intermediate_environment.as_ref(),
+        candidate.terminal_environment.as_ref(),
+    ];
+    if candidate.source_handoff.is_none()
+        || candidate.terminal_handoff.is_none()
+        || bridges.iter().any(Option::is_none)
+        || environments.iter().any(Option::is_none)
+        || candidate.route_progress.is_none()
+    {
+        return Err(ExperimentalRidgeCandidateErrorV2::WaypointCertificateMissing);
+    }
+    if candidate.identity != waypoint_candidate_identity(candidate)
+        || bridges.into_iter().flatten().any(|bridge| {
+            bridge.identity
+                != digest(&BridgeIdentity {
+                    kind: bridge.kind,
+                    start_state: bridge.start_state,
+                    end_state: bridge.end_state,
+                    steps: bridge.steps,
+                    initial_net_acceleration_mps2: bridge.initial_net_acceleration_mps2,
+                    net_acceleration_step_mps2: bridge.net_acceleration_step_mps2,
+                    endpoint_position_error_m: bridge.endpoint_position_error_m,
+                    endpoint_velocity_error_mps: bridge.endpoint_velocity_error_mps,
+                    fuel_burn_kg: bridge.fuel_burn_kg,
+                    classification: bridge.classification,
+                    reasons: &bridge.reasons,
+                    margins: bridge.margins,
+                })
+        })
+        || candidate.classification != CertificationV2::Certified
+        || bridges
+            .into_iter()
+            .flatten()
+            .any(|bridge| bridge.classification != CertificationV2::Certified)
+        || environments.into_iter().flatten().any(|environment| {
+            [
+                environment.clearance_margin,
+                environment.initial_attitude_margin,
+                environment.final_attitude_margin,
+                environment.final_angular_rate_margin,
+            ]
+            .into_iter()
+            .any(|margin| !margin.passes(policy))
+        })
+        || candidate
+            .route_progress
+            .as_ref()
+            .is_none_or(|progress| !progress.passes || progress.segments.iter().any(|s| !s.passes))
+        || candidate.margins.minimum_normalized() + 1.0e-12 < policy.declared_robustness_margin
+    {
+        return Err(ExperimentalRidgeCandidateErrorV2::WaypointCertificateInvalid);
+    }
+    Ok(())
+}
+
+/// Select the first exact intermediate-bridge state whose directed x reaches
+/// or passes the virtual-anchor plane.  This is analytical certificate
+/// projection only; no runtime waypoint policy is applied here.
+fn select_exact_intermediate_bridge_crossing_v2(
+    candidate: &WaypointCandidateV2,
+    horizontal_sign: i8,
+) -> Result<ExactIntermediateBridgeCrossingV2, ExperimentalRidgeCandidateErrorV2> {
+    let bridge = candidate
+        .intermediate_bridge
+        .as_ref()
+        .ok_or(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeMissing)?;
+    let intermediate_entry_handoff = candidate
+        .intermediate_entry_handoff
+        .ok_or(ExperimentalRidgeCandidateErrorV2::IntermediateHandoffMissing)?;
+    let intermediate_exit_handoff = candidate
+        .intermediate_exit_handoff
+        .ok_or(ExperimentalRidgeCandidateErrorV2::IntermediateHandoffMissing)?;
+    if bridge.start_state != intermediate_entry_handoff.state
+        || bridge.end_state != intermediate_exit_handoff.state
+    {
+        return Err(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeJoinMismatch);
+    }
+    if bridge.steps == 0 {
+        return Err(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeHasNoSteps);
+    }
+    let directed_offset = |state: KinematicStateV2| {
+        f64::from(horizontal_sign) * (state.position_m.x - candidate.waypoint_position_m.x)
+    };
+    if directed_offset(bridge.state_at(0)) >= 0.0 {
+        return Err(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeStartsAtOrBeyondAnchor);
+    }
+    for selected_applied_steps in 1..=bridge.steps {
+        let previous_applied_steps = selected_applied_steps - 1;
+        let previous_state = bridge.state_at(previous_applied_steps);
+        let selected_state = bridge.state_at(selected_applied_steps);
+        let previous_directed_offset_m = directed_offset(previous_state);
+        let selected_directed_offset_m = directed_offset(selected_state);
+        if previous_directed_offset_m < 0.0 && selected_directed_offset_m >= 0.0 {
+            return Ok(ExactIntermediateBridgeCrossingV2 {
+                selection_rule: "first exact intermediate-bridge state whose directed x reaches or passes the virtual-anchor x; retain the preceding discrete state as the crossing bracket".to_owned(),
+                candidate_identity: candidate.identity.clone(),
+                intermediate_bridge_identity: bridge.identity.clone(),
+                virtual_anchor_m: candidate.waypoint_position_m,
+                intermediate_entry_handoff,
+                intermediate_exit_handoff,
+                intermediate_bridge_total_applied_steps: bridge.steps,
+                certified_prefix_end_applied_steps: selected_applied_steps,
+                certified_suffix_start_applied_steps: selected_applied_steps,
+                previous_applied_steps,
+                selected_applied_steps,
+                previous_state,
+                selected_state,
+                previous_directed_offset_m,
+                selected_directed_offset_m,
+                strict_directed_crossing: true,
+            });
+        }
+    }
+    Err(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeDoesNotCrossAnchor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5188,6 +5692,248 @@ mod tests {
         let mut identity_tampered = report;
         identity_tampered.identity.push_str("-tampered");
         assert!(validate_report_artifact_v2(&identity_tampered).is_err());
+    }
+
+    #[test]
+    fn experimental_candidate_projection_passes_through_exact_flat_nominal() {
+        let report = report();
+        let projection = evaluate_embedded_experimental_ridge_candidate_v2().unwrap();
+        let candidate = match &projection.flat_control {
+            ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } => candidate,
+            outcome => panic!("expected direct flat control, got {outcome:?}"),
+        };
+        assert_eq!(
+            candidate.as_ref(),
+            &report
+                .evaluation
+                .ridge_canary
+                .flat_control
+                .nominal_candidate
+        );
+        assert_eq!(
+            projection.flat_candidate_identities,
+            report
+                .evaluation
+                .ridge_canary
+                .flat_control
+                .candidate_identities
+        );
+        validate_embedded_experimental_ridge_candidate_v2(&projection).unwrap();
+    }
+
+    #[test]
+    fn experimental_ridge_repair_carries_first_exact_bridge_crossing() {
+        let projection = evaluate_embedded_experimental_ridge_candidate_v2().unwrap();
+        assert!(
+            evaluation()
+                .ridge_canary
+                .direct_global_replans
+                .iter()
+                .any(|candidate| candidate.classification == CertificationV2::Certified),
+            "a higher-duration global direct replan must remain diagnostic and not displace repair"
+        );
+        let (candidate, crossing) = match &projection.derived_mesa {
+            ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
+                candidate,
+                crossing,
+            } => (candidate, crossing),
+            outcome => panic!("expected one-waypoint ridge repair, got {outcome:?}"),
+        };
+        let bridge = candidate
+            .intermediate_bridge
+            .as_ref()
+            .expect("certified intermediate bridge");
+        assert_eq!(crossing.previous_applied_steps, 971);
+        assert_eq!(crossing.selected_applied_steps, 972);
+        assert_eq!(crossing.previous_state, bridge.state_at(971));
+        assert_eq!(crossing.selected_state, bridge.state_at(972));
+        assert!(crossing.previous_directed_offset_m < 0.0);
+        assert!(crossing.selected_directed_offset_m >= 0.0);
+        assert_ne!(
+            crossing.selected_state.position_m,
+            candidate.waypoint_position_m
+        );
+        assert!(
+            (0..crossing.previous_applied_steps).all(|step| {
+                bridge.state_at(step).position_m.x < candidate.waypoint_position_m.x
+            })
+        );
+        let mut outside_bridge = candidate.as_ref().clone();
+        outside_bridge.waypoint_position_m.x = bridge.end_state.position_m.x + 1.0;
+        assert_eq!(
+            select_exact_intermediate_bridge_crossing_v2(&outside_bridge, 1),
+            Err(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeDoesNotCrossAnchor)
+        );
+    }
+
+    #[test]
+    fn experimental_candidate_projection_is_repeatable_with_stable_ordering() {
+        let first = evaluate_embedded_experimental_ridge_candidate_v2().unwrap();
+        let second = evaluate_embedded_experimental_ridge_candidate_v2().unwrap();
+        assert_eq!(first, second);
+        assert_eq!(
+            first.flat_candidate_identities,
+            second.flat_candidate_identities
+        );
+        assert_eq!(
+            first.ridge_direct_candidate_identities,
+            second.ridge_direct_candidate_identities
+        );
+        assert_eq!(
+            first.waypoint_candidate_identities,
+            second.waypoint_candidate_identities
+        );
+        assert_eq!(first.analytical_report_identity, report().identity);
+    }
+
+    #[test]
+    fn experimental_derived_decision_uses_exact_nominal_certificate_predicates() {
+        let fixture = fixture();
+        let ridge_case = fixture
+            .cases
+            .iter()
+            .find(|case| case.id == "ridge_probe")
+            .unwrap();
+        let mut invalid_blocking = evaluation().ridge_canary;
+        assert_eq!(
+            invalid_blocking.direct_nominal_candidate.classification,
+            CertificationV2::NotCertified
+        );
+        invalid_blocking.blocking_lane_valid = false;
+        invalid_blocking.direct_status = MissionStatusV2::Green;
+        let unsupported = project_derived_mesa_outcome_v2(
+            &fixture.policy,
+            &fixture.vehicle,
+            ridge_case,
+            &invalid_blocking,
+        )
+        .unwrap();
+        assert!(matches!(
+            unsupported,
+            ExperimentalRidgeCandidateOutcomeV2::Unsupported {
+                reason: ExperimentalRidgeUnsupportedReasonV2::NominalLaneNotRobustlyBlocked,
+                ..
+            }
+        ));
+
+        let mut flat_case = ridge_case.clone();
+        flat_case.terrain_points_m = vec![Vec2::new(-40.0, 0.0), Vec2::new(4040.0, 0.0)];
+        let flat_canary =
+            evaluate_ridge_canary_case_v2(&fixture.policy, &fixture.vehicle, &flat_case).unwrap();
+        let direct = project_derived_mesa_outcome_v2(
+            &fixture.policy,
+            &fixture.vehicle,
+            &flat_case,
+            &flat_canary,
+        )
+        .unwrap();
+        let ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } = direct else {
+            panic!("exact certified derived nominal must produce Direct");
+        };
+        assert_eq!(candidate.classification, CertificationV2::Certified);
+        assert_eq!(
+            candidate.identity,
+            flat_canary.direct_nominal_candidate.candidate_identity
+        );
+        assert_eq!(
+            ridge_direct_diagnostic(&candidate),
+            flat_canary.direct_nominal_candidate
+        );
+    }
+
+    #[test]
+    fn experimental_candidate_projection_fails_closed_but_keeps_exhaustion_typed() {
+        let projection = evaluate_embedded_experimental_ridge_candidate_v2().unwrap();
+
+        let mut missing_certificate = projection.clone();
+        let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { candidate, .. } =
+            &mut missing_certificate.derived_mesa
+        else {
+            panic!("expected waypoint candidate");
+        };
+        candidate.source_bridge = None;
+        assert_eq!(
+            validate_embedded_experimental_ridge_candidate_v2(&missing_certificate),
+            Err(ExperimentalRidgeCandidateErrorV2::WaypointCertificateMissing)
+        );
+
+        let mut tampered_certificate = projection.clone();
+        let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { candidate, .. } =
+            &mut tampered_certificate.derived_mesa
+        else {
+            panic!("expected waypoint candidate");
+        };
+        candidate.classification = CertificationV2::NotCertified;
+        assert_eq!(
+            validate_embedded_experimental_ridge_candidate_v2(&tampered_certificate),
+            Err(ExperimentalRidgeCandidateErrorV2::WaypointCertificateInvalid)
+        );
+
+        let mut broken_join = projection.clone();
+        let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { candidate, .. } =
+            &mut broken_join.derived_mesa
+        else {
+            panic!("expected waypoint candidate");
+        };
+        candidate
+            .intermediate_bridge
+            .as_mut()
+            .expect("intermediate bridge")
+            .end_state
+            .position_m
+            .x += 1.0;
+        assert_eq!(
+            validate_embedded_experimental_ridge_candidate_v2(&broken_join),
+            Err(ExperimentalRidgeCandidateErrorV2::IntermediateBridgeJoinMismatch)
+        );
+
+        let mut broken_crossing = projection.clone();
+        let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { crossing, .. } =
+            &mut broken_crossing.derived_mesa
+        else {
+            panic!("expected waypoint candidate");
+        };
+        crossing.selected_applied_steps += 1;
+        assert_eq!(
+            validate_embedded_experimental_ridge_candidate_v2(&broken_crossing),
+            Err(ExperimentalRidgeCandidateErrorV2::IntermediateCrossingMismatch)
+        );
+
+        let fixture = fixture();
+        let case = fixture
+            .cases
+            .iter()
+            .find(|case| case.id == "ridge_probe")
+            .unwrap();
+        let mut exhausted = evaluation().ridge_canary;
+        exhausted.waypoint_search.selected_candidate = None;
+        exhausted.waypoint_search.selected_candidate_identity = None;
+        exhausted.waypoint_search.certified_candidate_count = 0;
+        exhausted.waypoint_search.candidates.clear();
+        let outcome =
+            project_derived_mesa_outcome_v2(&fixture.policy, &fixture.vehicle, case, &exhausted)
+                .unwrap();
+        assert!(matches!(
+            outcome,
+            ExperimentalRidgeCandidateOutcomeV2::Unsupported {
+                reason: ExperimentalRidgeUnsupportedReasonV2::FiniteWaypointSearchExhausted,
+                ..
+            }
+        ));
+
+        let mut malformed_exhaustion = exhausted;
+        malformed_exhaustion
+            .waypoint_search
+            .selected_candidate_identity = Some("missing-certificate".to_owned());
+        assert_eq!(
+            project_derived_mesa_outcome_v2(
+                &fixture.policy,
+                &fixture.vehicle,
+                case,
+                &malformed_exhaustion,
+            ),
+            Err(ExperimentalRidgeCandidateErrorV2::WaypointCertificateMissing)
+        );
     }
 
     #[test]

@@ -26,9 +26,10 @@ use pd_core::{
 };
 use pd_plan::conservative_ballistic_bridge::{
     AnalyticalBridgeV2, BridgeEnvironmentEvidenceV2, ComponentMarginsV2, DirectBridgeCandidateV2,
-    DirectBridgeFixtureV2, DirectBridgePolicyV2, DirectBridgeProbeV2, DirectBridgeReportV2,
-    HandoffV2, KinematicStateV2, RouteProgressEvidenceV2, VirtualBallisticArcV2,
-    WaypointCandidateV2, build_report_artifact_v2,
+    DirectBridgePolicyV2, DirectBridgeProbeV2, ExactIntermediateBridgeCrossingV2,
+    ExperimentalRidgeCandidateOutcomeV2, ExperimentalRidgeCandidateProjectionV2, KinematicStateV2,
+    MesaGeometryV2, RouteProgressEvidenceV2, VirtualBallisticArcV2, WaypointCandidateV2,
+    evaluate_embedded_experimental_ridge_candidate_v2,
 };
 use pd_report::site::ReportSite;
 use serde::{Deserialize, Serialize};
@@ -210,29 +211,9 @@ pub struct OrdinaryRouteValidationEvidence {
     pub terrain_directed_source_progress_m: Option<f64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ActualBridgeHandoffEvidence {
-    pub selection_rule: String,
-    pub candidate_identity: String,
-    pub intermediate_bridge_identity: String,
-    pub virtual_anchor_m: Vec2,
-    pub intermediate_entry_handoff: HandoffV2,
-    pub intermediate_exit_handoff: HandoffV2,
-    /// The selected exact state splits the certified intermediate bridge into
-    /// a prefix ending at this state and a suffix beginning at this state.
-    /// These are evidence boundaries only; neither part is replayed as a
-    /// runtime controller command trace.
-    pub intermediate_bridge_total_applied_steps: u64,
-    pub certified_prefix_end_applied_steps: u64,
-    pub certified_suffix_start_applied_steps: u64,
-    pub previous_applied_steps: u64,
-    pub selected_applied_steps: u64,
-    pub previous_state: KinematicStateV2,
-    pub selected_state: KinematicStateV2,
-    pub previous_directed_offset_m: f64,
-    pub selected_directed_offset_m: f64,
-    pub strict_directed_crossing: bool,
-}
+/// The evaluator serializes the planner-owned exact crossing evidence without
+/// changing the existing controller-shadow v4 shape.
+pub type ActualBridgeHandoffEvidence = ExactIntermediateBridgeCrossingV2;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AnalyticalCertificateEvidence {
@@ -364,9 +345,10 @@ pub fn run_controller_shadow(
         )
     })?;
 
-    let report = build_report_artifact_v2();
-    let first = execute_shadow(&report)?;
-    let repeat = execute_shadow(&report)?;
+    let projection = evaluate_embedded_experimental_ridge_candidate_v2()
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let first = execute_shadow(&projection)?;
+    let repeat = execute_shadow(&projection)?;
     let deterministic_repeat = semantic_digest(&first)? == semantic_digest(&repeat)?;
     let mut run = first;
     run.deterministic_repeat = deterministic_repeat;
@@ -495,34 +477,66 @@ fn write_shadow_artifacts(output_dir: &Path, run: &ControllerShadowRun) -> Resul
     Ok(())
 }
 
-fn execute_shadow(report: &DirectBridgeReportV2) -> Result<ControllerShadowRun> {
-    let case = report
-        .fixture
-        .cases
-        .iter()
-        .find(|case| case.id == "ridge_probe")
-        .ok_or_else(|| anyhow!("embedded report has no ridge_probe"))?;
-    let canary = &report.evaluation.ridge_canary;
-    let selected = canary
-        .waypoint_search
-        .selected_candidate
-        .as_ref()
-        .ok_or_else(|| anyhow!("analytical canary has no selected waypoint witness"))?;
-    let analytical_overlay = build_analytical_overlay(canary, selected)?;
-    let mut direct_route = derive_direct_route_evidence(case, flat_terrain(case), &report.fixture)?;
+fn execute_shadow(
+    projection: &ExperimentalRidgeCandidateProjectionV2,
+) -> Result<ControllerShadowRun> {
+    let case = &projection.case;
+    let nominal = match &projection.flat_control {
+        ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } => candidate,
+        ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { .. } => {
+            bail!("flat control unexpectedly selected a waypoint")
+        }
+        ExperimentalRidgeCandidateOutcomeV2::Unsupported { reason, .. } => {
+            bail!("flat control is unsupported: {reason:?}")
+        }
+    };
+    let (selected, actual_handoff) = match &projection.derived_mesa {
+        ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
+            candidate,
+            crossing,
+        } => (candidate, crossing),
+        ExperimentalRidgeCandidateOutcomeV2::Direct { .. } => {
+            bail!("derived mesa unexpectedly retained the nominal direct lane")
+        }
+        ExperimentalRidgeCandidateOutcomeV2::Unsupported { reason, .. } => {
+            bail!("derived mesa has no supported waypoint repair: {reason:?}")
+        }
+    };
+    let analytical_overlay = build_analytical_overlay(nominal, selected);
+    let mut direct_route = derive_direct_route_evidence(
+        case,
+        flat_terrain(case),
+        &projection.policy,
+        &projection.vehicle,
+    )?;
     let direct_route_spec = direct_route.route.clone();
     let flat_scenario = build_scenario(
         case,
+        &projection.policy,
+        &projection.vehicle,
         flat_terrain(case),
         Some(direct_route_spec.clone()),
         "flat",
     )?;
-    let mesa_scenario =
-        build_scenario(case, mesa_terrain(canary), Some(direct_route_spec), "mesa")?;
+    let mesa_scenario = build_scenario(
+        case,
+        &projection.policy,
+        &projection.vehicle,
+        mesa_terrain(&projection.mesa),
+        Some(direct_route_spec),
+        "mesa",
+    )?;
     direct_route.structural_validation =
         "TransferRouteSpec::validate and ScenarioSpec::validate passed for both direct lanes"
             .to_owned();
-    let route_adapter = adapt_waypoint_route(case, canary, selected)?;
+    let route_adapter = adapt_waypoint_route(
+        case,
+        &projection.policy,
+        &projection.vehicle,
+        &projection.mesa,
+        selected,
+        actual_handoff,
+    )?;
 
     let mut lanes = Vec::new();
     let direct = built_in_controller_spec("transfer_pdg").expect("built-in direct controller");
@@ -531,7 +545,7 @@ fn execute_shadow(report: &DirectBridgeReportV2) -> Result<ControllerShadowRun> 
         "flat",
         flat_scenario,
         direct.clone(),
-        &canary.mesa,
+        &projection.mesa,
         None,
     )?);
     lanes.push(run_lane(
@@ -539,7 +553,7 @@ fn execute_shadow(report: &DirectBridgeReportV2) -> Result<ControllerShadowRun> 
         "mesa",
         mesa_scenario.clone(),
         direct,
-        &canary.mesa,
+        &projection.mesa,
         None,
     )?);
 
@@ -564,7 +578,7 @@ fn execute_shadow(report: &DirectBridgeReportV2) -> Result<ControllerShadowRun> 
             "mesa",
             waypoint_scenario,
             waypoint,
-            &canary.mesa,
+            &projection.mesa,
             Some(actual_handoff.selected_state.position_m),
         )?);
     } else {
@@ -575,14 +589,10 @@ fn execute_shadow(report: &DirectBridgeReportV2) -> Result<ControllerShadowRun> 
         schema_id: CONTROLLER_SHADOW_SCHEMA_ID.to_owned(),
         schema_version: CONTROLLER_SHADOW_SCHEMA_VERSION,
         setup_id: CONTROLLER_SHADOW_SETUP_ID.to_owned(),
-        analytical_report_identity: report.identity.clone(),
-        analytical_canary_identity: canary.identity.clone(),
-        mesa_identity: canary.mesa.identity.clone(),
-        waypoint_candidate_identity: canary
-            .waypoint_search
-            .selected_candidate_identity
-            .clone()
-            .expect("selected candidate identity"),
+        analytical_report_identity: projection.analytical_report_identity.clone(),
+        analytical_canary_identity: projection.analytical_canary_identity.clone(),
+        mesa_identity: projection.mesa.identity.clone(),
+        waypoint_candidate_identity: selected.identity.clone(),
         direct_route,
         route_adapter,
         analytical_overlay,
@@ -601,20 +611,19 @@ fn flat_terrain(case: &DirectBridgeProbeV2) -> TerrainDefinition {
     }
 }
 
-fn mesa_terrain(
-    canary: &pd_plan::conservative_ballistic_bridge::RidgeCanaryEvidenceV2,
-) -> TerrainDefinition {
+fn mesa_terrain(mesa: &MesaGeometryV2) -> TerrainDefinition {
     TerrainDefinition::Heightfield {
-        points_m: canary.mesa.terrain_points_m.clone(),
+        points_m: mesa.terrain_points_m.clone(),
     }
 }
 
 fn derive_direct_route_evidence(
     case: &DirectBridgeProbeV2,
     terrain: TerrainDefinition,
-    fixture: &DirectBridgeFixtureV2,
+    policy: &DirectBridgePolicyV2,
+    vehicle_input: &pd_plan::conservative_ballistic_bridge::VehicleInputV2,
 ) -> Result<DirectRouteEvidence> {
-    let vehicle = vehicle_from_fixture(&fixture.vehicle);
+    let vehicle = vehicle_from_fixture(vehicle_input);
     let source = LandingPadSpec {
         id: "source".to_owned(),
         center_x_m: case.source.center_x_m,
@@ -629,7 +638,7 @@ fn derive_direct_route_evidence(
     };
     let request = RoutePlanningRequest {
         world: WorldSpec {
-            gravity_mps2: fixture.policy.gravity_mps2,
+            gravity_mps2: policy.gravity_mps2,
             terrain,
             landing_pads: vec![source, target],
         },
@@ -664,18 +673,10 @@ fn derive_direct_route_evidence(
 const ANALYTICAL_PATH_POINT_LIMIT: usize = 96;
 
 fn build_analytical_overlay(
-    canary: &pd_plan::conservative_ballistic_bridge::RidgeCanaryEvidenceV2,
+    nominal: &DirectBridgeCandidateV2,
     candidate: &WaypointCandidateV2,
-) -> Result<AnalyticalShadowOverlay> {
-    let nominal = &canary.flat_control.nominal_candidate;
-    if nominal.identity != canary.nominal_candidate_identity {
-        bail!(
-            "flat twin nominal candidate {} does not match canary nominal candidate {}",
-            nominal.identity,
-            canary.nominal_candidate_identity
-        );
-    }
-    Ok(AnalyticalShadowOverlay {
+) -> AnalyticalShadowOverlay {
+    AnalyticalShadowOverlay {
         nominal_direct: AnalyticalOverlayPath {
             id: "nominal-direct".to_owned(),
             points_m: direct_candidate_points(nominal),
@@ -714,7 +715,7 @@ fn build_analytical_overlay(
         },
         waypoint_position_m: candidate.waypoint_position_m,
         nominal_apex_position_m: nominal.virtual_arc.apex_position_m,
-    })
+    }
 }
 
 fn direct_candidate_points(candidate: &DirectBridgeCandidateV2) -> Vec<Vec2> {
@@ -767,12 +768,13 @@ fn append_without_duplicate(target: &mut Vec<Vec2>, mut points: Vec<Vec2>) {
 
 fn build_scenario(
     case: &DirectBridgeProbeV2,
+    policy: &DirectBridgePolicyV2,
+    vehicle_input: &pd_plan::conservative_ballistic_bridge::VehicleInputV2,
     terrain: TerrainDefinition,
     route: Option<TransferRouteSpec>,
     suffix: &str,
 ) -> Result<ScenarioSpec> {
-    let fixture = build_report_artifact_v2().fixture;
-    let vehicle = vehicle_from_fixture(&fixture.vehicle);
+    let vehicle = vehicle_from_fixture(vehicle_input);
     let source = LandingPadSpec {
         id: "source".to_owned(),
         center_x_m: case.source.center_x_m,
@@ -809,7 +811,7 @@ fn build_scenario(
             sample_hz: Some(CONTROLLER_SHADOW_PHYSICS_HZ),
         },
         world: WorldSpec {
-            gravity_mps2: fixture.policy.gravity_mps2,
+            gravity_mps2: policy.gravity_mps2,
             terrain,
             landing_pads: vec![source, target],
         },
@@ -857,11 +859,13 @@ fn vehicle_from_fixture(
 
 fn adapt_waypoint_route(
     case: &DirectBridgeProbeV2,
-    canary: &pd_plan::conservative_ballistic_bridge::RidgeCanaryEvidenceV2,
+    policy: &DirectBridgePolicyV2,
+    vehicle_input: &pd_plan::conservative_ballistic_bridge::VehicleInputV2,
+    mesa: &MesaGeometryV2,
     candidate: &WaypointCandidateV2,
+    actual_handoff: &ExactIntermediateBridgeCrossingV2,
 ) -> Result<RouteAdapterEvidence> {
-    let fixture = build_report_artifact_v2().fixture;
-    let vehicle = vehicle_from_fixture(&fixture.vehicle);
+    let vehicle = vehicle_from_fixture(vehicle_input);
     let source = LandingPadSpec {
         id: "source".to_owned(),
         center_x_m: case.source.center_x_m,
@@ -876,8 +880,8 @@ fn adapt_waypoint_route(
     };
     let request = RoutePlanningRequest {
         world: WorldSpec {
-            gravity_mps2: fixture.policy.gravity_mps2,
-            terrain: mesa_terrain(canary),
+            gravity_mps2: policy.gravity_mps2,
+            terrain: mesa_terrain(mesa),
             landing_pads: vec![source, target],
         },
         vehicle,
@@ -893,7 +897,7 @@ fn adapt_waypoint_route(
     };
     let geometry = normalized_geometry(&request).map_err(|error| anyhow!(error.to_string()))?;
     let capture_radius_m = (geometry.direct_distance_m * 0.08).clamp(35.0, 95.0);
-    let certificate = analytical_certificate_evidence(candidate, &fixture.policy);
+    let certificate = analytical_certificate_evidence(candidate, policy);
     if !certificate.certificate_passes {
         return Ok(invalid_adapter_evidence(
             candidate,
@@ -903,18 +907,7 @@ fn adapt_waypoint_route(
             "selected V2 certificate no longer passes every required bridge, environment, route-progress, and margin screen".to_owned(),
         ));
     }
-    let actual_handoff = match select_actual_bridge_handoff(candidate, geometry.horizontal_sign) {
-        Ok(handoff) => handoff,
-        Err(error) => {
-            return Ok(invalid_adapter_evidence(
-                candidate,
-                certificate,
-                capture_radius_m,
-                AdapterPartialEvidence::default(),
-                error.to_string(),
-            ));
-        }
-    };
+    let actual_handoff = actual_handoff.clone();
     let normalized_waypoint = Vec2::new(
         f64::from(geometry.horizontal_sign)
             * (actual_handoff.selected_state.position_m.x
@@ -1223,65 +1216,6 @@ fn bridge_environment_passes(
     .all(|margin| {
         margin.raw >= 0.0 && margin.normalized + 1.0e-12 >= policy.declared_robustness_margin
     })
-}
-
-fn select_actual_bridge_handoff(
-    candidate: &WaypointCandidateV2,
-    horizontal_sign: i8,
-) -> Result<ActualBridgeHandoffEvidence> {
-    let bridge = candidate
-        .intermediate_bridge
-        .as_ref()
-        .ok_or_else(|| anyhow!("selected candidate has no intermediate bridge"))?;
-    let intermediate_entry_handoff = candidate
-        .intermediate_entry_handoff
-        .ok_or_else(|| anyhow!("selected candidate has no intermediate entry handoff"))?;
-    let intermediate_exit_handoff = candidate
-        .intermediate_exit_handoff
-        .ok_or_else(|| anyhow!("selected candidate has no intermediate exit handoff"))?;
-    if bridge.start_state != intermediate_entry_handoff.state
-        || bridge.end_state != intermediate_exit_handoff.state
-    {
-        bail!("selected intermediate bridge does not exactly join its recorded handoff states");
-    }
-    if bridge.steps == 0 {
-        bail!("selected intermediate bridge has no applied-step crossing bracket");
-    }
-    let directed_offset = |state: KinematicStateV2| {
-        f64::from(horizontal_sign) * (state.position_m.x - candidate.waypoint_position_m.x)
-    };
-    let initial = bridge.state_at(0);
-    if directed_offset(initial) >= 0.0 {
-        bail!("selected intermediate bridge does not begin before the virtual anchor plane");
-    }
-    for selected_applied_steps in 1..=bridge.steps {
-        let previous_applied_steps = selected_applied_steps - 1;
-        let previous_state = bridge.state_at(previous_applied_steps);
-        let selected_state = bridge.state_at(selected_applied_steps);
-        let previous_directed_offset_m = directed_offset(previous_state);
-        let selected_directed_offset_m = directed_offset(selected_state);
-        if previous_directed_offset_m < 0.0 && selected_directed_offset_m >= 0.0 {
-            return Ok(ActualBridgeHandoffEvidence {
-                selection_rule: "first exact intermediate-bridge state whose directed x reaches or passes the virtual-anchor x; retain the preceding discrete state as the crossing bracket".to_owned(),
-                candidate_identity: candidate.identity.clone(),
-                intermediate_bridge_identity: bridge.identity.clone(),
-                virtual_anchor_m: candidate.waypoint_position_m,
-                intermediate_entry_handoff,
-                intermediate_exit_handoff,
-                intermediate_bridge_total_applied_steps: bridge.steps,
-                certified_prefix_end_applied_steps: selected_applied_steps,
-                certified_suffix_start_applied_steps: selected_applied_steps,
-                previous_applied_steps,
-                selected_applied_steps,
-                previous_state,
-                selected_state,
-                previous_directed_offset_m,
-                selected_directed_offset_m,
-                strict_directed_crossing: true,
-            });
-        }
-    }
-    bail!("selected intermediate bridge never reaches the virtual anchor's directed x")
 }
 
 fn unit_vector(vector: Vec2) -> Option<Vec2> {
@@ -1892,7 +1826,11 @@ mod tests {
 
     fn shadow() -> &'static ControllerShadowRun {
         static SHADOW: OnceLock<ControllerShadowRun> = OnceLock::new();
-        SHADOW.get_or_init(|| execute_shadow(&build_report_artifact_v2()).expect("shadow run"))
+        SHADOW.get_or_init(|| {
+            let projection = evaluate_embedded_experimental_ridge_candidate_v2()
+                .expect("experimental candidate projection");
+            execute_shadow(&projection).expect("shadow run")
+        })
     }
 
     #[test]
@@ -1952,8 +1890,9 @@ mod tests {
         assert!(flat_contact.vehicle_center_m.is_none());
         assert!(flat_contact.contact_point_m.is_none());
         assert!(flat_contact.reconstruction_valid.is_none());
-        let report = build_report_artifact_v2();
-        let mesa = &report.evaluation.ridge_canary.mesa;
+        let projection = evaluate_embedded_experimental_ridge_candidate_v2()
+            .expect("experimental candidate projection");
+        let mesa = &projection.mesa;
         let mesa_lane = &shadow.lanes[1];
         assert_eq!(mesa_lane.class, ShadowLaneClass::TerrainCrash);
         let mesa_contact = &mesa_lane.terrain_contact;
@@ -2005,12 +1944,10 @@ mod tests {
             Some(0)
         );
         assert_eq!(waypoint_lane.preflight.survived_source_launch, Some(true));
-        let candidate = report
-            .evaluation
-            .ridge_canary
-            .waypoint_search
-            .selected_candidate
-            .expect("selected waypoint candidate");
+        let candidate = match projection.derived_mesa {
+            ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { candidate, .. } => candidate,
+            outcome => panic!("expected one-waypoint candidate, got {outcome:?}"),
+        };
         let adapter = &shadow.route_adapter;
         assert!(adapter.analytical_certificate.certificate_passes);
         assert_eq!(
@@ -2216,18 +2153,22 @@ mod tests {
                     .position_m
             )
         );
+        let mut sealed = shadow.clone();
+        sealed.deterministic_repeat = true;
+        assert_eq!(semantic_digest(&sealed).unwrap(), "a69de7872ad039fd");
     }
 
     #[test]
-    fn actual_bridge_handoff_requires_the_first_exact_directed_crossing() {
-        let report = build_report_artifact_v2();
-        let candidate = report
-            .evaluation
-            .ridge_canary
-            .waypoint_search
-            .selected_candidate
-            .expect("selected waypoint candidate");
-        let selected = select_actual_bridge_handoff(&candidate, 1).expect("exact crossing");
+    fn candidate_projection_supplies_the_first_exact_directed_crossing() {
+        let projection = evaluate_embedded_experimental_ridge_candidate_v2()
+            .expect("experimental candidate projection");
+        let (candidate, selected) = match projection.derived_mesa {
+            ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
+                candidate,
+                crossing,
+            } => (candidate, crossing),
+            outcome => panic!("expected one-waypoint candidate, got {outcome:?}"),
+        };
         assert_eq!(
             selected.previous_applied_steps + 1,
             selected.selected_applied_steps
@@ -2238,16 +2179,12 @@ mod tests {
             .intermediate_bridge
             .as_ref()
             .expect("intermediate bridge");
-        let bridge_end_x_m = bridge.end_state.position_m.x;
         assert!(
             (0..selected.previous_applied_steps).all(|step| {
                 bridge.state_at(step).position_m.x < candidate.waypoint_position_m.x
             }),
             "selection must be the first discrete state to reach the virtual-anchor plane"
         );
-        let mut outside_bridge = candidate;
-        outside_bridge.waypoint_position_m.x = bridge_end_x_m + 1.0;
-        assert!(select_actual_bridge_handoff(&outside_bridge, 1).is_err());
     }
 
     #[test]
@@ -2304,9 +2241,10 @@ mod tests {
 
     #[test]
     fn shadow_repeat_excludes_compute_timing_from_semantics() {
-        let report = build_report_artifact_v2();
-        let first = execute_shadow(&report).expect("first shadow");
-        let second = execute_shadow(&report).expect("second shadow");
+        let projection = evaluate_embedded_experimental_ridge_candidate_v2()
+            .expect("experimental candidate projection");
+        let first = execute_shadow(&projection).expect("first shadow");
+        let second = execute_shadow(&projection).expect("second shadow");
         assert_eq!(
             semantic_digest(&first).unwrap(),
             semantic_digest(&second).unwrap()
