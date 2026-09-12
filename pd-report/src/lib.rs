@@ -15,6 +15,7 @@ use pd_core::{
 };
 use serde::Serialize;
 
+pub mod setup;
 pub mod site;
 
 const PLOTLY_CDN_URL: &str = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";

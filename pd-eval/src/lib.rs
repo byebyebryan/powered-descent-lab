@@ -21,8 +21,13 @@ use pd_core::{
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
+pub mod conservative_ballistic_report;
 pub mod report;
 pub mod report_catalog;
+pub use conservative_ballistic_report::{
+    ConservativeBallisticReportPaths, ConservativeBallisticReportRun,
+    run_conservative_ballistic_report,
+};
 
 #[cfg(unix)]
 use std::os::unix::fs as platform_fs;

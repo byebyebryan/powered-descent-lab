@@ -70,7 +70,7 @@ impl ReportSite {
     }
 
     pub fn refresh_indexes(&self) -> Result<()> {
-        for scope in ["runs", "replays", "eval"] {
+        for scope in ["runs", "replays", "eval", "setups"] {
             let scope_dir = self.reports_root.join(scope);
             if scope_dir.exists() {
                 self.write_scope_index(&scope_dir)?;
@@ -151,6 +151,11 @@ impl ReportSite {
                 "Deterministic replay evidence.",
             ),
             ("eval", "Batch reports", "All maintained evaluation packs."),
+            (
+                "setups",
+                "Analytical setups",
+                "Deterministic setup-only planning evidence.",
+            ),
         ] {
             let count = self.scope_entries(&self.reports_root.join(scope))?.len();
             cards.push_str(&home_card(
@@ -184,7 +189,7 @@ impl ReportSite {
         })?;
         let body = r#"<div class="card-grid">
 <a class="card featured" href="reports/"><span class="eyebrow">recommended</span><strong>Report site</strong><span>Curated guidance evidence and stable report navigation.</span></a>
-<div class="card"><span class="eyebrow">raw</span><strong>Artifact directories</strong><span>Use raw bundles when report pages do not expose the required detail.</span><div class="links"><a href="runs/">runs/</a><a href="eval/">eval/</a><a href="replays/">replays/</a></div></div>
+<div class="card"><span class="eyebrow">raw</span><strong>Artifact directories</strong><span>Use raw bundles when report pages do not expose the required detail.</span><div class="links"><a href="runs/">runs/</a><a href="eval/">eval/</a><a href="replays/">replays/</a><a href="setups/">setups/</a></div></div>
 </div>"#;
         let html = page(
             "Powered Descent Lab Outputs",
@@ -574,6 +579,7 @@ fn scope_title(scope: &str) -> String {
         "runs" => "Run reports".to_owned(),
         "replays" => "Replay reports".to_owned(),
         "eval" => "Batch reports".to_owned(),
+        "setups" => "Analytical setup reports".to_owned(),
         other => format!("{other} reports"),
     }
 }
@@ -683,6 +689,24 @@ mod tests {
         assert!(!eval_report_entry_is_fixture_backed(
             &raw_eval, "missing", &ids
         ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn setup_scope_is_indexed_without_changing_other_scopes() {
+        let root = temp_dir("setups");
+        let setup_dir = root.join("outputs/reports/setups/conservative-ballistic-direct-bridge-v2");
+        fs::create_dir_all(&setup_dir).unwrap();
+        fs::write(setup_dir.join("index.html"), "setup").unwrap();
+        let site = ReportSite::new(&root);
+        site.refresh_indexes().unwrap();
+        let home = fs::read_to_string(root.join("outputs/reports/index.html")).unwrap();
+        let outputs = fs::read_to_string(root.join("outputs/index.html")).unwrap();
+        let scope = fs::read_to_string(root.join("outputs/reports/setups/index.html")).unwrap();
+        assert!(home.contains("setups/"));
+        assert!(home.contains("Analytical setups"));
+        assert!(outputs.contains("setups/"));
+        assert!(scope.contains("conservative-ballistic-direct-bridge-v2"));
         let _ = fs::remove_dir_all(root);
     }
 }

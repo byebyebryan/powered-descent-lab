@@ -6,11 +6,11 @@ use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
     resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
-    run_final_landing_audit, run_pack_file_cached, run_physical_executor_comparison,
-    run_physical_witness_development, run_progress_interval_envelope_development_gate,
-    run_route_execution_development_case, run_route_execution_development_gate,
-    run_source_transition_development_case, run_source_transition_development_gate,
-    run_terrain_equivalence_spike,
+    run_conservative_ballistic_report, run_final_landing_audit, run_pack_file_cached,
+    run_physical_executor_comparison, run_physical_witness_development,
+    run_progress_interval_envelope_development_gate, run_route_execution_development_case,
+    run_route_execution_development_gate, run_source_transition_development_case,
+    run_source_transition_development_gate, run_terrain_equivalence_spike,
 };
 
 #[derive(Debug, Parser)]
@@ -38,6 +38,8 @@ enum Commands {
     BoundedTrajectoryPhysical(BoundedTrajectoryPhysicalArgs),
     /// Join a sealed physical W4 lane with a separately sealed R1 lane.
     PhysicalExecutorComparison(PhysicalExecutorComparisonArgs),
+    /// Generate the deterministic, setup-only V2 direct-bridge analytical report.
+    ConservativeBallisticReport(ConservativeBallisticReportArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -212,6 +214,12 @@ struct PhysicalExecutorComparisonArgs {
     output_dir: PathBuf,
 }
 
+#[derive(Debug, Parser)]
+struct ConservativeBallisticReportArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -355,6 +363,10 @@ fn main() -> Result<()> {
                 &args.output_dir,
             )?;
             println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
+        Commands::ConservativeBallisticReport(args) => {
+            let run = run_conservative_ballistic_report(&repo_root(), args.output_dir.as_deref())?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
         }
     }
 
@@ -521,5 +533,19 @@ mod tests {
         ] {
             assert!(Cli::try_parse_from(missing).is_err());
         }
+    }
+
+    #[test]
+    fn conservative_ballistic_report_accepts_default_and_custom_output() {
+        assert!(Cli::try_parse_from(["pd-eval", "conservative-ballistic-report"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "conservative-ballistic-report",
+                "--output-dir",
+                "/tmp/pd-eval-direct-bridge-v2-cli-test",
+            ])
+            .is_ok()
+        );
     }
 }

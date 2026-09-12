@@ -233,6 +233,7 @@ dependencies = [
  "anyhow",
  "pd-control",
  "pd-core",
+ "pd-plan",
  "serde",
  "serde_json",
 ]
