@@ -19,20 +19,22 @@ use pd_control::{
 };
 use pd_core::{
     EndReason, EvaluationGoal, LandingPadSpec, MissionSpec, RoutePlanningPolicy,
-    RoutePlanningRequest, RouteValidation, ScenarioSpec, SimConfig, TerrainDefinition,
-    TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleGeometry, VehicleInitialState,
-    VehicleSpec, WorldSpec, build_endpoint_profile, compute_waypoint_authority,
-    endpoint_shaped_centerline, normalized_geometry, validate_route,
+    RoutePlanningRequest, ScenarioSpec, SimConfig, TerrainDefinition, TransferRouteSpec,
+    TransferWaypointSpec, Vec2, VehicleGeometry, VehicleInitialState, VehicleSpec,
+    WaypointAuthorityDiagnostics, WaypointHandoffKinematics, WorldSpec, build_endpoint_profile,
+    compute_waypoint_authority, endpoint_shaped_centerline, normalized_geometry, validate_route,
 };
 use pd_plan::conservative_ballistic_bridge::{
-    AnalyticalBridgeV2, DirectBridgeCandidateV2, DirectBridgeFixtureV2, DirectBridgeProbeV2,
-    DirectBridgeReportV2, VirtualBallisticArcV2, WaypointCandidateV2, build_report_artifact_v2,
+    AnalyticalBridgeV2, BridgeEnvironmentEvidenceV2, ComponentMarginsV2, DirectBridgeCandidateV2,
+    DirectBridgeFixtureV2, DirectBridgePolicyV2, DirectBridgeProbeV2, DirectBridgeReportV2,
+    HandoffV2, KinematicStateV2, RouteProgressEvidenceV2, VirtualBallisticArcV2,
+    WaypointCandidateV2, build_report_artifact_v2,
 };
 use pd_report::site::ReportSite;
 use serde::{Deserialize, Serialize};
 
 pub const CONTROLLER_SHADOW_SCHEMA_ID: &str = "conservative-ballistic-controller-shadow-v1";
-pub const CONTROLLER_SHADOW_SCHEMA_VERSION: u32 = 1;
+pub const CONTROLLER_SHADOW_SCHEMA_VERSION: u32 = 4;
 pub const CONTROLLER_SHADOW_SETUP_ID: &str = "conservative-ballistic-controller-shadow-v1";
 pub const CONTROLLER_SHADOW_MAX_TIME_S: f64 = 180.0;
 pub const CONTROLLER_SHADOW_PHYSICS_HZ: u32 = 120;
@@ -137,15 +139,163 @@ pub struct DirectRouteEvidence {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RouteAdapterEvidence {
     pub source: String,
+    /// The virtual join used to construct the two ballistic legs. It is not a
+    /// claimed sampled position on the powered intermediate bridge.
     pub analytical_waypoint_position_m: Vec2,
+    pub actual_bridge_handoff: Option<ActualBridgeHandoffEvidence>,
+    pub analytical_certificate: AnalyticalCertificateEvidence,
     pub capture_radius_m: f64,
     pub max_cross_track_m: f64,
     pub route: Option<TransferRouteSpec>,
-    pub validation: Option<RouteValidation>,
+    pub route_structural_validation: Option<String>,
+    pub waypoint_authority: Option<WaypointAuthorityDiagnostics>,
+    pub waypoint_handoff_kinematics: Option<WaypointHandoffKinematicsEvidence>,
+    pub waypoint_handoff_assessment: Option<WaypointHandoffAssessmentEvidence>,
+    pub composed_status: ComposedPreflightStatus,
+    pub composed_reason: String,
+    /// `pd_core::validate_route` remains a full pad-to-pad centerline
+    /// validator. The expected source-taper rejection is retained as an
+    /// ordinary-contract diagnostic and is never reclassified as the composed
+    /// preflight result.
+    pub ordinary_full_route_rejection: Option<String>,
+    /// Typed comparison of the ordinary zero-waypoint and one-waypoint
+    /// `validate_route` results. This retains the raw errors, while exposing
+    /// the derived source-taper interval and parsed terrain location needed
+    /// to establish whether the rejection is invariant to the waypoint.
+    pub ordinary_full_route_diagnostic: Option<OrdinaryFullRouteDiagnosticEvidence>,
     pub error: Option<String>,
     pub capture_radius_derivation: String,
     pub authority_derivation: String,
     pub bridge_mapping_note: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComposedPreflightStatus {
+    Supported,
+    Invalid,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrdinaryFullRouteDiagnosticEvidence {
+    /// World-space source pad center used to convert core terrain positions
+    /// into normalized directed progress.
+    pub source_center_x_m: f64,
+    pub horizontal_sign: i8,
+    pub source_transition_start_progress_m: f64,
+    pub source_transition_end_progress_m: f64,
+    pub zero_waypoint_direct: OrdinaryRouteValidationEvidence,
+    pub one_waypoint: OrdinaryRouteValidationEvidence,
+    pub validation_results_equal: bool,
+    pub both_routes_validated_successfully: bool,
+    pub one_waypoint_route_leg_one_terrain_rejection: bool,
+    pub rejection_x_within_source_transition: bool,
+    pub waypoint_invariant_source_taper: bool,
+    pub ordinary_validation_compatible: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrdinaryRouteValidationEvidence {
+    /// The raw `validate_route` error when validation rejected the route.
+    /// `None` means the ordinary validator accepted it.
+    pub raw_rejection: Option<String>,
+    /// Parsed only from the core's terrain-rejection error text; it is kept
+    /// local because the core error has no dedicated structured terrain-x
+    /// variant yet.
+    pub terrain_leg_index: Option<usize>,
+    /// World-space terrain x reported by `validate_route`.
+    pub terrain_x_m: Option<f64>,
+    /// Directed source-relative progress derived as
+    /// `horizontal_sign * (terrain_x_m - source_center_x_m)`.
+    pub terrain_directed_source_progress_m: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ActualBridgeHandoffEvidence {
+    pub selection_rule: String,
+    pub candidate_identity: String,
+    pub intermediate_bridge_identity: String,
+    pub virtual_anchor_m: Vec2,
+    pub intermediate_entry_handoff: HandoffV2,
+    pub intermediate_exit_handoff: HandoffV2,
+    /// The selected exact state splits the certified intermediate bridge into
+    /// a prefix ending at this state and a suffix beginning at this state.
+    /// These are evidence boundaries only; neither part is replayed as a
+    /// runtime controller command trace.
+    pub intermediate_bridge_total_applied_steps: u64,
+    pub certified_prefix_end_applied_steps: u64,
+    pub certified_suffix_start_applied_steps: u64,
+    pub previous_applied_steps: u64,
+    pub selected_applied_steps: u64,
+    pub previous_state: KinematicStateV2,
+    pub selected_state: KinematicStateV2,
+    pub previous_directed_offset_m: f64,
+    pub selected_directed_offset_m: f64,
+    pub strict_directed_crossing: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AnalyticalCertificateEvidence {
+    pub candidate_identity: String,
+    pub selected_candidate_certified: bool,
+    pub source_bridge_identity: Option<String>,
+    pub source_bridge_certified: bool,
+    pub intermediate_bridge_identity: Option<String>,
+    pub intermediate_bridge_certified: bool,
+    pub terminal_bridge_identity: Option<String>,
+    pub terminal_bridge_certified: bool,
+    pub source_environment_passes: bool,
+    pub intermediate_environment_passes: bool,
+    pub terminal_environment_passes: bool,
+    pub route_progress_passes: bool,
+    pub component_margins_pass: bool,
+    pub certificate_passes: bool,
+    /// Frozen supporting evidence retained from the selected V2 candidate so
+    /// the composed result can be audited without treating it as a new shared
+    /// route-planning certificate.
+    pub candidate_margins: ComponentMarginsV2,
+    pub source_environment: Option<BridgeEnvironmentEvidenceV2>,
+    pub intermediate_environment: Option<BridgeEnvironmentEvidenceV2>,
+    pub terminal_environment: Option<BridgeEnvironmentEvidenceV2>,
+    pub route_progress: Option<RouteProgressEvidenceV2>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WaypointHandoffKinematicsEvidence {
+    pub distance_m: f64,
+    pub cross_track_m: f64,
+    pub plane_progress_m: f64,
+    pub outbound_heading_error_rad: f64,
+    pub outbound_progress_mps: f64,
+    pub outbound_cross_speed_mps: f64,
+    pub speed_mps: f64,
+    pub vertical_speed_mps: f64,
+}
+
+impl From<WaypointHandoffKinematics> for WaypointHandoffKinematicsEvidence {
+    fn from(value: WaypointHandoffKinematics) -> Self {
+        Self {
+            distance_m: value.distance_m,
+            cross_track_m: value.cross_track_m,
+            plane_progress_m: value.plane_progress_m,
+            outbound_heading_error_rad: value.outbound_heading_error_rad,
+            outbound_progress_mps: value.outbound_progress_mps,
+            outbound_cross_speed_mps: value.outbound_cross_speed_mps,
+            speed_mps: value.speed_mps,
+            vertical_speed_mps: value.vertical_speed_mps,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WaypointHandoffAssessmentEvidence {
+    pub triggered: bool,
+    pub capture_window_open: bool,
+    pub deadline_reached: bool,
+    pub spatial_pass: bool,
+    pub envelope_pass: bool,
+    pub contract_pass: bool,
+    pub violations: Vec<String>,
 }
 
 /// Compact, controller-neutral analytical paths copied from the selected V2
@@ -393,11 +543,19 @@ fn execute_shadow(report: &DirectBridgeReportV2) -> Result<ControllerShadowRun> 
         None,
     )?);
 
-    if let Some(route) = route_adapter.route.clone() {
+    if route_adapter.composed_status == ComposedPreflightStatus::Supported {
+        let route = route_adapter
+            .route
+            .clone()
+            .expect("supported composed preflight retains runtime route");
+        let actual_handoff = route_adapter
+            .actual_bridge_handoff
+            .as_ref()
+            .expect("supported composed preflight retains actual bridge handoff");
         let mut waypoint_scenario = mesa_scenario;
         waypoint_scenario.id = "ridge-canary-mesa-waypoint".to_owned();
         waypoint_scenario.name = "Ridge canary mesa waypoint shadow".to_owned();
-        waypoint_scenario.description = "Full-controller shadow using one adapted analytical anchor; the analytical bridge is not replayed.".to_owned();
+        waypoint_scenario.description = "Full-controller shadow using one composed actual intermediate-bridge handoff; the analytical bridge is not replayed.".to_owned();
         waypoint_scenario.mission.transfer_route = Some(route);
         let waypoint = built_in_controller_spec("transfer_waypoint_pdg")
             .expect("built-in waypoint controller");
@@ -407,10 +565,10 @@ fn execute_shadow(report: &DirectBridgeReportV2) -> Result<ControllerShadowRun> 
             waypoint_scenario,
             waypoint,
             &canary.mesa,
-            Some(selected.waypoint_position_m),
+            Some(actual_handoff.selected_state.position_m),
         )?);
     } else {
-        lanes.push(invalid_route_lane(&mesa_scenario));
+        lanes.push(invalid_route_lane(&mesa_scenario, &route_adapter));
     }
 
     Ok(ControllerShadowRun {
@@ -735,10 +893,33 @@ fn adapt_waypoint_route(
     };
     let geometry = normalized_geometry(&request).map_err(|error| anyhow!(error.to_string()))?;
     let capture_radius_m = (geometry.direct_distance_m * 0.08).clamp(35.0, 95.0);
+    let certificate = analytical_certificate_evidence(candidate, &fixture.policy);
+    if !certificate.certificate_passes {
+        return Ok(invalid_adapter_evidence(
+            candidate,
+            certificate,
+            capture_radius_m,
+            AdapterPartialEvidence::default(),
+            "selected V2 certificate no longer passes every required bridge, environment, route-progress, and margin screen".to_owned(),
+        ));
+    }
+    let actual_handoff = match select_actual_bridge_handoff(candidate, geometry.horizontal_sign) {
+        Ok(handoff) => handoff,
+        Err(error) => {
+            return Ok(invalid_adapter_evidence(
+                candidate,
+                certificate,
+                capture_radius_m,
+                AdapterPartialEvidence::default(),
+                error.to_string(),
+            ));
+        }
+    };
     let normalized_waypoint = Vec2::new(
         f64::from(geometry.horizontal_sign)
-            * (candidate.waypoint_position_m.x - request.source_pad().expect("source").center_x_m),
-        candidate.waypoint_position_m.y,
+            * (actual_handoff.selected_state.position_m.x
+                - request.source_pad().expect("source").center_x_m),
+        actual_handoff.selected_state.position_m.y,
     );
     let (profile, _) = build_endpoint_profile(&request, geometry.direct_horizontal_span_m)
         .map_err(|error| anyhow!(error.to_string()))?;
@@ -748,27 +929,19 @@ fn adapt_waypoint_route(
         .iter()
         .position(|point| *point == normalized_waypoint)
         .ok_or_else(|| anyhow!("adapter waypoint was not retained by endpoint centerline"))?;
-    let unit = |vector: Vec2| {
-        let length = vector.length();
-        if length <= f64::EPSILON {
-            None
-        } else {
-            Some(vector * (1.0 / length))
-        }
-    };
-    let inbound = unit(shaped[waypoint_index] - shaped[waypoint_index - 1])
+    let inbound = unit_vector(shaped[waypoint_index] - shaped[waypoint_index - 1])
         .ok_or_else(|| anyhow!("adapter inbound tangent is degenerate"))?;
-    let outbound = unit(shaped[waypoint_index + 1] - shaped[waypoint_index])
+    let outbound = unit_vector(shaped[waypoint_index + 1] - shaped[waypoint_index])
         .ok_or_else(|| anyhow!("adapter outbound tangent is degenerate"))?;
-    let normalized_tangent = unit(inbound + outbound)
+    let normalized_tangent = unit_vector(inbound + outbound)
         .ok_or_else(|| anyhow!("adapter route legs have opposing tangent"))?;
     let tangent = Vec2::new(
         f64::from(geometry.horizontal_sign) * normalized_tangent.x,
         normalized_tangent.y,
     );
     let preliminary = TransferWaypointSpec {
-        id: "ridge-anchor-0".to_owned(),
-        position_m: candidate.waypoint_position_m,
+        id: "ridge-bridge-handoff-0".to_owned(),
+        position_m: actual_handoff.selected_state.position_m,
         handoff_tangent_unit: Some(tangent),
         capture_radius_m,
         max_cross_track_m: capture_radius_m,
@@ -792,18 +965,17 @@ fn adapt_waypoint_route(
         .handoff_speed_cap_mps
         .min(request.policy.max_handoff_speed_mps);
     if max_speed_mps + 1.0e-9 < request.policy.min_handoff_speed_mps {
-        return Ok(RouteAdapterEvidence {
-            source: "analytical_waypoint_candidate_v2".to_owned(),
-            analytical_waypoint_position_m: candidate.waypoint_position_m,
+        return Ok(invalid_adapter_evidence(
+            candidate,
+            certificate,
             capture_radius_m,
-            max_cross_track_m: preliminary.max_cross_track_m,
-            route: None,
-            validation: None,
-            error: Some(format!("derived waypoint authority cap {max_speed_mps}m/s is below policy minimum")),
-            capture_radius_derivation: "existing transfer policy: clamp(0.08 * direct route radius, 35m, 95m)".to_owned(),
-            authority_derivation: "pd_core::compute_waypoint_authority plus RoutePlanningPolicy::v1 speed bounds".to_owned(),
-            bridge_mapping_note: "The analytical powered bridge is not a controller command trace; this is an attempted runtime-anchor adapter, rejected before execution.".to_owned(),
-        });
+            AdapterPartialEvidence {
+                actual_bridge_handoff: Some(actual_handoff),
+                waypoint_authority: Some(authority),
+                ..AdapterPartialEvidence::default()
+            },
+            format!("derived waypoint authority cap {max_speed_mps}m/s is below policy minimum"),
+        ));
     }
     let waypoint = TransferWaypointSpec {
         max_speed_mps,
@@ -817,39 +989,460 @@ fn adapt_waypoint_route(
         route_radius_m: geometry.direct_distance_m,
         waypoints: vec![waypoint],
     };
-    match validate_route(&request, &route) {
-        Ok(validation) => Ok(RouteAdapterEvidence {
-            source: "analytical_waypoint_candidate_v2".to_owned(),
-            analytical_waypoint_position_m: candidate.waypoint_position_m,
+    let structural_validation = match route.validate() {
+        Ok(()) => {
+            "TransferRouteSpec::validate passed; full-pad route validation remains a separate diagnostic"
+                .to_owned()
+        }
+        Err(error) => {
+            return Ok(invalid_adapter_evidence(
+                candidate,
+                certificate,
+                capture_radius_m,
+                AdapterPartialEvidence {
+                    actual_bridge_handoff: Some(actual_handoff),
+                    route: Some(route),
+                    waypoint_authority: Some(authority),
+                    ..AdapterPartialEvidence::default()
+                },
+                format!("runtime waypoint route failed structural validation: {error}"),
+            ));
+        }
+    };
+    let kinematics =
+        waypoint_handoff_kinematics(&request, &route.waypoints[0], actual_handoff.selected_state)?;
+    let assessment = route.waypoints[0].assess_handoff(kinematics);
+    let kinematics_evidence = WaypointHandoffKinematicsEvidence::from(kinematics);
+    let assessment_evidence = waypoint_handoff_assessment_evidence(&assessment);
+    let zero_waypoint_direct_route = TransferRouteSpec {
+        source_pad_id: request.source_pad_id.clone(),
+        target_pad_id: request.target_pad_id.clone(),
+        route_angle_deg: geometry.route_angle_deg,
+        route_radius_m: geometry.direct_distance_m,
+        waypoints: Vec::new(),
+    };
+    let ordinary_full_route_diagnostic = ordinary_full_route_diagnostic(
+        &request,
+        &profile,
+        &zero_waypoint_direct_route,
+        &route,
+        request.source_pad().expect("source").center_x_m,
+        geometry.horizontal_sign,
+    );
+    let ordinary_full_route_rejection = ordinary_full_route_diagnostic
+        .one_waypoint
+        .raw_rejection
+        .clone();
+    if !ordinary_full_route_diagnostic.ordinary_validation_compatible {
+        return Ok(invalid_adapter_evidence(
+            candidate,
+            certificate,
             capture_radius_m,
-            max_cross_track_m,
-            route: Some(route),
-            validation: Some(validation),
-            error: None,
-            capture_radius_derivation: "existing transfer policy: clamp(0.08 * direct route radius, 35m, 95m)".to_owned(),
-            authority_derivation: "pd_core::compute_waypoint_authority plus RoutePlanningPolicy::v1 speed bounds".to_owned(),
-            bridge_mapping_note: "The analytical powered bridge is not a controller command trace; this route is an empirical runtime-anchor adapter.".to_owned(),
-        }),
-        Err(error) => Ok(RouteAdapterEvidence {
-            source: "analytical_waypoint_candidate_v2".to_owned(),
-            analytical_waypoint_position_m: candidate.waypoint_position_m,
-            capture_radius_m,
-            max_cross_track_m,
-            route: None,
-            validation: None,
-            error: Some(format!(
-                "{error}; waypoint=({:.6},{:.6}), tangent=({:.6},{:.6}), capture_radius={capture_radius_m:.6}, max_cross_track={:.6}, authority_cap={max_speed_mps:.6}",
-                candidate.waypoint_position_m.x,
-                candidate.waypoint_position_m.y,
-                tangent.x,
-                tangent.y,
-                max_cross_track_m,
-            )),
-            capture_radius_derivation: "existing transfer policy: clamp(0.08 * direct route radius, 35m, 95m)".to_owned(),
-            authority_derivation: "pd_core::compute_waypoint_authority plus RoutePlanningPolicy::v1 speed bounds".to_owned(),
-            bridge_mapping_note: "The analytical powered bridge is not a controller command trace; this is an attempted runtime-anchor adapter, rejected before execution.".to_owned(),
-        }),
+            AdapterPartialEvidence {
+                actual_bridge_handoff: Some(actual_handoff),
+                route: Some(route),
+                waypoint_authority: Some(authority),
+                waypoint_handoff_kinematics: Some(kinematics_evidence),
+                waypoint_handoff_assessment: Some(assessment_evidence),
+                route_structural_validation: Some(structural_validation),
+                ordinary_full_route_rejection,
+                ordinary_full_route_diagnostic: Some(ordinary_full_route_diagnostic),
+            },
+            "ordinary full-route validation was neither jointly accepted nor an equal route-leg-1 source-taper rejection"
+                .to_owned(),
+        ));
     }
+    if !assessment.contract_pass() {
+        return Ok(invalid_adapter_evidence(
+            candidate,
+            certificate,
+            capture_radius_m,
+            AdapterPartialEvidence {
+                actual_bridge_handoff: Some(actual_handoff),
+                route: Some(route),
+                waypoint_authority: Some(authority),
+                waypoint_handoff_kinematics: Some(kinematics_evidence),
+                waypoint_handoff_assessment: Some(assessment_evidence),
+                route_structural_validation: Some(structural_validation),
+                ordinary_full_route_rejection,
+                ordinary_full_route_diagnostic: Some(ordinary_full_route_diagnostic),
+            },
+            "selected exact bridge state does not satisfy the canonical runtime waypoint handoff contract"
+                .to_owned(),
+        ));
+    }
+    Ok(RouteAdapterEvidence {
+        source: "selected_v2_intermediate_bridge_state".to_owned(),
+        analytical_waypoint_position_m: candidate.waypoint_position_m,
+        actual_bridge_handoff: Some(actual_handoff),
+        analytical_certificate: certificate,
+        capture_radius_m,
+        max_cross_track_m,
+        route: Some(route),
+        route_structural_validation: Some(structural_validation),
+        waypoint_authority: Some(authority),
+        waypoint_handoff_kinematics: Some(kinematics_evidence),
+        waypoint_handoff_assessment: Some(assessment_evidence),
+        composed_status: ComposedPreflightStatus::Supported,
+        composed_reason: "Selected V2 certificate remains valid; the runtime waypoint is an exact intermediate-bridge state with a passing canonical handoff contract. The source prefix remains analytical certificate evidence, while the ordinary full-pad validator rejection is recorded separately.".to_owned(),
+        ordinary_full_route_rejection,
+        ordinary_full_route_diagnostic: Some(ordinary_full_route_diagnostic),
+        error: None,
+        capture_radius_derivation:
+            "existing transfer policy: clamp(0.08 * direct route radius, 35m, 95m)".to_owned(),
+        authority_derivation:
+            "pd_core::compute_waypoint_authority plus RoutePlanningPolicy::v1 speed bounds"
+                .to_owned(),
+        bridge_mapping_note: "The virtual analytical anchor joins two ballistic legs but is not traversed. The composed preflight uses the first exact forward intermediate-bridge sample at that anchor's directed x crossing; the bridge itself is not replayed as a controller command trace.".to_owned(),
+    })
+}
+
+#[derive(Default)]
+struct AdapterPartialEvidence {
+    actual_bridge_handoff: Option<ActualBridgeHandoffEvidence>,
+    route: Option<TransferRouteSpec>,
+    waypoint_authority: Option<WaypointAuthorityDiagnostics>,
+    waypoint_handoff_kinematics: Option<WaypointHandoffKinematicsEvidence>,
+    waypoint_handoff_assessment: Option<WaypointHandoffAssessmentEvidence>,
+    route_structural_validation: Option<String>,
+    ordinary_full_route_rejection: Option<String>,
+    ordinary_full_route_diagnostic: Option<OrdinaryFullRouteDiagnosticEvidence>,
+}
+
+fn invalid_adapter_evidence(
+    candidate: &WaypointCandidateV2,
+    analytical_certificate: AnalyticalCertificateEvidence,
+    capture_radius_m: f64,
+    partial: AdapterPartialEvidence,
+    reason: String,
+) -> RouteAdapterEvidence {
+    RouteAdapterEvidence {
+        source: "selected_v2_intermediate_bridge_state".to_owned(),
+        analytical_waypoint_position_m: candidate.waypoint_position_m,
+        actual_bridge_handoff: partial.actual_bridge_handoff,
+        analytical_certificate,
+        capture_radius_m,
+        max_cross_track_m: capture_radius_m,
+        route: partial.route,
+        route_structural_validation: partial.route_structural_validation,
+        waypoint_authority: partial.waypoint_authority,
+        waypoint_handoff_kinematics: partial.waypoint_handoff_kinematics,
+        waypoint_handoff_assessment: partial.waypoint_handoff_assessment,
+        composed_status: ComposedPreflightStatus::Invalid,
+        composed_reason: reason.clone(),
+        ordinary_full_route_rejection: partial.ordinary_full_route_rejection,
+        ordinary_full_route_diagnostic: partial.ordinary_full_route_diagnostic,
+        error: Some(reason),
+        capture_radius_derivation:
+            "existing transfer policy: clamp(0.08 * direct route radius, 35m, 95m)".to_owned(),
+        authority_derivation:
+            "pd_core::compute_waypoint_authority plus RoutePlanningPolicy::v1 speed bounds"
+                .to_owned(),
+        bridge_mapping_note: "The virtual analytical anchor is not a powered-bridge sample. No controller lane runs when the composed analytical-to-runtime preflight is invalid.".to_owned(),
+    }
+}
+
+fn analytical_certificate_evidence(
+    candidate: &WaypointCandidateV2,
+    policy: &DirectBridgePolicyV2,
+) -> AnalyticalCertificateEvidence {
+    let source_bridge = candidate.source_bridge.as_ref();
+    let intermediate_bridge = candidate.intermediate_bridge.as_ref();
+    let terminal_bridge = candidate.terminal_bridge.as_ref();
+    let selected_candidate_certified = candidate.classification
+        == pd_plan::conservative_ballistic_bridge::CertificationV2::Certified;
+    let source_bridge_certified = source_bridge.is_some_and(|bridge| {
+        bridge.classification == pd_plan::conservative_ballistic_bridge::CertificationV2::Certified
+    });
+    let intermediate_bridge_certified = intermediate_bridge.is_some_and(|bridge| {
+        bridge.classification == pd_plan::conservative_ballistic_bridge::CertificationV2::Certified
+    });
+    let terminal_bridge_certified = terminal_bridge.is_some_and(|bridge| {
+        bridge.classification == pd_plan::conservative_ballistic_bridge::CertificationV2::Certified
+    });
+    let source_environment_passes = candidate
+        .source_environment
+        .as_ref()
+        .is_some_and(|environment| bridge_environment_passes(environment, policy));
+    let intermediate_environment_passes = candidate
+        .intermediate_environment
+        .as_ref()
+        .is_some_and(|environment| bridge_environment_passes(environment, policy));
+    let terminal_environment_passes = candidate
+        .terminal_environment
+        .as_ref()
+        .is_some_and(|environment| bridge_environment_passes(environment, policy));
+    let route_progress_passes = candidate.route_progress.as_ref().is_some_and(|progress| {
+        progress.passes && progress.segments.iter().all(|segment| segment.passes)
+    });
+    let component_margins_pass =
+        candidate.margins.minimum_normalized() + 1.0e-12 >= policy.declared_robustness_margin;
+    let certificate_passes = selected_candidate_certified
+        && source_bridge_certified
+        && intermediate_bridge_certified
+        && terminal_bridge_certified
+        && source_environment_passes
+        && intermediate_environment_passes
+        && terminal_environment_passes
+        && route_progress_passes
+        && component_margins_pass;
+    AnalyticalCertificateEvidence {
+        candidate_identity: candidate.identity.clone(),
+        selected_candidate_certified,
+        source_bridge_identity: source_bridge.map(|bridge| bridge.identity.clone()),
+        source_bridge_certified,
+        intermediate_bridge_identity: intermediate_bridge.map(|bridge| bridge.identity.clone()),
+        intermediate_bridge_certified,
+        terminal_bridge_identity: terminal_bridge.map(|bridge| bridge.identity.clone()),
+        terminal_bridge_certified,
+        source_environment_passes,
+        intermediate_environment_passes,
+        terminal_environment_passes,
+        route_progress_passes,
+        component_margins_pass,
+        certificate_passes,
+        candidate_margins: candidate.margins,
+        source_environment: candidate.source_environment.clone(),
+        intermediate_environment: candidate.intermediate_environment.clone(),
+        terminal_environment: candidate.terminal_environment.clone(),
+        route_progress: candidate.route_progress.clone(),
+    }
+}
+
+fn bridge_environment_passes(
+    environment: &BridgeEnvironmentEvidenceV2,
+    policy: &DirectBridgePolicyV2,
+) -> bool {
+    [
+        environment.clearance_margin,
+        environment.initial_attitude_margin,
+        environment.final_attitude_margin,
+        environment.final_angular_rate_margin,
+    ]
+    .into_iter()
+    .all(|margin| {
+        margin.raw >= 0.0 && margin.normalized + 1.0e-12 >= policy.declared_robustness_margin
+    })
+}
+
+fn select_actual_bridge_handoff(
+    candidate: &WaypointCandidateV2,
+    horizontal_sign: i8,
+) -> Result<ActualBridgeHandoffEvidence> {
+    let bridge = candidate
+        .intermediate_bridge
+        .as_ref()
+        .ok_or_else(|| anyhow!("selected candidate has no intermediate bridge"))?;
+    let intermediate_entry_handoff = candidate
+        .intermediate_entry_handoff
+        .ok_or_else(|| anyhow!("selected candidate has no intermediate entry handoff"))?;
+    let intermediate_exit_handoff = candidate
+        .intermediate_exit_handoff
+        .ok_or_else(|| anyhow!("selected candidate has no intermediate exit handoff"))?;
+    if bridge.start_state != intermediate_entry_handoff.state
+        || bridge.end_state != intermediate_exit_handoff.state
+    {
+        bail!("selected intermediate bridge does not exactly join its recorded handoff states");
+    }
+    if bridge.steps == 0 {
+        bail!("selected intermediate bridge has no applied-step crossing bracket");
+    }
+    let directed_offset = |state: KinematicStateV2| {
+        f64::from(horizontal_sign) * (state.position_m.x - candidate.waypoint_position_m.x)
+    };
+    let initial = bridge.state_at(0);
+    if directed_offset(initial) >= 0.0 {
+        bail!("selected intermediate bridge does not begin before the virtual anchor plane");
+    }
+    for selected_applied_steps in 1..=bridge.steps {
+        let previous_applied_steps = selected_applied_steps - 1;
+        let previous_state = bridge.state_at(previous_applied_steps);
+        let selected_state = bridge.state_at(selected_applied_steps);
+        let previous_directed_offset_m = directed_offset(previous_state);
+        let selected_directed_offset_m = directed_offset(selected_state);
+        if previous_directed_offset_m < 0.0 && selected_directed_offset_m >= 0.0 {
+            return Ok(ActualBridgeHandoffEvidence {
+                selection_rule: "first exact intermediate-bridge state whose directed x reaches or passes the virtual-anchor x; retain the preceding discrete state as the crossing bracket".to_owned(),
+                candidate_identity: candidate.identity.clone(),
+                intermediate_bridge_identity: bridge.identity.clone(),
+                virtual_anchor_m: candidate.waypoint_position_m,
+                intermediate_entry_handoff,
+                intermediate_exit_handoff,
+                intermediate_bridge_total_applied_steps: bridge.steps,
+                certified_prefix_end_applied_steps: selected_applied_steps,
+                certified_suffix_start_applied_steps: selected_applied_steps,
+                previous_applied_steps,
+                selected_applied_steps,
+                previous_state,
+                selected_state,
+                previous_directed_offset_m,
+                selected_directed_offset_m,
+                strict_directed_crossing: true,
+            });
+        }
+    }
+    bail!("selected intermediate bridge never reaches the virtual anchor's directed x")
+}
+
+fn unit_vector(vector: Vec2) -> Option<Vec2> {
+    let length = vector.length();
+    (length > f64::EPSILON).then_some(vector * (1.0 / length))
+}
+
+fn waypoint_handoff_kinematics(
+    request: &RoutePlanningRequest,
+    waypoint: &TransferWaypointSpec,
+    state: KinematicStateV2,
+) -> Result<WaypointHandoffKinematics> {
+    let source = request
+        .source_pad()
+        .ok_or_else(|| anyhow!("adapter source pad is unavailable"))?;
+    let target = request
+        .target_pad()
+        .ok_or_else(|| anyhow!("adapter target pad is unavailable"))?;
+    let anchor_m = Vec2::new(source.center_x_m, source.surface_y_m);
+    let next_target_m = Vec2::new(target.center_x_m, target.surface_y_m);
+    let leg_unit = unit_vector(waypoint.position_m - anchor_m)
+        .ok_or_else(|| anyhow!("adapter waypoint leg is degenerate"))?;
+    let handoff_tangent_unit = waypoint
+        .handoff_tangent_unit
+        .ok_or_else(|| anyhow!("adapter waypoint has no canonical handoff tangent"))?;
+    if unit_vector(next_target_m - waypoint.position_m).is_none() {
+        bail!("adapter waypoint outbound leg is degenerate");
+    }
+    let to_waypoint_m = state.position_m - waypoint.position_m;
+    let speed_mps = state.velocity_mps.length();
+    let velocity_unit = if speed_mps > 1.0e-9 {
+        state.velocity_mps * (1.0 / speed_mps)
+    } else {
+        Vec2::new(0.0, 0.0)
+    };
+    let dot = |lhs: Vec2, rhs: Vec2| lhs.x.mul_add(rhs.x, lhs.y * rhs.y);
+    let cross = |lhs: Vec2, rhs: Vec2| lhs.x.mul_add(rhs.y, -(lhs.y * rhs.x));
+    Ok(WaypointHandoffKinematics {
+        distance_m: to_waypoint_m.length(),
+        cross_track_m: cross(to_waypoint_m, leg_unit).abs(),
+        plane_progress_m: dot(to_waypoint_m, leg_unit),
+        outbound_heading_error_rad: if speed_mps > 1.0e-9 {
+            dot(velocity_unit, handoff_tangent_unit)
+                .clamp(-1.0, 1.0)
+                .acos()
+        } else {
+            std::f64::consts::PI
+        },
+        outbound_progress_mps: dot(state.velocity_mps, handoff_tangent_unit),
+        outbound_cross_speed_mps: cross(state.velocity_mps, handoff_tangent_unit).abs(),
+        speed_mps,
+        vertical_speed_mps: state.velocity_mps.y,
+    })
+}
+
+fn waypoint_handoff_assessment_evidence(
+    assessment: &pd_core::WaypointHandoffAssessment,
+) -> WaypointHandoffAssessmentEvidence {
+    WaypointHandoffAssessmentEvidence {
+        triggered: assessment.triggered,
+        capture_window_open: assessment.capture_window_open,
+        deadline_reached: assessment.deadline_reached,
+        spatial_pass: assessment.spatial_pass,
+        envelope_pass: assessment.envelope_pass,
+        contract_pass: assessment.contract_pass(),
+        violations: assessment
+            .violations
+            .iter()
+            .map(|violation| violation.as_str().to_owned())
+            .collect(),
+    }
+}
+
+fn ordinary_full_route_diagnostic(
+    request: &RoutePlanningRequest,
+    profile: &pd_core::SafetyProfile,
+    zero_waypoint_direct_route: &TransferRouteSpec,
+    one_waypoint_route: &TransferRouteSpec,
+    source_center_x_m: f64,
+    horizontal_sign: i8,
+) -> OrdinaryFullRouteDiagnosticEvidence {
+    let zero_waypoint_direct = ordinary_route_validation_evidence(
+        validate_route(request, zero_waypoint_direct_route),
+        source_center_x_m,
+        horizontal_sign,
+    );
+    let one_waypoint = ordinary_route_validation_evidence(
+        validate_route(request, one_waypoint_route),
+        source_center_x_m,
+        horizontal_sign,
+    );
+    let validation_results_equal = zero_waypoint_direct.raw_rejection == one_waypoint.raw_rejection;
+    let both_routes_validated_successfully =
+        zero_waypoint_direct.raw_rejection.is_none() && one_waypoint.raw_rejection.is_none();
+    let one_waypoint_route_leg_one_terrain_rejection =
+        one_waypoint.terrain_leg_index == Some(1) && one_waypoint.terrain_x_m.is_some();
+    let rejection_x_within_source_transition = one_waypoint
+        .terrain_directed_source_progress_m
+        .is_some_and(|progress_m| {
+            progress_m >= profile.source_transition_start_m
+                && progress_m <= profile.source_transition_end_m
+        });
+    let waypoint_invariant_source_taper = validation_results_equal
+        && one_waypoint_route_leg_one_terrain_rejection
+        && rejection_x_within_source_transition;
+    OrdinaryFullRouteDiagnosticEvidence {
+        source_center_x_m,
+        horizontal_sign,
+        source_transition_start_progress_m: profile.source_transition_start_m,
+        source_transition_end_progress_m: profile.source_transition_end_m,
+        zero_waypoint_direct,
+        one_waypoint,
+        validation_results_equal,
+        both_routes_validated_successfully,
+        one_waypoint_route_leg_one_terrain_rejection,
+        rejection_x_within_source_transition,
+        waypoint_invariant_source_taper,
+        ordinary_validation_compatible: both_routes_validated_successfully
+            || waypoint_invariant_source_taper,
+    }
+}
+
+fn ordinary_route_validation_evidence(
+    result: Result<pd_core::RouteValidation, pd_core::RouteValidationError>,
+    source_center_x_m: f64,
+    horizontal_sign: i8,
+) -> OrdinaryRouteValidationEvidence {
+    let raw_rejection = result.err().map(|error| error.to_string());
+    let (terrain_leg_index, terrain_x_m) = raw_rejection
+        .as_deref()
+        .and_then(parse_route_terrain_rejection)
+        .map_or((None, None), |(leg_index, x_m)| {
+            (Some(leg_index), Some(x_m))
+        });
+    OrdinaryRouteValidationEvidence {
+        raw_rejection,
+        terrain_leg_index,
+        terrain_x_m,
+        terrain_directed_source_progress_m: terrain_x_m
+            .map(|x_m| directed_source_progress_m(x_m, source_center_x_m, horizontal_sign)),
+    }
+}
+
+fn directed_source_progress_m(
+    terrain_x_m: f64,
+    source_center_x_m: f64,
+    horizontal_sign: i8,
+) -> f64 {
+    f64::from(horizontal_sign) * (terrain_x_m - source_center_x_m)
+}
+
+/// `RouteValidationError` currently carries the terrain location only in its
+/// stable display message. Keep this parser deliberately narrow so a changed
+/// core error is recorded as a non-invariant ordinary failure rather than
+/// silently accepted as source-taper evidence.
+fn parse_route_terrain_rejection(message: &str) -> Option<(usize, f64)> {
+    let message = message.strip_prefix("route leg ")?;
+    let (leg_index, x_m) = message.split_once(" intersects terrain at x=")?;
+    let leg_index = leg_index.parse::<usize>().ok()?;
+    let x_m = x_m.strip_suffix('m')?.parse::<f64>().ok()?;
+    Some((leg_index, x_m))
 }
 
 fn run_lane(
@@ -955,14 +1548,20 @@ fn run_lane(
     })
 }
 
-fn invalid_route_lane(scenario: &ScenarioSpec) -> ShadowLaneSummary {
+fn invalid_route_lane(
+    scenario: &ScenarioSpec,
+    route_adapter: &RouteAdapterEvidence,
+) -> ShadowLaneSummary {
     ShadowLaneSummary {
         id: "mesa-waypoint".to_owned(),
         terrain_kind: "mesa".to_owned(),
         controller_id: "transfer_waypoint_pdg_v1".to_owned(),
         scenario_id: scenario.id.clone(),
         class: ShadowLaneClass::RouteMappingInvalid,
-        causal_reason: "Analytical witness could not be mapped to a valid TransferRouteSpec under the frozen shared route contract; no controller run was executed.".to_owned(),
+        causal_reason: format!(
+            "Composed analytical-to-runtime preflight is {:?}: {}; no controller run was executed.",
+            route_adapter.composed_status, route_adapter.composed_reason
+        ),
         end_reason: None,
         physical_outcome: None,
         mission_outcome: None,
@@ -1303,10 +1902,11 @@ mod tests {
         assert_eq!(shadow.lanes[0].id, "flat-direct");
         assert_eq!(shadow.lanes[1].id, "mesa-direct");
         assert_eq!(shadow.lanes[2].id, "mesa-waypoint");
-        assert!(
-            shadow.route_adapter.error.is_some(),
-            "adapter unexpectedly passed"
+        assert_eq!(
+            shadow.route_adapter.composed_status,
+            ComposedPreflightStatus::Supported
         );
+        assert!(shadow.route_adapter.error.is_none());
         assert_eq!(
             shadow.route_adapter.capture_radius_m,
             shadow.route_adapter.max_cross_track_m
@@ -1387,27 +1987,166 @@ mod tests {
                 .touchdown_clearance_error_m
                 .is_some_and(|error| error <= CONTACT_RECONSTRUCTION_TOLERANCE_M)
         );
-        assert_eq!(shadow.lanes[2].class, ShadowLaneClass::RouteMappingInvalid);
-        assert!(shadow.lanes[2].end_reason.is_none());
-        assert!(shadow.lanes[2].physical_outcome.is_none());
-        assert!(shadow.lanes[2].mission_outcome.is_none());
-        assert!(shadow.lanes[2].sim_time_s.is_none());
-        assert!(shadow.lanes[2].physics_steps.is_none());
-        assert!(shadow.lanes[2].min_hull_clearance_m.is_none());
-        assert!(shadow.lanes[2].run.is_none());
-        assert!(shadow.lanes[2].terrain_contact.contact_point_m.is_none());
+        let waypoint_lane = &shadow.lanes[2];
+        assert_eq!(waypoint_lane.class, ShadowLaneClass::TargetLanding);
+        assert_eq!(waypoint_lane.end_reason, Some(EndReason::TouchdownOnTarget));
         assert!(
-            shadow.lanes[2]
-                .terrain_contact
-                .reconstruction_valid
-                .is_none()
+            waypoint_lane
+                .waypoint_contract
+                .as_ref()
+                .is_some_and(|contract| contract.contract_pass)
         );
+        assert_eq!(
+            waypoint_lane.preflight.first_phase.as_deref(),
+            Some("takeoff")
+        );
+        assert_eq!(
+            waypoint_lane.preflight.first_controller_update_physics_step,
+            Some(0)
+        );
+        assert_eq!(waypoint_lane.preflight.survived_source_launch, Some(true));
         let candidate = report
             .evaluation
             .ridge_canary
             .waypoint_search
             .selected_candidate
             .expect("selected waypoint candidate");
+        let adapter = &shadow.route_adapter;
+        assert!(adapter.analytical_certificate.certificate_passes);
+        assert_eq!(
+            adapter.analytical_certificate.candidate_margins,
+            candidate.margins
+        );
+        assert_eq!(
+            adapter.analytical_certificate.source_environment,
+            candidate.source_environment
+        );
+        assert_eq!(
+            adapter.analytical_certificate.intermediate_environment,
+            candidate.intermediate_environment
+        );
+        assert_eq!(
+            adapter.analytical_certificate.terminal_environment,
+            candidate.terminal_environment
+        );
+        assert_eq!(
+            adapter.analytical_certificate.route_progress,
+            candidate.route_progress
+        );
+        assert!(
+            adapter
+                .ordinary_full_route_rejection
+                .as_deref()
+                .is_some_and(|error| error.starts_with("route leg 1 intersects terrain at x="))
+        );
+        let ordinary = adapter
+            .ordinary_full_route_diagnostic
+            .as_ref()
+            .expect("ordinary full-route diagnostic");
+        assert_eq!(ordinary.source_center_x_m, 18.0);
+        assert_eq!(ordinary.horizontal_sign, 1);
+        assert_eq!(ordinary.source_transition_start_progress_m, 22.0);
+        assert_eq!(ordinary.source_transition_end_progress_m, 118.0);
+        assert_eq!(
+            ordinary.zero_waypoint_direct.raw_rejection,
+            ordinary.one_waypoint.raw_rejection
+        );
+        assert_eq!(ordinary.one_waypoint.terrain_leg_index, Some(1));
+        assert!(
+            ordinary
+                .one_waypoint
+                .terrain_x_m
+                .zip(ordinary.one_waypoint.terrain_directed_source_progress_m)
+                .is_some_and(|(world_x_m, progress_m)| {
+                    assert_eq!(
+                        progress_m,
+                        directed_source_progress_m(
+                            world_x_m,
+                            ordinary.source_center_x_m,
+                            ordinary.horizontal_sign,
+                        )
+                    );
+                    progress_m >= ordinary.source_transition_start_progress_m
+                        && progress_m <= ordinary.source_transition_end_progress_m
+                })
+        );
+        assert!(ordinary.validation_results_equal);
+        assert!(ordinary.one_waypoint_route_leg_one_terrain_rejection);
+        assert!(ordinary.rejection_x_within_source_transition);
+        assert!(ordinary.waypoint_invariant_source_taper);
+        assert!(ordinary.ordinary_validation_compatible);
+        assert!(adapter.route_structural_validation.is_some());
+        assert!(adapter.waypoint_authority.is_some());
+        let kinematics = adapter
+            .waypoint_handoff_kinematics
+            .expect("selected actual handoff kinematics");
+        assert!(kinematics.distance_m.abs() <= 1.0e-12);
+        assert!(kinematics.cross_track_m.abs() <= 1.0e-12);
+        assert!(kinematics.plane_progress_m.abs() <= 1.0e-12);
+        assert!(
+            adapter
+                .waypoint_handoff_assessment
+                .as_ref()
+                .is_some_and(|assessment| assessment.contract_pass)
+        );
+        let actual_handoff = adapter
+            .actual_bridge_handoff
+            .as_ref()
+            .expect("selected actual bridge handoff");
+        let intermediate_bridge = candidate
+            .intermediate_bridge
+            .as_ref()
+            .expect("selected intermediate bridge");
+        assert_eq!(actual_handoff.candidate_identity, candidate.identity);
+        assert_eq!(
+            actual_handoff.intermediate_bridge_identity,
+            intermediate_bridge.identity
+        );
+        assert_eq!(
+            actual_handoff.selected_state,
+            intermediate_bridge.state_at(actual_handoff.selected_applied_steps)
+        );
+        assert_eq!(
+            actual_handoff.previous_state,
+            intermediate_bridge.state_at(actual_handoff.previous_applied_steps)
+        );
+        assert_eq!(
+            actual_handoff.selected_applied_steps,
+            actual_handoff.previous_applied_steps + 1
+        );
+        assert_eq!(
+            actual_handoff.certified_prefix_end_applied_steps,
+            actual_handoff.selected_applied_steps
+        );
+        assert_eq!(
+            actual_handoff.certified_suffix_start_applied_steps,
+            actual_handoff.selected_applied_steps
+        );
+        assert_eq!(
+            actual_handoff.intermediate_bridge_total_applied_steps,
+            intermediate_bridge.steps
+        );
+        assert!(actual_handoff.strict_directed_crossing);
+        assert!(actual_handoff.previous_directed_offset_m < 0.0);
+        assert!(actual_handoff.selected_directed_offset_m >= 0.0);
+        assert_ne!(
+            actual_handoff.selected_state.position_m, candidate.waypoint_position_m,
+            "the virtual anchor must never be substituted for a bridge sample"
+        );
+        assert_eq!(
+            adapter
+                .route
+                .as_ref()
+                .expect("composed runtime route")
+                .waypoints[0]
+                .position_m,
+            actual_handoff.selected_state.position_m
+        );
+        assert_eq!(
+            waypoint_lane.preflight.route.as_ref(),
+            adapter.route.as_ref(),
+            "the conditional controller lane must consume the preflight route unchanged"
+        );
         assert!(shadow.analytical_overlay.nominal_direct.points_m.len() > 2);
         assert!(
             shadow
@@ -1480,6 +2219,90 @@ mod tests {
     }
 
     #[test]
+    fn actual_bridge_handoff_requires_the_first_exact_directed_crossing() {
+        let report = build_report_artifact_v2();
+        let candidate = report
+            .evaluation
+            .ridge_canary
+            .waypoint_search
+            .selected_candidate
+            .expect("selected waypoint candidate");
+        let selected = select_actual_bridge_handoff(&candidate, 1).expect("exact crossing");
+        assert_eq!(
+            selected.previous_applied_steps + 1,
+            selected.selected_applied_steps
+        );
+        assert!(selected.previous_directed_offset_m < 0.0);
+        assert!(selected.selected_directed_offset_m >= 0.0);
+        let bridge = candidate
+            .intermediate_bridge
+            .as_ref()
+            .expect("intermediate bridge");
+        let bridge_end_x_m = bridge.end_state.position_m.x;
+        assert!(
+            (0..selected.previous_applied_steps).all(|step| {
+                bridge.state_at(step).position_m.x < candidate.waypoint_position_m.x
+            }),
+            "selection must be the first discrete state to reach the virtual-anchor plane"
+        );
+        let mut outside_bridge = candidate;
+        outside_bridge.waypoint_position_m.x = bridge_end_x_m + 1.0;
+        assert!(select_actual_bridge_handoff(&outside_bridge, 1).is_err());
+    }
+
+    #[test]
+    fn ordinary_source_taper_rejection_is_waypoint_invariant() {
+        let diagnostic = shadow()
+            .route_adapter
+            .ordinary_full_route_diagnostic
+            .as_ref()
+            .expect("ordinary full-route diagnostic");
+        assert_eq!(diagnostic.source_transition_start_progress_m, 22.0);
+        assert_eq!(diagnostic.source_transition_end_progress_m, 118.0);
+        assert_eq!(diagnostic.source_center_x_m, 18.0);
+        assert_eq!(diagnostic.horizontal_sign, 1);
+        assert_eq!(
+            diagnostic.zero_waypoint_direct.raw_rejection,
+            diagnostic.one_waypoint.raw_rejection
+        );
+        assert_eq!(diagnostic.zero_waypoint_direct.terrain_leg_index, Some(1));
+        assert_eq!(diagnostic.one_waypoint.terrain_leg_index, Some(1));
+        assert_eq!(
+            diagnostic.zero_waypoint_direct.terrain_x_m,
+            diagnostic.one_waypoint.terrain_x_m
+        );
+        assert_eq!(
+            diagnostic
+                .zero_waypoint_direct
+                .terrain_directed_source_progress_m,
+            diagnostic.one_waypoint.terrain_directed_source_progress_m
+        );
+        assert!(
+            diagnostic
+                .one_waypoint
+                .terrain_x_m
+                .zip(diagnostic.one_waypoint.terrain_directed_source_progress_m)
+                .is_some_and(|(world_x_m, progress_m)| {
+                    assert_eq!(
+                        progress_m,
+                        world_x_m - diagnostic.source_center_x_m,
+                        "the frozen fixture has positive direction"
+                    );
+                    progress_m >= diagnostic.source_transition_start_progress_m
+                        && progress_m <= diagnostic.source_transition_end_progress_m
+                })
+        );
+        assert!(diagnostic.waypoint_invariant_source_taper);
+        assert!(diagnostic.ordinary_validation_compatible);
+    }
+
+    #[test]
+    fn directed_source_progress_respects_route_direction() {
+        assert_eq!(directed_source_progress_m(105.596_875, 18.0, 1), 87.596_875);
+        assert_eq!(directed_source_progress_m(82.0, 100.0, -1), 18.0);
+    }
+
+    #[test]
     fn shadow_repeat_excludes_compute_timing_from_semantics() {
         let report = build_report_artifact_v2();
         let first = execute_shadow(&report).expect("first shadow");
@@ -1494,7 +2317,7 @@ mod tests {
             semantic_digest(&first).unwrap(),
             semantic_digest(&changed_lane).unwrap()
         );
-        let mut changed_adapter = second;
+        let mut changed_adapter = second.clone();
         changed_adapter
             .route_adapter
             .bridge_mapping_note
@@ -1502,6 +2325,28 @@ mod tests {
         assert_ne!(
             semantic_digest(&first).unwrap(),
             semantic_digest(&changed_adapter).unwrap()
+        );
+        let mut changed_crossing = second;
+        changed_crossing
+            .route_adapter
+            .actual_bridge_handoff
+            .as_mut()
+            .expect("actual handoff")
+            .selected_applied_steps += 1;
+        assert_ne!(
+            semantic_digest(&first).unwrap(),
+            semantic_digest(&changed_crossing).unwrap()
+        );
+        let mut changed_taper = first.clone();
+        changed_taper
+            .route_adapter
+            .ordinary_full_route_diagnostic
+            .as_mut()
+            .expect("ordinary diagnostic")
+            .waypoint_invariant_source_taper = false;
+        assert_ne!(
+            semantic_digest(&first).unwrap(),
+            semantic_digest(&changed_taper).unwrap()
         );
     }
 
@@ -1519,9 +2364,37 @@ mod tests {
         let loaded = load_controller_shadow(&summary).unwrap();
         assert_eq!(loaded.semantic_identity, report.semantic_identity);
         assert_eq!(semantic_digest(&loaded).unwrap(), report.semantic_identity);
-        let mut tampered = report;
+        let mut tampered = report.clone();
         tampered.lanes[0].class = ShadowLaneClass::Inconclusive;
         fs::write(&summary, serde_json::to_vec_pretty(&tampered).unwrap()).unwrap();
+        assert!(load_controller_shadow(&summary).is_err());
+        let mut tampered_handoff = report.clone();
+        tampered_handoff
+            .route_adapter
+            .actual_bridge_handoff
+            .as_mut()
+            .expect("actual handoff")
+            .selected_state
+            .position_m
+            .x += 1.0;
+        fs::write(
+            &summary,
+            serde_json::to_vec_pretty(&tampered_handoff).unwrap(),
+        )
+        .unwrap();
+        assert!(load_controller_shadow(&summary).is_err());
+        let mut tampered_taper = report;
+        tampered_taper
+            .route_adapter
+            .ordinary_full_route_diagnostic
+            .as_mut()
+            .expect("ordinary diagnostic")
+            .rejection_x_within_source_transition = false;
+        fs::write(
+            &summary,
+            serde_json::to_vec_pretty(&tampered_taper).unwrap(),
+        )
+        .unwrap();
         assert!(load_controller_shadow(&summary).is_err());
     }
 }

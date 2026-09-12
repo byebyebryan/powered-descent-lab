@@ -40,10 +40,10 @@ pub fn write_controller_shadow_report(path: &Path, data: &Value) -> Result<()> {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ridge canary controller shadow</title><style>{CSS}</style></head><body><main>
 <header><div class="eyebrow">powered descent lab · full controller shadow</div><h1>Ridge canary: observed controller lanes</h1>
-<p class="lede"><strong>Three frozen lanes</strong> at 120 Hz physics / 60 Hz controller. Dashed paths are canonical analytical context; solid paths and markers are simulator observations.</p></header>
+<p class="lede"><strong>Three frozen lanes</strong> at 120 Hz physics / 60 Hz controller. Dashed paths are canonical analytical context; solid paths and markers are simulator observations. The virtual analytical anchor is shown separately from the exact intermediate-bridge state used by the composed evaluator preflight.</p></header>
 <section class="panel"><h2>Lane comparison</h2><table><thead><tr><th>Lane</th><th>Classification</th><th>End reason</th><th>Causal evidence</th><th>Terrain contact evidence</th></tr></thead><tbody>{rows}</tbody></table></section>
-<section class="panel"><h2>Trajectory overlay</h2><p class="muted">Gray is the derived mesa terrain. Dashed gold/cyan/magenta paths are the selected nominal direct and waypoint-leg analytical witnesses. Solid blue/red/green paths are simulated lanes; circles mark simulation start and final/crash samples. The analytical bridge is not replayed as a command trace.</p>{svg}</section>
-<section class="panel"><h2>Provenance and route adapter</h2><dl class="facts"><dt>Analytical report identity</dt><dd>{report}</dd><dt>Analytical canary identity</dt><dd>{canary}</dd><dt>Mesa identity</dt><dd>{mesa}</dd><dt>Waypoint candidate identity</dt><dd>{waypoint}</dd><dt>Controller direct route</dt><dd>{direct_route}</dd><dt>Adapter status</dt><dd>{adapter}</dd><dt>Mapping</dt><dd>{mapping}</dd></dl></section>
+<section class="panel"><h2>Trajectory overlay</h2><p class="muted">Gray is the derived mesa terrain. Dashed gold/cyan/magenta paths are analytical certificate context. The gold point is the virtual ballistic-leg junction and is not a powered-bridge sample; the orange point is the selected exact intermediate-bridge handoff. Solid blue/red/green paths are simulated lanes; circles mark simulation start and final/crash samples. The analytical bridge is not replayed as a command trace.</p>{svg}</section>
+<section class="panel"><h2>Provenance and composed adapter</h2><dl class="facts"><dt>Analytical report identity</dt><dd>{report}</dd><dt>Analytical canary identity</dt><dd>{canary}</dd><dt>Mesa identity</dt><dd>{mesa}</dd><dt>Waypoint candidate identity</dt><dd>{waypoint}</dd><dt>Controller direct route</dt><dd>{direct_route}</dd><dt>Composed preflight</dt><dd>{adapter}</dd><dt>Selected actual handoff</dt><dd>{actual_handoff}</dd><dt>Ordinary full-route diagnostic</dt><dd>{ordinary_rejection}</dd><dt>Mapping</dt><dd>{mapping}</dd></dl></section>
 <script type="application/json" id="controller-shadow-data">{data}</script></main></body></html>"#,
         CSS = CSS,
         rows = rows,
@@ -53,17 +53,9 @@ pub fn write_controller_shadow_report(path: &Path, data: &Value) -> Result<()> {
         mesa = escape(&text(data, "mesa_identity")),
         waypoint = escape(&text(data, "waypoint_candidate_identity")),
         direct_route = escape(&direct_route_summary(data)),
-        adapter = escape(
-            &data
-                .get("route_adapter")
-                .map(|adapter| {
-                    adapter
-                        .get("error")
-                        .and_then(Value::as_str)
-                        .map_or_else(|| "valid".to_owned(), |error| format!("invalid: {error}"))
-                })
-                .unwrap_or_else(|| "unknown".to_owned()),
-        ),
+        adapter = escape(&composed_preflight_summary(data)),
+        actual_handoff = escape(&actual_handoff_summary(data)),
+        ordinary_rejection = escape(&ordinary_full_route_summary(data)),
         mapping = escape(
             &data
                 .get("route_adapter")
@@ -113,6 +105,88 @@ fn direct_route_summary(data: &Value) -> String {
         .unwrap_or("structural validation unavailable");
     format!(
         "{source} -> {target}; angle={angle}; radius={radius}; waypoints={waypoints}; {validation}"
+    )
+}
+
+fn composed_preflight_summary(data: &Value) -> String {
+    let Some(adapter) = data.get("route_adapter") else {
+        return "unavailable".to_owned();
+    };
+    let status = text(adapter, "composed_status");
+    let reason = text(adapter, "composed_reason");
+    let structural = text(adapter, "route_structural_validation");
+    format!("{status}; {reason}; structural route: {structural}")
+}
+
+fn actual_handoff_summary(data: &Value) -> String {
+    let Some(handoff) = data
+        .get("route_adapter")
+        .and_then(|adapter| adapter.get("actual_bridge_handoff"))
+    else {
+        return "unavailable".to_owned();
+    };
+    let state = handoff.get("selected_state");
+    let position = state.and_then(|state| state.get("position_m"));
+    let velocity = state.and_then(|state| state.get("velocity_mps"));
+    let step = text(handoff, "selected_applied_steps");
+    let previous_step = text(handoff, "previous_applied_steps");
+    let total_steps = text(handoff, "intermediate_bridge_total_applied_steps");
+    let prefix_end = text(handoff, "certified_prefix_end_applied_steps");
+    let suffix_start = text(handoff, "certified_suffix_start_applied_steps");
+    let previous_offset = number_text(handoff, "previous_directed_offset_m");
+    let selected_offset = number_text(handoff, "selected_directed_offset_m");
+    format!(
+        "bridge steps {previous_step}->{step}; certified intermediate split 0..{prefix_end} + {suffix_start}..{total_steps}; position={}; velocity={}; directed anchor offsets {previous_offset}->{selected_offset}; exact discrete crossing={}",
+        point_text(position),
+        point_text(velocity),
+        text(handoff, "strict_directed_crossing"),
+    )
+}
+
+fn ordinary_full_route_summary(data: &Value) -> String {
+    let Some(diagnostic) = data
+        .get("route_adapter")
+        .and_then(|adapter| adapter.get("ordinary_full_route_diagnostic"))
+    else {
+        return data
+            .get("route_adapter")
+            .and_then(|adapter| adapter.get("ordinary_full_route_rejection"))
+            .and_then(Value::as_str)
+            .map_or_else(
+                || "no ordinary full-route diagnostic was recorded".to_owned(),
+                |error| format!("ordinary full-route rejection: {error}"),
+            );
+    };
+    let direct = diagnostic
+        .get("zero_waypoint_direct")
+        .and_then(|result| result.get("raw_rejection"))
+        .and_then(Value::as_str)
+        .unwrap_or("accepted");
+    let missing_result = Value::Null;
+    let direct_result = diagnostic
+        .get("zero_waypoint_direct")
+        .unwrap_or(&missing_result);
+    let waypoint = diagnostic
+        .get("one_waypoint")
+        .and_then(|result| result.get("raw_rejection"))
+        .and_then(Value::as_str)
+        .unwrap_or("accepted");
+    let waypoint_result = diagnostic.get("one_waypoint").unwrap_or(&missing_result);
+    let source_center_x_m = number_text(diagnostic, "source_center_x_m");
+    let horizontal_sign = text(diagnostic, "horizontal_sign");
+    let start = number_text(diagnostic, "source_transition_start_progress_m");
+    let end = number_text(diagnostic, "source_transition_end_progress_m");
+    format!(
+        "source center world x={source_center_x_m}m; horizontal sign={horizontal_sign}; source transition directed progress=[{start},{end}]m; zero-waypoint ordinary result: {direct}; zero-waypoint terrain world x={}m, directed source progress={}m; one-waypoint ordinary result: {waypoint}; one-waypoint terrain world x={}m, directed source progress={}m; equal={}; route-leg-1 terrain rejection={}; rejection directed progress in transition={}; waypoint_invariant_source_taper={}; compatible={}",
+        number_text(direct_result, "terrain_x_m"),
+        number_text(direct_result, "terrain_directed_source_progress_m"),
+        number_text(waypoint_result, "terrain_x_m"),
+        number_text(waypoint_result, "terrain_directed_source_progress_m"),
+        text(diagnostic, "validation_results_equal"),
+        text(diagnostic, "one_waypoint_route_leg_one_terrain_rejection"),
+        text(diagnostic, "rejection_x_within_source_transition"),
+        text(diagnostic, "waypoint_invariant_source_taper"),
+        text(diagnostic, "ordinary_validation_compatible"),
     )
 }
 
@@ -335,11 +409,30 @@ fn build_svg(data: &Value) -> String {
     {
         let _ = write!(
             svg,
-            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"5\" fill=\"#ffc857\"/><text x=\"{:.2}\" y=\"{:.2}\" fill=\"#ffc857\" font-family=\"sans-serif\" font-size=\"12\">analytical anchor</text>",
+            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"5\" fill=\"#ffc857\"/><text x=\"{:.2}\" y=\"{:.2}\" fill=\"#ffc857\" font-family=\"sans-serif\" font-size=\"12\" text-anchor=\"end\">virtual anchor</text>",
             sx(x),
             sy(y),
-            sx(x) + 8.0,
+            sx(x) - 8.0,
             sy(y) - 8.0
+        );
+    }
+    if let Some(point) = data
+        .get("route_adapter")
+        .and_then(|adapter| adapter.get("actual_bridge_handoff"))
+        .and_then(|handoff| handoff.get("selected_state"))
+        .and_then(|state| state.get("position_m"))
+        && let (Some(x), Some(y)) = (
+            point.get("x").and_then(Value::as_f64),
+            point.get("y").and_then(Value::as_f64),
+        )
+    {
+        let _ = write!(
+            svg,
+            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"6\" fill=\"#f4a261\" stroke=\"#10151d\" stroke-width=\"2\"/><text x=\"{:.2}\" y=\"{:.2}\" fill=\"#f4a261\" font-family=\"sans-serif\" font-size=\"12\" text-anchor=\"end\">actual handoff</text>",
+            sx(x),
+            sy(y),
+            sx(x) - 8.0,
+            sy(y) + 15.0
         );
     }
     let legend = [
@@ -350,6 +443,8 @@ fn build_svg(data: &Value) -> String {
         ("#8ca6ff", "9 6", "analytical waypoint intermediate bridge"),
         ("#d291ff", "9 6", "analytical waypoint target leg"),
         ("#e27dff", "9 6", "analytical waypoint terminal bridge"),
+        ("#ffc857", "", "virtual analytical anchor (not traversed)"),
+        ("#f4a261", "", "selected actual bridge handoff"),
         ("#4ea1ff", "", "sim flat direct"),
         ("#ef6262", "", "sim mesa direct"),
         ("#5ed39b", "", "sim mesa waypoint (if mapped)"),
@@ -357,7 +452,7 @@ fn build_svg(data: &Value) -> String {
     ];
     let _ = write!(
         svg,
-        "<rect x=\"744\" y=\"64\" width=\"350\" height=\"256\" rx=\"6\" fill=\"#10151d\" fill-opacity=\"0.88\"/>"
+        "<rect x=\"704\" y=\"64\" width=\"390\" height=\"290\" rx=\"6\" fill=\"#10151d\" fill-opacity=\"0.88\"/>"
     );
     for (index, (color, dash, label)) in legend.into_iter().enumerate() {
         let x = 760.0;
@@ -377,7 +472,7 @@ fn build_svg(data: &Value) -> String {
     }
     let _ = write!(
         svg,
-        "<circle cx=\"760\" cy=\"270\" r=\"5\" fill=\"#d6e0ea\"/><text x=\"770\" y=\"274\" fill=\"#d6e0ea\" font-family=\"sans-serif\" font-size=\"11\">sim start sample</text><circle cx=\"760\" cy=\"287\" r=\"8\" fill=\"none\" stroke=\"#d6e0ea\" stroke-width=\"2\"/><text x=\"775\" y=\"291\" fill=\"#d6e0ea\" font-family=\"sans-serif\" font-size=\"11\">sim final / crash sample</text>"
+        "<circle cx=\"720\" cy=\"304\" r=\"5\" fill=\"#d6e0ea\"/><text x=\"730\" y=\"308\" fill=\"#d6e0ea\" font-family=\"sans-serif\" font-size=\"11\">sim start sample</text><circle cx=\"720\" cy=\"321\" r=\"8\" fill=\"none\" stroke=\"#d6e0ea\" stroke-width=\"2\"/><text x=\"735\" y=\"325\" fill=\"#d6e0ea\" font-family=\"sans-serif\" font-size=\"11\">sim final / crash sample</text>"
     );
     svg.push_str("</svg>");
     svg
@@ -456,6 +551,24 @@ fn bounds(data: &Value) -> (f64, f64, f64, f64) {
                     points.push((x, y));
                 }
             }
+        }
+    }
+    for point in [
+        data.get("route_adapter")
+            .and_then(|adapter| adapter.get("analytical_waypoint_position_m")),
+        data.get("route_adapter")
+            .and_then(|adapter| adapter.get("actual_bridge_handoff"))
+            .and_then(|handoff| handoff.get("selected_state"))
+            .and_then(|state| state.get("position_m")),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let (Some(x), Some(y)) = (
+            point.get("x").and_then(Value::as_f64),
+            point.get("y").and_then(Value::as_f64),
+        ) {
+            points.push((x, y));
         }
     }
     let (mut min_x, mut max_x, mut min_y, mut max_y) = points.iter().fold(
@@ -552,6 +665,48 @@ mod tests {
             },
             "route_adapter": {
                 "analytical_waypoint_position_m": {"x": 50.0, "y": 40.0},
+                "actual_bridge_handoff": {
+                    "previous_applied_steps": 8,
+                    "selected_applied_steps": 9,
+                    "intermediate_bridge_total_applied_steps": 20,
+                    "certified_prefix_end_applied_steps": 9,
+                    "certified_suffix_start_applied_steps": 9,
+                    "previous_directed_offset_m": -0.2,
+                    "selected_directed_offset_m": 0.1,
+                    "strict_directed_crossing": true,
+                    "selected_state": {
+                        "position_m": {"x": 50.1, "y": 45.0},
+                        "velocity_mps": {"x": 8.0, "y": 0.5}
+                    }
+                },
+                "composed_status": "supported",
+                "composed_reason": "exact bridge state passes the handoff contract",
+                "route_structural_validation": "TransferRouteSpec::validate passed",
+                "ordinary_full_route_rejection": "route leg 1 intersects terrain at x=10m",
+                "ordinary_full_route_diagnostic": {
+                    "source_center_x_m": 2.0,
+                    "horizontal_sign": 1,
+                    "source_transition_start_progress_m": 5.0,
+                    "source_transition_end_progress_m": 15.0,
+                    "zero_waypoint_direct": {
+                        "raw_rejection": "route leg 1 intersects terrain at x=10m",
+                        "terrain_leg_index": 1,
+                        "terrain_x_m": 10.0,
+                        "terrain_directed_source_progress_m": 8.0
+                    },
+                    "one_waypoint": {
+                        "raw_rejection": "route leg 1 intersects terrain at x=10m",
+                        "terrain_leg_index": 1,
+                        "terrain_x_m": 10.0,
+                        "terrain_directed_source_progress_m": 8.0
+                    },
+                    "validation_results_equal": true,
+                    "both_routes_validated_successfully": false,
+                    "one_waypoint_route_leg_one_terrain_rejection": true,
+                    "rejection_x_within_source_transition": true,
+                    "waypoint_invariant_source_taper": true,
+                    "ordinary_validation_compatible": true
+                },
                 "bridge_mapping_note": "not replayed"
             }
         });
@@ -566,6 +721,16 @@ mod tests {
         assert!(html_contents.contains("waypoints=0; validated"));
         assert!(html_contents.contains("contact point=(20.000000,3.000000)"));
         assert!(html_contents.contains("contact terrain=4.200000; residual=-1.200000"));
+        assert!(html_contents.contains("Composed preflight"));
+        assert!(html_contents.contains("Selected actual handoff"));
+        assert!(
+            html_contents.contains("source transition directed progress=[5.000000,15.000000]m")
+        );
+        assert!(
+            html_contents
+                .contains("terrain world x=10.000000m, directed source progress=8.000000m")
+        );
+        assert!(html_contents.contains("waypoint_invariant_source_taper=true"));
         let svg_contents = fs::read_to_string(svg).unwrap();
         assert!(svg_contents.contains("<svg"));
         assert!(svg_contents.contains("stroke-dasharray=\"9 6\""));
@@ -573,7 +738,10 @@ mod tests {
         assert!(svg_contents.contains("analytical waypoint source bridge"));
         assert!(svg_contents.contains("analytical waypoint intermediate bridge"));
         assert!(svg_contents.contains("analytical waypoint terminal bridge"));
-        assert!(svg_contents.contains("analytical anchor"));
+        assert!(svg_contents.contains("virtual analytical anchor (not traversed)"));
+        assert!(svg_contents.contains("selected actual bridge handoff"));
+        assert!(svg_contents.contains("text-anchor=\"end\">virtual anchor</text>"));
+        assert!(svg_contents.contains("text-anchor=\"end\">actual handoff</text>"));
         assert!(svg_contents.contains("sim start sample"));
         assert!(svg_contents.contains("sim final / crash sample"));
         assert!(svg_contents.contains("contact: hull vertex"));
