@@ -104,9 +104,12 @@ Current implementation status:
     contract and lands. An evaluator-scoped composed preflight selects an exact
     traversed intermediate-bridge state rather than the virtual ballistic
     anchor, while retaining the ordinary validator's identical zero-/one-
-    waypoint source-taper rejection as a separate diagnostic. Next, extract
-    this finite construction behind a small private planner-facing candidate
-    API; production wiring and mission-matrix expansion remain later;
+    waypoint source-taper rejection as a separate diagnostic. The subsequent
+    feature-gated experimental candidate API now preserves this finite policy,
+    exact crossing, deterministic ordering, and fail-closed reasons in
+    `pd-plan`; the evaluator consumes it without report-shape coupling. The next
+    gate is whether a materially different topology is needed before held-out
+    integration design; production wiring remains later;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -707,8 +710,10 @@ implementing a predictor. The remaining evidence-first sequence is:
    one-waypoint-green analytical certificate. Its corrected full-controller
    shadow validates flat-direct-green, mesa-direct-red, and mesa-waypoint-green
    through an evaluator-scoped composed preflight over an exact powered-bridge
-   state. Its next slice is the private planner-facing candidate API, not
-   production planner wiring;
+   state. A feature-gated experimental `pd-plan` candidate projection now
+   exposes the frozen direct/one-waypoint/unsupported decision and exact
+   crossing without changing production planner wiring. The next slice is the
+   separate topology/held-out-gate design decision;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -745,9 +750,12 @@ validates the complete scoped gameplay distinction: the flat twin lands, the
 mesa direct twin crashes on the derived wall, and the mesa waypoint twin passes
 its runtime handoff contract and lands. The composed evaluator preflight uses
 an exact traversed intermediate-bridge state and preserves the ordinary full-
-route source-taper rejection as a separate diagnostic. This makes a private
-planner-facing candidate extraction the next bounded checkpoint without yet
-authorizing production planner wiring.
+route source-taper rejection as a separate diagnostic. The feature-gated
+experimental planner-owned projection now completes that extraction, preserves
+the scoped nominal policy and candidate identities, and leaves runtime route
+and controller semantics downstream. The next bounded checkpoint is deciding
+whether a materially different topology is needed before defining a held-out
+integration gate; production planner wiring is still unauthorized.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical

@@ -353,26 +353,32 @@ report lives under
 
 ## Plan from here
 
-The V2 analytical contract, composed evaluator preflight, and three frozen
-controller lanes are now complete. The next work is bounded and staged:
+The V2 analytical contract, composed evaluator preflight, three frozen
+controller lanes, and experimental candidate extraction are now complete.
+`ExperimentalRidgeCandidateProjectionV2` is feature-gated and deliberately
+non-production. It preserves the flat-derived nominal policy with explicit
+`Direct`, `OneWaypoint`, and `Unsupported` outcomes, exact analytical crossing
+evidence, deterministic candidate ordering and identities, and fail-closed
+certificate/selection checks. The controller shadow consumes this projection
+without inspecting `DirectBridgeReportV2`; runtime route shaping, authority,
+handoff assessment, route-validation diagnostics, and controller execution
+remain downstream.
 
-1. Extract the frozen canary construction and actual-bridge-state mapping
-   behind a small private planner-facing candidate API. Preserve the same
-   finite ordering, certificate identities, composed evidence, and stable
-   invalid reasons; do not wire it into ordinary planner selection yet.
-2. Add focused API-level tests proving deterministic candidate identity,
-   direct-green passthrough, ridge repair construction, and rejection when any
-   certificate or handoff invariant is absent. The controller result remains a
-   downstream validation fixture, not an input to candidate selection.
-3. Decide whether one additional topology is needed to prevent overfitting.
-   Add it only if it exercises a materially different analytical failure, not
-   merely another ridge size.
-4. Consider production planner integration only after the private API and any
-   separately approved held-out gate pass. Mission-matrix expansion, runtime
-   replanning, and broader waypoint counts remain later work.
+The next work is a decision gate rather than more implementation by default:
+
+1. Review whether one additional topology is necessary to distinguish a real
+   capability from ridge-specific construction. It must exercise a materially
+   different analytical failure, not merely another ridge size.
+2. If such a topology is justified, freeze its inputs and pass/fail contract
+   before evaluating outcomes. Keep the controller result downstream and out
+   of candidate selection.
+3. Define a separately reviewed held-out/integration gate before considering
+   production planner selection. Mission-matrix expansion, runtime replanning,
+   and broader waypoint counts remain later work.
 
 No arbitrary waypoint count, production planner wiring, controller-specific
-branch, or simulated-pilot claim is part of this checkpoint.
+branch, or simulated-pilot claim is part of the completed extraction
+checkpoint.
 
 ## Research and expansion boundary
 

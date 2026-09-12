@@ -1,5 +1,36 @@
 # Progress
 
+## 2026-09-12
+
+### Experimental ridge-candidate API checkpoint
+
+- Extracted the frozen V2 ridge decision behind the feature-gated,
+  non-production `ExperimentalRidgeCandidateProjectionV2` API in `pd-plan`.
+  The projection preserves the flat-derived nominal policy and exposes typed
+  `Direct`, `OneWaypoint`, and `Unsupported` outcomes without changing the
+  production `plan()` entry point. A derived-mesa `Direct` result now requires
+  a freshly recomputed certified nominal candidate; rejected nominal evidence
+  with an invalid blocking premise remains explicitly unsupported rather than
+  being mislabeled green.
+- Moved the purely analytical virtual-anchor crossing into the planner-owned
+  projection. It retains the first exact intermediate-bridge crossing bracket,
+  states, offsets, candidate identity, and bridge identity. Missing or altered
+  certificates, bridge joins, selections, and crossings fail closed with
+  stable typed reasons, while a valid exhausted finite search remains a
+  distinct `Unsupported` result.
+- Migrated the controller shadow off `DirectBridgeReportV2` and
+  `build_report_artifact_v2`. Runtime route shaping, capture and authority
+  policy, canonical handoff assessment, ordinary route-validation diagnostics,
+  and controller execution remain downstream in `pd-eval`/`pd-core`. The
+  controller-shadow schema stays at `v4`, semantic identity remains
+  `a69de7872ad039fd`, and its lanes remain flat-direct target landing,
+  mesa-direct terrain crash, and mesa-waypoint target landing.
+- The API is intentionally an embedded V2 canary projection, not an arbitrary
+  mission planner or production integration. The next checkpoint is a design
+  decision on whether one materially different topology is needed before a
+  separately declared held-out/integration gate. D2 remains blocked and
+  distinct.
+
 ## 2026-09-11
 
 ### V2 direct-ballistic bridge and ridge-canary checkpoint
@@ -89,10 +120,10 @@
 - The one permitted unchanged mesa-waypoint shadow passes its runtime contract
   at `34.467 s` and lands on target at `86.692 s` with about `4042.6 kg` fuel
   remaining. The frozen controller canary is therefore flat-direct-green,
-  mesa-direct-red, and mesa-waypoint-green. The next checkpoint is a small
-  private planner-facing candidate API preserving this finite construction and
-  evidence; production wiring and mission-matrix expansion remain later. D2
-  remains blocked and distinct.
+  mesa-direct-red, and mesa-waypoint-green. The subsequent experimental
+  planner-owned candidate projection now preserves this finite construction
+  and evidence without production wiring; mission-matrix expansion remains a
+  separately reviewed decision. D2 remains blocked and distinct.
 
 ### Superseded V1 negative experiment
 
