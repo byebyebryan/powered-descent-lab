@@ -92,6 +92,9 @@ pub use candidate_replay::*;
 mod final_landing_audit;
 pub use final_landing_audit::*;
 
+mod controller_shadow;
+pub use controller_shadow::*;
+
 #[derive(Clone, Debug)]
 struct WorkspaceState {
     commit_key: String,
