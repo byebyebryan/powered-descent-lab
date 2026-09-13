@@ -140,10 +140,17 @@ Current implementation status:
     `aeb7338fd71c73e5` and frozen controller-shadow v4 remains
     `a69de7872ad039fd`. This is not held-out or physical proof and does not
     establish universal necessity or robustness; no controller, planner,
-    handoff-threshold, or terrain tuning occurred. F5 is next: freeze
-    genuinely new predeclared inputs and predictions before any new controller
-    outcomes. Production wiring, runtime replanning, broader waypoint counts
-    or topologies, D2-D5, and tuning remain deferred;
+    handoff-threshold, or terrain tuning occurred. F5a now locks a fresh
+    held-out pair, `ridge_progress_056_probe` (`rho = 0.56`) and
+    `ridge_progress_072_probe` (`rho = 0.72`), with predeclared qualitative
+    analytical and controller predictions before any reveal. F5b must seal
+    those raw inputs and predictions; F5c analytical reveal and F5d controller
+    reveal remain unrun, with F5d restricted to analytically eligible cases.
+    Cases advance independently, but a mismatch or `Unsupported` prevents a
+    full green; F5e will classify the result as PASS, NARROW, STOP, or INVALID
+    SETUP. A full pass authorizes only a production-integration design review.
+    Production wiring, runtime replanning, broader waypoint counts or
+    topologies, D2-D5, and tuning remain deferred;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -773,9 +780,9 @@ implementing a predictor. The remaining evidence-first sequence is:
    completed green as the development full-controller test of that route, with
    flat-direct landing, mesa-direct terrain crash, and mesa-waypoint contract
    capture followed by target landing. This is exposed development evidence,
-   not held-out or physical proof, and F5 is now next: freeze genuinely new
-   inputs and predictions before any new controller outcomes. A materially
-   distinct topology remains deferred;
+   not held-out or physical proof. F5a now locks genuinely new predeclared
+   inputs and predictions before any new controller outcomes; F5c remains
+   unrevealed. A materially distinct topology remains deferred;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -828,6 +835,39 @@ ordinary source-taper comparison remains an evaluator artifact-integrity/
 preflight gate outside planner acceptance. A materially distinct topology is
 deferred until the handoff boundary is understood; production planner wiring
 remains unauthorized.
+
+### F5 held-out checkpoint (current)
+
+F5 is the next bounded gameplay evidence sequence after the green F4
+development run. Its F5a design lock is documentation-only and defines two
+fresh, same-family ridge-progress probes before any new result is inspected:
+
+| Label | `rho` | `c` | Raw ridge points `(x, y)` |
+| --- | ---: | ---: | --- |
+| `ridge_progress_056_probe` | `0.56` | `2247.92` | `(2122.92, 0)`, `(2172.92, 1200)`, `(2322.92, 1200)`, `(2422.92, 0)` |
+| `ridge_progress_072_probe` | `0.72` | `2885.04` | `(2760.04, 0)`, `(2810.04, 1200)`, `(2960.04, 1200)`, `(3060.04, 0)` |
+
+Both retain the existing policy, vehicle, pads, domain `[-40, 4040]`, source
+`x = 18`, target `x = 4000`, initial rest state, and ridge shape/height. The
+`056` case interpolates the demonstrated progress range; `072` is a mild
+extrapolation. Predictions cover flat-direct, mesa-direct, and mesa-waypoint
+qualitative outcomes, including exactly one certified forward-progressing
+waypoint result and a structurally valid runtime-V2 handoff. The exact
+`primary_crossing` versus `intermediate_bridge_exit`, exact times/points/fuel,
+and derived identities are intentionally not frozen.
+
+The phase order is F5a design lock, F5b source-controlled raw-input and
+qualitative-prediction seals, F5c analytical reveal, F5d controller reveal only
+for analytically eligible cases after analytical results are committed, and
+F5e decision. Cases advance independently, but a mismatch or `Unsupported`
+stops that case and prevents a full green. PASS requires both cases to pass
+analytical and controller expectations; NARROW means one remains useful while
+the other fails/stops; STOP means neither demonstrates the capability or both
+share a failure; INVALID SETUP covers provenance/scenario/launch/determinism
+and permits wiring repair only. A full pass authorizes a production-
+integration design review, not production wiring. The current stop boundary is
+before F5c; runtime replanning, multiple waypoints, new topologies, D2-D5, and
+tuning remain deferred.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical

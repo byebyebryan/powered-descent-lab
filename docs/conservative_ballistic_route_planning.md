@@ -22,6 +22,13 @@ every direct route is impossible. Higher global direct replans still clear the
 mesa. The canary does not change the production planner or run a controller or
 simulation.
 
+F5 extends this checkpoint with a fresh, held-out pair from the same ridge
+family. Its purpose is to test whether the already-defined analytical and
+runtime-V2 behavior is repeatable on nearby inputs, not to tune the policy or
+to promote the experiment into production. F5a is the documentation-only
+design lock below; it makes no claim that analytical or controller evaluation
+has run. The current stop boundary is before the F5c analytical reveal.
+
 The research-grade D2 distinction remains unchanged. The W4 finite proposal
 backend found no useful development coverage, but that is `unknown` coverage
 evidence, not proof of physical infeasibility. This document is about a simpler
@@ -705,14 +712,94 @@ necessity or robustness. No controller, planner, handoff-threshold, or terrain
 tuning occurred. F3 identity `aeb7338fd71c73e5` and frozen
 controller-shadow v4 identity `a69de7872ad039fd` remain unchanged.
 
-#### F5 next checkpoint
+#### F5 held-out experiment design lock (F5a)
 
-F5 is next, but only as a new held-out experiment: define genuinely new
-predeclared inputs and predictions before inspecting any new controller
-outcomes. The current `050` and `068` cases remain development/regression
-inputs and cannot become held-out again. Production wiring, runtime
-replanning, broader waypoint counts or topologies, D2-D5, and tuning remain
-deferred.
+F5 is a new held-out experiment, separate from the historical H2/H4 result and
+from the F0-F4 development/regression cases. The `050` and `068` cases remain
+development inputs and cannot become held out again. F5 keeps the same
+gameplay-oriented claim: a conservative analytical route can expose a
+nominal-direct blocker and a simple one-waypoint alternative that a real
+controller may execute. It does not claim universal waypoint necessity,
+physical feasibility, or production readiness.
+
+##### F5 raw cases
+
+Both cases retain the existing policy, vehicle, source and target pads, domain
+`[-40, 4040]`, source `x = 18`, target `x = 4000`, initial rest state, pad
+elevation, and the same single-ridge shape and height. For `rho` in `{0.56,
+0.72}`, define the elevated crest midpoint as `c = 18 + rho * (4000 - 18)` and
+use the following exact ridge points:
+
+| Label | `rho` | `c` | Raw ridge points `(x, y)` |
+| --- | ---: | ---: | --- |
+| `ridge_progress_056_probe` | `0.56` | `2247.92` | `(2122.92, 0)`, `(2172.92, 1200)`, `(2322.92, 1200)`, `(2422.92, 0)` |
+| `ridge_progress_072_probe` | `0.72` | `2885.04` | `(2760.04, 0)`, `(2810.04, 1200)`, `(2960.04, 1200)`, `(3060.04, 0)` |
+
+`ridge_progress_056_probe` is an interpolation within the demonstrated
+progress range; `ridge_progress_072_probe` is a mild extrapolation. The labels
+are data-only identifiers. They must not select algorithms, thresholds,
+search bounds, route branches, or expected outcomes.
+
+##### F5 predeclared qualitative predictions
+
+Each raw case is paired with its flat twin and its derived-mesa case. The
+following are frozen predictions for each pair before any analytical or
+controller result is inspected:
+
+- the flat twin selects the shortest robust certified `Direct` candidate with
+  duration multiplier `1.0`;
+- the derived ridge is a valid blocker, and the nominal direct candidate is
+  rejected for terrain clearance;
+- bounded search yields exactly one certified, forward-progressing
+  `OneWaypoint` result;
+- runtime V2 yields a structurally valid `OneWaypoint` with the selected
+  semantic handoff contract passing;
+- repeated evaluation is deterministic;
+- `flat-direct` target-lands;
+- `mesa-direct` contacts non-target terrain on the derived mesa before target
+  touchdown; exact contact time and point are intentionally not frozen; and
+- `mesa-waypoint` records exactly one contract-pass capture and then
+  target-lands.
+
+The prediction deliberately does not freeze whether runtime V2 selects the
+`primary_crossing` or `intermediate_bridge_exit` semantic attempt. It also
+does not freeze exact analytical or controller times, contact/capture points,
+fuel, or derived identities. Those are revealed evidence, not design inputs.
+
+##### F5 phase order and decision boundary
+
+F5 is ordered as five explicit gates:
+
+1. **F5a — design lock.** Commit this documentation-only case and prediction
+   definition before reveal.
+2. **F5b — source-controlled seals.** Add identity-bound raw-input and
+   qualitative-prediction manifests. This gate accepts only source inputs and
+   predeclared expectations; it must not contain candidates, routes, analytical
+   outcomes, controller outcomes, or simulation artifacts.
+3. **F5c — analytical reveal.** Evaluate the sealed cases with the existing
+   analytical and runtime-V2 path. A mismatch, error, or `Unsupported` stops
+   that case; no input, policy, threshold, search bound, or tuning may change
+   in response.
+4. **F5d — controller reveal.** Run controller lanes only for a case whose
+   analytical result has been committed and is eligible for controller
+   evaluation. Join by sealed identities; do not feed controller outcomes back
+   into the planner or the other case.
+5. **F5e — decision.** Record one of these outcomes: **PASS** if both cases
+   pass analytical and controller expectations; **NARROW** if one case is useful
+   and the other fails or stops; **STOP** if neither demonstrates the scoped
+   capability or both share a common failure; or **INVALID SETUP** if
+   provenance, scenario, launch, or determinism is invalid. `INVALID SETUP`
+   permits wiring repair only, not outcome-guided retuning.
+
+Cases advance independently, but any case mismatch or `Unsupported` prevents
+the overall F5 experiment from being green. A full pass authorizes only a
+production-integration design review; it does not authorize production
+planner wiring.
+
+F5a does not evaluate either case and does not create a controller or
+simulation result. The work must stop after the F5b seals until the analytical
+reveal is explicitly started as F5c. Production wiring, runtime replanning,
+multiple waypoints, new topologies, D2-D5, and tuning remain deferred.
 
 #### Same-family invariant and explicit deferrals
 

@@ -2,6 +2,42 @@
 
 ## 2026-09-13
 
+### F5a held-out design lock
+
+- F5a is complete as a documentation-only lock for a fresh, held-out pair
+  separate from the historical H2/H4 `050` and `068` cases and the F0-F4
+  development/regression evidence. The new raw labels are
+  `ridge_progress_056_probe` (`rho = 0.56`, `c = 2247.92`; ridge points
+  `(2122.92, 0)`, `(2172.92, 1200)`, `(2322.92, 1200)`, `(2422.92, 0)`) and
+  `ridge_progress_072_probe` (`rho = 0.72`, `c = 2885.04`; ridge points
+  `(2760.04, 0)`, `(2810.04, 1200)`, `(2960.04, 1200)`, `(3060.04, 0)`).
+  Both retain the existing policy, vehicle, pads, domain `[-40, 4040]`, source
+  `x = 18`, target `x = 4000`, initial rest state, and ridge shape/height;
+  `056` is an interpolation and `072` a mild extrapolation.
+- The qualitative predictions are frozen before reveal for each flat-twin and
+  derived-mesa pair: shortest robust certified `Direct` at duration multiplier
+  `1.0` on flat; valid ridge blocker and nominal-direct terrain-clearance
+  rejection on mesa; exactly one certified forward-progressing `OneWaypoint`
+  result; structurally valid runtime-V2 `OneWaypoint` with a passing selected
+  semantic handoff; deterministic repeat; flat-direct target landing;
+  mesa-direct non-target terrain contact before target touchdown; and exactly
+  one passing waypoint capture followed by target landing. Exact crossing
+  branch, times, contact/capture points, fuel, and derived identities are not
+  frozen.
+- The gate order is F5a design lock, F5b source-controlled raw-input and
+  qualitative-prediction seals, F5c analytical reveal, F5d controller reveal
+  only for analytically eligible cases after committed analytical results, and
+  F5e decision. Cases advance independently, but any mismatch or `Unsupported`
+  prevents a full green. The decision states are PASS (both cases pass), NARROW
+  (one useful and one fails/stops), STOP (neither demonstrates the capability
+  or both share a failure), and INVALID SETUP (provenance/scenario/launch/
+  determinism issue; wiring repair only). A full pass authorizes only a
+  production-integration design review. Production wiring, runtime replanning,
+  multiple waypoints, new topologies, D2-D5, and tuning remain deferred.
+- F5a does not claim that analytical or controller evaluation has run. The
+  current stop boundary is before F5c; the `050` and `068` cases remain
+  development/regression evidence and cannot be reclassified as held out.
+
 ### F4 full-controller development result
 
 - F4 is complete and green as a development-only full-controller execution
@@ -35,9 +71,10 @@
   handoff-threshold, or terrain tuning occurred. F3 identity
   `aeb7338fd71c73e5` and frozen controller-shadow v4 identity
   `a69de7872ad039fd` remain unchanged.
-- F5 is next: define genuinely new predeclared inputs and predictions before
-  inspecting any new controller outcomes. The current `050` and `068` cases
-  remain development/regression cases and cannot become held-out again.
+- The subsequent F5a documentation-only lock now defines genuinely new
+  predeclared inputs and predictions before any new controller outcome is
+  inspected. The current `050` and `068` cases remain development/regression
+  cases and cannot become held out again; F5c remains unrevealed.
 
 ### F0-F3 runtime handoff-selection development checkpoint
 
