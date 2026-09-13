@@ -2,6 +2,52 @@
 
 ## 2026-09-12
 
+### H0 held-out design closure (documentation-only)
+
+- Closed the first controller-held-out, pre-simulation same-family gate. This
+  is evidence about execution compatibility for a small gameplay experiment,
+  not generic source-departure D2, a statistical or universal proof,
+  production integration, or a second topology.
+- H1 now has an implementation-ready input/API boundary: a separate,
+  versioned `ExperimentalRidgeCaseInputV1` schema
+  (`experimental_ridge_case_input_v1`) containing the unchanged
+  `DirectBridgePolicyV2`, `VehicleInputV2`, one `DirectBridgeProbeV2`, and
+  canonical `identity`. Callers may not provide mesas, candidates, outcomes,
+  crossings, runtime routes, report labels, or controller data. Generic
+  `ExperimentalRidgeCaseProjectionV1` /
+  `ExperimentalRidgeCaseRuntimeProjectionV1` provenance must bind explicit
+  input and per-case analytical canary identities; shared
+  evaluation/projector logic must recompute and exact-compare results, with
+  typed fail-closed geometry errors. Their schema IDs are
+  `experimental_ridge_case_projection_v1` and
+  `experimental_ridge_case_runtime_projection_v1`; they may reuse V2 outcome,
+  crossing, and runtime components but must not carry a fixed embedded-canary
+  identity or overload `analytical_report_identity`.
+  The embedded V2 APIs remain exact-golden wrappers, including controller-shadow
+  v4 semantic identity `a69de7872ad039fd`; the fixed four-case
+  `DirectBridgeFixtureV2` remains untouched.
+- H2 cases are frozen before outcome inspection. They retain the current
+  policy, vehicle, pads, rest state, elevation, span, and ridge shape, with
+  source `x = 18`, target `x = 4000`, domain `[-40, 4040]`, and elevated crest
+  midpoint `c = 18 + rho * (4000 - 18)` for `rho = 0.50` and `0.68`. The
+  stable raw manifest labels are `ridge_progress_050_probe` (`c = 2009.0`;
+  ridge points `1884, 1934, 2084, 2184`) and
+  `ridge_progress_068_probe` (`c = 2725.76`; ridge points `2600.76, 2650.76,
+  2800.76, 2900.76`). Labels are data only, never case switches.
+- The execution order is now explicit: H0 design commit, H1 generic boundary
+  and unchanged embedded-canary proof (including the existing embedded
+  controller-shadow regression; no held-out simulation), H2 source-controlled
+  raw-input manifest and a pre-simulation prediction manifest that materializes
+  the H0-frozen predictions before any analytical output is accepted or joined,
+  then analytical-only evaluation and immutable seal with bound per-case input,
+  per-case analytical canary identity, candidate, runtime, and prediction
+  identities; H3 runs controller simulation joined only by frozen identities,
+  then H4 review. Any mismatch, error, or `Unsupported` stops the experiment;
+  no outcome may retune
+  inputs, planner selection, thresholds, search bounds, or controller
+  parameters. No held-out input has been implemented or evaluated and no
+  held-out simulation has run.
+
 ### CB3 route-projection implementation and evidence
 
 - Completed the bounded CB3-A/B/C slice. `pd-plan` now owns the feature-gated
@@ -21,9 +67,10 @@
   production planner, ordinary `pd-core::validate_route`, `pd-control`,
   controller-shadow schema, fixtures, and generic source-departure contract
   are unchanged. CB3 does not advance D2 or D4-D5.
-- The next checkpoint is a separately reviewed same-family held-out input and
-  prediction freeze before any held-out simulation. No numeric held-out cases
-  are chosen or implemented yet; no held-out simulation has run, and no second
+- The next design checkpoint is now H0-closed below: the two numeric
+  same-family probes, analytical predictions, identity bindings, and H1-H4
+  freeze order are explicit. H1 implementation is next; no held-out input has
+  been implemented or evaluated, no held-out simulation has run, and no second
   topology is added yet.
 
 ### CB3 route-projection design closure (documentation-only)

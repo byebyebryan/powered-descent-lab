@@ -433,23 +433,171 @@ diagnostic; the composed planner projection remains `supported`.
 
 CB3 changes no generic source-departure contract, fixture, controller,
 production planner path, `pd-core::validate_route`, or `pd-control` behavior.
-No held-out input or simulation has run yet, and no second topology is added.
+No held-out input has been implemented or evaluated, no held-out simulation has
+run, and no second topology is added.
 
-### Held-out gate after CB3 implementation
+### H0 held-out design closure (documentation-only)
 
-After the projection passes its frozen canary gates, the next evidence step is
-a small, predeclared same-family variation matrix. Its exact inputs remain a
-separately reviewed freeze; no numeric cases are chosen or implemented yet.
-Each case must be genuinely outside the embedded canary and use the same
-algorithm with no case IDs or branches. Cases, analytical predictions, and
-identities must be sealed before any controller simulation. Each direct or
-one-waypoint projection needs a predeclared
-downstream expectation; a waypoint projection specifically requires both a
-handoff-contract pass and a target landing. A mismatch stops advancement and
-is recorded without retuning. `Unsupported` or `unknown` is not a true-negative
-controller result. Repeated execution establishes deterministic identity, not
-additional planner authority. Only then should the project reconsider a
-materially distinct topology.
+H0 is now design-closed as the first controller-held-out, pre-simulation
+evidence gate. It asks whether the same analytical candidate and runtime
+projection remain compatible with a real controller on two uninspected inputs
+from the already demonstrated ridge family. “Held-out” means that the input
+construction and analytical predictions are frozen before any controller
+outcome is inspected. This is execution-compatibility evidence for a small
+gameplay experiment. It is not generic source-departure D2, a statistical or
+universal proof, production integration, or a second terrain topology.
+
+#### H1 input and API boundary
+
+The implementation will introduce a separate, versioned, input-only
+`ExperimentalRidgeCaseInputV1` schema. Its serialized contract is:
+
+```text
+ExperimentalRidgeCaseInputV1
+├── schema_id: experimental_ridge_case_input_v1
+├── schema_version: 1
+├── policy: DirectBridgePolicyV2
+├── vehicle: VehicleInputV2
+├── probe: DirectBridgeProbeV2       # exactly one case
+└── identity                         # canonical input digest
+```
+
+The caller supplies only this policy, vehicle, probe, and `identity`. It does
+not supply a mesa, candidates, outcomes, crossings, runtime routes, report
+labels, controller data, or any other derived evidence. Held-out inputs remain
+separate from the fixed four-case `DirectBridgeFixtureV2`; they must not be
+smuggled into that fixture or selected by a case-ID branch.
+
+The new generic wrappers are
+`ExperimentalRidgeCaseProjectionV1` (`schema_id:
+experimental_ridge_case_projection_v1`) and
+`ExperimentalRidgeCaseRuntimeProjectionV1` (`schema_id:
+experimental_ridge_case_runtime_projection_v1`). They may reuse existing V2
+outcome, crossing, and runtime component types, but each must carry the input
+identity plus a freshly recomputed **per-case analytical canary identity**.
+They must not carry a fixed embedded-canary identity or overload the embedded
+V2 `analytical_report_identity`. The generic path must share the existing
+internal evaluation/projector logic, recompute the candidate and outcome from
+policy + vehicle + probe, and exact-compare that recomputation with the
+emitted projection. Structural self-consistency alone is not sufficient.
+
+The embedded V2 APIs remain stricter exact-golden wrappers around that shared
+logic. Their existing schemas, values, and controller-shadow v4 semantic
+identity `a69de7872ad039fd` remain unchanged. Any invalid derived geometry
+must return a typed, fail-closed error and never panic. H1 adds no held-out
+case artifacts and runs no held-out simulation; it may rerun the existing
+embedded controller-shadow regression.
+
+#### H2 frozen same-family cases
+
+The two numeric cases are frozen here before any controller outcome is
+inspected. Each uses the current canary's policy, vehicle, source and target
+pad footprints, initial rest state, pad elevation, transfer span, and single
+ridge height/shape. The forward transfer has source `x = 18`, target
+`x = 4000`, terrain domain `[-40, 4040]`, and base elevation `y = 0`.
+
+For `rho` in `{0.50, 0.68}`, define `c` as the elevated crest midpoint
+`c = 18 + rho * (4000 - 18)` and use exactly these terrain points:
+
+```text
+(-40, 0), (c - 125, 0), (c - 75, 1200),
+(c + 75, 1200), (c + 175, 0), (4040, 0)
+```
+
+The frozen raw coordinates and labels are:
+
+| Label | `rho` | `c` | Raw ridge points `(x, y)` |
+| --- | ---: | ---: | --- |
+| `ridge_progress_050_probe` | `0.50` | `2009.0` | `(1884, 0)`, `(1934, 1200)`, `(2084, 1200)`, `(2184, 0)` |
+| `ridge_progress_068_probe` | `0.68` | `2725.76` | `(2600.76, 0)`, `(2650.76, 1200)`, `(2800.76, 1200)`, `(2900.76, 0)` |
+
+The stable labels belong only to the raw H2 manifest; they are descriptive data,
+not report labels, and must never switch algorithms, search bounds, thresholds,
+or expected outcomes. The current embedded crest progress is approximately
+`0.6045`, so these cases exercise earlier and later obstacle timing while
+keeping the same family and geometry scale.
+
+#### Freeze order and evidence ownership
+
+The work is ordered as four explicit gates after this H0 design commit:
+
+1. **H1 — generic input/recompute/projector boundary.** Add the versioned
+   input-only boundary, generic provenance, exact recomputation checks, and
+   typed fail-closed geometry errors. Prove that the embedded canary remains
+   byte- and identity-equivalent, including controller-shadow v4. Do not add
+   held-out artifacts or run held-out simulation; the existing embedded
+   controller-shadow regression may run.
+2. **H2 — analytical seal.** Add a separate source-controlled raw input
+   manifest for the two frozen probes. H0 has already frozen the analytical
+   predictions; materialize them in the pre-simulation prediction manifest
+   before any analytical output is accepted or joined, then run analytical
+   evaluation only. Record and bind the manifest, per-case input, per-case
+   analytical canary identity, candidate, runtime-projection, and prediction
+   identities, verify deterministic repeat, and commit that immutable seal
+   before H3. No controller outcome may flow back into inputs, planner
+   selection, thresholds, search bounds, or controller tuning.
+3. **H3 — full-controller shadow.** Run controller simulations only against
+   the sealed identities and join each outcome by those identities. No input,
+   candidate, policy, or controller tuning changes are permitted in response
+   to an outcome.
+4. **H4 — decision review.** Review the sealed analytical and controller
+   evidence, then decide whether to advance, narrow, or stop. A pass advances
+   only the scoped execution-compatibility claim; it does not authorize
+   production planner wiring, broader waypoint counts, D2, or a new topology.
+
+#### H2 analytical predictions and entry gate
+
+Each frozen input is evaluated as a paired flat twin and derived-mesa case. H0
+freezes the following predictions. During H2, materialize them in the
+prediction manifest before any analytical output is accepted or joined, then
+run the analytical evaluation for each pair:
+
+- the flat twin chooses the shortest robust certified `Direct` candidate,
+  expected unchanged at `1.0x`;
+- the derived mesa has a valid robust blocker and rejects that nominal direct
+  candidate for terrain clearance;
+- at least one longer direct candidate remains certified only as a global-
+  replan diagnostic, not as the selected nominal lane;
+- the finite terrain-derived search selects exactly one certified,
+  forward-progressing `OneWaypoint` result; and
+- the generic candidate and runtime projections validate and repeat
+  deterministically, with identities bound to the input and per-case
+  analytical canary identity.
+
+Any mismatch, error, or `Unsupported` result stops the experiment and is
+recorded as such. The cases may not be moved or resized, and policy, screens,
+search bounds, and thresholds may not be changed to recover a failed gate.
+`Unsupported` or `unknown` is not a controller true-negative.
+
+#### H3 predeclared controller expectations
+
+The controller-shadow expectations are frozen before H3:
+
+| Lane | Expected result |
+| --- | --- |
+| flat-direct | Target landing |
+| mesa-direct | Non-target terrain contact on the derived mesa before target touchdown; exact time and contact point are intentionally not frozen |
+| mesa-waypoint | Canonical waypoint handoff contract passes and the vehicle target-lands |
+
+Any mismatch stops advancement with no retuning. An `Unsupported` or
+`unknown` analytical result is an experiment stop, not a controller
+true-negative.
+
+#### Same-family invariant and explicit deferrals
+
+Both cases remain forward source-to-target transfers with one contiguous
+elevated ridge feature, flat pad footprints, and the vehicle initially at rest
+on the source pad. The following are deliberately outside H0/H1-H4:
+
+- reverse direction (current validation is forward-only; reverse is new
+  capability work);
+- width or height transforms, which are likely to clip into a no-op or become
+  an authored blocker rather than an informative held-out variation;
+- span or long-range changes, payload or vehicle-radius changes, and
+  `Unsupported`-targeting cases;
+- a second topology, runtime replanning, broader waypoint counts, and
+  production planner wiring; and
+- generic source-departure D2 and D4-D5.
 
 A second topology is deferred, not rejected forever. The production planner
 already retains direct, single-ridge, and double-ridge topology evidence, so
