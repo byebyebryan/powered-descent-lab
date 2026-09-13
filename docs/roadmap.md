@@ -108,13 +108,17 @@ Current implementation status:
     feature-gated experimental candidate API now preserves this finite policy,
     exact crossing, deterministic ordering, and fail-closed reasons in
     `pd-plan`; the evaluator consumes it without report-shape coupling. CB3 is
-    design-closed, with implementation still unstarted: a narrow feature-gated
-    `pd-plan` runtime-route projection will carry the selected controller route
-    and exact handoff evidence without altering ordinary route validation,
-    production planner wiring, or controller behavior. `pd-eval` retains the
-    ordinary source-taper comparison outside planner acceptance as a frozen
-    canary artifact-integrity/preflight gate. A frozen same-family held-out gate
-    follows implementation; materially distinct topology work is deferred;
+    implemented: the feature-gated `pd-plan` runtime-route projection carries
+    the selected controller route, exact handoff evidence, structural
+    validation, stable identities, and typed fail-closed reasons. The
+    controller-shadow remains schema `v4` / semantic identity
+    `a69de7872ad039fd` with its three frozen outcomes, and ordinary route
+    validation, production planner wiring, and controller behavior are
+    unchanged. `pd-eval` retains the ordinary source-taper comparison outside
+    planner acceptance as a frozen canary artifact-integrity/preflight gate. A
+    separately reviewed same-family held-out case/prediction freeze is next;
+    no numeric held-out cases are chosen or implemented, no held-out
+    simulation has run, and materially distinct topology work is deferred;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -717,16 +721,17 @@ implementing a predictor. The remaining evidence-first sequence is:
    through an evaluator-scoped composed preflight over an exact powered-bridge
    state. A feature-gated experimental `pd-plan` candidate projection now
    exposes the frozen direct/one-waypoint/unsupported decision and exact
-   crossing without changing production planner wiring. CB3 now design-closes
-   the next implementation: `pd-plan` will own a feature-gated runtime-route
-   projection over that certificate and crossing, while `pd-eval` retains the
-   ordinary source-taper comparison outside planner acceptance as a frozen
-   artifact-integrity/preflight gate. The implementation must preserve
-   controller-shadow v4 / `a69de7872ad039fd`, its three frozen outcomes, and
-   production behavior. It does not advance generic source-departure D2 or
-   D4-D5. After those gates pass, a small predeclared same-family held-out
-   matrix will seal cases, predictions, and identities before simulation; only
-   then is a materially distinct topology reconsidered;
+   crossing without changing production planner wiring. CB3 is implemented:
+   `pd-plan` owns the feature-gated runtime-route projection over that
+   certificate and crossing, while `pd-eval` retains the ordinary source-taper
+   comparison outside planner acceptance as a frozen artifact-integrity/
+   preflight gate. The controller-shadow remains schema `v4` /
+   `a69de7872ad039fd` with its three frozen outcomes; production behavior,
+   generic source-departure D2, and D4-D5 are unchanged. The next checkpoint
+   is a small, separately reviewed same-family held-out case/prediction freeze
+   before simulation; no numeric held-out cases are chosen or implemented, no
+   held-out simulation has run, and only then is a materially distinct topology
+   reconsidered;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -766,15 +771,15 @@ an exact traversed intermediate-bridge state and preserves the ordinary full-
 route source-taper rejection as a separate diagnostic. The feature-gated
 experimental planner-owned projection now completes that extraction, preserves
 the scoped nominal policy and candidate identities, and leaves runtime route
-and controller semantics downstream. CB3 design-closes the next feature-gated
+and controller semantics downstream. CB3 now completes the feature-gated
 `pd-plan` runtime-route projection over that candidate decision and crossing;
-implementation remains unstarted and must preserve ordinary route validation,
-the controller-shadow v4 artifact, and its three frozen outcomes. A small
-same-family held-out matrix follows successful implementation, with analytical
-cases, predictions, and identities sealed before simulation; its ordinary
-source-taper comparison remains an evaluator artifact-integrity/preflight gate
-outside planner acceptance. A materially distinct topology is deferred until
-after that gate; production planner wiring remains unauthorized.
+ordinary route validation, the controller-shadow v4 artifact, and its three
+frozen outcomes remain unchanged. A small same-family held-out matrix follows
+CB3, with analytical cases, predictions, and identities sealed before
+simulation; its ordinary source-taper comparison remains an evaluator
+artifact-integrity/preflight gate outside planner acceptance. A materially
+distinct topology is deferred until after that gate; production planner wiring
+remains unauthorized.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical

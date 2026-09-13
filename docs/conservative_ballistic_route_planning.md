@@ -351,14 +351,16 @@ run artifacts live under
 report lives under
 `outputs/reports/eval/conservative-ballistic-controller-shadow-v1/`.
 
-## CB3 route-projection contract (design closed; implementation unstarted)
+## CB3 route-projection contract (implemented)
 
-CB3 closes the next experimental contract as documentation only. The narrow
-implementation target is a feature-gated, `pd-plan`-owned runtime-route
-projection over the already validated
-`ExperimentalRidgeCandidateProjectionV2` / `WaypointCandidateV2` decision and
-its `ExactIntermediateBridgeCrossingV2` evidence. It does not promote the
-result into the production `plan()` API or a `RoutePlan`.
+CB3 implements the feature-gated, `pd-plan`-owned runtime-route projection over
+the already validated `ExperimentalRidgeCandidateProjectionV2` /
+`WaypointCandidateV2` decision and its `ExactIntermediateBridgeCrossingV2`
+evidence. The projection emits the controller-facing `TransferRouteSpec`,
+exact bridge-crossing/handoff state, authority and handoff evidence, structural
+validation, stable identities, and typed fail-closed invalid/unsupported
+reasons. It remains experimental and does not promote the result into the
+production `plan()` API or a `RoutePlan`.
 
 The ballistic certificate remains the sole controller-independent proof of
 end-to-end reference-path feasibility. CB3 must neither reinterpret nor weaken
@@ -407,32 +409,41 @@ guaranteed real-controller landing, arbitrary-mission support, or universal
 waypoint necessity. Generic source-departure D2 remains blocked; CB3 does not
 repair or advance it.
 
-### Implementation sequence and exit gates
+### Implementation and evidence gate
 
-The first implementation stays one bounded feature-gated slice:
+The bounded implementation is complete:
 
-1. `pd-plan` constructs the projection and adds fail-closed unit tests for
-   valid direct/one-waypoint selections, altered or missing certificate joins,
-   unsupported finite search, stable reasons, and identities.
-2. `pd-eval` migrates its route adaptation to that projection while preserving
-   the exact runtime route bytes, controller-shadow schema `v4`, semantic
-   identity `a69de7872ad039fd`, unchanged three lane outcomes, and the ordinary
+1. `pd-plan` constructs the projection and covers valid direct/one-waypoint
+   selections, altered or missing certificate joins, unsupported finite search,
+   stable reasons, and identities with fail-closed tests.
+2. `pd-eval` consumes that projection while preserving the exact runtime route
+   bytes, controller-shadow schema `v4`, semantic identity
+   `a69de7872ad039fd`, unchanged three lane outcomes, and the ordinary
    source-taper diagnostic.
-3. Focused planner and evaluator tests pass, followed once by workspace
-   formatting, tests, strict Clippy, a clean diff review, and canonical artifact
-   identity plus regeneration checks.
+3. Focused runtime-projection tests (`2`) and controller-shadow tests (`6`)
+   pass. Canonical regeneration and summary reload pass with schema `v4`,
+   `deterministic_repeat: true`, and the preserved identity and outcomes. The
+   committed evaluation and report outputs remain byte-clean.
 
-No code, generated artifact, fixture, controller, production planner path, or
-generic source-departure contract changes as part of this design closure.
+The resulting canary remains exact: flat-direct is a target landing,
+mesa-direct is a derived-mesa terrain crash, and mesa-waypoint passes the
+waypoint contract and lands on target. The ordinary zero-/one-waypoint
+source-taper rejection remains an evaluator-local artifact-integrity
+diagnostic; the composed planner projection remains `supported`.
+
+CB3 changes no generic source-departure contract, fixture, controller,
+production planner path, `pd-core::validate_route`, or `pd-control` behavior.
+No held-out input or simulation has run yet, and no second topology is added.
 
 ### Held-out gate after CB3 implementation
 
 After the projection passes its frozen canary gates, the next evidence step is
 a small, predeclared same-family variation matrix. Its exact inputs remain a
-separately reviewed freeze, but each case must be genuinely outside the
-embedded canary and use the same algorithm with no case IDs or branches. Cases,
-analytical predictions, and identities must be sealed before any controller
-simulation. Each direct or one-waypoint projection needs a predeclared
+separately reviewed freeze; no numeric cases are chosen or implemented yet.
+Each case must be genuinely outside the embedded canary and use the same
+algorithm with no case IDs or branches. Cases, analytical predictions, and
+identities must be sealed before any controller simulation. Each direct or
+one-waypoint projection needs a predeclared
 downstream expectation; a waypoint projection specifically requires both a
 handoff-contract pass and a target landing. A mismatch stops advancement and
 is recorded without retuning. `Unsupported` or `unknown` is not a true-negative

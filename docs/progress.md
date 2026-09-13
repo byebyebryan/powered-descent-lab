@@ -2,6 +2,30 @@
 
 ## 2026-09-12
 
+### CB3 route-projection implementation and evidence
+
+- Completed the bounded CB3-A/B/C slice. `pd-plan` now owns the feature-gated
+  runtime projection over the frozen V2 candidate decision and exact bridge
+  crossing; `pd-eval` consumes it without rebuilding planner validity. The
+  projection carries the controller-facing route, exact handoff state,
+  authority/handoff evidence, structural validation, stable identities, and
+  typed fail-closed invalid/unsupported reasons.
+- Regenerated and reloaded the canonical controller-shadow. It remains schema
+  `v4`, semantic identity `a69de7872ad039fd`, and `deterministic_repeat: true`:
+  flat-direct lands on target, mesa-direct crashes on the derived mesa, and
+  mesa-waypoint passes its waypoint contract and lands on target. The ordinary
+  equal zero-/one-waypoint source-taper rejection remains an evaluator-local
+  diagnostic, while the composed planner projection is `supported`.
+- Focused runtime-projection tests (`2`) and controller-shadow tests (`6`)
+  pass; canonical evaluation and report outputs remain byte-clean. The
+  production planner, ordinary `pd-core::validate_route`, `pd-control`,
+  controller-shadow schema, fixtures, and generic source-departure contract
+  are unchanged. CB3 does not advance D2 or D4-D5.
+- The next checkpoint is a separately reviewed same-family held-out input and
+  prediction freeze before any held-out simulation. No numeric held-out cases
+  are chosen or implemented yet; no held-out simulation has run, and no second
+  topology is added yet.
+
 ### CB3 route-projection design closure (documentation-only)
 
 - Closed the CB3 design for a feature-gated `pd-plan` runtime-route projection
