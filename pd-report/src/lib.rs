@@ -15,6 +15,7 @@ use pd_core::{
 };
 use serde::Serialize;
 
+pub mod conservative_ballistic_heldout;
 pub mod controller_shadow;
 pub mod setup;
 pub mod site;

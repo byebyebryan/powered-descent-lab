@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 pub mod conservative_ballistic_heldout;
 pub mod conservative_ballistic_report;
 pub use conservative_ballistic_heldout::*;
+mod conservative_ballistic_heldout_analytical;
+pub use conservative_ballistic_heldout_analytical::*;
 pub mod report;
 pub mod report_catalog;
 pub use conservative_ballistic_report::{

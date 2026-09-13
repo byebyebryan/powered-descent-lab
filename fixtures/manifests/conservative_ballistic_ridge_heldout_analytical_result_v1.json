@@ -1,0 +1,64 @@
+{
+  "schema_id": "conservative_ballistic_ridge_heldout_analytical_result_v1",
+  "schema_version": 1,
+  "analytical_artifact_identity": "72f664a8f4be8b93",
+  "input_manifest_identity": "fnv1a64:19217b5811b4f25f",
+  "prediction_manifest_identity": "fd55fc7f3f51c65e",
+  "status": "stopped_runtime_projection_error",
+  "deterministic_repeat": true,
+  "completed_cases": [
+    {
+      "case_id": "ridge_progress_050_probe",
+      "input_identity": "fnv1a64:1906ea1c9d5b51eb",
+      "prediction_identity": "7fae4a907d4c96f2",
+      "analytical_canary_identity": "fnv1a64:3892e4cee442675f",
+      "candidate_projection_identity": "fnv1a64:2405ceb25946ef82",
+      "runtime_projection_identity": "fnv1a64:9e257dace1c02cc2",
+      "flat_selected_candidate_identity": "fnv1a64:9e945d5489b448ef",
+      "derived_nominal_candidate_identity": "fnv1a64:78e7d38d8b0e2bf2",
+      "non_nominal_direct_candidate_identities": [
+        "fnv1a64:49e2ed5c24852ad0",
+        "fnv1a64:16c179e6145fe026",
+        "fnv1a64:2a232b8e2a972f2a"
+      ],
+      "selected_waypoint_candidate_identity": "fnv1a64:81c664a37b97f49b",
+      "flat_runtime_outcome_identity": "fnv1a64:a163a9670f58a0b4",
+      "derived_runtime_outcome_identity": "fnv1a64:9046eb06293f202c",
+      "expectation": {
+        "status": "passed",
+        "flat_control_direct": true,
+        "flat_shortest_robust_certified": true,
+        "flat_duration_multiplier_matches": true,
+        "derived_blocker_valid": true,
+        "derived_nominal_terrain_clearance_rejected": true,
+        "longer_global_replan_certified": true,
+        "derived_mesa_one_waypoint": true,
+        "exactly_one_certified_forward_progressing_waypoint": true,
+        "candidate_projection_validated": true,
+        "runtime_projection_validated": true
+      },
+      "case_identity": "9e991467beac2882"
+    }
+  ],
+  "failure_case_id": "ridge_progress_068_probe",
+  "failure_input_identity": "fnv1a64:a63ff1716b1cf24f",
+  "failure_prediction_identity": "1ae5ea4033682561",
+  "failure_analytical_canary_identity": "fnv1a64:b42288a3164f8223",
+  "failure_candidate_projection_identity": "fnv1a64:1ddf250808889d3f",
+  "failure_candidate_expectation": {
+    "flat_control_direct": true,
+    "flat_shortest_robust_certified": true,
+    "flat_duration_multiplier_matches": true,
+    "derived_blocker_valid": true,
+    "derived_nominal_terrain_clearance_rejected": true,
+    "longer_global_replan_certified": true,
+    "derived_mesa_one_waypoint": true,
+    "exactly_one_certified_forward_progressing_waypoint": true,
+    "candidate_projection_validated": true
+  },
+  "failure_stage": "runtime_projection",
+  "failure_runtime_error": "handoff_contract_failed",
+  "failure_error": "waypoint handoff does not satisfy the canonical contract",
+  "failure_identity": "838b5d883a16f24b",
+  "identity": "24804a74cb303625"
+}
