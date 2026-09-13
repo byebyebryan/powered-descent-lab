@@ -633,20 +633,52 @@ The four gates now have a concrete, bounded result:
   `Unsupported` result. The exactly-one witness is the first selected result
   from the finite search, not an exhaustive uniqueness proof.
 
-The next sequence is intentionally small and controller-free at first:
+#### F0-F3 runtime handoff-selection development result
 
-1. Add a development-only structured handoff diagnostic for `068` that retains
-   the exact kinematics, authority, and violations currently discarded by
-   `HandoffContractFailed`.
-2. Decide the smallest generic planner/runtime fix, favoring candidate/crossing
-   selection that satisfies the existing canonical handoff contract. Do not add
-   case-ID branches or relax controller limits.
-3. Validate the fix as a development regression on the embedded canary and the
-   current `050`/`068` cases while preserving controller-shadow v4.
-4. Only after review, define a versioned new experiment with genuinely new
-   predeclared inputs and predictions before any controller outcomes. The
-   current `050` and `068` inputs are development/regression cases now, not a
-   fresh held-out gate; no new `rho` values are preselected yet.
+The bounded controller-free follow-up is implemented without rewriting the H2
+result. Historical generic runtime V1 remains crossing-only and still returns
+`HandoffContractFailed` for `ridge_progress_068_probe`. A separate generic
+runtime projection V2 retains structured evidence for each attempted exact
+state and uses a fixed semantic order:
+
+1. try the existing first exact virtual-anchor crossing; and
+2. only if its canonical handoff assessment fails, verify and try the certified
+   intermediate-bridge exit at the target-leg acquisition/apex seam.
+
+The selector does not scan bridge ticks, optimize against a contract threshold,
+branch on a case ID, alter the route-bisector tangent, or relax any controller
+limit. Candidate, crossing, attempt, selection, outcome, and projection
+identities bind the complete evidence. A broken bridge/target-leg seam and two
+failed semantic attempts remain typed fail-closed results.
+
+For `050`, the primary crossing still passes and V2 carries the exact V1 route,
+authority, kinematics, and assessment; V1 identity
+`fnv1a64:9e257dace1c02cc2` is unchanged. For `068`, the primary crossing fails
+only heading (`0.3879286123780121 rad` versus `0.35 rad`). V2 then selects the
+intermediate-bridge exit at applied step `3960`, which is target-leg apex step
+`1190`; its heading error is `0.19282817224525745 rad`, cross speed
+`12.4226137521142 m/s`, speed `64.8242073388695 m/s`, and authority cap
+`93.2925267109143 m/s`, so the unchanged canonical handoff passes.
+
+The separate `conservative-ballistic-handoff-development-v1` evaluator binds
+both exposed inputs, historical V1 results, candidate projections, V2 runtime
+projections, deterministic repeat, and explicit controller/simulator/physical
+non-execution. Its artifact identity is `aeb7338fd71c73e5`. The HTML/SVG report
+plots the recomputed source ballistic prefix, exact affine intermediate bridge,
+and target ballistic suffix alongside both handoff attempts and their limits.
+This is development evidence, not a reopened held-out result or an ordinary
+full-route validation claim.
+
+The next sequence is now:
+
+1. **F4 — development full-controller simulation.** Run the unchanged
+   controller against the V2-selected `068` exit route and record the result
+   without tuning. A failure returns to execution-mismatch diagnosis rather
+   than changing limits or searching thresholds.
+2. **F5 — fresh held-out experiment, only after F4 review.** Define genuinely
+   new predeclared inputs and predictions before any new controller outcomes.
+   The current `050` and `068` cases remain development/regression inputs and
+   cannot become held-out again.
 
 #### Same-family invariant and explicit deferrals
 

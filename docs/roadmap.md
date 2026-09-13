@@ -750,8 +750,17 @@ implementing a predictor. The remaining evidence-first sequence is:
    expectations, while `ridge_progress_068_probe` passed every candidate-level
    prediction but stopped at typed runtime `handoff_contract_failed`. H3 was
    not run, so there are no held-out controller outcomes and the scoped
-   execution-compatibility claim does not advance; only after the handoff
-   boundary is understood is a materially distinct topology reconsidered;
+   execution-compatibility claim does not advance. The subsequent F0-F3
+   controller-free development checkpoint preserves that historical V1 stop
+   and adds a versioned generic runtime V2 selector: it retains the exact
+   virtual-anchor crossing attempt and, only when its canonical handoff fails,
+   tries the certified intermediate-bridge exit/target-leg apex seam. `050`
+   remains byte-compatible with V1; `068` selects exit step `3960` and passes
+   the unchanged handoff contract. The deterministic development artifact is
+   `aeb7338fd71c73e5`; controller-shadow v4 remains `a69de7872ad039fd`. No new
+   controller or simulator lane has run. F4 is the development full-controller
+   test of that route; only after its review may F5 freeze genuinely new inputs
+   and predictions. A materially distinct topology remains deferred;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;

@@ -1,5 +1,49 @@
 # Progress
 
+## 2026-09-13
+
+### F0-F3 runtime handoff-selection development checkpoint
+
+- The H4 `STOP/NARROW` result remains immutable. The historical generic runtime
+  V1 boundary still returns typed `handoff_contract_failed` for
+  `ridge_progress_068_probe`, and the source-controlled H2/H4 result manifest
+  is unchanged.
+- F0 retained the previously discarded controller-free failure evidence. At
+  the `068` virtual-anchor crossing (intermediate-bridge step `1406`), spatial,
+  authority, progress, cross-speed, and speed checks pass; the sole violation
+  is heading (`0.3879286123780121 rad` against `0.35 rad`).
+- F1-F2 add a separate generic runtime projection V2. Its fixed semantic order
+  first tries the existing exact virtual-anchor crossing and, only when that
+  canonical handoff fails, tries the certified intermediate-bridge exit after
+  proving that it is the target-leg acquisition/apex seam. It does not scan
+  ticks, score threshold-adjacent states, branch on case IDs, change controller
+  limits, or alter the V1/embedded runtime APIs.
+- `ridge_progress_050_probe` remains on its byte-compatible primary crossing;
+  historical V1 runtime identity `fnv1a64:9e257dace1c02cc2` is unchanged. Its
+  V2 runtime identity is `fnv1a64:8f5a45ac7041661b`.
+- `ridge_progress_068_probe` now projects through V2 by selecting the
+  intermediate-bridge exit at applied step `3960`, target-leg apex step `1190`.
+  The exact state is approximately `(2715.400408, 1931.456905) m` with velocity
+  `(64.824201, 0.027652) m/s`; heading error is `0.19282817224525745 rad`, cross
+  speed is `12.4226137521142 m/s`, speed is `64.8242073388695 m/s`, and the
+  authority cap is `93.2925267109143 m/s`. Its V2 runtime identity is
+  `fnv1a64:48e2f9d91222c096`.
+- F3 records the two exposed cases as a separate controller-free development
+  regression. The deterministic artifact identity is `aeb7338fd71c73e5`; its
+  ignored summary is under
+  `outputs/eval/conservative-ballistic-handoff-development-v1/` and its HTML/SVG
+  report is under
+  `outputs/reports/eval/conservative-ballistic-handoff-development-v1/`. The
+  report reconstructs the source ballistic prefix, exact affine powered
+  bridge, and target ballistic suffix from compact coefficients rather than
+  presenting a start/apex/end triangle.
+- The embedded controller-shadow remains schema `v4`, semantic identity
+  `a69de7872ad039fd`, with its frozen outcomes unchanged. No new controller,
+  simulator, or physical-execution lane ran. The next checkpoint is F4: a
+  development-only full-controller simulation of the selected `068` exit
+  route. Only after a successful review may F5 define genuinely new frozen
+  inputs and predictions; `050`/`068` cannot become held-out again.
+
 ## 2026-09-12
 
 ### H4 held-out decision: STOP/NARROW after H2b analytical reveal
