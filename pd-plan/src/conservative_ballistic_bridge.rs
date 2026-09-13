@@ -619,7 +619,7 @@ pub struct DirectBridgeReportV2 {
 /// always means the shortest robust flat-derived nominal lane, while
 /// `OneWaypoint` is the finite terrain-derived repair selected only after that
 /// same nominal lane is rejected on the derived mesa.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ExperimentalRidgeCandidateOutcomeV2 {
     Direct {
         candidate: Box<DirectBridgeCandidateV2>,
@@ -685,6 +685,51 @@ pub struct ExperimentalRidgeCandidateProjectionV2 {
     pub waypoint_candidate_identities: Vec<String>,
     pub flat_control: ExperimentalRidgeCandidateOutcomeV2,
     pub derived_mesa: ExperimentalRidgeCandidateOutcomeV2,
+}
+
+/// Versioned, input-only contract for one arbitrary case from the bounded
+/// ridge family.  The caller cannot provide any derived mesa, certificate,
+/// route, or controller result: every such value is recomputed below.
+pub const EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_ID_V1: &str = "experimental_ridge_case_input_v1";
+pub const EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_VERSION_V1: u32 = 1;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentalRidgeCaseInputV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub policy: DirectBridgePolicyV2,
+    pub vehicle: VehicleInputV2,
+    /// One and only one raw probe.  A separate fixture or probe selection
+    /// field would permit case-ID selection to enter this generic boundary.
+    pub probe: DirectBridgeProbeV2,
+    pub identity: String,
+}
+
+/// Compact, recomputable analytical projection for one
+/// [`ExperimentalRidgeCaseInputV1`].  This intentionally carries no
+/// embedded-report identity: its provenance is the caller-owned input and a
+/// freshly evaluated per-case canary only.
+pub const EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_ID_V1: &str =
+    "experimental_ridge_case_projection_v1";
+pub const EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_VERSION_V1: u32 = 1;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentalRidgeCaseProjectionV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub input_identity: String,
+    pub analytical_canary_identity: String,
+    pub policy: DirectBridgePolicyV2,
+    pub vehicle: VehicleInputV2,
+    pub probe: DirectBridgeProbeV2,
+    pub mesa: MesaGeometryV2,
+    pub flat_candidate_identities: Vec<String>,
+    pub ridge_direct_candidate_identities: Vec<String>,
+    pub waypoint_search_identity: String,
+    pub waypoint_candidate_identities: Vec<String>,
+    pub flat_control: ExperimentalRidgeCandidateOutcomeV2,
+    pub derived_mesa: ExperimentalRidgeCandidateOutcomeV2,
+    pub identity: String,
 }
 
 /// Schema identity for the planner-owned controller-facing projection.  This
@@ -799,6 +844,28 @@ pub struct ExperimentalRidgeRuntimeProjectionV2 {
     pub identity: String,
 }
 
+/// Schema identity for the runtime counterpart of the generic V1 ridge-case
+/// projection.  It deliberately remains distinct from the frozen embedded V2
+/// controller-shadow projection.
+pub const EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_ID_V1: &str =
+    "experimental_ridge_case_runtime_projection_v1";
+pub const EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_VERSION_V1: u32 = 1;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentalRidgeCaseRuntimeProjectionV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub input_identity: String,
+    pub analytical_canary_identity: String,
+    pub policy: DirectBridgePolicyV2,
+    pub vehicle: VehicleInputV2,
+    pub probe: DirectBridgeProbeV2,
+    pub mesa: MesaGeometryV2,
+    pub flat_control: ExperimentalRidgeRuntimeOutcomeV2,
+    pub derived_mesa: ExperimentalRidgeRuntimeOutcomeV2,
+    pub identity: String,
+}
+
 /// Stable fail-closed reasons for malformed experimental candidate evidence.
 /// A valid but exhausted finite search is represented by
 /// [`ExperimentalRidgeCandidateOutcomeV2::Unsupported`], not this error type.
@@ -806,6 +873,12 @@ pub struct ExperimentalRidgeRuntimeProjectionV2 {
 #[serde(rename_all = "snake_case")]
 pub enum ExperimentalRidgeCandidateErrorV2 {
     EmbeddedReportInvalid,
+    GenericInputInvalid,
+    GenericInputIdentityMismatch,
+    GenericProjectionSchemaMismatch,
+    GenericProjectionIdentityMismatch,
+    GenericProjectionMismatch,
+    DerivedMesaGeometryInvalid,
     ProjectionMismatch,
     FlatNominalIdentityMismatch,
     FlatNominalCertificateInvalid,
@@ -826,6 +899,22 @@ impl std::fmt::Display for ExperimentalRidgeCandidateErrorV2 {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let message = match self {
             Self::EmbeddedReportInvalid => "embedded V2 report failed canonical validation",
+            Self::GenericInputInvalid => "generic ridge-case input schema or contents are invalid",
+            Self::GenericInputIdentityMismatch => {
+                "generic ridge-case input identity does not bind its canonical contents"
+            }
+            Self::GenericProjectionSchemaMismatch => {
+                "generic ridge-case projection schema is invalid"
+            }
+            Self::GenericProjectionIdentityMismatch => {
+                "generic ridge-case projection identity does not bind its canonical contents"
+            }
+            Self::GenericProjectionMismatch => {
+                "generic ridge-case projection does not recompute from its input"
+            }
+            Self::DerivedMesaGeometryInvalid => {
+                "derived mesa geometry is invalid for the generic ridge-case input"
+            }
             Self::ProjectionMismatch => {
                 "experimental ridge candidate projection does not match the embedded V2 evidence"
             }
@@ -3822,16 +3911,16 @@ fn mesa_geometry(
     case: &DirectBridgeProbeV2,
     feature: &RidgeFeatureV2,
     envelope: &LocalCorrectionEnvelopeV2,
-) -> MesaGeometryV2 {
+) -> Result<MesaGeometryV2, ExperimentalRidgeCandidateErrorV2> {
     let domain_start = case
         .terrain_points_m
         .first()
-        .expect("validated probe has terrain domain")
+        .ok_or(ExperimentalRidgeCandidateErrorV2::DerivedMesaGeometryInvalid)?
         .x;
     let domain_end = case
         .terrain_points_m
         .last()
-        .expect("validated probe has terrain domain")
+        .ok_or(ExperimentalRidgeCandidateErrorV2::DerivedMesaGeometryInvalid)?
         .x;
     let elevated = feature.top_y_m > feature.base_y_m + ENDPOINT_TOLERANCE;
     if !elevated {
@@ -3872,7 +3961,7 @@ fn mesa_geometry(
             correction_blocking_margin_m: flat.correction_blocking_margin_m,
             blocks_full_correction_corridor: flat.blocks_full_correction_corridor,
         });
-        return flat;
+        return Ok(flat);
     }
     let crossing_bounds = envelope.crossing_cut.bounds;
     if envelope.crossing_cut.eligible_sample_count == 0 {
@@ -3912,7 +4001,7 @@ fn mesa_geometry(
             correction_blocking_margin_m: empty.correction_blocking_margin_m,
             blocks_full_correction_corridor: empty.blocks_full_correction_corridor,
         });
-        return empty;
+        return Ok(empty);
     }
     let top_left_x_m = feature
         .left_x_m
@@ -3931,6 +4020,25 @@ fn mesa_geometry(
         .max(policy.minimum_clearance_m);
     let base_left_x_m = (top_left_x_m - horizontal_run_m).max(domain_start);
     let base_right_x_m = (top_right_x_m + horizontal_run_m).min(domain_end);
+    if ![
+        domain_start,
+        base_left_x_m,
+        top_left_x_m,
+        top_right_x_m,
+        base_right_x_m,
+        domain_end,
+        top_y_m,
+    ]
+    .into_iter()
+    .all(f64::is_finite)
+        || domain_start > base_left_x_m
+        || base_left_x_m > top_left_x_m
+        || top_left_x_m > top_right_x_m
+        || top_right_x_m > base_right_x_m
+        || base_right_x_m > domain_end
+    {
+        return Err(ExperimentalRidgeCandidateErrorV2::DerivedMesaGeometryInvalid);
+    }
     let terrain_points_m = vec![
         Vec2::new(domain_start, feature.base_y_m),
         Vec2::new(base_left_x_m, feature.base_y_m),
@@ -3980,7 +4088,7 @@ fn mesa_geometry(
         correction_blocking_margin_m: mesa.correction_blocking_margin_m,
         blocks_full_correction_corridor: mesa.blocks_full_correction_corridor,
     });
-    mesa
+    Ok(mesa)
 }
 
 fn correction_envelope_is_valid(envelope: &LocalCorrectionEnvelopeV2) -> bool {
@@ -4988,12 +5096,12 @@ fn evaluate_ridge_canary_case_internal(
     policy: &DirectBridgePolicyV2,
     vehicle: &VehicleInputV2,
     case: &DirectBridgeProbeV2,
-) -> RidgeCanaryEvidenceV2 {
+) -> Result<RidgeCanaryEvidenceV2, ExperimentalRidgeCandidateErrorV2> {
     let feature = ridge_feature(case);
     let flat_control = flat_twin_evidence(policy, vehicle, case);
     let nominal = flat_control.nominal_candidate.clone();
     let correction_envelope = correction_envelope(policy, vehicle, &feature, &nominal);
-    let mesa = mesa_geometry(policy, vehicle, case, &feature, &correction_envelope);
+    let mesa = mesa_geometry(policy, vehicle, case, &feature, &correction_envelope)?;
     let derived_case = DirectBridgeProbeV2 {
         id: format!("{}_derived_mesa", case.id),
         source: case.source.clone(),
@@ -5004,7 +5112,7 @@ fn evaluate_ridge_canary_case_internal(
     };
     derived_case
         .validate(policy, vehicle)
-        .expect("derived mesa case validates before evaluation");
+        .map_err(|_| ExperimentalRidgeCandidateErrorV2::DerivedMesaGeometryInvalid)?;
     let duration_steps = canary_bridge_duration_steps(policy);
     let mut derived_candidates: Vec<_> = candidate_steps(
         policy,
@@ -5038,7 +5146,7 @@ fn evaluate_ridge_canary_case_internal(
                 && (candidate.duration_multiplier - nominal.duration_multiplier).abs()
                     <= ENDPOINT_TOLERANCE
         })
-        .expect("derived mesa has the flat twin duration candidate");
+        .ok_or(ExperimentalRidgeCandidateErrorV2::DerivedMesaGeometryInvalid)?;
     let direct_global_replans = derived_candidates
         .iter()
         .filter(|candidate| candidate.virtual_arc.steps != nominal.virtual_arc.steps)
@@ -5084,7 +5192,7 @@ fn evaluate_ridge_canary_case_internal(
         direct_global_replans: &evidence.direct_global_replans,
         waypoint_search: &evidence.waypoint_search,
     });
-    evidence
+    Ok(evidence)
 }
 
 /// Evaluate the bounded ridge canary for an arbitrary validated probe. This
@@ -5098,7 +5206,7 @@ pub fn evaluate_ridge_canary_case_v2(
     policy.validate()?;
     vehicle.validate()?;
     case.validate(policy, vehicle)?;
-    Ok(evaluate_ridge_canary_case_internal(policy, vehicle, case))
+    evaluate_ridge_canary_case_internal(policy, vehicle, case).map_err(|error| error.to_string())
 }
 
 pub fn evaluate_ridge_canary_fixture_v2(
@@ -5131,7 +5239,8 @@ pub fn evaluate_fixture_v2(
         .find(|case| case.id == "ridge_probe")
         .expect("validated fixture has ridge_probe");
     let ridge_canary =
-        evaluate_ridge_canary_case_internal(&fixture.policy, &fixture.vehicle, ridge_case);
+        evaluate_ridge_canary_case_internal(&fixture.policy, &fixture.vehicle, ridge_case)
+            .map_err(|error| error.to_string())?;
     let mut evaluation = DirectBridgeEvaluationV2 {
         fixture_identity: digest(fixture),
         policy_identity: digest(&fixture.policy),
@@ -5327,6 +5436,174 @@ pub fn validate_embedded_experimental_ridge_candidate_v2(
     Ok(())
 }
 
+impl ExperimentalRidgeCaseInputV1 {
+    /// Construct one identity-bound generic ridge input.  This is the only
+    /// public constructor that accepts raw case contents; all analytical and
+    /// runtime evidence is derived by the evaluator/projector APIs below.
+    pub fn new(
+        policy: DirectBridgePolicyV2,
+        vehicle: VehicleInputV2,
+        probe: DirectBridgeProbeV2,
+    ) -> Result<Self, ExperimentalRidgeCandidateErrorV2> {
+        let mut input = Self {
+            schema_id: EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_ID_V1.to_owned(),
+            schema_version: EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_VERSION_V1,
+            policy,
+            vehicle,
+            probe,
+            identity: String::new(),
+        };
+        // Validate raw contents before the infallible JSON digest.  In
+        // particular, serde rejects non-finite floats, so digesting first
+        // would convert an ordinary malformed public input into a panic.
+        validate_experimental_ridge_case_input_contents_v1(
+            &input.policy,
+            &input.vehicle,
+            &input.probe,
+        )?;
+        input.identity = experimental_ridge_case_input_identity_v1(&input);
+        Ok(input)
+    }
+
+    /// Validate the versioned input boundary before any analytical work.  A
+    /// single `probe` field makes the one-case invariant structural rather
+    /// than an ID-based selection rule.
+    pub fn validate(&self) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
+        if self.schema_id != EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_ID_V1
+            || self.schema_version != EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_VERSION_V1
+        {
+            return Err(ExperimentalRidgeCandidateErrorV2::GenericInputInvalid);
+        }
+        validate_experimental_ridge_case_input_contents_v1(
+            &self.policy,
+            &self.vehicle,
+            &self.probe,
+        )?;
+        if self.identity != experimental_ridge_case_input_identity_v1(self) {
+            return Err(ExperimentalRidgeCandidateErrorV2::GenericInputIdentityMismatch);
+        }
+        Ok(())
+    }
+}
+
+fn validate_experimental_ridge_case_input_contents_v1(
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+    probe: &DirectBridgeProbeV2,
+) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
+    policy
+        .validate()
+        .map_err(|_| ExperimentalRidgeCandidateErrorV2::GenericInputInvalid)?;
+    vehicle
+        .validate()
+        .map_err(|_| ExperimentalRidgeCandidateErrorV2::GenericInputInvalid)?;
+    if vehicle.derated_max_acceleration_mps2(policy) <= 0.0 {
+        return Err(ExperimentalRidgeCandidateErrorV2::GenericInputInvalid);
+    }
+    probe
+        .validate(policy, vehicle)
+        .map_err(|_| ExperimentalRidgeCandidateErrorV2::GenericInputInvalid)
+}
+
+/// Evaluate one arbitrary, identity-bound ridge case.  The canary, mesa,
+/// candidate decisions, and crossing evidence are all rebuilt from this input
+/// rather than accepted from the caller.
+pub fn evaluate_experimental_ridge_case_projection_v1(
+    input: &ExperimentalRidgeCaseInputV1,
+) -> Result<ExperimentalRidgeCaseProjectionV1, ExperimentalRidgeCandidateErrorV2> {
+    input.validate()?;
+    experimental_ridge_case_projection_from_validated_input_v1(input)
+}
+
+/// Reject a generic projection unless it is structurally valid, carries a
+/// valid input identity, and exact-compares to a fresh analytical
+/// recomputation from the contained input fields.
+pub fn validate_experimental_ridge_case_projection_v1(
+    projection: &ExperimentalRidgeCaseProjectionV1,
+) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
+    if projection.schema_id != EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_ID_V1
+        || projection.schema_version != EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_VERSION_V1
+    {
+        return Err(ExperimentalRidgeCandidateErrorV2::GenericProjectionSchemaMismatch);
+    }
+    if projection.identity != experimental_ridge_case_projection_identity_v1(projection) {
+        return Err(ExperimentalRidgeCandidateErrorV2::GenericProjectionIdentityMismatch);
+    }
+    let input = ExperimentalRidgeCaseInputV1 {
+        schema_id: EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_ID_V1.to_owned(),
+        schema_version: EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_VERSION_V1,
+        policy: projection.policy.clone(),
+        vehicle: projection.vehicle.clone(),
+        probe: projection.probe.clone(),
+        identity: projection.input_identity.clone(),
+    };
+    input.validate()?;
+    validate_experimental_ridge_projection_structure_components_v2(
+        &projection.policy,
+        &projection.probe,
+        &projection.flat_candidate_identities,
+        &projection.waypoint_candidate_identities,
+        &projection.flat_control,
+        &projection.derived_mesa,
+    )?;
+    let expected = experimental_ridge_case_projection_from_validated_input_v1(&input)?;
+    if projection != &expected {
+        return Err(ExperimentalRidgeCandidateErrorV2::GenericProjectionMismatch);
+    }
+    Ok(())
+}
+
+fn experimental_ridge_case_projection_from_validated_input_v1(
+    input: &ExperimentalRidgeCaseInputV1,
+) -> Result<ExperimentalRidgeCaseProjectionV1, ExperimentalRidgeCandidateErrorV2> {
+    let canary = evaluate_ridge_canary_case_internal(&input.policy, &input.vehicle, &input.probe)?;
+    let components = experimental_ridge_projection_components_v2(
+        &input.policy,
+        &input.vehicle,
+        &input.probe,
+        &canary,
+    )?;
+    let mut projection = ExperimentalRidgeCaseProjectionV1 {
+        schema_id: EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_ID_V1.to_owned(),
+        schema_version: EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_VERSION_V1,
+        input_identity: input.identity.clone(),
+        analytical_canary_identity: components.analytical_canary_identity,
+        policy: components.policy,
+        vehicle: components.vehicle,
+        probe: components.case,
+        mesa: components.mesa,
+        flat_candidate_identities: components.flat_candidate_identities,
+        ridge_direct_candidate_identities: components.ridge_direct_candidate_identities,
+        waypoint_search_identity: components.waypoint_search_identity,
+        waypoint_candidate_identities: components.waypoint_candidate_identities,
+        flat_control: components.flat_control,
+        derived_mesa: components.derived_mesa,
+        identity: String::new(),
+    };
+    canonicalize_experimental_ridge_candidate_outcome_samples_v2(&mut projection.flat_control);
+    canonicalize_experimental_ridge_candidate_outcome_samples_v2(&mut projection.derived_mesa);
+    projection.identity = experimental_ridge_case_projection_identity_v1(&projection);
+    Ok(projection)
+}
+
+/// Candidate bridges materialize their affine samples only as a runtime
+/// convenience.  V1 projections are serialized evidence, so canonicalize
+/// that transient state before both identity construction and equality-based
+/// recomputation validation.
+fn canonicalize_experimental_ridge_candidate_outcome_samples_v2(
+    outcome: &mut ExperimentalRidgeCandidateOutcomeV2,
+) {
+    match outcome {
+        ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } => {
+            clear_candidate_samples(candidate);
+        }
+        ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { candidate, .. } => {
+            clear_waypoint_candidate_samples(candidate);
+        }
+        ExperimentalRidgeCandidateOutcomeV2::Unsupported { .. } => {}
+    }
+}
+
 /// Project the validated experimental V2 candidate decisions into the
 /// controller-facing route contract.  This is deliberately separate from the
 /// production [`crate::plan`] entry point and is only available with the
@@ -5339,16 +5616,14 @@ pub fn project_experimental_ridge_runtime_v2(
     validate_embedded_experimental_ridge_candidate_v2(projection)
         .map_err(ExperimentalRidgeRuntimeProjectionErrorV2::CandidateEvidence)?;
 
-    let flat_case = flat_twin_case(&projection.case);
-    let flat_request = runtime_request_v2(projection, terrain(&flat_case))?;
-    let mesa_request = runtime_request_v2(
-        projection,
-        TerrainDefinition::Heightfield {
-            points_m: projection.mesa.terrain_points_m.clone(),
-        },
+    let (flat_control, derived_mesa) = project_ridge_runtime_outcomes_v2(
+        &projection.policy,
+        &projection.vehicle,
+        &projection.case,
+        &projection.mesa,
+        &projection.flat_control,
+        &projection.derived_mesa,
     )?;
-    let flat_control = project_runtime_outcome_v2(&projection.flat_control, &flat_request)?;
-    let derived_mesa = project_runtime_outcome_v2(&projection.derived_mesa, &mesa_request)?;
 
     let mut runtime = ExperimentalRidgeRuntimeProjectionV2 {
         schema_id: EXPERIMENTAL_RIDGE_RUNTIME_PROJECTION_SCHEMA_ID_V2.to_owned(),
@@ -5398,52 +5673,106 @@ pub fn validate_experimental_ridge_runtime_v2(
     Ok(())
 }
 
-fn runtime_request_v2(
-    projection: &ExperimentalRidgeCandidateProjectionV2,
+/// Project a generic, recomputation-validated V1 case into the same bounded
+/// controller-facing route components used by the frozen V2 canary.  This is
+/// not a production planner entry point.
+pub fn project_experimental_ridge_case_runtime_v1(
+    projection: &ExperimentalRidgeCaseProjectionV1,
+) -> Result<ExperimentalRidgeCaseRuntimeProjectionV1, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    validate_experimental_ridge_case_projection_v1(projection)
+        .map_err(ExperimentalRidgeRuntimeProjectionErrorV2::CandidateEvidence)?;
+    let (flat_control, derived_mesa) = project_ridge_runtime_outcomes_v2(
+        &projection.policy,
+        &projection.vehicle,
+        &projection.probe,
+        &projection.mesa,
+        &projection.flat_control,
+        &projection.derived_mesa,
+    )?;
+    let mut runtime = ExperimentalRidgeCaseRuntimeProjectionV1 {
+        schema_id: EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_ID_V1.to_owned(),
+        schema_version: EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_VERSION_V1,
+        input_identity: projection.input_identity.clone(),
+        analytical_canary_identity: projection.analytical_canary_identity.clone(),
+        policy: projection.policy.clone(),
+        vehicle: projection.vehicle.clone(),
+        probe: projection.probe.clone(),
+        mesa: projection.mesa.clone(),
+        flat_control,
+        derived_mesa,
+        identity: String::new(),
+    };
+    runtime.identity = experimental_ridge_case_runtime_projection_identity_v1(&runtime);
+    Ok(runtime)
+}
+
+/// Reject an altered generic runtime artifact by rebuilding it from the
+/// validated generic candidate projection.
+pub fn validate_experimental_ridge_case_runtime_v1(
+    candidate: &ExperimentalRidgeCaseProjectionV1,
+    runtime: &ExperimentalRidgeCaseRuntimeProjectionV1,
+) -> Result<(), ExperimentalRidgeRuntimeProjectionErrorV2> {
+    if runtime.schema_id != EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_ID_V1
+        || runtime.schema_version != EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_VERSION_V1
+        || runtime.identity != experimental_ridge_case_runtime_projection_identity_v1(runtime)
+    {
+        return Err(ExperimentalRidgeRuntimeProjectionErrorV2::RuntimeProjectionIdentityMismatch);
+    }
+    let expected = project_experimental_ridge_case_runtime_v1(candidate)?;
+    if runtime != &expected {
+        return Err(ExperimentalRidgeRuntimeProjectionErrorV2::RuntimeProjectionIdentityMismatch);
+    }
+    Ok(())
+}
+
+fn runtime_request_components_v2(
+    policy: &DirectBridgePolicyV2,
+    vehicle_input: &VehicleInputV2,
+    case: &DirectBridgeProbeV2,
     terrain: TerrainDefinition,
 ) -> Result<RoutePlanningRequest, ExperimentalRidgeRuntimeProjectionErrorV2> {
     let vehicle = VehicleSpec {
         geometry: VehicleGeometry {
-            hull_width_m: projection.vehicle.geometry.hull_width_m,
-            hull_height_m: projection.vehicle.geometry.hull_height_m,
-            touchdown_half_span_m: projection.vehicle.geometry.touchdown_half_span_m,
-            touchdown_base_offset_m: projection.vehicle.geometry.touchdown_base_offset_m,
+            hull_width_m: vehicle_input.geometry.hull_width_m,
+            hull_height_m: vehicle_input.geometry.hull_height_m,
+            touchdown_half_span_m: vehicle_input.geometry.touchdown_half_span_m,
+            touchdown_base_offset_m: vehicle_input.geometry.touchdown_base_offset_m,
         },
-        dry_mass_kg: projection.vehicle.dry_mass_kg,
-        initial_fuel_kg: projection.vehicle.initial_fuel_kg,
-        max_fuel_kg: projection.vehicle.max_fuel_kg,
-        max_thrust_n: projection.vehicle.max_thrust_n,
-        max_fuel_burn_kgps: projection.vehicle.max_fuel_burn_kgps,
-        min_throttle_frac: projection.vehicle.min_throttle_frac,
-        max_rotation_rate_radps: projection.vehicle.max_rotation_rate_radps,
-        safe_touchdown_normal_speed_mps: projection.vehicle.safe_touchdown_normal_speed_mps,
-        safe_touchdown_tangential_speed_mps: projection.vehicle.safe_touchdown_tangential_speed_mps,
-        safe_touchdown_attitude_error_rad: projection.vehicle.safe_touchdown_attitude_error_rad,
-        safe_touchdown_angular_rate_radps: projection.vehicle.safe_touchdown_angular_rate_radps,
+        dry_mass_kg: vehicle_input.dry_mass_kg,
+        initial_fuel_kg: vehicle_input.initial_fuel_kg,
+        max_fuel_kg: vehicle_input.max_fuel_kg,
+        max_thrust_n: vehicle_input.max_thrust_n,
+        max_fuel_burn_kgps: vehicle_input.max_fuel_burn_kgps,
+        min_throttle_frac: vehicle_input.min_throttle_frac,
+        max_rotation_rate_radps: vehicle_input.max_rotation_rate_radps,
+        safe_touchdown_normal_speed_mps: vehicle_input.safe_touchdown_normal_speed_mps,
+        safe_touchdown_tangential_speed_mps: vehicle_input.safe_touchdown_tangential_speed_mps,
+        safe_touchdown_attitude_error_rad: vehicle_input.safe_touchdown_attitude_error_rad,
+        safe_touchdown_angular_rate_radps: vehicle_input.safe_touchdown_angular_rate_radps,
     };
     let request = RoutePlanningRequest {
         world: WorldSpec {
-            gravity_mps2: projection.policy.gravity_mps2,
+            gravity_mps2: policy.gravity_mps2,
             terrain,
             landing_pads: vec![
                 LandingPadSpec {
                     id: "source".to_owned(),
-                    center_x_m: projection.case.source.center_x_m,
-                    surface_y_m: projection.case.source.surface_y_m,
-                    width_m: projection.case.source.width_m,
+                    center_x_m: case.source.center_x_m,
+                    surface_y_m: case.source.surface_y_m,
+                    width_m: case.source.width_m,
                 },
                 LandingPadSpec {
                     id: "target".to_owned(),
-                    center_x_m: projection.case.target.center_x_m,
-                    surface_y_m: projection.case.target.surface_y_m,
-                    width_m: projection.case.target.width_m,
+                    center_x_m: case.target.center_x_m,
+                    surface_y_m: case.target.surface_y_m,
+                    width_m: case.target.width_m,
                 },
             ],
         },
         vehicle,
         initial_state: VehicleInitialState {
-            position_m: projection.case.initial_position_m,
-            velocity_mps: projection.case.initial_velocity_mps,
+            position_m: case.initial_position_m,
+            velocity_mps: case.initial_velocity_mps,
             attitude_rad: 0.0,
             angular_rate_radps: 0.0,
         },
@@ -5455,6 +5784,39 @@ fn runtime_request_v2(
         .validate()
         .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::InvalidRuntimeRequest)?;
     Ok(request)
+}
+
+/// Shared runtime decision projection for the frozen embedded V2 canary and
+/// the generic V1 input boundary.  Only the validated analytical outcomes
+/// select a runtime route; no case label or embedded-report field participates.
+fn project_ridge_runtime_outcomes_v2(
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+    case: &DirectBridgeProbeV2,
+    mesa: &MesaGeometryV2,
+    flat_candidate: &ExperimentalRidgeCandidateOutcomeV2,
+    derived_mesa_candidate: &ExperimentalRidgeCandidateOutcomeV2,
+) -> Result<
+    (
+        ExperimentalRidgeRuntimeOutcomeV2,
+        ExperimentalRidgeRuntimeOutcomeV2,
+    ),
+    ExperimentalRidgeRuntimeProjectionErrorV2,
+> {
+    let flat_case = flat_twin_case(case);
+    let flat_request = runtime_request_components_v2(policy, vehicle, case, terrain(&flat_case))?;
+    let mesa_request = runtime_request_components_v2(
+        policy,
+        vehicle,
+        case,
+        TerrainDefinition::Heightfield {
+            points_m: mesa.terrain_points_m.clone(),
+        },
+    )?;
+    Ok((
+        project_runtime_outcome_v2(flat_candidate, &flat_request)?,
+        project_runtime_outcome_v2(derived_mesa_candidate, &mesa_request)?,
+    ))
 }
 
 fn project_runtime_outcome_v2(
@@ -5761,16 +6123,119 @@ fn runtime_projection_identity_v2(projection: &ExperimentalRidgeRuntimeProjectio
     ))
 }
 
-fn experimental_ridge_projection_from_report_v2(
-    report: &DirectBridgeReportV2,
-) -> Result<ExperimentalRidgeCandidateProjectionV2, ExperimentalRidgeCandidateErrorV2> {
-    let canary = &report.evaluation.ridge_canary;
-    let case = report
-        .fixture
-        .cases
-        .iter()
-        .find(|case| case.id == canary.source_case_id)
-        .ok_or(ExperimentalRidgeCandidateErrorV2::EmbeddedReportInvalid)?;
+fn experimental_ridge_case_input_identity_v1(input: &ExperimentalRidgeCaseInputV1) -> String {
+    digest(&ExperimentalRidgeCaseInputIdentityV1 {
+        schema_id: &input.schema_id,
+        schema_version: input.schema_version,
+        policy: &input.policy,
+        vehicle: &input.vehicle,
+        probe: &input.probe,
+    })
+}
+
+#[derive(Serialize)]
+struct ExperimentalRidgeCaseInputIdentityV1<'a> {
+    schema_id: &'a str,
+    schema_version: u32,
+    policy: &'a DirectBridgePolicyV2,
+    vehicle: &'a VehicleInputV2,
+    probe: &'a DirectBridgeProbeV2,
+}
+
+fn experimental_ridge_case_projection_identity_v1(
+    projection: &ExperimentalRidgeCaseProjectionV1,
+) -> String {
+    digest(&ExperimentalRidgeCaseProjectionIdentityV1 {
+        schema_id: &projection.schema_id,
+        schema_version: projection.schema_version,
+        input_identity: &projection.input_identity,
+        analytical_canary_identity: &projection.analytical_canary_identity,
+        policy: &projection.policy,
+        vehicle: &projection.vehicle,
+        probe: &projection.probe,
+        mesa: &projection.mesa,
+        flat_candidate_identities: &projection.flat_candidate_identities,
+        ridge_direct_candidate_identities: &projection.ridge_direct_candidate_identities,
+        waypoint_search_identity: &projection.waypoint_search_identity,
+        waypoint_candidate_identities: &projection.waypoint_candidate_identities,
+        flat_control: &projection.flat_control,
+        derived_mesa: &projection.derived_mesa,
+    })
+}
+
+#[derive(Serialize)]
+struct ExperimentalRidgeCaseProjectionIdentityV1<'a> {
+    schema_id: &'a str,
+    schema_version: u32,
+    input_identity: &'a str,
+    analytical_canary_identity: &'a str,
+    policy: &'a DirectBridgePolicyV2,
+    vehicle: &'a VehicleInputV2,
+    probe: &'a DirectBridgeProbeV2,
+    mesa: &'a MesaGeometryV2,
+    flat_candidate_identities: &'a [String],
+    ridge_direct_candidate_identities: &'a [String],
+    waypoint_search_identity: &'a str,
+    waypoint_candidate_identities: &'a [String],
+    flat_control: &'a ExperimentalRidgeCandidateOutcomeV2,
+    derived_mesa: &'a ExperimentalRidgeCandidateOutcomeV2,
+}
+
+fn experimental_ridge_case_runtime_projection_identity_v1(
+    projection: &ExperimentalRidgeCaseRuntimeProjectionV1,
+) -> String {
+    digest(&ExperimentalRidgeCaseRuntimeProjectionIdentityV1 {
+        schema_id: &projection.schema_id,
+        schema_version: projection.schema_version,
+        input_identity: &projection.input_identity,
+        analytical_canary_identity: &projection.analytical_canary_identity,
+        policy: &projection.policy,
+        vehicle: &projection.vehicle,
+        probe: &projection.probe,
+        mesa: &projection.mesa,
+        flat_control: &projection.flat_control,
+        derived_mesa: &projection.derived_mesa,
+    })
+}
+
+#[derive(Serialize)]
+struct ExperimentalRidgeCaseRuntimeProjectionIdentityV1<'a> {
+    schema_id: &'a str,
+    schema_version: u32,
+    input_identity: &'a str,
+    analytical_canary_identity: &'a str,
+    policy: &'a DirectBridgePolicyV2,
+    vehicle: &'a VehicleInputV2,
+    probe: &'a DirectBridgeProbeV2,
+    mesa: &'a MesaGeometryV2,
+    flat_control: &'a ExperimentalRidgeRuntimeOutcomeV2,
+    derived_mesa: &'a ExperimentalRidgeRuntimeOutcomeV2,
+}
+
+#[derive(Clone)]
+struct ExperimentalRidgeProjectionComponentsV2 {
+    policy: DirectBridgePolicyV2,
+    vehicle: VehicleInputV2,
+    case: DirectBridgeProbeV2,
+    mesa: MesaGeometryV2,
+    analytical_canary_identity: String,
+    flat_candidate_identities: Vec<String>,
+    ridge_direct_candidate_identities: Vec<String>,
+    waypoint_search_identity: String,
+    waypoint_candidate_identities: Vec<String>,
+    flat_control: ExperimentalRidgeCandidateOutcomeV2,
+    derived_mesa: ExperimentalRidgeCandidateOutcomeV2,
+}
+
+/// The sole analytical decision constructor shared by the frozen embedded V2
+/// API and the generic input-only V1 API.  It intentionally accepts a
+/// recomputed canary rather than a report or caller-supplied outcome.
+fn experimental_ridge_projection_components_v2(
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+    case: &DirectBridgeProbeV2,
+    canary: &RidgeCanaryEvidenceV2,
+) -> Result<ExperimentalRidgeProjectionComponentsV2, ExperimentalRidgeCandidateErrorV2> {
     let nominal = canary.flat_control.nominal_candidate.clone();
     let flat_control = if canary.flat_control.status == MissionStatusV2::Green {
         ExperimentalRidgeCandidateOutcomeV2::Direct {
@@ -5782,12 +6247,7 @@ fn experimental_ridge_projection_from_report_v2(
             rejection_reasons: nominal.reasons.clone(),
         }
     };
-    let derived_mesa = project_derived_mesa_outcome_v2(
-        &report.fixture.policy,
-        &report.fixture.vehicle,
-        case,
-        canary,
-    )?;
+    let derived_mesa = project_derived_mesa_outcome_v2(policy, vehicle, case, canary)?;
     let ridge_direct_candidate_identities =
         std::iter::once(canary.direct_nominal_candidate.candidate_identity.clone())
             .chain(
@@ -5797,12 +6257,11 @@ fn experimental_ridge_projection_from_report_v2(
                     .map(|candidate| candidate.candidate_identity.clone()),
             )
             .collect();
-    Ok(ExperimentalRidgeCandidateProjectionV2 {
-        policy: report.fixture.policy.clone(),
-        vehicle: report.fixture.vehicle.clone(),
+    Ok(ExperimentalRidgeProjectionComponentsV2 {
+        policy: policy.clone(),
+        vehicle: vehicle.clone(),
         case: case.clone(),
         mesa: canary.mesa.clone(),
-        analytical_report_identity: report.identity.clone(),
         analytical_canary_identity: canary.identity.clone(),
         flat_candidate_identities: canary.flat_control.candidate_identities.clone(),
         ridge_direct_candidate_identities,
@@ -5815,6 +6274,38 @@ fn experimental_ridge_projection_from_report_v2(
             .collect(),
         flat_control,
         derived_mesa,
+    })
+}
+
+fn experimental_ridge_projection_from_report_v2(
+    report: &DirectBridgeReportV2,
+) -> Result<ExperimentalRidgeCandidateProjectionV2, ExperimentalRidgeCandidateErrorV2> {
+    let canary = &report.evaluation.ridge_canary;
+    let case = report
+        .fixture
+        .cases
+        .iter()
+        .find(|case| case.id == canary.source_case_id)
+        .ok_or(ExperimentalRidgeCandidateErrorV2::EmbeddedReportInvalid)?;
+    let components = experimental_ridge_projection_components_v2(
+        &report.fixture.policy,
+        &report.fixture.vehicle,
+        case,
+        canary,
+    )?;
+    Ok(ExperimentalRidgeCandidateProjectionV2 {
+        policy: components.policy,
+        vehicle: components.vehicle,
+        case: components.case,
+        mesa: components.mesa,
+        analytical_report_identity: report.identity.clone(),
+        analytical_canary_identity: components.analytical_canary_identity,
+        flat_candidate_identities: components.flat_candidate_identities,
+        ridge_direct_candidate_identities: components.ridge_direct_candidate_identities,
+        waypoint_search_identity: components.waypoint_search_identity,
+        waypoint_candidate_identities: components.waypoint_candidate_identities,
+        flat_control: components.flat_control,
+        derived_mesa: components.derived_mesa,
     })
 }
 
@@ -5898,11 +6389,28 @@ fn project_derived_mesa_outcome_v2(
 fn validate_experimental_ridge_projection_structure_v2(
     projection: &ExperimentalRidgeCandidateProjectionV2,
 ) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
-    match &projection.flat_control {
+    validate_experimental_ridge_projection_structure_components_v2(
+        &projection.policy,
+        &projection.case,
+        &projection.flat_candidate_identities,
+        &projection.waypoint_candidate_identities,
+        &projection.flat_control,
+        &projection.derived_mesa,
+    )
+}
+
+fn validate_experimental_ridge_projection_structure_components_v2(
+    policy: &DirectBridgePolicyV2,
+    case: &DirectBridgeProbeV2,
+    flat_candidate_identities: &[String],
+    waypoint_candidate_identities: &[String],
+    flat_control: &ExperimentalRidgeCandidateOutcomeV2,
+    derived_mesa: &ExperimentalRidgeCandidateOutcomeV2,
+) -> Result<(), ExperimentalRidgeCandidateErrorV2> {
+    match flat_control {
         ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } => {
             if candidate.identity != candidate_identity(candidate)
-                || !projection
-                    .flat_candidate_identities
+                || !flat_candidate_identities
                     .iter()
                     .any(|identity| identity == &candidate.identity)
             {
@@ -5920,18 +6428,17 @@ fn validate_experimental_ridge_projection_structure_v2(
     if let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
         candidate,
         crossing,
-    } = &projection.derived_mesa
+    } = derived_mesa
     {
-        if projection.waypoint_candidate_identities.first() != Some(&candidate.identity) {
+        if waypoint_candidate_identities.first() != Some(&candidate.identity) {
             return Err(ExperimentalRidgeCandidateErrorV2::WaypointSelectionIdentityMismatch);
         }
-        validate_waypoint_certificate_v2(&projection.policy, candidate)?;
-        let horizontal_sign =
-            if projection.case.target.center_x_m > projection.case.source.center_x_m {
-                1
-            } else {
-                -1
-            };
+        validate_waypoint_certificate_v2(policy, candidate)?;
+        let horizontal_sign = if case.target.center_x_m > case.source.center_x_m {
+            1
+        } else {
+            -1
+        };
         let expected = select_exact_intermediate_bridge_crossing_v2(candidate, horizontal_sign)?;
         if **crossing != expected {
             return Err(ExperimentalRidgeCandidateErrorV2::IntermediateCrossingMismatch);
@@ -6100,6 +6607,20 @@ mod tests {
         // Share the validation canonical report so report projection tests do
         // not pay for two equivalent full analytical evaluations.
         embedded_report_artifact_v2().clone()
+    }
+
+    fn generic_ridge_input() -> ExperimentalRidgeCaseInputV1 {
+        let fixture = fixture();
+        let mut probe = fixture
+            .cases
+            .into_iter()
+            .find(|case| case.id == "ridge_probe")
+            .expect("embedded ridge probe");
+        // Exercise the generic boundary with already-seen geometry while
+        // proving that it has no embedded case-ID selection behavior.
+        probe.id = "ridge_probe_generic_input".to_owned();
+        ExperimentalRidgeCaseInputV1::new(fixture.policy, fixture.vehicle, probe)
+            .expect("renamed embedded ridge input validates")
     }
 
     fn clear_result(evaluation: &DirectBridgeEvaluationV2) -> &DirectBridgeProbeResultV2 {
@@ -7363,6 +7884,148 @@ mod tests {
         assert_eq!(
             validate_experimental_ridge_runtime_v2(&candidate_projection, &tampered_runtime),
             Err(ExperimentalRidgeRuntimeProjectionErrorV2::RuntimeProjectionIdentityMismatch)
+        );
+    }
+
+    #[test]
+    fn generic_ridge_case_projection_recomputes_from_one_identity_bound_input() {
+        let input = generic_ridge_input();
+        assert_eq!(input.schema_id, EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_ID_V1);
+        assert_eq!(
+            input.schema_version,
+            EXPERIMENTAL_RIDGE_CASE_INPUT_SCHEMA_VERSION_V1
+        );
+        input.validate().unwrap();
+
+        let projection = evaluate_experimental_ridge_case_projection_v1(&input).unwrap();
+        assert_eq!(
+            projection.schema_id,
+            EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_ID_V1
+        );
+        assert_eq!(
+            projection.schema_version,
+            EXPERIMENTAL_RIDGE_CASE_PROJECTION_SCHEMA_VERSION_V1
+        );
+        assert_eq!(projection.input_identity, input.identity);
+        assert_eq!(
+            projection.identity,
+            experimental_ridge_case_projection_identity_v1(&projection)
+        );
+        validate_experimental_ridge_case_projection_v1(&projection).unwrap();
+        let reloaded: ExperimentalRidgeCaseProjectionV1 =
+            serde_json::from_slice(&serde_json::to_vec(&projection).unwrap()).unwrap();
+        assert_eq!(reloaded, projection);
+        assert_eq!(reloaded.identity, projection.identity);
+        validate_experimental_ridge_case_projection_v1(&reloaded).unwrap();
+
+        let mut schema_tampered = input.clone();
+        schema_tampered.schema_version += 1;
+        assert_eq!(
+            evaluate_experimental_ridge_case_projection_v1(&schema_tampered),
+            Err(ExperimentalRidgeCandidateErrorV2::GenericInputInvalid)
+        );
+        let mut identity_tampered = input;
+        identity_tampered.identity.push_str("-tampered");
+        let identity_tampered: ExperimentalRidgeCaseInputV1 =
+            serde_json::from_slice(&serde_json::to_vec(&identity_tampered).unwrap()).unwrap();
+        assert_eq!(
+            evaluate_experimental_ridge_case_projection_v1(&identity_tampered),
+            Err(ExperimentalRidgeCandidateErrorV2::GenericInputIdentityMismatch)
+        );
+    }
+
+    #[test]
+    fn generic_ridge_case_constructor_rejects_non_finite_input_without_panicking() {
+        let fixture = fixture();
+        let probe = fixture
+            .cases
+            .into_iter()
+            .find(|case| case.id == "ridge_probe")
+            .expect("embedded ridge probe");
+        let mut policy = fixture.policy;
+        policy.gravity_mps2 = f64::NAN;
+        let result = std::panic::catch_unwind(|| {
+            ExperimentalRidgeCaseInputV1::new(policy, fixture.vehicle, probe)
+        });
+        assert!(matches!(
+            result,
+            Ok(Err(ExperimentalRidgeCandidateErrorV2::GenericInputInvalid))
+        ));
+    }
+
+    #[test]
+    fn generic_ridge_case_mutation_changes_identities_and_recomputation_rejects_tampering() {
+        let input = generic_ridge_input();
+        let original = evaluate_experimental_ridge_case_projection_v1(&input).unwrap();
+
+        let mut changed_input = input;
+        changed_input.probe.terrain_points_m[2].y += 1.0;
+        changed_input.identity = experimental_ridge_case_input_identity_v1(&changed_input);
+        let changed = evaluate_experimental_ridge_case_projection_v1(&changed_input).unwrap();
+        assert_ne!(changed_input.identity, original.input_identity);
+        assert_ne!(changed.identity, original.identity);
+        assert_ne!(
+            changed.analytical_canary_identity,
+            original.analytical_canary_identity
+        );
+
+        let mut altered = original;
+        altered.mesa.top_y_m += 1.0;
+        altered.identity = experimental_ridge_case_projection_identity_v1(&altered);
+        assert_eq!(
+            validate_experimental_ridge_case_projection_v1(&altered),
+            Err(ExperimentalRidgeCandidateErrorV2::GenericProjectionMismatch)
+        );
+    }
+
+    #[test]
+    fn generic_ridge_case_runtime_projection_rebuilds_and_rejects_route_tampering() {
+        let candidate =
+            evaluate_experimental_ridge_case_projection_v1(&generic_ridge_input()).unwrap();
+        let runtime = project_experimental_ridge_case_runtime_v1(&candidate).unwrap();
+        assert_eq!(
+            runtime.schema_id,
+            EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_ID_V1
+        );
+        assert_eq!(
+            runtime.schema_version,
+            EXPERIMENTAL_RIDGE_CASE_RUNTIME_PROJECTION_SCHEMA_VERSION_V1
+        );
+        assert_eq!(
+            runtime.identity,
+            experimental_ridge_case_runtime_projection_identity_v1(&runtime)
+        );
+        validate_experimental_ridge_case_runtime_v1(&candidate, &runtime).unwrap();
+        let reloaded: ExperimentalRidgeCaseRuntimeProjectionV1 =
+            serde_json::from_slice(&serde_json::to_vec(&runtime).unwrap()).unwrap();
+        assert_eq!(reloaded, runtime);
+        assert_eq!(reloaded.identity, runtime.identity);
+        validate_experimental_ridge_case_runtime_v1(&candidate, &reloaded).unwrap();
+
+        let mut altered = runtime;
+        let ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint { route, .. } =
+            &mut altered.derived_mesa
+        else {
+            panic!("renamed embedded ridge must retain a one-waypoint repair");
+        };
+        route.waypoints[0].max_speed_mps += 1.0;
+        altered.identity = experimental_ridge_case_runtime_projection_identity_v1(&altered);
+        assert_eq!(
+            validate_experimental_ridge_case_runtime_v1(&candidate, &altered),
+            Err(ExperimentalRidgeRuntimeProjectionErrorV2::RuntimeProjectionIdentityMismatch)
+        );
+    }
+
+    #[test]
+    fn generic_ridge_case_invalid_derived_mesa_geometry_fails_closed() {
+        let mut input = generic_ridge_input();
+        // This retains a valid raw probe and policy schema but leaves too
+        // little terrain domain after the derived-mesa clearance inset.
+        input.policy.minimum_clearance_m = 2_041.0;
+        input.identity = experimental_ridge_case_input_identity_v1(&input);
+        assert_eq!(
+            evaluate_experimental_ridge_case_projection_v1(&input),
+            Err(ExperimentalRidgeCandidateErrorV2::DerivedMesaGeometryInvalid)
         );
     }
 
