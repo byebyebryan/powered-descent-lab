@@ -656,7 +656,7 @@ fn direct_route_evidence(route: &TransferRouteSpec) -> DirectRouteEvidence {
 
 const ANALYTICAL_PATH_POINT_LIMIT: usize = 96;
 
-fn build_analytical_overlay(
+pub(crate) fn build_analytical_overlay(
     nominal: &DirectBridgeCandidateV2,
     candidate: &WaypointCandidateV2,
 ) -> AnalyticalShadowOverlay {
@@ -1230,7 +1230,7 @@ fn parse_route_terrain_rejection(message: &str) -> Option<(usize, f64)> {
     Some((leg_index, x_m))
 }
 
-fn run_lane(
+pub(crate) fn run_lane(
     id: &str,
     terrain_kind: &str,
     scenario: ScenarioSpec,
@@ -1606,7 +1606,7 @@ fn as_text(value: &TelemetryValue) -> Option<String> {
     }
 }
 
-fn semantic_lane(lane: &ShadowLaneSummary) -> serde_json::Value {
+pub(crate) fn semantic_lane(lane: &ShadowLaneSummary) -> serde_json::Value {
     let mut value = canonicalize_json(
         serde_json::to_value(lane).expect("shadow lane summary serializes for comparison"),
     );
