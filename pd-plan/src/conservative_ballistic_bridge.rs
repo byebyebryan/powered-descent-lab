@@ -7,7 +7,13 @@
 //! descending arc sample to the target touchdown state.  The bridge is a
 //! feasibility certificate, not a command stream for a controller.
 
-use pd_core::{CorridorEnvelope, TerrainDefinition, Vec2};
+use pd_core::{
+    CorridorEnvelope, LandingPadSpec, RoutePlanningPolicy, RoutePlanningRequest, RouteTopology,
+    TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleGeometry,
+    VehicleInitialState, VehicleSpec, WaypointAuthorityDiagnostics, WaypointHandoffKinematics,
+    WorldSpec, build_endpoint_profile, compute_waypoint_authority, endpoint_shaped_centerline,
+    normalized_geometry,
+};
 use serde::{Deserialize, Serialize};
 
 const FIXTURE: &str =
@@ -681,6 +687,118 @@ pub struct ExperimentalRidgeCandidateProjectionV2 {
     pub derived_mesa: ExperimentalRidgeCandidateOutcomeV2,
 }
 
+/// Schema identity for the planner-owned controller-facing projection.  This
+/// remains feature-gated with the experimental V2 candidate API and is not a
+/// production `RoutePlan` contract.
+pub const EXPERIMENTAL_RIDGE_RUNTIME_PROJECTION_SCHEMA_ID_V2: &str =
+    "experimental_ridge_runtime_route_projection_v2";
+pub const EXPERIMENTAL_RIDGE_RUNTIME_PROJECTION_SCHEMA_VERSION_V2: u32 = 2;
+
+/// Structural evidence for a route accepted by `TransferRouteSpec::validate`.
+/// This intentionally does not contain the result of the ordinary
+/// `pd_core::validate_route` full-pad validator; that validator remains a
+/// separate evaluator diagnostic for the source-taper canary.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentalRidgeRuntimeRouteStructureV2 {
+    pub topology: RouteTopology,
+    pub waypoint_count: usize,
+    pub transfer_route_valid: bool,
+}
+
+/// Planner-neutral copy of the canonical waypoint handoff kinematics.  The
+/// core model type is intentionally not serialized, so the feature-gated
+/// projection carries this stable evidence shape for downstream evaluators.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentalRidgeRuntimeWaypointHandoffKinematicsV2 {
+    pub distance_m: f64,
+    pub cross_track_m: f64,
+    pub plane_progress_m: f64,
+    pub outbound_heading_error_rad: f64,
+    pub outbound_progress_mps: f64,
+    pub outbound_cross_speed_mps: f64,
+    pub speed_mps: f64,
+    pub vertical_speed_mps: f64,
+}
+
+impl From<WaypointHandoffKinematics> for ExperimentalRidgeRuntimeWaypointHandoffKinematicsV2 {
+    fn from(value: WaypointHandoffKinematics) -> Self {
+        Self {
+            distance_m: value.distance_m,
+            cross_track_m: value.cross_track_m,
+            plane_progress_m: value.plane_progress_m,
+            outbound_heading_error_rad: value.outbound_heading_error_rad,
+            outbound_progress_mps: value.outbound_progress_mps,
+            outbound_cross_speed_mps: value.outbound_cross_speed_mps,
+            speed_mps: value.speed_mps,
+            vertical_speed_mps: value.vertical_speed_mps,
+        }
+    }
+}
+
+/// Planner-neutral copy of the canonical waypoint handoff assessment.  The
+/// violation strings are the stable names already defined by `pd-core`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentalRidgeRuntimeWaypointHandoffAssessmentV2 {
+    pub triggered: bool,
+    pub capture_window_open: bool,
+    pub deadline_reached: bool,
+    pub spatial_pass: bool,
+    pub envelope_pass: bool,
+    pub contract_pass: bool,
+    pub violations: Vec<String>,
+}
+
+/// Controller-facing result of projecting one validated analytical outcome.
+/// `Unsupported` is a valid bounded-search result, distinct from an invalid
+/// candidate or a failed runtime projection.
+// The one-waypoint variant intentionally keeps the complete crossing and
+// handoff evidence inline so evaluators can consume it without another
+// allocation/dereference boundary. This feature-gated evidence enum is not a
+// hot-path production value.
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ExperimentalRidgeRuntimeOutcomeV2 {
+    Direct {
+        candidate_identity: String,
+        route: TransferRouteSpec,
+        structural_validation: ExperimentalRidgeRuntimeRouteStructureV2,
+        identity: String,
+    },
+    OneWaypoint {
+        candidate_identity: String,
+        route: TransferRouteSpec,
+        crossing: ExactIntermediateBridgeCrossingV2,
+        authority: WaypointAuthorityDiagnostics,
+        handoff_kinematics: ExperimentalRidgeRuntimeWaypointHandoffKinematicsV2,
+        handoff_assessment: ExperimentalRidgeRuntimeWaypointHandoffAssessmentV2,
+        structural_validation: ExperimentalRidgeRuntimeRouteStructureV2,
+        identity: String,
+    },
+    Unsupported {
+        reason: ExperimentalRidgeUnsupportedReasonV2,
+        rejection_reasons: Vec<DirectBridgeReasonV2>,
+        identity: String,
+    },
+}
+
+/// Planner-owned runtime projection of both frozen V2 canary decisions.  The
+/// evaluator can consume the two route outcomes without reconstructing the
+/// analytical certificate or the waypoint route policy.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExperimentalRidgeRuntimeProjectionV2 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub analytical_report_identity: String,
+    pub analytical_canary_identity: String,
+    pub policy: DirectBridgePolicyV2,
+    pub vehicle: VehicleInputV2,
+    pub case: DirectBridgeProbeV2,
+    pub mesa: MesaGeometryV2,
+    pub flat_control: ExperimentalRidgeRuntimeOutcomeV2,
+    pub derived_mesa: ExperimentalRidgeRuntimeOutcomeV2,
+    pub identity: String,
+}
+
 /// Stable fail-closed reasons for malformed experimental candidate evidence.
 /// A valid but exhausted finite search is represented by
 /// [`ExperimentalRidgeCandidateOutcomeV2::Unsupported`], not this error type.
@@ -756,6 +874,53 @@ impl std::fmt::Display for ExperimentalRidgeCandidateErrorV2 {
 }
 
 impl std::error::Error for ExperimentalRidgeCandidateErrorV2 {}
+
+/// Stable fail-closed errors emitted while projecting validated analytical
+/// evidence into a controller-facing route.  Candidate evidence failures are
+/// preserved as their original typed reason; unsupported finite search never
+/// becomes one of these errors.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperimentalRidgeRuntimeProjectionErrorV2 {
+    CandidateEvidence(ExperimentalRidgeCandidateErrorV2),
+    InvalidRuntimeRequest,
+    WaypointRouteGeometryInvalid,
+    WaypointTangentInvalid,
+    WaypointAuthorityInvalid,
+    WaypointAuthorityBelowMinimum,
+    RouteStructuralValidationFailed,
+    HandoffKinematicsInvalid,
+    HandoffContractFailed,
+    RuntimeProjectionIdentityMismatch,
+}
+
+impl std::fmt::Display for ExperimentalRidgeRuntimeProjectionErrorV2 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            Self::CandidateEvidence(error) => {
+                return write!(formatter, "candidate evidence: {error}");
+            }
+            Self::InvalidRuntimeRequest => "runtime projection request is invalid",
+            Self::WaypointRouteGeometryInvalid => "waypoint route geometry is invalid",
+            Self::WaypointTangentInvalid => "waypoint route tangent is invalid",
+            Self::WaypointAuthorityInvalid => "waypoint authority could not be computed",
+            Self::WaypointAuthorityBelowMinimum => {
+                "waypoint authority cap is below the configured handoff minimum"
+            }
+            Self::RouteStructuralValidationFailed => "runtime route failed structural validation",
+            Self::HandoffKinematicsInvalid => "waypoint handoff kinematics are invalid",
+            Self::HandoffContractFailed => {
+                "waypoint handoff does not satisfy the canonical contract"
+            }
+            Self::RuntimeProjectionIdentityMismatch => {
+                "runtime route projection identity does not bind its canonical contents"
+            }
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for ExperimentalRidgeRuntimeProjectionErrorV2 {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BridgeSampleV2 {
@@ -5162,6 +5327,440 @@ pub fn validate_embedded_experimental_ridge_candidate_v2(
     Ok(())
 }
 
+/// Project the validated experimental V2 candidate decisions into the
+/// controller-facing route contract.  This is deliberately separate from the
+/// production [`crate::plan`] entry point and is only available with the
+/// conservative-ballistic-report feature (or in tests).
+pub fn project_experimental_ridge_runtime_v2(
+    projection: &ExperimentalRidgeCandidateProjectionV2,
+) -> Result<ExperimentalRidgeRuntimeProjectionV2, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    // The canonical validator is intentionally first: no route is built from
+    // altered, incomplete, or reordered analytical evidence.
+    validate_embedded_experimental_ridge_candidate_v2(projection)
+        .map_err(ExperimentalRidgeRuntimeProjectionErrorV2::CandidateEvidence)?;
+
+    let flat_case = flat_twin_case(&projection.case);
+    let flat_request = runtime_request_v2(projection, terrain(&flat_case))?;
+    let mesa_request = runtime_request_v2(
+        projection,
+        TerrainDefinition::Heightfield {
+            points_m: projection.mesa.terrain_points_m.clone(),
+        },
+    )?;
+    let flat_control = project_runtime_outcome_v2(&projection.flat_control, &flat_request)?;
+    let derived_mesa = project_runtime_outcome_v2(&projection.derived_mesa, &mesa_request)?;
+
+    let mut runtime = ExperimentalRidgeRuntimeProjectionV2 {
+        schema_id: EXPERIMENTAL_RIDGE_RUNTIME_PROJECTION_SCHEMA_ID_V2.to_owned(),
+        schema_version: EXPERIMENTAL_RIDGE_RUNTIME_PROJECTION_SCHEMA_VERSION_V2,
+        analytical_report_identity: projection.analytical_report_identity.clone(),
+        analytical_canary_identity: projection.analytical_canary_identity.clone(),
+        policy: projection.policy.clone(),
+        vehicle: projection.vehicle.clone(),
+        case: projection.case.clone(),
+        mesa: projection.mesa.clone(),
+        flat_control,
+        derived_mesa,
+        identity: String::new(),
+    };
+    runtime.identity = runtime_projection_identity_v2(&runtime);
+    Ok(runtime)
+}
+
+/// Build the cached embedded V2 runtime projection used by downstream
+/// evaluators.  The candidate projection itself remains the canonical source
+/// of analytical evidence and is validated before route construction.
+pub fn evaluate_embedded_experimental_ridge_runtime_v2()
+-> Result<ExperimentalRidgeRuntimeProjectionV2, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    static PROJECTION: std::sync::OnceLock<
+        Result<ExperimentalRidgeRuntimeProjectionV2, ExperimentalRidgeRuntimeProjectionErrorV2>,
+    > = std::sync::OnceLock::new();
+    PROJECTION
+        .get_or_init(|| {
+            let candidate = evaluate_embedded_experimental_ridge_candidate_v2()
+                .map_err(ExperimentalRidgeRuntimeProjectionErrorV2::CandidateEvidence)?;
+            project_experimental_ridge_runtime_v2(&candidate)
+        })
+        .clone()
+}
+
+/// Validate a runtime projection against the candidate projection that
+/// produced it.  Rebuilding the projection catches tampering in the route,
+/// tangent, bounds, authority, handoff evidence, and either stable identity.
+pub fn validate_experimental_ridge_runtime_v2(
+    candidate: &ExperimentalRidgeCandidateProjectionV2,
+    runtime: &ExperimentalRidgeRuntimeProjectionV2,
+) -> Result<(), ExperimentalRidgeRuntimeProjectionErrorV2> {
+    let expected = project_experimental_ridge_runtime_v2(candidate)?;
+    if runtime != &expected {
+        return Err(ExperimentalRidgeRuntimeProjectionErrorV2::RuntimeProjectionIdentityMismatch);
+    }
+    Ok(())
+}
+
+fn runtime_request_v2(
+    projection: &ExperimentalRidgeCandidateProjectionV2,
+    terrain: TerrainDefinition,
+) -> Result<RoutePlanningRequest, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    let vehicle = VehicleSpec {
+        geometry: VehicleGeometry {
+            hull_width_m: projection.vehicle.geometry.hull_width_m,
+            hull_height_m: projection.vehicle.geometry.hull_height_m,
+            touchdown_half_span_m: projection.vehicle.geometry.touchdown_half_span_m,
+            touchdown_base_offset_m: projection.vehicle.geometry.touchdown_base_offset_m,
+        },
+        dry_mass_kg: projection.vehicle.dry_mass_kg,
+        initial_fuel_kg: projection.vehicle.initial_fuel_kg,
+        max_fuel_kg: projection.vehicle.max_fuel_kg,
+        max_thrust_n: projection.vehicle.max_thrust_n,
+        max_fuel_burn_kgps: projection.vehicle.max_fuel_burn_kgps,
+        min_throttle_frac: projection.vehicle.min_throttle_frac,
+        max_rotation_rate_radps: projection.vehicle.max_rotation_rate_radps,
+        safe_touchdown_normal_speed_mps: projection.vehicle.safe_touchdown_normal_speed_mps,
+        safe_touchdown_tangential_speed_mps: projection.vehicle.safe_touchdown_tangential_speed_mps,
+        safe_touchdown_attitude_error_rad: projection.vehicle.safe_touchdown_attitude_error_rad,
+        safe_touchdown_angular_rate_radps: projection.vehicle.safe_touchdown_angular_rate_radps,
+    };
+    let request = RoutePlanningRequest {
+        world: WorldSpec {
+            gravity_mps2: projection.policy.gravity_mps2,
+            terrain,
+            landing_pads: vec![
+                LandingPadSpec {
+                    id: "source".to_owned(),
+                    center_x_m: projection.case.source.center_x_m,
+                    surface_y_m: projection.case.source.surface_y_m,
+                    width_m: projection.case.source.width_m,
+                },
+                LandingPadSpec {
+                    id: "target".to_owned(),
+                    center_x_m: projection.case.target.center_x_m,
+                    surface_y_m: projection.case.target.surface_y_m,
+                    width_m: projection.case.target.width_m,
+                },
+            ],
+        },
+        vehicle,
+        initial_state: VehicleInitialState {
+            position_m: projection.case.initial_position_m,
+            velocity_mps: projection.case.initial_velocity_mps,
+            attitude_rad: 0.0,
+            angular_rate_radps: 0.0,
+        },
+        source_pad_id: "source".to_owned(),
+        target_pad_id: "target".to_owned(),
+        policy: RoutePlanningPolicy::v1(),
+    };
+    request
+        .validate()
+        .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::InvalidRuntimeRequest)?;
+    Ok(request)
+}
+
+fn project_runtime_outcome_v2(
+    outcome: &ExperimentalRidgeCandidateOutcomeV2,
+    request: &RoutePlanningRequest,
+) -> Result<ExperimentalRidgeRuntimeOutcomeV2, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    match outcome {
+        ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } => {
+            let route = canonical_direct_runtime_route_v2(request)?;
+            let structural_validation = runtime_route_structure_v2(&route, RouteTopology::Direct)?;
+            let mut runtime = ExperimentalRidgeRuntimeOutcomeV2::Direct {
+                candidate_identity: candidate.identity.clone(),
+                route,
+                structural_validation,
+                identity: String::new(),
+            };
+            runtime_outcome_set_identity_v2(&mut runtime);
+            Ok(runtime)
+        }
+        ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
+            candidate,
+            crossing,
+        } => project_waypoint_runtime_v2(request, candidate, crossing),
+        ExperimentalRidgeCandidateOutcomeV2::Unsupported {
+            reason,
+            rejection_reasons,
+        } => {
+            let mut runtime = ExperimentalRidgeRuntimeOutcomeV2::Unsupported {
+                reason: *reason,
+                rejection_reasons: rejection_reasons.clone(),
+                identity: String::new(),
+            };
+            runtime_outcome_set_identity_v2(&mut runtime);
+            Ok(runtime)
+        }
+    }
+}
+
+fn canonical_direct_runtime_route_v2(
+    request: &RoutePlanningRequest,
+) -> Result<TransferRouteSpec, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    let geometry = normalized_geometry(request)
+        .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::InvalidRuntimeRequest)?;
+    let route = TransferRouteSpec {
+        source_pad_id: request.source_pad_id.clone(),
+        target_pad_id: request.target_pad_id.clone(),
+        route_angle_deg: geometry.route_angle_deg,
+        route_radius_m: geometry.direct_distance_m,
+        waypoints: Vec::new(),
+    };
+    route
+        .validate()
+        .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::RouteStructuralValidationFailed)?;
+    Ok(route)
+}
+
+fn project_waypoint_runtime_v2(
+    request: &RoutePlanningRequest,
+    candidate: &WaypointCandidateV2,
+    crossing: &ExactIntermediateBridgeCrossingV2,
+) -> Result<ExperimentalRidgeRuntimeOutcomeV2, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    let geometry = normalized_geometry(request)
+        .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::WaypointRouteGeometryInvalid)?;
+    let capture_radius_m = (geometry.direct_distance_m * 0.08).clamp(35.0, 95.0);
+    let horizontal_sign = geometry.horizontal_sign;
+    let source = request
+        .source_pad()
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::InvalidRuntimeRequest)?;
+    let normalized_waypoint = Vec2::new(
+        f64::from(horizontal_sign) * (crossing.selected_state.position_m.x - source.center_x_m),
+        crossing.selected_state.position_m.y,
+    );
+    let (profile, _) = build_endpoint_profile(request, geometry.direct_horizontal_span_m)
+        .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::WaypointRouteGeometryInvalid)?;
+    let shaped =
+        endpoint_shaped_centerline(request, &geometry, &profile, &[normalized_waypoint])
+            .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::WaypointRouteGeometryInvalid)?;
+    let waypoint_index = shaped
+        .iter()
+        .position(|point| *point == normalized_waypoint)
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::WaypointRouteGeometryInvalid)?;
+    if waypoint_index == 0 || waypoint_index + 1 >= shaped.len() {
+        return Err(ExperimentalRidgeRuntimeProjectionErrorV2::WaypointRouteGeometryInvalid);
+    }
+    let inbound = runtime_unit_vector_v2(shaped[waypoint_index] - shaped[waypoint_index - 1])
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::WaypointTangentInvalid)?;
+    let outbound = runtime_unit_vector_v2(shaped[waypoint_index + 1] - shaped[waypoint_index])
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::WaypointTangentInvalid)?;
+    let normalized_tangent = runtime_unit_vector_v2(inbound + outbound)
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::WaypointTangentInvalid)?;
+    let tangent = Vec2::new(
+        f64::from(horizontal_sign) * normalized_tangent.x,
+        normalized_tangent.y,
+    );
+    let preliminary = TransferWaypointSpec {
+        id: "ridge-bridge-handoff-0".to_owned(),
+        position_m: crossing.selected_state.position_m,
+        handoff_tangent_unit: Some(tangent),
+        capture_radius_m,
+        max_cross_track_m: capture_radius_m,
+        max_outbound_heading_error_rad: request.policy.max_outbound_heading_error_rad,
+        min_outbound_progress_mps: request.policy.min_outbound_progress_mps,
+        max_outbound_cross_speed_mps: Some(request.policy.max_outbound_cross_speed_mps),
+        min_speed_mps: request.policy.min_handoff_speed_mps,
+        max_speed_mps: request.policy.max_handoff_speed_mps,
+        min_vertical_speed_mps: None,
+        max_vertical_speed_mps: None,
+    };
+    let authority = compute_waypoint_authority(
+        request,
+        shaped[waypoint_index - 1],
+        shaped[waypoint_index],
+        shaped[waypoint_index + 1],
+        capture_radius_m,
+    )
+    .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::WaypointAuthorityInvalid)?;
+    let max_speed_mps = authority
+        .handoff_speed_cap_mps
+        .min(request.policy.max_handoff_speed_mps);
+    if max_speed_mps + 1.0e-9 < request.policy.min_handoff_speed_mps {
+        return Err(ExperimentalRidgeRuntimeProjectionErrorV2::WaypointAuthorityBelowMinimum);
+    }
+    let waypoint = TransferWaypointSpec {
+        max_speed_mps,
+        ..preliminary
+    };
+    let route = TransferRouteSpec {
+        source_pad_id: request.source_pad_id.clone(),
+        target_pad_id: request.target_pad_id.clone(),
+        route_angle_deg: geometry.route_angle_deg,
+        route_radius_m: geometry.direct_distance_m,
+        waypoints: vec![waypoint],
+    };
+    route
+        .validate()
+        .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::RouteStructuralValidationFailed)?;
+    let handoff_kinematics = runtime_waypoint_handoff_kinematics_v2(
+        request,
+        &route.waypoints[0],
+        crossing.selected_state,
+    )?;
+    let handoff_assessment = route.waypoints[0].assess_handoff(handoff_kinematics);
+    if !handoff_assessment.contract_pass() {
+        return Err(ExperimentalRidgeRuntimeProjectionErrorV2::HandoffContractFailed);
+    }
+    let structural_validation = runtime_route_structure_v2(&route, RouteTopology::Waypoint)?;
+    let mut runtime = ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint {
+        candidate_identity: candidate.identity.clone(),
+        route,
+        crossing: crossing.clone(),
+        authority,
+        handoff_kinematics: handoff_kinematics.into(),
+        handoff_assessment: runtime_waypoint_handoff_assessment_v2(&handoff_assessment),
+        structural_validation,
+        identity: String::new(),
+    };
+    runtime_outcome_set_identity_v2(&mut runtime);
+    Ok(runtime)
+}
+
+fn runtime_route_structure_v2(
+    route: &TransferRouteSpec,
+    topology: RouteTopology,
+) -> Result<ExperimentalRidgeRuntimeRouteStructureV2, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    route
+        .validate()
+        .map_err(|_| ExperimentalRidgeRuntimeProjectionErrorV2::RouteStructuralValidationFailed)?;
+    Ok(ExperimentalRidgeRuntimeRouteStructureV2 {
+        topology,
+        waypoint_count: route.waypoints.len(),
+        transfer_route_valid: true,
+    })
+}
+
+fn runtime_unit_vector_v2(vector: Vec2) -> Option<Vec2> {
+    let length = vector.length();
+    (length > 1.0e-12).then(|| vector * (1.0 / length))
+}
+
+fn runtime_waypoint_handoff_kinematics_v2(
+    request: &RoutePlanningRequest,
+    waypoint: &TransferWaypointSpec,
+    state: KinematicStateV2,
+) -> Result<WaypointHandoffKinematics, ExperimentalRidgeRuntimeProjectionErrorV2> {
+    let source = request
+        .source_pad()
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::InvalidRuntimeRequest)?;
+    let target = request
+        .target_pad()
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::InvalidRuntimeRequest)?;
+    let anchor_m = Vec2::new(source.center_x_m, source.surface_y_m);
+    let next_target_m = Vec2::new(target.center_x_m, target.surface_y_m);
+    let leg_unit = runtime_unit_vector_v2(waypoint.position_m - anchor_m)
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::HandoffKinematicsInvalid)?;
+    let handoff_tangent_unit = waypoint
+        .handoff_tangent_unit
+        .ok_or(ExperimentalRidgeRuntimeProjectionErrorV2::HandoffKinematicsInvalid)?;
+    if runtime_unit_vector_v2(next_target_m - waypoint.position_m).is_none() {
+        return Err(ExperimentalRidgeRuntimeProjectionErrorV2::HandoffKinematicsInvalid);
+    }
+    let to_waypoint_m = state.position_m - waypoint.position_m;
+    let speed_mps = state.velocity_mps.length();
+    let velocity_unit = if speed_mps > 1.0e-9 {
+        state.velocity_mps * (1.0 / speed_mps)
+    } else {
+        Vec2::new(0.0, 0.0)
+    };
+    let dot = |lhs: Vec2, rhs: Vec2| lhs.x.mul_add(rhs.x, lhs.y * rhs.y);
+    let cross = |lhs: Vec2, rhs: Vec2| lhs.x.mul_add(rhs.y, -(lhs.y * rhs.x));
+    Ok(WaypointHandoffKinematics {
+        distance_m: to_waypoint_m.length(),
+        cross_track_m: cross(to_waypoint_m, leg_unit).abs(),
+        plane_progress_m: dot(to_waypoint_m, leg_unit),
+        outbound_heading_error_rad: if speed_mps > 1.0e-9 {
+            dot(velocity_unit, handoff_tangent_unit)
+                .clamp(-1.0, 1.0)
+                .acos()
+        } else {
+            std::f64::consts::PI
+        },
+        outbound_progress_mps: dot(state.velocity_mps, handoff_tangent_unit),
+        outbound_cross_speed_mps: cross(state.velocity_mps, handoff_tangent_unit).abs(),
+        speed_mps,
+        vertical_speed_mps: state.velocity_mps.y,
+    })
+}
+
+fn runtime_waypoint_handoff_assessment_v2(
+    assessment: &pd_core::WaypointHandoffAssessment,
+) -> ExperimentalRidgeRuntimeWaypointHandoffAssessmentV2 {
+    ExperimentalRidgeRuntimeWaypointHandoffAssessmentV2 {
+        triggered: assessment.triggered,
+        capture_window_open: assessment.capture_window_open,
+        deadline_reached: assessment.deadline_reached,
+        spatial_pass: assessment.spatial_pass,
+        envelope_pass: assessment.envelope_pass,
+        contract_pass: assessment.contract_pass(),
+        violations: assessment
+            .violations
+            .iter()
+            .map(|violation| violation.as_str().to_owned())
+            .collect(),
+    }
+}
+
+fn runtime_outcome_set_identity_v2(outcome: &mut ExperimentalRidgeRuntimeOutcomeV2) {
+    let identity = runtime_outcome_identity_v2(outcome);
+    match outcome {
+        ExperimentalRidgeRuntimeOutcomeV2::Direct { identity: slot, .. }
+        | ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint { identity: slot, .. }
+        | ExperimentalRidgeRuntimeOutcomeV2::Unsupported { identity: slot, .. } => {
+            *slot = identity;
+        }
+    }
+}
+
+fn runtime_outcome_identity_v2(outcome: &ExperimentalRidgeRuntimeOutcomeV2) -> String {
+    match outcome {
+        ExperimentalRidgeRuntimeOutcomeV2::Direct {
+            candidate_identity,
+            route,
+            structural_validation,
+            ..
+        } => digest(&("direct", candidate_identity, route, structural_validation)),
+        ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint {
+            candidate_identity,
+            route,
+            crossing,
+            authority,
+            handoff_kinematics,
+            handoff_assessment,
+            structural_validation,
+            ..
+        } => digest(&(
+            "one_waypoint",
+            candidate_identity,
+            route,
+            crossing,
+            authority,
+            handoff_kinematics,
+            handoff_assessment,
+            structural_validation,
+        )),
+        ExperimentalRidgeRuntimeOutcomeV2::Unsupported {
+            reason,
+            rejection_reasons,
+            ..
+        } => digest(&("unsupported", reason, rejection_reasons)),
+    }
+}
+
+fn runtime_projection_identity_v2(projection: &ExperimentalRidgeRuntimeProjectionV2) -> String {
+    digest(&(
+        projection.schema_id.as_str(),
+        projection.schema_version,
+        &projection.analytical_report_identity,
+        &projection.analytical_canary_identity,
+        &projection.policy,
+        &projection.vehicle,
+        &projection.case,
+        &projection.mesa,
+        &projection.flat_control,
+        &projection.derived_mesa,
+    ))
+}
+
 fn experimental_ridge_projection_from_report_v2(
     report: &DirectBridgeReportV2,
 ) -> Result<ExperimentalRidgeCandidateProjectionV2, ExperimentalRidgeCandidateErrorV2> {
@@ -6631,6 +7230,140 @@ mod tests {
         let mut tampered = evaluation;
         tampered.results[0].id.push_str("-tampered");
         assert!(validate_embedded_evaluation_v2(&tampered).is_err());
+    }
+
+    #[test]
+    fn experimental_runtime_projection_emits_exact_routes_and_handoff_evidence() {
+        let candidate_projection = evaluate_embedded_experimental_ridge_candidate_v2().unwrap();
+        let runtime = project_experimental_ridge_runtime_v2(&candidate_projection).unwrap();
+        assert_eq!(runtime.identity, runtime_projection_identity_v2(&runtime));
+        assert_eq!(
+            runtime.schema_id,
+            EXPERIMENTAL_RIDGE_RUNTIME_PROJECTION_SCHEMA_ID_V2
+        );
+        assert_eq!(
+            runtime.schema_version,
+            EXPERIMENTAL_RIDGE_RUNTIME_PROJECTION_SCHEMA_VERSION_V2
+        );
+
+        let ExperimentalRidgeRuntimeOutcomeV2::Direct {
+            candidate_identity,
+            route,
+            structural_validation,
+            identity,
+        } = &runtime.flat_control
+        else {
+            panic!("flat twin must project to Direct");
+        };
+        let ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } =
+            &candidate_projection.flat_control
+        else {
+            panic!("flat candidate must be Direct");
+        };
+        assert_eq!(candidate_identity, &candidate.identity);
+        assert!(route.waypoints.is_empty());
+        route.validate().unwrap();
+        assert_eq!(structural_validation.topology, RouteTopology::Direct);
+        assert_eq!(structural_validation.waypoint_count, 0);
+        assert!(structural_validation.transfer_route_valid);
+        assert_eq!(
+            identity,
+            &runtime_outcome_identity_v2(&runtime.flat_control)
+        );
+
+        let ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint {
+            candidate_identity,
+            route,
+            crossing,
+            authority,
+            handoff_kinematics,
+            handoff_assessment,
+            structural_validation,
+            identity,
+        } = &runtime.derived_mesa
+        else {
+            panic!("derived mesa must project to OneWaypoint");
+        };
+        let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
+            candidate,
+            crossing: candidate_crossing,
+        } = &candidate_projection.derived_mesa
+        else {
+            panic!("derived candidate must be OneWaypoint");
+        };
+        assert_eq!(candidate_identity, &candidate.identity);
+        assert_eq!(crossing, candidate_crossing.as_ref());
+        assert_eq!(route.waypoints.len(), 1);
+        route.validate().unwrap();
+        let waypoint = &route.waypoints[0];
+        assert_eq!(waypoint.position_m, crossing.selected_state.position_m);
+        assert_eq!(
+            waypoint.capture_radius_m,
+            (route.route_radius_m * 0.08).clamp(35.0, 95.0)
+        );
+        assert_eq!(
+            waypoint.max_cross_track_m, waypoint.capture_radius_m,
+            "capture and cross-track bounds must use the existing policy"
+        );
+        assert_eq!(
+            waypoint.max_speed_mps,
+            authority
+                .handoff_speed_cap_mps
+                .min(RoutePlanningPolicy::v1().max_handoff_speed_mps)
+        );
+        assert!(handoff_assessment.contract_pass);
+        assert!(handoff_assessment.triggered);
+        assert!(handoff_assessment.spatial_pass);
+        assert!(handoff_assessment.envelope_pass);
+        assert!(handoff_kinematics.speed_mps.is_finite());
+        assert_eq!(structural_validation.topology, RouteTopology::Waypoint);
+        assert_eq!(structural_validation.waypoint_count, 1);
+        assert!(structural_validation.transfer_route_valid);
+        assert_eq!(
+            identity,
+            &runtime_outcome_identity_v2(&runtime.derived_mesa)
+        );
+        validate_experimental_ridge_runtime_v2(&candidate_projection, &runtime).unwrap();
+    }
+
+    #[test]
+    fn experimental_runtime_projection_is_deterministic_and_fails_closed() {
+        let candidate_projection = evaluate_embedded_experimental_ridge_candidate_v2().unwrap();
+        let first = project_experimental_ridge_runtime_v2(&candidate_projection).unwrap();
+        let second = project_experimental_ridge_runtime_v2(&candidate_projection).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(
+            serde_json::to_vec(&first).unwrap(),
+            serde_json::to_vec(&second).unwrap()
+        );
+
+        let mut tampered_candidate = candidate_projection.clone();
+        let ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { crossing, .. } =
+            &mut tampered_candidate.derived_mesa
+        else {
+            panic!("derived candidate must be OneWaypoint");
+        };
+        crossing.selected_applied_steps += 1;
+        assert_eq!(
+            project_experimental_ridge_runtime_v2(&tampered_candidate),
+            Err(
+                ExperimentalRidgeRuntimeProjectionErrorV2::CandidateEvidence(
+                    ExperimentalRidgeCandidateErrorV2::IntermediateCrossingMismatch
+                )
+            )
+        );
+
+        let mut tampered_runtime = first.clone();
+        let ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint { route, .. } =
+            &mut tampered_runtime.derived_mesa
+        else {
+            panic!("derived runtime must be OneWaypoint");
+        };
+        route.waypoints[0].max_speed_mps += 1.0;
+        assert_eq!(
+            validate_experimental_ridge_runtime_v2(&candidate_projection, &tampered_runtime),
+            Err(ExperimentalRidgeRuntimeProjectionErrorV2::RuntimeProjectionIdentityMismatch)
+        );
     }
 
     #[test]
