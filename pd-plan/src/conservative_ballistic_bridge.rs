@@ -783,6 +783,20 @@ pub struct ExperimentalRidgeCaseProjectionV1 {
     pub mesa: MesaGeometryV2,
     pub flat_candidate_identities: Vec<String>,
     pub ridge_direct_candidate_identities: Vec<String>,
+    /// Compact, sample-free evidence for the same-duration direct candidate
+    /// evaluated against the derived mesa.  H2 uses this to distinguish the
+    /// intended terrain-clearance rejection from a generic red status.
+    pub derived_nominal_direct: RidgeDirectDiagnosticV2,
+    /// Non-nominal direct candidates remain diagnostic-only. They are exposed
+    /// as stopped analytical-result evidence; selection remains the finite
+    /// one-waypoint repair.
+    pub derived_non_nominal_direct_diagnostics: Vec<RidgeDirectDiagnosticV2>,
+    /// This is the complete robust-blocker predicate, not merely the mesa
+    /// geometry flag.  It binds the correction-envelope validation as well.
+    pub derived_blocker_valid: bool,
+    /// The finite search keeps only its first certified witness, so this
+    /// explicit count is necessary to verify the one-witness prediction.
+    pub waypoint_certified_candidate_count: usize,
     pub waypoint_search_identity: String,
     pub waypoint_candidate_identities: Vec<String>,
     pub flat_control: ExperimentalRidgeCandidateOutcomeV2,
@@ -5708,6 +5722,10 @@ fn experimental_ridge_case_projection_from_validated_input_v1(
         mesa: components.mesa,
         flat_candidate_identities: components.flat_candidate_identities,
         ridge_direct_candidate_identities: components.ridge_direct_candidate_identities,
+        derived_nominal_direct: components.derived_nominal_direct,
+        derived_non_nominal_direct_diagnostics: components.derived_non_nominal_direct_diagnostics,
+        derived_blocker_valid: components.derived_blocker_valid,
+        waypoint_certified_candidate_count: components.waypoint_certified_candidate_count,
         waypoint_search_identity: components.waypoint_search_identity,
         waypoint_candidate_identities: components.waypoint_candidate_identities,
         flat_control: components.flat_control,
@@ -6307,6 +6325,10 @@ fn experimental_ridge_case_projection_identity_v1(
         mesa: &projection.mesa,
         flat_candidate_identities: &projection.flat_candidate_identities,
         ridge_direct_candidate_identities: &projection.ridge_direct_candidate_identities,
+        derived_nominal_direct: &projection.derived_nominal_direct,
+        derived_non_nominal_direct_diagnostics: &projection.derived_non_nominal_direct_diagnostics,
+        derived_blocker_valid: projection.derived_blocker_valid,
+        waypoint_certified_candidate_count: projection.waypoint_certified_candidate_count,
         waypoint_search_identity: &projection.waypoint_search_identity,
         waypoint_candidate_identities: &projection.waypoint_candidate_identities,
         flat_control: &projection.flat_control,
@@ -6326,6 +6348,10 @@ struct ExperimentalRidgeCaseProjectionIdentityV1<'a> {
     mesa: &'a MesaGeometryV2,
     flat_candidate_identities: &'a [String],
     ridge_direct_candidate_identities: &'a [String],
+    derived_nominal_direct: &'a RidgeDirectDiagnosticV2,
+    derived_non_nominal_direct_diagnostics: &'a [RidgeDirectDiagnosticV2],
+    derived_blocker_valid: bool,
+    waypoint_certified_candidate_count: usize,
     waypoint_search_identity: &'a str,
     waypoint_candidate_identities: &'a [String],
     flat_control: &'a ExperimentalRidgeCandidateOutcomeV2,
@@ -6372,6 +6398,10 @@ struct ExperimentalRidgeProjectionComponentsV2 {
     analytical_canary_identity: String,
     flat_candidate_identities: Vec<String>,
     ridge_direct_candidate_identities: Vec<String>,
+    derived_nominal_direct: RidgeDirectDiagnosticV2,
+    derived_non_nominal_direct_diagnostics: Vec<RidgeDirectDiagnosticV2>,
+    derived_blocker_valid: bool,
+    waypoint_certified_candidate_count: usize,
     waypoint_search_identity: String,
     waypoint_candidate_identities: Vec<String>,
     flat_control: ExperimentalRidgeCandidateOutcomeV2,
@@ -6416,6 +6446,10 @@ fn experimental_ridge_projection_components_v2(
         analytical_canary_identity: canary.identity.clone(),
         flat_candidate_identities: canary.flat_control.candidate_identities.clone(),
         ridge_direct_candidate_identities,
+        derived_nominal_direct: canary.direct_nominal_candidate.clone(),
+        derived_non_nominal_direct_diagnostics: canary.direct_global_replans.clone(),
+        derived_blocker_valid: canary.blocking_lane_valid,
+        waypoint_certified_candidate_count: canary.waypoint_search.certified_candidate_count,
         waypoint_search_identity: canary.waypoint_search.identity.clone(),
         waypoint_candidate_identities: canary
             .waypoint_search
@@ -8196,6 +8230,26 @@ mod tests {
         altered.identity = experimental_ridge_case_projection_identity_v1(&altered);
         assert_eq!(
             validate_experimental_ridge_case_projection_v1(&altered),
+            Err(ExperimentalRidgeCandidateErrorV2::GenericProjectionMismatch)
+        );
+
+        let mut altered_nominal =
+            evaluate_experimental_ridge_case_projection_v1(&generic_ridge_input()).unwrap();
+        altered_nominal.derived_nominal_direct.reasons.clear();
+        altered_nominal.identity = experimental_ridge_case_projection_identity_v1(&altered_nominal);
+        assert_eq!(
+            validate_experimental_ridge_case_projection_v1(&altered_nominal),
+            Err(ExperimentalRidgeCandidateErrorV2::GenericProjectionMismatch)
+        );
+
+        let mut altered_replan =
+            evaluate_experimental_ridge_case_projection_v1(&generic_ridge_input()).unwrap();
+        altered_replan
+            .derived_non_nominal_direct_diagnostics
+            .clear();
+        altered_replan.identity = experimental_ridge_case_projection_identity_v1(&altered_replan);
+        assert_eq!(
+            validate_experimental_ridge_case_projection_v1(&altered_replan),
             Err(ExperimentalRidgeCandidateErrorV2::GenericProjectionMismatch)
         );
     }
