@@ -669,16 +669,50 @@ and target ballistic suffix alongside both handoff attempts and their limits.
 This is development evidence, not a reopened held-out result or an ordinary
 full-route validation claim.
 
-The next sequence is now:
+#### F4 full-controller development result
 
-1. **F4 — development full-controller simulation.** Run the unchanged
-   controller against the V2-selected `068` exit route and record the result
-   without tuning. A failure returns to execution-mismatch diagnosis rather
-   than changing limits or searching thresholds.
-2. **F5 — fresh held-out experiment, only after F4 review.** Define genuinely
-   new predeclared inputs and predictions before any new controller outcomes.
-   The current `050` and `068` cases remain development/regression inputs and
-   cannot become held-out again.
+F4 is complete and green as an exposed, development-only full-controller
+execution check for `ridge_progress_068_probe`, using the unchanged `120 Hz`
+physics / `60 Hz` controller / `180 s` configuration. The versioned artifact is
+`conservative-ballistic-handoff-controller-development-v1`, with identity
+`8ecd42d0bf113f5d` and `deterministic_repeat: true`. It binds input
+`fnv1a64:a63ff1716b1cf24f`, candidate `fnv1a64:1ddf250808889d3f`, runtime V2
+`fnv1a64:48e2f9d91222c096`, and selected attempt index `1` /
+`fnv1a64:0ee66a27ce706921`. Regenerate it with:
+
+```text
+command: cargo run -p pd-eval -- conservative-ballistic-handoff-controller-development
+summary: outputs/eval/conservative-ballistic-handoff-controller-development-v1/summary.json
+report:  outputs/reports/eval/conservative-ballistic-handoff-controller-development-v1/index.html
+```
+
+All three lanes passed launch preflight. `flat-direct` target-landed at
+`101.8 s` / `12,216` physics steps with about `3,615.1 kg` fuel remaining.
+`mesa-direct` made the expected terrain crash at `28.2916667 s` / `3,395`
+steps; reconstructed contact is within the derived mesa at approximately
+`(2087.432251, 423.383761) m`, with residual `-36.767780 m`.
+`mesa-waypoint` recorded exactly one captured `contract_pass` at
+`46.6833333 s`, approximately `(2627.209931, 1965.178136) m`; cross-track
+`78.760390 m < 95 m`, outbound cross speed `3.366558 m/s < 20 m/s`, and speed
+`40.564173 m/s < 93.292527 m/s`. It then target-landed at `87.1583333 s` /
+`10,459` steps with about `4,023.5 kg` fuel remaining.
+
+The exact runtime waypoint remains the planner-produced
+`(2715.400408, 1931.456905) m`; the analytical bridge is report context, not
+a controller command trace. This is exposed development evidence, not a
+held-out result or physical proof, and does not establish universal waypoint
+necessity or robustness. No controller, planner, handoff-threshold, or terrain
+tuning occurred. F3 identity `aeb7338fd71c73e5` and frozen
+controller-shadow v4 identity `a69de7872ad039fd` remain unchanged.
+
+#### F5 next checkpoint
+
+F5 is next, but only as a new held-out experiment: define genuinely new
+predeclared inputs and predictions before inspecting any new controller
+outcomes. The current `050` and `068` cases remain development/regression
+inputs and cannot become held-out again. Production wiring, runtime
+replanning, broader waypoint counts or topologies, D2-D5, and tuning remain
+deferred.
 
 #### Same-family invariant and explicit deferrals
 

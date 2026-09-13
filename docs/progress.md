@@ -2,6 +2,43 @@
 
 ## 2026-09-13
 
+### F4 full-controller development result
+
+- F4 is complete and green as a development-only full-controller execution
+  check for `ridge_progress_068_probe`, using the unchanged `120 Hz` physics /
+  `60 Hz` controller / `180 s` configuration. The versioned artifact is
+  `conservative-ballistic-handoff-controller-development-v1`, with identity
+  `8ecd42d0bf113f5d` and `deterministic_repeat: true`. It binds input
+  `fnv1a64:a63ff1716b1cf24f`, candidate `fnv1a64:1ddf250808889d3f`, runtime V2
+  `fnv1a64:48e2f9d91222c096`, and selected attempt index `1` /
+  `fnv1a64:0ee66a27ce706921`. The summary is under
+  `outputs/eval/conservative-ballistic-handoff-controller-development-v1/`
+  and the matching report is under
+  `outputs/reports/eval/conservative-ballistic-handoff-controller-development-v1/`;
+  it is regenerated with
+  `cargo run -p pd-eval -- conservative-ballistic-handoff-controller-development`.
+- All three lanes passed launch preflight. `flat-direct` target-landed at
+  `101.8 s` / `12,216` physics steps with about `3,615.1 kg` fuel remaining.
+  `mesa-direct` made the expected terrain crash at `28.2916667 s` / `3,395`
+  steps; reconstructed contact is within the derived mesa at approximately
+  `(2087.432251, 423.383761) m`, with residual `-36.767780 m`.
+  `mesa-waypoint` recorded exactly one captured `contract_pass` at
+  `46.6833333 s`, approximately `(2627.209931, 1965.178136) m`; cross-track
+  `78.760390 m < 95 m`, outbound cross speed `3.366558 m/s < 20 m/s`, and
+  speed `40.564173 m/s < 93.292527 m/s`. It then target-landed at
+  `87.1583333 s` / `10,459` steps with about `4,023.5 kg` fuel remaining.
+- The exact runtime waypoint remains the planner-produced
+  `(2715.400408, 1931.456905) m`; the analytical bridge is context for the
+  report, not a controller command trace. This is exposed development
+  evidence, not a held-out result or physical proof, and does not establish
+  universal waypoint necessity or robustness. No controller, planner,
+  handoff-threshold, or terrain tuning occurred. F3 identity
+  `aeb7338fd71c73e5` and frozen controller-shadow v4 identity
+  `a69de7872ad039fd` remain unchanged.
+- F5 is next: define genuinely new predeclared inputs and predictions before
+  inspecting any new controller outcomes. The current `050` and `068` cases
+  remain development/regression cases and cannot become held-out again.
+
 ### F0-F3 runtime handoff-selection development checkpoint
 
 - The H4 `STOP/NARROW` result remains immutable. The historical generic runtime
@@ -39,10 +76,8 @@
   presenting a start/apex/end triangle.
 - The embedded controller-shadow remains schema `v4`, semantic identity
   `a69de7872ad039fd`, with its frozen outcomes unchanged. No new controller,
-  simulator, or physical-execution lane ran. The next checkpoint is F4: a
-  development-only full-controller simulation of the selected `068` exit
-  route. Only after a successful review may F5 define genuinely new frozen
-  inputs and predictions; `050`/`068` cannot become held-out again.
+  simulator, or physical-execution lane ran for F0-F3; the subsequent F4
+  development result is recorded above.
 
 ## 2026-09-12
 

@@ -126,12 +126,24 @@ Current implementation status:
     expectations, while `ridge_progress_068_probe` passed every candidate-level
     prediction but stopped at the typed runtime `handoff_contract_failed`
     boundary. The tracked result is `24804a74cb303625`; H3's six controller
-    lanes were not run, so there are no held-out controller outcomes and the
-    scoped execution-compatibility claim does not advance. The next work is a
-    controller-free structured handoff diagnostic and smallest generic boundary
-    fix; current `050`/`068` are development/regression cases, not a fresh
-    held-out gate. Production wiring, D2-D5, new topology, tuning, and
-    requirement relaxation remain deferred;
+    lanes were not run, so there are no held-out controller outcomes. The
+    subsequent F0-F3 controller-free development checkpoint preserved that
+    historical stop and added the generic runtime V2 selector; `050` remains
+    byte-compatible with V1 and `068` selects exit step `3960` under the
+    unchanged handoff contract. F4 then completed green as an exposed
+    development full-controller check using the unchanged `120 Hz` physics /
+    `60 Hz` controller / `180 s` configuration: flat-direct target-landed,
+    mesa-direct crashed within the derived mesa, and mesa-waypoint captured
+    its contract once and target-landed. Its artifact is
+    `conservative-ballistic-handoff-controller-development-v1`, identity
+    `8ecd42d0bf113f5d`, with `deterministic_repeat: true`; F3 identity remains
+    `aeb7338fd71c73e5` and frozen controller-shadow v4 remains
+    `a69de7872ad039fd`. This is not held-out or physical proof and does not
+    establish universal necessity or robustness; no controller, planner,
+    handoff-threshold, or terrain tuning occurred. F5 is next: freeze
+    genuinely new predeclared inputs and predictions before any new controller
+    outcomes. Production wiring, runtime replanning, broader waypoint counts
+    or topologies, D2-D5, and tuning remain deferred;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -757,10 +769,13 @@ implementing a predictor. The remaining evidence-first sequence is:
    tries the certified intermediate-bridge exit/target-leg apex seam. `050`
    remains byte-compatible with V1; `068` selects exit step `3960` and passes
    the unchanged handoff contract. The deterministic development artifact is
-   `aeb7338fd71c73e5`; controller-shadow v4 remains `a69de7872ad039fd`. No new
-   controller or simulator lane has run. F4 is the development full-controller
-   test of that route; only after its review may F5 freeze genuinely new inputs
-   and predictions. A materially distinct topology remains deferred;
+   `aeb7338fd71c73e5`; controller-shadow v4 remains `a69de7872ad039fd`. F4
+   completed green as the development full-controller test of that route, with
+   flat-direct landing, mesa-direct terrain crash, and mesa-waypoint contract
+   capture followed by target landing. This is exposed development evidence,
+   not held-out or physical proof, and F5 is now next: freeze genuinely new
+   inputs and predictions before any new controller outcomes. A materially
+   distinct topology remains deferred;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
