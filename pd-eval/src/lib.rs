@@ -21,9 +21,11 @@ use pd_core::{
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
+pub mod conservative_ballistic_handoff_controller_development;
 pub mod conservative_ballistic_handoff_development;
 pub mod conservative_ballistic_heldout;
 pub mod conservative_ballistic_report;
+pub use conservative_ballistic_handoff_controller_development::*;
 pub use conservative_ballistic_handoff_development::*;
 pub use conservative_ballistic_heldout::*;
 mod conservative_ballistic_heldout_analytical;

@@ -6,6 +6,7 @@ use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
     resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
+    run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
     run_final_landing_audit, run_pack_file_cached, run_physical_executor_comparison,
@@ -44,6 +45,10 @@ enum Commands {
     ConservativeBallisticReport(ConservativeBallisticReportArgs),
     /// Run the controller-free development regression for generic ridge runtime V2.
     ConservativeBallisticHandoffDevelopment(ConservativeBallisticHandoffDevelopmentArgs),
+    /// Execute the development-only generic 068 controller handoff experiment.
+    ConservativeBallisticHandoffControllerDevelopment(
+        ConservativeBallisticHandoffControllerDevelopmentArgs,
+    ),
     /// Run the evaluator-only full-controller ridge-canary shadow.
     ControllerShadow(ControllerShadowArgs),
     /// Reveal the frozen ridge held-out analytical result only; a stopped result is not H3 authority.
@@ -235,6 +240,12 @@ struct ConservativeBallisticHandoffDevelopmentArgs {
 }
 
 #[derive(Debug, Parser)]
+struct ConservativeBallisticHandoffControllerDevelopmentArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
 struct ControllerShadowArgs {
     #[arg(long, value_name = "OUTPUT_DIR")]
     output_dir: Option<PathBuf>,
@@ -400,6 +411,13 @@ fn main() -> Result<()> {
         }
         Commands::ConservativeBallisticHandoffDevelopment(args) => {
             let run = run_conservative_ballistic_handoff_development(
+                &repo_root(),
+                args.output_dir.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::ConservativeBallisticHandoffControllerDevelopment(args) => {
+            let run = run_conservative_ballistic_handoff_controller_development(
                 &repo_root(),
                 args.output_dir.as_deref(),
             )?;
