@@ -143,9 +143,16 @@ Current implementation status:
     handoff-threshold, or terrain tuning occurred. F5a now locks a fresh
     held-out pair, `ridge_progress_056_probe` (`rho = 0.56`) and
     `ridge_progress_072_probe` (`rho = 0.72`), with predeclared qualitative
-    analytical and controller predictions before any reveal. F5b must seal
-    those raw inputs and predictions; F5c analytical reveal and F5d controller
-    reveal remain unrun, with F5d restricted to analytically eligible cases.
+    analytical and controller predictions before any reveal. F5b is now
+    source-sealed in the evaluator-owned F5 module and two versioned fixtures;
+    the ordered input identities are `fnv1a64:1685aab304642342` and
+    `fnv1a64:b0dcdcbefac383b6`, with input-manifest identity
+    `5a654dd8762a1438` and prediction-manifest identity `f3d3ff2ee6e83403`.
+    The seal validates raw inputs and qualitative-prediction identity, order,
+    and binding only; no F5 analytical, runtime-projection, controller,
+    simulator, or report outcome was produced or inspected. F5c analytical
+    reveal and F5d controller reveal remain unrun, with F5d restricted to
+    analytically eligible cases.
     Cases advance independently, but a mismatch or `Unsupported` prevents a
     full green; F5e will classify the result as PASS, NARROW, STOP, or INVALID
     SETUP. A full pass authorizes only a production-integration design review.
@@ -781,8 +788,9 @@ implementing a predictor. The remaining evidence-first sequence is:
    flat-direct landing, mesa-direct terrain crash, and mesa-waypoint contract
    capture followed by target landing. This is exposed development evidence,
    not held-out or physical proof. F5a now locks genuinely new predeclared
-   inputs and predictions before any new controller outcomes; F5c remains
-   unrevealed. A materially distinct topology remains deferred;
+   inputs and predictions before any new controller outcomes, and F5b has
+   sealed their source-controlled identities. F5c remains unrevealed. A
+   materially distinct topology remains deferred;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -839,8 +847,9 @@ remains unauthorized.
 ### F5 held-out checkpoint (current)
 
 F5 is the next bounded gameplay evidence sequence after the green F4
-development run. Its F5a design lock is documentation-only and defines two
-fresh, same-family ridge-progress probes before any new result is inspected:
+development run. F5a's documentation-only design lock and F5b's
+source-controlled input/prediction seal are complete. F5a defined two fresh,
+same-family ridge-progress probes before any new result was inspected:
 
 | Label | `rho` | `c` | Raw ridge points `(x, y)` |
 | --- | ---: | ---: | --- |
@@ -855,6 +864,18 @@ qualitative outcomes, including exactly one certified forward-progressing
 waypoint result and a structurally valid runtime-V2 handoff. The exact
 `primary_crossing` versus `intermediate_bridge_exit`, exact times/points/fuel,
 and derived identities are intentionally not frozen.
+
+F5b seals those inputs and predictions in
+`fixtures/manifests/conservative_ballistic_ridge_f5_inputs_v1.json` and
+`fixtures/manifests/conservative_ballistic_ridge_f5_predictions_v1.json`,
+validated by `pd-eval/src/conservative_ballistic_f5_seal.rs`. The ordered raw
+input identities are `fnv1a64:1685aab304642342` and
+`fnv1a64:b0dcdcbefac383b6`; the input-manifest identity is
+`5a654dd8762a1438`, and the prediction-manifest identity is
+`f3d3ff2ee6e83403`. The seal validates raw input and qualitative-prediction
+identity, order, and binding only. No F5 analytical, runtime-projection,
+controller, simulator, or report outcome was produced or inspected, and the
+historical H2/H4 manifests and results remain immutable.
 
 The phase order is F5a design lock, F5b source-controlled raw-input and
 qualitative-prediction seals, F5c analytical reveal, F5d controller reveal only

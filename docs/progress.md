@@ -38,6 +38,27 @@
   current stop boundary is before F5c; the `050` and `068` cases remain
   development/regression evidence and cannot be reclassified as held out.
 
+### F5b source-controlled held-out seal
+
+- F5b is complete. The evaluator-owned module
+  `pd-eval/src/conservative_ballistic_f5_seal.rs` seals the two ordered raw
+  inputs in
+  `fixtures/manifests/conservative_ballistic_ridge_f5_inputs_v1.json` and the
+  corresponding qualitative predictions in
+  `fixtures/manifests/conservative_ballistic_ridge_f5_predictions_v1.json`.
+  The ordered input identities are
+  `fnv1a64:1685aab304642342` (`ridge_progress_056_probe`) and
+  `fnv1a64:b0dcdcbefac383b6` (`ridge_progress_072_probe`); the input-manifest
+  identity is `5a654dd8762a1438` and the prediction-manifest identity is
+  `f3d3ff2ee6e83403`.
+- The module and fixtures validate raw input and qualitative-prediction
+  identity, order, and cross-manifest binding only. No F5 analytical result,
+  runtime projection result, controller result, simulator result, or report
+  outcome was produced or inspected. F5c analytical reveal is next but has not
+  run; the current stop boundary remains before F5c. Historical H2/H4
+  manifests and results remain immutable, and the `050`/`068` cases remain
+  development/regression evidence rather than held-out F5 cases.
+
 ### F4 full-controller development result
 
 - F4 is complete and green as a development-only full-controller execution

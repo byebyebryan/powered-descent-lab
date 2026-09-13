@@ -25,9 +25,10 @@ simulation.
 F5 extends this checkpoint with a fresh, held-out pair from the same ridge
 family. Its purpose is to test whether the already-defined analytical and
 runtime-V2 behavior is repeatable on nearby inputs, not to tune the policy or
-to promote the experiment into production. F5a is the documentation-only
-design lock below; it makes no claim that analytical or controller evaluation
-has run. The current stop boundary is before the F5c analytical reveal.
+to promote the experiment into production. The F5a documentation-only design
+lock and F5b source-controlled input/prediction seals are complete; they make
+no claim that an F5 analytical or controller evaluation has run. The current
+stop boundary is before the F5c analytical reveal.
 
 The research-grade D2 distinction remains unchanged. The W4 finite proposal
 backend found no useful development coverage, but that is `unknown` coverage
@@ -772,10 +773,10 @@ F5 is ordered as five explicit gates:
 
 1. **F5a — design lock.** Commit this documentation-only case and prediction
    definition before reveal.
-2. **F5b — source-controlled seals.** Add identity-bound raw-input and
-   qualitative-prediction manifests. This gate accepts only source inputs and
-   predeclared expectations; it must not contain candidates, routes, analytical
-   outcomes, controller outcomes, or simulation artifacts.
+2. **F5b — source-controlled seals.** The identity-bound raw-input and
+   qualitative-prediction manifests are committed. This gate accepts only
+   source inputs and predeclared expectations; it must not contain candidates,
+   routes, analytical outcomes, controller outcomes, or simulation artifacts.
 3. **F5c — analytical reveal.** Evaluate the sealed cases with the existing
    analytical and runtime-V2 path. A mismatch, error, or `Unsupported` stops
    that case; no input, policy, threshold, search bound, or tuning may change
@@ -796,10 +797,27 @@ the overall F5 experiment from being green. A full pass authorizes only a
 production-integration design review; it does not authorize production
 planner wiring.
 
-F5a does not evaluate either case and does not create a controller or
-simulation result. The work must stop after the F5b seals until the analytical
-reveal is explicitly started as F5c. Production wiring, runtime replanning,
-multiple waypoints, new topologies, D2-D5, and tuning remain deferred.
+##### F5b source-controlled seal (complete)
+
+F5b is sealed by `pd-eval/src/conservative_ballistic_f5_seal.rs` and the
+source-controlled fixtures
+`fixtures/manifests/conservative_ballistic_ridge_f5_inputs_v1.json` and
+`fixtures/manifests/conservative_ballistic_ridge_f5_predictions_v1.json`.
+The ordered raw input identities are
+`fnv1a64:1685aab304642342` (`ridge_progress_056_probe`) and
+`fnv1a64:b0dcdcbefac383b6` (`ridge_progress_072_probe`); the input-manifest
+identity is `5a654dd8762a1438` and the prediction-manifest identity is
+`f3d3ff2ee6e83403`.
+
+The module and fixtures validate only raw input and qualitative-prediction
+identity, order, and cross-manifest binding. They contain no derived
+candidate, route, or outcome evidence. No F5 analytical result, runtime
+projection result, controller result, simulator result, or report outcome was
+produced or inspected. Historical H2/H4 manifests and results remain
+immutable. F5c analytical reveal is next but has not run; work stops here
+until that reveal is explicitly started. Production wiring, runtime
+replanning, multiple waypoints, new topologies, D2-D5, and tuning remain
+deferred.
 
 #### Same-family invariant and explicit deferrals
 
