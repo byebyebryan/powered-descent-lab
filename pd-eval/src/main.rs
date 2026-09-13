@@ -6,12 +6,13 @@ use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
     resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
-    run_conservative_ballistic_report, run_conservative_ballistic_ridge_heldout_analytical_v1,
-    run_controller_shadow, run_final_landing_audit, run_pack_file_cached,
-    run_physical_executor_comparison, run_physical_witness_development,
-    run_progress_interval_envelope_development_gate, run_route_execution_development_case,
-    run_route_execution_development_gate, run_source_transition_development_case,
-    run_source_transition_development_gate, run_terrain_equivalence_spike,
+    run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
+    run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
+    run_final_landing_audit, run_pack_file_cached, run_physical_executor_comparison,
+    run_physical_witness_development, run_progress_interval_envelope_development_gate,
+    run_route_execution_development_case, run_route_execution_development_gate,
+    run_source_transition_development_case, run_source_transition_development_gate,
+    run_terrain_equivalence_spike,
 };
 
 #[derive(Debug, Parser)]
@@ -41,6 +42,8 @@ enum Commands {
     PhysicalExecutorComparison(PhysicalExecutorComparisonArgs),
     /// Generate the deterministic, setup-only V2 direct-bridge analytical report.
     ConservativeBallisticReport(ConservativeBallisticReportArgs),
+    /// Run the controller-free development regression for generic ridge runtime V2.
+    ConservativeBallisticHandoffDevelopment(ConservativeBallisticHandoffDevelopmentArgs),
     /// Run the evaluator-only full-controller ridge-canary shadow.
     ControllerShadow(ControllerShadowArgs),
     /// Reveal the frozen ridge held-out analytical result only; a stopped result is not H3 authority.
@@ -226,6 +229,12 @@ struct ConservativeBallisticReportArgs {
 }
 
 #[derive(Debug, Parser)]
+struct ConservativeBallisticHandoffDevelopmentArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
 struct ControllerShadowArgs {
     #[arg(long, value_name = "OUTPUT_DIR")]
     output_dir: Option<PathBuf>,
@@ -387,6 +396,13 @@ fn main() -> Result<()> {
         }
         Commands::ConservativeBallisticReport(args) => {
             let run = run_conservative_ballistic_report(&repo_root(), args.output_dir.as_deref())?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::ConservativeBallisticHandoffDevelopment(args) => {
+            let run = run_conservative_ballistic_handoff_development(
+                &repo_root(),
+                args.output_dir.as_deref(),
+            )?;
             println!("{}", serde_json::to_string_pretty(&run.paths)?);
         }
         Commands::ControllerShadow(args) => {
