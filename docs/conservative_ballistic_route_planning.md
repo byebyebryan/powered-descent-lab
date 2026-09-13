@@ -433,10 +433,10 @@ diagnostic; the composed planner projection remains `supported`.
 
 CB3 changes no generic source-departure contract, fixture, controller,
 production planner path, `pd-core::validate_route`, or `pd-control` behavior.
-The later H1 implementation preserves those boundaries, and H2a now freezes
-the two identity-bound raw inputs and their prediction manifest without
-opening an analytical or controller outcome. No held-out simulation has run,
-and no second topology is added.
+The later H1 implementation preserves those boundaries. H2a froze the two
+identity-bound raw inputs and prediction manifest; H2b subsequently ran the
+analytical-only evaluation and stopped at the typed runtime handoff error
+recorded below. H3 was not run, and no second topology is added.
 
 ### H0 held-out design closure (documentation-only)
 
@@ -584,6 +584,69 @@ The controller-shadow expectations are frozen before H3:
 Any mismatch stops advancement with no retuning. An `Unsupported` or
 `unknown` analytical result is an experiment stop, not a controller
 true-negative.
+
+#### H1-H4 execution status and H4 decision
+
+The four gates now have a concrete, bounded result:
+
+- **H1 — complete.** The generic input, analytical recompute, and
+  runtime-projection boundary is implemented with identity-bound validation
+  and typed fail-closed geometry errors. The embedded controller-shadow remains
+  schema `v4`, semantic identity `a69de7872ad039fd`, and its three frozen
+  outcomes are unchanged.
+- **H2a — complete.** The raw-input manifest identity is
+  `fnv1a64:19217b5811b4f25f`; the prediction-manifest identity is
+  `fd55fc7f3f51c65e`; and the ordered input identities are
+  `fnv1a64:1906ea1c9d5b51eb` and `fnv1a64:a63ff1716b1cf24f`. These inputs and
+  predictions were frozen before the analytical reveal.
+- **H2b — stopped at runtime projection.** The detailed analytical artifact
+  identity is `72f664a8f4be8b93`. The tracked compact result
+  [manifest](../fixtures/manifests/conservative_ballistic_ridge_heldout_analytical_result_v1.json)
+  has identity `24804a74cb303625` and is byte-deterministic. The detailed
+  `outputs/eval/conservative-ballistic-ridge-heldout-v1/summary.json` artifact
+  and HTML report with inline SVG visuals at
+  `outputs/reports/eval/conservative-ballistic-ridge-heldout-v1/index.html`
+  are ignored inspection outputs; the detailed artifact is not
+  source-controlled.
+
+  `ridge_progress_050_probe` passed every frozen analytical and runtime
+  expectation. Its analytical canary, candidate projection, and runtime
+  projection identities are `fnv1a64:3892e4cee442675f`,
+  `fnv1a64:2405ceb25946ef82`, and `fnv1a64:9e257dace1c02cc2`.
+
+  `ridge_progress_068_probe` passed every candidate-level frozen prediction.
+  Its analytical canary and candidate projection identities are
+  `fnv1a64:b42288a3164f8223` and `fnv1a64:1ddf250808889d3f`. Runtime projection
+  stopped with typed `handoff_contract_failed`, failure identity
+  `838b5d883a16f24b`, at the exact analytical-to-runtime waypoint handoff.
+  It therefore has no runtime-projection identity and no analytical seal.
+- **H3 — not run.** All six held-out controller lanes were intentionally
+  withheld after the H2b stop. There are zero held-out controller or simulator
+  outcomes, so the scoped execution-compatibility claim does not advance.
+  Production wiring, D2-D5, new topology, tuning, controller-limit
+  relaxation, and requirement relaxation remain out of scope.
+- **H4 — STOP/NARROW.** This is not a ballistic-planner failure: the `068`
+  ballistic candidate is certified and forward-progressing. The incompatibility
+  is at the exact analytical-to-runtime waypoint handoff contract. The compact
+  result archive records this reproducible runtime-projection stop, but is not
+  a general serializer for every hypothetical mismatch, error, or
+  `Unsupported` result. The exactly-one witness is the first selected result
+  from the finite search, not an exhaustive uniqueness proof.
+
+The next sequence is intentionally small and controller-free at first:
+
+1. Add a development-only structured handoff diagnostic for `068` that retains
+   the exact kinematics, authority, and violations currently discarded by
+   `HandoffContractFailed`.
+2. Decide the smallest generic planner/runtime fix, favoring candidate/crossing
+   selection that satisfies the existing canonical handoff contract. Do not add
+   case-ID branches or relax controller limits.
+3. Validate the fix as a development regression on the embedded canary and the
+   current `050`/`068` cases while preserving controller-shadow v4.
+4. Only after review, define a versioned new experiment with genuinely new
+   predeclared inputs and predictions before any controller outcomes. The
+   current `050` and `068` inputs are development/regression cases now, not a
+   fresh held-out gate; no new `rho` values are preselected yet.
 
 #### Same-family invariant and explicit deferrals
 

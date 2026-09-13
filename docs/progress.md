@@ -2,7 +2,62 @@
 
 ## 2026-09-12
 
-### H1 generic boundary and H2a held-out freeze
+### H4 held-out decision: STOP/NARROW after H2b analytical reveal
+
+- H1 is complete: the feature-gated generic input, analytical recompute, and
+  runtime-projection boundary is implemented with identity-bound validation and
+  typed fail-closed geometry errors. The embedded controller-shadow remains
+  schema `v4`, semantic identity `a69de7872ad039fd`, and its three frozen
+  outcomes are unchanged.
+- H2a froze the raw inputs and predictions before outcome inspection. The input
+  manifest identity is `fnv1a64:19217b5811b4f25f`, the prediction-manifest
+  identity is `fd55fc7f3f51c65e`, and the two ordered input identities are
+  `fnv1a64:1906ea1c9d5b51eb` and `fnv1a64:a63ff1716b1cf24f`.
+- H2b ran analytical evaluation only. Its detailed artifact identity is
+  `72f664a8f4be8b93`; the tracked compact result
+  [manifest](../fixtures/manifests/conservative_ballistic_ridge_heldout_analytical_result_v1.json)
+  has identity `24804a74cb303625` and is byte-deterministic. The detailed
+  `outputs/eval/conservative-ballistic-ridge-heldout-v1/summary.json` artifact
+  and `outputs/reports/eval/conservative-ballistic-ridge-heldout-v1/index.html`
+  report are ignored inspection outputs, not source-controlled evidence.
+- `ridge_progress_050_probe` passed every frozen analytical and runtime
+  expectation. Its analytical canary, candidate projection, and runtime
+  projection identities are respectively
+  `fnv1a64:3892e4cee442675f`, `fnv1a64:2405ceb25946ef82`, and
+  `fnv1a64:9e257dace1c02cc2`.
+- `ridge_progress_068_probe` passed every candidate-level frozen prediction,
+  including its analytical canary and candidate projection identities
+  `fnv1a64:b42288a3164f8223` and `fnv1a64:1ddf250808889d3f`. Runtime projection
+  then stopped with typed `handoff_contract_failed` (`failure_identity`
+  `838b5d883a16f24b`) at the exact analytical-to-runtime waypoint handoff.
+  There is no runtime-projection identity for this case and therefore no
+  analytical seal.
+- H3's six controller lanes were not run: there are zero held-out controller
+  or simulator outcomes. The scoped execution-compatibility claim does not
+  advance. This is not a ballistic-planner failure: the `068` ballistic
+  candidate is certified and forward-progressing; the incompatibility is at
+  the existing handoff contract. Production wiring, D2-D5, a new topology,
+  tuning, controller-limit relaxation, and requirement relaxation remain out
+  of scope.
+- H4 therefore records **STOP/NARROW**. The compact result archive records this
+  reproducible runtime-projection stop, but it is not a general serializer for
+  every hypothetical mismatch, error, or `Unsupported` result. The
+  exactly-one witness is the first selected result from the finite search, not
+  an exhaustive uniqueness proof.
+- The next sequence is deliberately small: (1) add a development-only,
+  controller-free structured handoff diagnostic for `068` that retains the
+  exact kinematics, authority, and violations currently discarded by
+  `HandoffContractFailed`; (2) choose the smallest generic planner/runtime
+  fix, favoring candidate/crossing selection that satisfies the existing
+  canonical handoff contract, with no case-ID branches or controller-limit
+  relaxation; (3) validate it as a development regression on the embedded
+  canary and the current `050`/`068` cases while preserving v4; and (4) only
+  after review design a versioned experiment with genuinely new predeclared
+  inputs and predictions before any controller outcome. The current `050` and
+  `068` cases are development/regression cases now, not a fresh held-out gate;
+  do not preselect new `rho` values.
+
+### H1 generic boundary and H2a held-out freeze (pre-H2b checkpoint)
 
 - Implemented the feature-gated generic ridge input, analytical projection,
   and runtime projection schemas. Their validators recompute the analytical
@@ -20,10 +75,10 @@
   `fnv1a64:19217b5811b4f25f`, and the prediction-manifest identity is
   `fd55fc7f3f51c65e`. Validation rejects tampering, reordering, missing or
   extra cases, identity drift, and prediction-shape drift.
-- This checkpoint has not run the held-out analytical evaluator or any
-  held-out controller simulation. H2b is next: reveal the analytical results,
-  compare them with the frozen predictions, and seal the joined identities.
-  Any mismatch, error, or `Unsupported` result stops H3 without retuning.
+- At this pre-H2b checkpoint the held-out analytical evaluator and controller
+  simulation had not yet run. H2b subsequently revealed the analytical result
+  and stopped at the typed runtime handoff error recorded in the H4 entry
+  above; H3 did not run and no retuning was performed.
 
 ### H0 held-out design closure (documentation-only)
 
@@ -57,19 +112,18 @@
   ridge points `1884, 1934, 2084, 2184`) and
   `ridge_progress_068_probe` (`c = 2725.76`; ridge points `2600.76, 2650.76,
   2800.76, 2900.76`). Labels are data only, never case switches.
-- The execution order is now explicit: H0 design commit, H1 generic boundary
+- The execution order was explicit: H0 design commit, H1 generic boundary
   and unchanged embedded-canary proof (including the existing embedded
   controller-shadow regression; no held-out simulation), H2 source-controlled
   raw-input manifest and a pre-simulation prediction manifest that materializes
   the H0-frozen predictions before any analytical output is accepted or joined,
-  then analytical-only evaluation and immutable seal with bound per-case input,
-  per-case analytical canary identity, candidate, runtime, and prediction
-  identities; H3 runs controller simulation joined only by frozen identities,
-  then H4 review. Any mismatch, error, or `Unsupported` stops the experiment;
-  no outcome may retune
+  then analytical-only evaluation and either an immutable passing seal or a
+  durable stopped result with bound per-case input, analytical canary,
+  candidate, available runtime, and prediction identities; H3 would run
+  controller simulation joined only by frozen identities, then H4 review. H2b
+  stopped before H3 at the typed handoff contract error; no outcome may retune
   inputs, planner selection, thresholds, search bounds, or controller
-  parameters. No held-out input has been implemented or evaluated and no
-  held-out simulation has run.
+  parameters. No held-out controller or simulator outcome has been produced.
 
 ### CB3 route-projection implementation and evidence
 
@@ -92,9 +146,9 @@
   are unchanged. CB3 does not advance D2 or D4-D5.
 - The next design checkpoint is now H0-closed below: the two numeric
   same-family probes, analytical predictions, identity bindings, and H1-H4
-  freeze order are explicit. H1 implementation is next; no held-out input has
-  been implemented or evaluated, no held-out simulation has run, and no second
-  topology is added yet.
+  freeze order are explicit. H1 and H2a are complete, H2b has recorded a
+  STOP/NARROW runtime-projection result, and H3 was not run. No second topology
+  is added yet.
 
 ### CB3 route-projection design closure (documentation-only)
 

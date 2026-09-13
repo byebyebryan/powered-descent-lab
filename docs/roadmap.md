@@ -120,9 +120,18 @@ Current implementation status:
     frozen ridge-progress probes (`rho = 0.50` and `0.68`, labels
     `ridge_progress_050_probe` and `ridge_progress_068_probe`). H1's generic
     input/recompute/projector boundary and H2a's identity-bound raw-input and
-    prediction manifests are implemented. H2b analytical evaluation is next;
-    no held-out analytical or controller outcome has been opened, and
-    materially distinct topology work remains deferred;
+    prediction manifests are implemented. H2b completed an analytical-only
+    reveal and recorded a deterministic `STOP/NARROW` result:
+    `ridge_progress_050_probe` passed its frozen analytical/runtime
+    expectations, while `ridge_progress_068_probe` passed every candidate-level
+    prediction but stopped at the typed runtime `handoff_contract_failed`
+    boundary. The tracked result is `24804a74cb303625`; H3's six controller
+    lanes were not run, so there are no held-out controller outcomes and the
+    scoped execution-compatibility claim does not advance. The next work is a
+    controller-free structured handoff diagnostic and smallest generic boundary
+    fix; current `050`/`068` are development/regression cases, not a fresh
+    held-out gate. Production wiring, D2-D5, new topology, tuning, and
+    requirement relaxation remain deferred;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -735,9 +744,14 @@ implementing a predictor. The remaining evidence-first sequence is:
    separately reviewed same-family held-out design: two frozen
    ridge-progress probes at `rho = 0.50` and `0.68` have explicit analytical
    predictions and H1-H4 ordering. H1's input/recompute/projector boundary and
-   H2a's raw-input and prediction manifests are implemented. H2b analytical
-   evaluation is next; no held-out analytical or controller outcome has been
-   opened, and only after H4 is a materially distinct topology reconsidered;
+   H2a's raw-input and prediction manifests are implemented. H2b completed an
+   analytical-only reveal and recorded a deterministic `STOP/NARROW` result:
+   `ridge_progress_050_probe` passed its frozen analytical/runtime
+   expectations, while `ridge_progress_068_probe` passed every candidate-level
+   prediction but stopped at typed runtime `handoff_contract_failed`. H3 was
+   not run, so there are no held-out controller outcomes and the scoped
+   execution-compatibility claim does not advance; only after the handoff
+   boundary is understood is a materially distinct topology reconsidered;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -784,11 +798,12 @@ frozen outcomes remain unchanged. H0 closed the same-family held-out
 matrix design with `ridge_progress_050_probe` and
 `ridge_progress_068_probe`, including analytical predictions, identity
 bindings, and the H1-H4 freeze order. H1's generic boundary and H2a's frozen
-raw-input and prediction manifests are implemented; H2b must reveal and seal
-the analytical results before any H3 controller run;
-the ordinary source-taper comparison remains an evaluator artifact-integrity/
+raw-input and prediction manifests are implemented; H2b has now recorded the
+analytical-only `STOP/NARROW` result above, before any H3 controller run. The
+ordinary source-taper comparison remains an evaluator artifact-integrity/
 preflight gate outside planner acceptance. A materially distinct topology is
-deferred until after that gate; production planner wiring remains unauthorized.
+deferred until the handoff boundary is understood; production planner wiring
+remains unauthorized.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical
