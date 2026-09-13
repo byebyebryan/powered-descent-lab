@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 
 const FIXTURE: &str =
     include_str!("../fixtures/conservative_ballistic_direct_bridge_probes_v2.json");
+const HELDOUT_INPUT_MANIFEST_V1: &str =
+    include_str!("../fixtures/conservative_ballistic_ridge_heldout_inputs_v1.json");
 const FIXTURE_SCHEMA_ID: &str = "conservative_ballistic_direct_bridge_probes_v2";
 const FIXTURE_SCHEMA_VERSION: u32 = 2;
 const ENDPOINT_TOLERANCE: f64 = 1.0e-8;
@@ -702,6 +704,62 @@ pub struct ExperimentalRidgeCaseInputV1 {
     /// One and only one raw probe.  A separate fixture or probe selection
     /// field would permit case-ID selection to enter this generic boundary.
     pub probe: DirectBridgeProbeV2,
+    pub identity: String,
+}
+
+/// Versioned input-only manifest for the two frozen H2 held-out ridge cases.
+///
+/// The manifest is deliberately separate from [`DirectBridgeFixtureV2`].  It
+/// binds the ordered, complete generic inputs used by the held-out experiment
+/// without carrying any analytical candidate, runtime route, or controller
+/// outcome fields.
+pub const EXPERIMENTAL_RIDGE_CASE_MANIFEST_SCHEMA_ID_V1: &str =
+    "experimental_ridge_case_manifest_v1";
+pub const EXPERIMENTAL_RIDGE_CASE_MANIFEST_SCHEMA_VERSION_V1: u32 = 1;
+pub const EXPERIMENTAL_RIDGE_HELDOUT_CASE_IDS_V1: [&str; 2] =
+    ["ridge_progress_050_probe", "ridge_progress_068_probe"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExperimentalRidgeCaseManifestErrorV1 {
+    Json,
+    SchemaMismatch,
+    CaseCountMismatch,
+    CaseOrderMismatch,
+    DuplicateCaseId,
+    InputInvalid,
+    IdentityMismatch,
+}
+
+impl std::fmt::Display for ExperimentalRidgeCaseManifestErrorV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            Self::Json => "experimental ridge case manifest JSON is invalid",
+            Self::SchemaMismatch => "experimental ridge case manifest schema is invalid",
+            Self::CaseCountMismatch => {
+                "experimental ridge case manifest must contain exactly two cases"
+            }
+            Self::CaseOrderMismatch => {
+                "experimental ridge case manifest case IDs are not in the frozen order"
+            }
+            Self::DuplicateCaseId => "experimental ridge case manifest contains a duplicate ID",
+            Self::InputInvalid => "experimental ridge case manifest contains an invalid input",
+            Self::IdentityMismatch => {
+                "experimental ridge case manifest identity does not bind its ordered inputs"
+            }
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for ExperimentalRidgeCaseManifestErrorV1 {}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExperimentalRidgeCaseManifestV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub cases: Vec<ExperimentalRidgeCaseInputV1>,
     pub identity: String,
 }
 
@@ -5486,6 +5544,82 @@ impl ExperimentalRidgeCaseInputV1 {
     }
 }
 
+impl ExperimentalRidgeCaseManifestV1 {
+    /// Construct an identity-bound manifest from the complete ordered input
+    /// cases.  No analytical evaluation is performed here.
+    pub fn new(
+        cases: Vec<ExperimentalRidgeCaseInputV1>,
+    ) -> Result<Self, ExperimentalRidgeCaseManifestErrorV1> {
+        let mut manifest = Self {
+            schema_id: EXPERIMENTAL_RIDGE_CASE_MANIFEST_SCHEMA_ID_V1.to_owned(),
+            schema_version: EXPERIMENTAL_RIDGE_CASE_MANIFEST_SCHEMA_VERSION_V1,
+            cases,
+            identity: String::new(),
+        };
+        manifest.validate_contents()?;
+        manifest.identity = experimental_ridge_case_manifest_identity_v1(&manifest);
+        Ok(manifest)
+    }
+
+    /// Validate the frozen two-case manifest before handing its raw inputs to
+    /// a later analytical stage.  Case IDs are checked only for manifest
+    /// integrity; they are not used by the generic input evaluator.
+    pub fn validate(&self) -> Result<(), ExperimentalRidgeCaseManifestErrorV1> {
+        self.validate_contents()?;
+        if self.identity != experimental_ridge_case_manifest_identity_v1(self) {
+            return Err(ExperimentalRidgeCaseManifestErrorV1::IdentityMismatch);
+        }
+        Ok(())
+    }
+
+    fn validate_contents(&self) -> Result<(), ExperimentalRidgeCaseManifestErrorV1> {
+        if self.schema_id != EXPERIMENTAL_RIDGE_CASE_MANIFEST_SCHEMA_ID_V1
+            || self.schema_version != EXPERIMENTAL_RIDGE_CASE_MANIFEST_SCHEMA_VERSION_V1
+        {
+            return Err(ExperimentalRidgeCaseManifestErrorV1::SchemaMismatch);
+        }
+        if self.cases.len() != EXPERIMENTAL_RIDGE_HELDOUT_CASE_IDS_V1.len() {
+            return Err(ExperimentalRidgeCaseManifestErrorV1::CaseCountMismatch);
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        for (case, expected_id) in self
+            .cases
+            .iter()
+            .zip(EXPERIMENTAL_RIDGE_HELDOUT_CASE_IDS_V1)
+        {
+            if case.probe.id != expected_id {
+                return Err(ExperimentalRidgeCaseManifestErrorV1::CaseOrderMismatch);
+            }
+            if !ids.insert(case.probe.id.clone()) {
+                return Err(ExperimentalRidgeCaseManifestErrorV1::DuplicateCaseId);
+            }
+            case.validate()
+                .map_err(|_| ExperimentalRidgeCaseManifestErrorV1::InputInvalid)?;
+        }
+        Ok(())
+    }
+}
+
+/// Parse and validate a versioned held-out raw-input manifest.  This function
+/// performs only JSON decoding, raw-input validation, and identity checking;
+/// it never evaluates an analytical candidate or builds a runtime route.
+pub fn parse_experimental_ridge_case_manifest_v1(
+    raw: &str,
+) -> Result<ExperimentalRidgeCaseManifestV1, ExperimentalRidgeCaseManifestErrorV1> {
+    let manifest: ExperimentalRidgeCaseManifestV1 =
+        serde_json::from_str(raw).map_err(|_| ExperimentalRidgeCaseManifestErrorV1::Json)?;
+    manifest.validate()?;
+    Ok(manifest)
+}
+
+/// Load the committed H2 raw-input manifest.  The embedded fixture is
+/// validated before it is returned; callers receive only input data and its
+/// identity chain.
+pub fn load_experimental_ridge_case_manifest_v1() -> ExperimentalRidgeCaseManifestV1 {
+    parse_experimental_ridge_case_manifest_v1(HELDOUT_INPUT_MANIFEST_V1)
+        .expect("valid experimental ridge held-out input manifest v1")
+}
+
 fn validate_experimental_ridge_case_input_contents_v1(
     policy: &DirectBridgePolicyV2,
     vehicle: &VehicleInputV2,
@@ -6133,6 +6267,23 @@ fn experimental_ridge_case_input_identity_v1(input: &ExperimentalRidgeCaseInputV
     })
 }
 
+fn experimental_ridge_case_manifest_identity_v1(
+    manifest: &ExperimentalRidgeCaseManifestV1,
+) -> String {
+    digest(&ExperimentalRidgeCaseManifestIdentityV1 {
+        schema_id: &manifest.schema_id,
+        schema_version: manifest.schema_version,
+        cases: &manifest.cases,
+    })
+}
+
+#[derive(Serialize)]
+struct ExperimentalRidgeCaseManifestIdentityV1<'a> {
+    schema_id: &'a str,
+    schema_version: u32,
+    cases: &'a [ExperimentalRidgeCaseInputV1],
+}
+
 #[derive(Serialize)]
 struct ExperimentalRidgeCaseInputIdentityV1<'a> {
     schema_id: &'a str,
@@ -6637,6 +6788,77 @@ mod tests {
         assert_eq!(fixture.policy.handoff_interval_ticks(), 30);
         assert_eq!(fixture.policy.bridge_interval_ticks(), 60);
         assert_eq!(fixture.cases.len(), 4);
+    }
+
+    #[test]
+    fn heldout_input_manifest_loads_with_frozen_order_and_geometry() {
+        let manifest = load_experimental_ridge_case_manifest_v1();
+        manifest.validate().unwrap();
+        assert_eq!(
+            manifest
+                .cases
+                .iter()
+                .map(|case| case.probe.id.as_str())
+                .collect::<Vec<_>>(),
+            EXPERIMENTAL_RIDGE_HELDOUT_CASE_IDS_V1
+        );
+        assert_eq!(manifest.cases.len(), 2);
+        assert_eq!(manifest.cases[0].probe.terrain_points_m[1].x, 1884.0);
+        assert_eq!(manifest.cases[1].probe.terrain_points_m[1].x, 2600.76);
+        assert_eq!(manifest.cases[0].probe.terrain_points_m[2].y, 1200.0);
+        assert_eq!(manifest.cases[1].probe.terrain_points_m[3].y, 1200.0);
+        assert_eq!(manifest.cases[0].probe.source.center_x_m, 18.0);
+        assert_eq!(manifest.cases[0].probe.target.center_x_m, 4000.0);
+        assert_eq!(
+            manifest.cases[0].probe.initial_position_m,
+            Vec2::new(18.0, 5.0)
+        );
+        assert_eq!(
+            manifest.cases[0].probe.initial_velocity_mps,
+            Vec2::new(0.0, 0.0)
+        );
+        assert_eq!(manifest.cases[0].policy, manifest.cases[1].policy);
+        assert_eq!(manifest.cases[0].vehicle, manifest.cases[1].vehicle);
+        assert_eq!(manifest.cases[0].identity, "fnv1a64:1906ea1c9d5b51eb");
+        assert_eq!(manifest.cases[1].identity, "fnv1a64:a63ff1716b1cf24f");
+        assert_eq!(manifest.identity, "fnv1a64:19217b5811b4f25f");
+        let reloaded: ExperimentalRidgeCaseManifestV1 =
+            serde_json::from_str(&serde_json::to_string(&manifest).unwrap()).unwrap();
+        assert_eq!(reloaded, manifest);
+        reloaded.validate().unwrap();
+    }
+
+    #[test]
+    fn heldout_input_manifest_rejects_tamper_and_reordering() {
+        let manifest = load_experimental_ridge_case_manifest_v1();
+
+        let mut identity_tampered = manifest.clone();
+        identity_tampered.identity.push_str("-tampered");
+        assert_eq!(
+            identity_tampered.validate(),
+            Err(ExperimentalRidgeCaseManifestErrorV1::IdentityMismatch)
+        );
+
+        let mut input_tampered = manifest.clone();
+        input_tampered.cases[0].probe.terrain_points_m[1].x += 1.0;
+        assert_eq!(
+            input_tampered.validate(),
+            Err(ExperimentalRidgeCaseManifestErrorV1::InputInvalid)
+        );
+
+        let mut reordered = manifest;
+        reordered.cases.swap(0, 1);
+        assert_eq!(
+            reordered.validate(),
+            Err(ExperimentalRidgeCaseManifestErrorV1::CaseOrderMismatch)
+        );
+
+        let mut extra = load_experimental_ridge_case_manifest_v1();
+        extra.cases.push(extra.cases[0].clone());
+        assert_eq!(
+            extra.validate(),
+            Err(ExperimentalRidgeCaseManifestErrorV1::CaseCountMismatch)
+        );
     }
 
     #[test]

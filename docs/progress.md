@@ -2,6 +2,29 @@
 
 ## 2026-09-12
 
+### H1 generic boundary and H2a held-out freeze
+
+- Implemented the feature-gated generic ridge input, analytical projection,
+  and runtime projection schemas. Their validators recompute the analytical
+  result and runtime route from the supplied input, bind a fresh per-case
+  canary identity, survive JSON round trips, and return typed errors for
+  invalid derived geometry. The embedded V2 canary remains unchanged: the
+  controller-shadow is still schema `v4`, semantic identity
+  `a69de7872ad039fd`, deterministic, and preserves its three frozen outcomes.
+- Froze the two H2 raw inputs in
+  `conservative_ballistic_ridge_heldout_inputs_v1.json` and their pre-outcome
+  predictions in
+  `conservative_ballistic_ridge_heldout_predictions_v1.json`. The ordered
+  input identities are `fnv1a64:1906ea1c9d5b51eb` and
+  `fnv1a64:a63ff1716b1cf24f`; the input-manifest identity is
+  `fnv1a64:19217b5811b4f25f`, and the prediction-manifest identity is
+  `fd55fc7f3f51c65e`. Validation rejects tampering, reordering, missing or
+  extra cases, identity drift, and prediction-shape drift.
+- This checkpoint has not run the held-out analytical evaluator or any
+  held-out controller simulation. H2b is next: reveal the analytical results,
+  compare them with the frozen predictions, and seal the joined identities.
+  Any mismatch, error, or `Unsupported` result stops H3 without retuning.
+
 ### H0 held-out design closure (documentation-only)
 
 - Closed the first controller-held-out, pre-simulation same-family gate. This

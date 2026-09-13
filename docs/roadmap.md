@@ -115,13 +115,14 @@ Current implementation status:
     `a69de7872ad039fd` with its three frozen outcomes, and ordinary route
     validation, production planner wiring, and controller behavior are
     unchanged. `pd-eval` retains the ordinary source-taper comparison outside
-    planner acceptance as a frozen canary artifact-integrity/preflight gate. A
-    H0 now closes the separately reviewed same-family held-out design with two
+    planner acceptance as a frozen canary artifact-integrity/preflight gate.
+    H0 closed the separately reviewed same-family held-out design with two
     frozen ridge-progress probes (`rho = 0.50` and `0.68`, labels
-    `ridge_progress_050_probe` and `ridge_progress_068_probe`); H1's generic
-    input/recompute/projector implementation is next, with no held-out input
-    implemented or evaluated, no held-out simulation run, and materially
-    distinct topology work deferred;
+    `ridge_progress_050_probe` and `ridge_progress_068_probe`). H1's generic
+    input/recompute/projector boundary and H2a's identity-bound raw-input and
+    prediction manifests are implemented. H2b analytical evaluation is next;
+    no held-out analytical or controller outcome has been opened, and
+    materially distinct topology work remains deferred;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -730,13 +731,13 @@ implementing a predictor. The remaining evidence-first sequence is:
    comparison outside planner acceptance as a frozen artifact-integrity/
    preflight gate. The controller-shadow remains schema `v4` /
    `a69de7872ad039fd` with its three frozen outcomes; production behavior,
-   generic source-departure D2, and D4-D5 are unchanged. H0 now closes the
+   generic source-departure D2, and D4-D5 are unchanged. H0 closed the
    separately reviewed same-family held-out design: two frozen
    ridge-progress probes at `rho = 0.50` and `0.68` have explicit analytical
-   predictions and H1-H4 ordering. H1's input/recompute/projector boundary is
-   next; no held-out input has been implemented or evaluated, no held-out
-   simulation has run, and only then is a materially distinct topology
-   reconsidered;
+   predictions and H1-H4 ordering. H1's input/recompute/projector boundary and
+   H2a's raw-input and prediction manifests are implemented. H2b analytical
+   evaluation is next; no held-out analytical or controller outcome has been
+   opened, and only after H4 is a materially distinct topology reconsidered;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
    integration-eligible claim and held-out gate;
@@ -779,11 +780,12 @@ the scoped nominal policy and candidate identities, and leaves runtime route
 and controller semantics downstream. CB3 now completes the feature-gated
 `pd-plan` runtime-route projection over that candidate decision and crossing;
 ordinary route validation, the controller-shadow v4 artifact, and its three
-frozen outcomes remain unchanged. H0 now closes the same-family held-out
+frozen outcomes remain unchanged. H0 closed the same-family held-out
 matrix design with `ridge_progress_050_probe` and
 `ridge_progress_068_probe`, including analytical predictions, identity
-bindings, and the H1-H4 freeze order. H1 must implement the generic
-input/recompute/projector boundary before H2 seals any analytical artifacts;
+bindings, and the H1-H4 freeze order. H1's generic boundary and H2a's frozen
+raw-input and prediction manifests are implemented; H2b must reveal and seal
+the analytical results before any H3 controller run;
 the ordinary source-taper comparison remains an evaluator artifact-integrity/
 preflight gate outside planner acceptance. A materially distinct topology is
 deferred until after that gate; production planner wiring remains unauthorized.

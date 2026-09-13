@@ -1,0 +1,82 @@
+{
+  "schema_id": "conservative_ballistic_ridge_heldout_predictions_v1",
+  "schema_version": 1,
+  "input_manifest_identity": "fnv1a64:19217b5811b4f25f",
+  "cases": [
+    {
+      "case_id": "ridge_progress_050_probe",
+      "input_identity": "fnv1a64:1906ea1c9d5b51eb",
+      "analytical": {
+        "flat_control": {
+          "expected_outcome": "direct",
+          "selection_rule": "shortest_robust_certified",
+          "duration_multiplier": 1.0
+        },
+        "derived_mesa": {
+          "blocker": "valid",
+          "nominal_direct_rejection": "terrain_clearance",
+          "longer_global_replan": "at_least_one_certified_diagnostic",
+          "expected_outcome": "one_waypoint",
+          "selected_waypoint_witness": "exactly_one_certified_forward_progressing"
+        },
+        "validation": {
+          "candidate_projection": "required",
+          "runtime_projection": "required",
+          "deterministic_repeat": "byte_identical_repeat_required",
+          "unsupported_result": "stop_experiment"
+        }
+      },
+      "controller": {
+        "flat_direct": { "outcome": "target_landing" },
+        "mesa_direct": {
+          "outcome": "non_target_terrain_contact",
+          "location": "derived_mesa",
+          "ordering": "before_target_touchdown",
+          "precision": "no_exact_time_or_point"
+        },
+        "mesa_waypoint": {
+          "handoff": "contract_pass",
+          "terminal_outcome": "target_landing"
+        }
+      }
+    },
+    {
+      "case_id": "ridge_progress_068_probe",
+      "input_identity": "fnv1a64:a63ff1716b1cf24f",
+      "analytical": {
+        "flat_control": {
+          "expected_outcome": "direct",
+          "selection_rule": "shortest_robust_certified",
+          "duration_multiplier": 1.0
+        },
+        "derived_mesa": {
+          "blocker": "valid",
+          "nominal_direct_rejection": "terrain_clearance",
+          "longer_global_replan": "at_least_one_certified_diagnostic",
+          "expected_outcome": "one_waypoint",
+          "selected_waypoint_witness": "exactly_one_certified_forward_progressing"
+        },
+        "validation": {
+          "candidate_projection": "required",
+          "runtime_projection": "required",
+          "deterministic_repeat": "byte_identical_repeat_required",
+          "unsupported_result": "stop_experiment"
+        }
+      },
+      "controller": {
+        "flat_direct": { "outcome": "target_landing" },
+        "mesa_direct": {
+          "outcome": "non_target_terrain_contact",
+          "location": "derived_mesa",
+          "ordering": "before_target_touchdown",
+          "precision": "no_exact_time_or_point"
+        },
+        "mesa_waypoint": {
+          "handoff": "contract_pass",
+          "terminal_outcome": "target_landing"
+        }
+      }
+    }
+  ],
+  "identity": "fd55fc7f3f51c65e"
+}

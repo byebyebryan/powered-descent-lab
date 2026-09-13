@@ -21,7 +21,9 @@ use pd_core::{
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};
 
+pub mod conservative_ballistic_heldout;
 pub mod conservative_ballistic_report;
+pub use conservative_ballistic_heldout::*;
 pub mod report;
 pub mod report_catalog;
 pub use conservative_ballistic_report::{

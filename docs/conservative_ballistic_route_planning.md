@@ -433,8 +433,10 @@ diagnostic; the composed planner projection remains `supported`.
 
 CB3 changes no generic source-departure contract, fixture, controller,
 production planner path, `pd-core::validate_route`, or `pd-control` behavior.
-No held-out input has been implemented or evaluated, no held-out simulation has
-run, and no second topology is added.
+The later H1 implementation preserves those boundaries, and H2a now freezes
+the two identity-bound raw inputs and their prediction manifest without
+opening an analytical or controller outcome. No held-out simulation has run,
+and no second topology is added.
 
 ### H0 held-out design closure (documentation-only)
 
@@ -449,7 +451,7 @@ universal proof, production integration, or a second terrain topology.
 
 #### H1 input and API boundary
 
-The implementation will introduce a separate, versioned, input-only
+H1 introduced a separate, versioned, input-only
 `ExperimentalRidgeCaseInputV1` schema. Its serialized contract is:
 
 ```text
