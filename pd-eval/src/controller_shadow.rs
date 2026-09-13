@@ -19,17 +19,19 @@ use pd_control::{
 };
 use pd_core::{
     EndReason, EvaluationGoal, LandingPadSpec, MissionSpec, RoutePlanningPolicy,
-    RoutePlanningRequest, ScenarioSpec, SimConfig, TerrainDefinition, TransferRouteSpec,
-    TransferWaypointSpec, Vec2, VehicleGeometry, VehicleInitialState, VehicleSpec,
-    WaypointAuthorityDiagnostics, WaypointHandoffKinematics, WorldSpec, build_endpoint_profile,
-    compute_waypoint_authority, endpoint_shaped_centerline, normalized_geometry, validate_route,
+    RoutePlanningRequest, ScenarioSpec, SimConfig, TerrainDefinition, TransferRouteSpec, Vec2,
+    VehicleGeometry, VehicleInitialState, VehicleSpec, WaypointAuthorityDiagnostics, WorldSpec,
+    build_endpoint_profile, normalized_geometry, validate_route,
 };
 use pd_plan::conservative_ballistic_bridge::{
     AnalyticalBridgeV2, BridgeEnvironmentEvidenceV2, ComponentMarginsV2, DirectBridgeCandidateV2,
     DirectBridgePolicyV2, DirectBridgeProbeV2, ExactIntermediateBridgeCrossingV2,
-    ExperimentalRidgeCandidateOutcomeV2, ExperimentalRidgeCandidateProjectionV2, KinematicStateV2,
-    MesaGeometryV2, RouteProgressEvidenceV2, VirtualBallisticArcV2, WaypointCandidateV2,
-    evaluate_embedded_experimental_ridge_candidate_v2,
+    ExperimentalRidgeCandidateOutcomeV2, ExperimentalRidgeCandidateProjectionV2,
+    ExperimentalRidgeRuntimeOutcomeV2, ExperimentalRidgeRuntimeProjectionV2,
+    ExperimentalRidgeRuntimeWaypointHandoffAssessmentV2,
+    ExperimentalRidgeRuntimeWaypointHandoffKinematicsV2, MesaGeometryV2, RouteProgressEvidenceV2,
+    VirtualBallisticArcV2, WaypointCandidateV2, evaluate_embedded_experimental_ridge_candidate_v2,
+    evaluate_embedded_experimental_ridge_runtime_v2, validate_experimental_ridge_runtime_v2,
 };
 use pd_report::site::ReportSite;
 use serde::{Deserialize, Serialize};
@@ -253,8 +255,10 @@ pub struct WaypointHandoffKinematicsEvidence {
     pub vertical_speed_mps: f64,
 }
 
-impl From<WaypointHandoffKinematics> for WaypointHandoffKinematicsEvidence {
-    fn from(value: WaypointHandoffKinematics) -> Self {
+impl From<ExperimentalRidgeRuntimeWaypointHandoffKinematicsV2>
+    for WaypointHandoffKinematicsEvidence
+{
+    fn from(value: ExperimentalRidgeRuntimeWaypointHandoffKinematicsV2) -> Self {
         Self {
             distance_m: value.distance_m,
             cross_track_m: value.cross_track_m,
@@ -347,8 +351,12 @@ pub fn run_controller_shadow(
 
     let projection = evaluate_embedded_experimental_ridge_candidate_v2()
         .map_err(|error| anyhow!(error.to_string()))?;
-    let first = execute_shadow(&projection)?;
-    let repeat = execute_shadow(&projection)?;
+    let runtime = evaluate_embedded_experimental_ridge_runtime_v2()
+        .map_err(|error| anyhow!("planner-owned runtime projection failed: {error}"))?;
+    validate_experimental_ridge_runtime_v2(&projection, &runtime)
+        .map_err(|error| anyhow!("planner-owned runtime projection is invalid: {error}"))?;
+    let first = execute_shadow(&projection, &runtime)?;
+    let repeat = execute_shadow(&projection, &runtime)?;
     let deterministic_repeat = semantic_digest(&first)? == semantic_digest(&repeat)?;
     let mut run = first;
     run.deterministic_repeat = deterministic_repeat;
@@ -479,7 +487,10 @@ fn write_shadow_artifacts(output_dir: &Path, run: &ControllerShadowRun) -> Resul
 
 fn execute_shadow(
     projection: &ExperimentalRidgeCandidateProjectionV2,
+    runtime: &ExperimentalRidgeRuntimeProjectionV2,
 ) -> Result<ControllerShadowRun> {
+    validate_experimental_ridge_runtime_v2(projection, runtime)
+        .map_err(|error| anyhow!("planner-owned runtime projection is invalid: {error}"))?;
     let case = &projection.case;
     let nominal = match &projection.flat_control {
         ExperimentalRidgeCandidateOutcomeV2::Direct { candidate } => candidate,
@@ -490,11 +501,8 @@ fn execute_shadow(
             bail!("flat control is unsupported: {reason:?}")
         }
     };
-    let (selected, actual_handoff) = match &projection.derived_mesa {
-        ExperimentalRidgeCandidateOutcomeV2::OneWaypoint {
-            candidate,
-            crossing,
-        } => (candidate, crossing),
+    let selected = match &projection.derived_mesa {
+        ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { candidate, .. } => candidate,
         ExperimentalRidgeCandidateOutcomeV2::Direct { .. } => {
             bail!("derived mesa unexpectedly retained the nominal direct lane")
         }
@@ -502,13 +510,32 @@ fn execute_shadow(
             bail!("derived mesa has no supported waypoint repair: {reason:?}")
         }
     };
+    let direct_runtime_route = match &runtime.flat_control {
+        ExperimentalRidgeRuntimeOutcomeV2::Direct {
+            candidate_identity,
+            route,
+            structural_validation,
+            ..
+        } => {
+            if candidate_identity != &nominal.identity {
+                bail!(
+                    "planner runtime direct candidate identity does not match analytical projection"
+                );
+            }
+            if !structural_validation.transfer_route_valid {
+                bail!("planner runtime direct route is missing structural validation");
+            }
+            route
+        }
+        ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint { .. } => {
+            bail!("flat control unexpectedly selected a waypoint")
+        }
+        ExperimentalRidgeRuntimeOutcomeV2::Unsupported { reason, .. } => {
+            bail!("flat control is unsupported: {reason:?}")
+        }
+    };
     let analytical_overlay = build_analytical_overlay(nominal, selected);
-    let mut direct_route = derive_direct_route_evidence(
-        case,
-        flat_terrain(case),
-        &projection.policy,
-        &projection.vehicle,
-    )?;
+    let mut direct_route = direct_route_evidence(direct_runtime_route);
     let direct_route_spec = direct_route.route.clone();
     let flat_scenario = build_scenario(
         case,
@@ -535,7 +562,8 @@ fn execute_shadow(
         &projection.vehicle,
         &projection.mesa,
         selected,
-        actual_handoff,
+        &runtime.derived_mesa,
+        direct_runtime_route,
     )?;
 
     let mut lanes = Vec::new();
@@ -617,57 +645,13 @@ fn mesa_terrain(mesa: &MesaGeometryV2) -> TerrainDefinition {
     }
 }
 
-fn derive_direct_route_evidence(
-    case: &DirectBridgeProbeV2,
-    terrain: TerrainDefinition,
-    policy: &DirectBridgePolicyV2,
-    vehicle_input: &pd_plan::conservative_ballistic_bridge::VehicleInputV2,
-) -> Result<DirectRouteEvidence> {
-    let vehicle = vehicle_from_fixture(vehicle_input);
-    let source = LandingPadSpec {
-        id: "source".to_owned(),
-        center_x_m: case.source.center_x_m,
-        surface_y_m: case.source.surface_y_m,
-        width_m: case.source.width_m,
-    };
-    let target = LandingPadSpec {
-        id: "target".to_owned(),
-        center_x_m: case.target.center_x_m,
-        surface_y_m: case.target.surface_y_m,
-        width_m: case.target.width_m,
-    };
-    let request = RoutePlanningRequest {
-        world: WorldSpec {
-            gravity_mps2: policy.gravity_mps2,
-            terrain,
-            landing_pads: vec![source, target],
-        },
-        vehicle,
-        initial_state: VehicleInitialState {
-            position_m: case.initial_position_m,
-            velocity_mps: case.initial_velocity_mps,
-            attitude_rad: 0.0,
-            angular_rate_radps: 0.0,
-        },
-        source_pad_id: "source".to_owned(),
-        target_pad_id: "target".to_owned(),
-        policy: RoutePlanningPolicy::v1(),
-    };
-    let geometry = normalized_geometry(&request).map_err(|error| anyhow!(error.to_string()))?;
-    let route = TransferRouteSpec {
-        source_pad_id: request.source_pad_id,
-        target_pad_id: request.target_pad_id,
-        route_angle_deg: geometry.route_angle_deg,
-        route_radius_m: geometry.direct_distance_m,
-        waypoints: Vec::new(),
-    };
-    route.validate().map_err(|error| anyhow!(error))?;
-    Ok(DirectRouteEvidence {
-        route,
-        normalized_direct_distance_m: geometry.direct_distance_m,
-        normalized_route_angle_deg: geometry.route_angle_deg,
+fn direct_route_evidence(route: &TransferRouteSpec) -> DirectRouteEvidence {
+    DirectRouteEvidence {
+        route: route.clone(),
+        normalized_direct_distance_m: route.route_radius_m,
+        normalized_route_angle_deg: route.route_angle_deg,
         structural_validation: "TransferRouteSpec::validate passed; ScenarioSpec validation follows for both direct lanes".to_owned(),
-    })
+    }
 }
 
 const ANALYTICAL_PATH_POINT_LIMIT: usize = 96;
@@ -863,8 +847,57 @@ fn adapt_waypoint_route(
     vehicle_input: &pd_plan::conservative_ballistic_bridge::VehicleInputV2,
     mesa: &MesaGeometryV2,
     candidate: &WaypointCandidateV2,
-    actual_handoff: &ExactIntermediateBridgeCrossingV2,
+    runtime: &ExperimentalRidgeRuntimeOutcomeV2,
+    zero_waypoint_direct_route: &TransferRouteSpec,
 ) -> Result<RouteAdapterEvidence> {
+    let (
+        candidate_identity,
+        route,
+        actual_handoff,
+        authority,
+        handoff_kinematics,
+        handoff_assessment,
+        structural_validation,
+    ) = match runtime {
+        ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint {
+            candidate_identity,
+            route,
+            crossing,
+            authority,
+            handoff_kinematics,
+            handoff_assessment,
+            structural_validation,
+            ..
+        } => (
+            candidate_identity,
+            route,
+            crossing,
+            authority,
+            handoff_kinematics,
+            handoff_assessment,
+            structural_validation,
+        ),
+        ExperimentalRidgeRuntimeOutcomeV2::Direct { .. } => {
+            bail!("derived mesa unexpectedly retained the nominal direct lane")
+        }
+        ExperimentalRidgeRuntimeOutcomeV2::Unsupported { reason, .. } => {
+            bail!("derived mesa has no supported waypoint repair: {reason:?}")
+        }
+    };
+    if candidate_identity != &candidate.identity {
+        bail!("planner runtime waypoint candidate identity does not match analytical projection");
+    }
+    if !structural_validation.transfer_route_valid {
+        bail!("planner runtime waypoint route is missing structural validation");
+    }
+    let waypoint = route
+        .waypoints
+        .first()
+        .filter(|_| route.waypoints.len() == 1)
+        .ok_or_else(|| {
+            anyhow!("planner runtime waypoint route does not contain exactly one waypoint")
+        })?;
+    let certificate = analytical_certificate_evidence(candidate, policy);
     let vehicle = vehicle_from_fixture(vehicle_input);
     let source = LandingPadSpec {
         id: "source".to_owned(),
@@ -896,129 +929,13 @@ fn adapt_waypoint_route(
         policy: RoutePlanningPolicy::v1(),
     };
     let geometry = normalized_geometry(&request).map_err(|error| anyhow!(error.to_string()))?;
-    let capture_radius_m = (geometry.direct_distance_m * 0.08).clamp(35.0, 95.0);
-    let certificate = analytical_certificate_evidence(candidate, policy);
-    if !certificate.certificate_passes {
-        return Ok(invalid_adapter_evidence(
-            candidate,
-            certificate,
-            capture_radius_m,
-            AdapterPartialEvidence::default(),
-            "selected V2 certificate no longer passes every required bridge, environment, route-progress, and margin screen".to_owned(),
-        ));
-    }
-    let actual_handoff = actual_handoff.clone();
-    let normalized_waypoint = Vec2::new(
-        f64::from(geometry.horizontal_sign)
-            * (actual_handoff.selected_state.position_m.x
-                - request.source_pad().expect("source").center_x_m),
-        actual_handoff.selected_state.position_m.y,
-    );
     let (profile, _) = build_endpoint_profile(&request, geometry.direct_horizontal_span_m)
         .map_err(|error| anyhow!(error.to_string()))?;
-    let shaped = endpoint_shaped_centerline(&request, &geometry, &profile, &[normalized_waypoint])
-        .map_err(|error| anyhow!(error.to_string()))?;
-    let waypoint_index = shaped
-        .iter()
-        .position(|point| *point == normalized_waypoint)
-        .ok_or_else(|| anyhow!("adapter waypoint was not retained by endpoint centerline"))?;
-    let inbound = unit_vector(shaped[waypoint_index] - shaped[waypoint_index - 1])
-        .ok_or_else(|| anyhow!("adapter inbound tangent is degenerate"))?;
-    let outbound = unit_vector(shaped[waypoint_index + 1] - shaped[waypoint_index])
-        .ok_or_else(|| anyhow!("adapter outbound tangent is degenerate"))?;
-    let normalized_tangent = unit_vector(inbound + outbound)
-        .ok_or_else(|| anyhow!("adapter route legs have opposing tangent"))?;
-    let tangent = Vec2::new(
-        f64::from(geometry.horizontal_sign) * normalized_tangent.x,
-        normalized_tangent.y,
-    );
-    let preliminary = TransferWaypointSpec {
-        id: "ridge-bridge-handoff-0".to_owned(),
-        position_m: actual_handoff.selected_state.position_m,
-        handoff_tangent_unit: Some(tangent),
-        capture_radius_m,
-        max_cross_track_m: capture_radius_m,
-        max_outbound_heading_error_rad: request.policy.max_outbound_heading_error_rad,
-        min_outbound_progress_mps: request.policy.min_outbound_progress_mps,
-        max_outbound_cross_speed_mps: Some(request.policy.max_outbound_cross_speed_mps),
-        min_speed_mps: request.policy.min_handoff_speed_mps,
-        max_speed_mps: request.policy.max_handoff_speed_mps,
-        min_vertical_speed_mps: None,
-        max_vertical_speed_mps: None,
-    };
-    let authority = compute_waypoint_authority(
-        &request,
-        shaped[waypoint_index - 1],
-        shaped[waypoint_index],
-        shaped[waypoint_index + 1],
-        capture_radius_m,
-    )
-    .map_err(|error| anyhow!(error.to_string()))?;
-    let max_speed_mps = authority
-        .handoff_speed_cap_mps
-        .min(request.policy.max_handoff_speed_mps);
-    if max_speed_mps + 1.0e-9 < request.policy.min_handoff_speed_mps {
-        return Ok(invalid_adapter_evidence(
-            candidate,
-            certificate,
-            capture_radius_m,
-            AdapterPartialEvidence {
-                actual_bridge_handoff: Some(actual_handoff),
-                waypoint_authority: Some(authority),
-                ..AdapterPartialEvidence::default()
-            },
-            format!("derived waypoint authority cap {max_speed_mps}m/s is below policy minimum"),
-        ));
-    }
-    let waypoint = TransferWaypointSpec {
-        max_speed_mps,
-        ..preliminary
-    };
-    let max_cross_track_m = waypoint.max_cross_track_m;
-    let route = TransferRouteSpec {
-        source_pad_id: request.source_pad_id.clone(),
-        target_pad_id: request.target_pad_id.clone(),
-        route_angle_deg: geometry.route_angle_deg,
-        route_radius_m: geometry.direct_distance_m,
-        waypoints: vec![waypoint],
-    };
-    let structural_validation = match route.validate() {
-        Ok(()) => {
-            "TransferRouteSpec::validate passed; full-pad route validation remains a separate diagnostic"
-                .to_owned()
-        }
-        Err(error) => {
-            return Ok(invalid_adapter_evidence(
-                candidate,
-                certificate,
-                capture_radius_m,
-                AdapterPartialEvidence {
-                    actual_bridge_handoff: Some(actual_handoff),
-                    route: Some(route),
-                    waypoint_authority: Some(authority),
-                    ..AdapterPartialEvidence::default()
-                },
-                format!("runtime waypoint route failed structural validation: {error}"),
-            ));
-        }
-    };
-    let kinematics =
-        waypoint_handoff_kinematics(&request, &route.waypoints[0], actual_handoff.selected_state)?;
-    let assessment = route.waypoints[0].assess_handoff(kinematics);
-    let kinematics_evidence = WaypointHandoffKinematicsEvidence::from(kinematics);
-    let assessment_evidence = waypoint_handoff_assessment_evidence(&assessment);
-    let zero_waypoint_direct_route = TransferRouteSpec {
-        source_pad_id: request.source_pad_id.clone(),
-        target_pad_id: request.target_pad_id.clone(),
-        route_angle_deg: geometry.route_angle_deg,
-        route_radius_m: geometry.direct_distance_m,
-        waypoints: Vec::new(),
-    };
     let ordinary_full_route_diagnostic = ordinary_full_route_diagnostic(
         &request,
         &profile,
-        &zero_waypoint_direct_route,
-        &route,
+        zero_waypoint_direct_route,
+        route,
         request.source_pad().expect("source").center_x_m,
         geometry.horizontal_sign,
     );
@@ -1030,14 +947,19 @@ fn adapt_waypoint_route(
         return Ok(invalid_adapter_evidence(
             candidate,
             certificate,
-            capture_radius_m,
+            waypoint.capture_radius_m,
             AdapterPartialEvidence {
-                actual_bridge_handoff: Some(actual_handoff),
-                route: Some(route),
-                waypoint_authority: Some(authority),
-                waypoint_handoff_kinematics: Some(kinematics_evidence),
-                waypoint_handoff_assessment: Some(assessment_evidence),
-                route_structural_validation: Some(structural_validation),
+                actual_bridge_handoff: Some(actual_handoff.clone()),
+                route: Some(route.clone()),
+                waypoint_authority: Some(authority.clone()),
+                waypoint_handoff_kinematics: Some((*handoff_kinematics).into()),
+                waypoint_handoff_assessment: Some(waypoint_handoff_assessment_evidence(
+                    handoff_assessment,
+                )),
+                route_structural_validation: Some(
+                    "TransferRouteSpec::validate passed; full-pad route validation remains a separate diagnostic"
+                        .to_owned(),
+                ),
                 ordinary_full_route_rejection,
                 ordinary_full_route_diagnostic: Some(ordinary_full_route_diagnostic),
             },
@@ -1045,37 +967,23 @@ fn adapt_waypoint_route(
                 .to_owned(),
         ));
     }
-    if !assessment.contract_pass() {
-        return Ok(invalid_adapter_evidence(
-            candidate,
-            certificate,
-            capture_radius_m,
-            AdapterPartialEvidence {
-                actual_bridge_handoff: Some(actual_handoff),
-                route: Some(route),
-                waypoint_authority: Some(authority),
-                waypoint_handoff_kinematics: Some(kinematics_evidence),
-                waypoint_handoff_assessment: Some(assessment_evidence),
-                route_structural_validation: Some(structural_validation),
-                ordinary_full_route_rejection,
-                ordinary_full_route_diagnostic: Some(ordinary_full_route_diagnostic),
-            },
-            "selected exact bridge state does not satisfy the canonical runtime waypoint handoff contract"
-                .to_owned(),
-        ));
-    }
     Ok(RouteAdapterEvidence {
         source: "selected_v2_intermediate_bridge_state".to_owned(),
         analytical_waypoint_position_m: candidate.waypoint_position_m,
-        actual_bridge_handoff: Some(actual_handoff),
+        actual_bridge_handoff: Some(actual_handoff.clone()),
         analytical_certificate: certificate,
-        capture_radius_m,
-        max_cross_track_m,
-        route: Some(route),
-        route_structural_validation: Some(structural_validation),
-        waypoint_authority: Some(authority),
-        waypoint_handoff_kinematics: Some(kinematics_evidence),
-        waypoint_handoff_assessment: Some(assessment_evidence),
+        capture_radius_m: waypoint.capture_radius_m,
+        max_cross_track_m: waypoint.max_cross_track_m,
+        route: Some(route.clone()),
+        route_structural_validation: Some(
+            "TransferRouteSpec::validate passed; full-pad route validation remains a separate diagnostic"
+                .to_owned(),
+        ),
+        waypoint_authority: Some(authority.clone()),
+        waypoint_handoff_kinematics: Some((*handoff_kinematics).into()),
+        waypoint_handoff_assessment: Some(waypoint_handoff_assessment_evidence(
+            handoff_assessment,
+        )),
         composed_status: ComposedPreflightStatus::Supported,
         composed_reason: "Selected V2 certificate remains valid; the runtime waypoint is an exact intermediate-bridge state with a passing canonical handoff contract. The source prefix remains analytical certificate evidence, while the ordinary full-pad validator rejection is recorded separately.".to_owned(),
         ordinary_full_route_rejection,
@@ -1218,61 +1126,8 @@ fn bridge_environment_passes(
     })
 }
 
-fn unit_vector(vector: Vec2) -> Option<Vec2> {
-    let length = vector.length();
-    (length > f64::EPSILON).then_some(vector * (1.0 / length))
-}
-
-fn waypoint_handoff_kinematics(
-    request: &RoutePlanningRequest,
-    waypoint: &TransferWaypointSpec,
-    state: KinematicStateV2,
-) -> Result<WaypointHandoffKinematics> {
-    let source = request
-        .source_pad()
-        .ok_or_else(|| anyhow!("adapter source pad is unavailable"))?;
-    let target = request
-        .target_pad()
-        .ok_or_else(|| anyhow!("adapter target pad is unavailable"))?;
-    let anchor_m = Vec2::new(source.center_x_m, source.surface_y_m);
-    let next_target_m = Vec2::new(target.center_x_m, target.surface_y_m);
-    let leg_unit = unit_vector(waypoint.position_m - anchor_m)
-        .ok_or_else(|| anyhow!("adapter waypoint leg is degenerate"))?;
-    let handoff_tangent_unit = waypoint
-        .handoff_tangent_unit
-        .ok_or_else(|| anyhow!("adapter waypoint has no canonical handoff tangent"))?;
-    if unit_vector(next_target_m - waypoint.position_m).is_none() {
-        bail!("adapter waypoint outbound leg is degenerate");
-    }
-    let to_waypoint_m = state.position_m - waypoint.position_m;
-    let speed_mps = state.velocity_mps.length();
-    let velocity_unit = if speed_mps > 1.0e-9 {
-        state.velocity_mps * (1.0 / speed_mps)
-    } else {
-        Vec2::new(0.0, 0.0)
-    };
-    let dot = |lhs: Vec2, rhs: Vec2| lhs.x.mul_add(rhs.x, lhs.y * rhs.y);
-    let cross = |lhs: Vec2, rhs: Vec2| lhs.x.mul_add(rhs.y, -(lhs.y * rhs.x));
-    Ok(WaypointHandoffKinematics {
-        distance_m: to_waypoint_m.length(),
-        cross_track_m: cross(to_waypoint_m, leg_unit).abs(),
-        plane_progress_m: dot(to_waypoint_m, leg_unit),
-        outbound_heading_error_rad: if speed_mps > 1.0e-9 {
-            dot(velocity_unit, handoff_tangent_unit)
-                .clamp(-1.0, 1.0)
-                .acos()
-        } else {
-            std::f64::consts::PI
-        },
-        outbound_progress_mps: dot(state.velocity_mps, handoff_tangent_unit),
-        outbound_cross_speed_mps: cross(state.velocity_mps, handoff_tangent_unit).abs(),
-        speed_mps,
-        vertical_speed_mps: state.velocity_mps.y,
-    })
-}
-
 fn waypoint_handoff_assessment_evidence(
-    assessment: &pd_core::WaypointHandoffAssessment,
+    assessment: &ExperimentalRidgeRuntimeWaypointHandoffAssessmentV2,
 ) -> WaypointHandoffAssessmentEvidence {
     WaypointHandoffAssessmentEvidence {
         triggered: assessment.triggered,
@@ -1280,12 +1135,8 @@ fn waypoint_handoff_assessment_evidence(
         deadline_reached: assessment.deadline_reached,
         spatial_pass: assessment.spatial_pass,
         envelope_pass: assessment.envelope_pass,
-        contract_pass: assessment.contract_pass(),
-        violations: assessment
-            .violations
-            .iter()
-            .map(|violation| violation.as_str().to_owned())
-            .collect(),
+        contract_pass: assessment.contract_pass,
+        violations: assessment.violations.clone(),
     }
 }
 
@@ -1829,7 +1680,9 @@ mod tests {
         SHADOW.get_or_init(|| {
             let projection = evaluate_embedded_experimental_ridge_candidate_v2()
                 .expect("experimental candidate projection");
-            execute_shadow(&projection).expect("shadow run")
+            let runtime = evaluate_embedded_experimental_ridge_runtime_v2()
+                .expect("experimental runtime projection");
+            execute_shadow(&projection, &runtime).expect("shadow run")
         })
     }
 
@@ -1948,7 +1801,57 @@ mod tests {
             ExperimentalRidgeCandidateOutcomeV2::OneWaypoint { candidate, .. } => candidate,
             outcome => panic!("expected one-waypoint candidate, got {outcome:?}"),
         };
+        let runtime = evaluate_embedded_experimental_ridge_runtime_v2()
+            .expect("experimental runtime projection");
+        let direct_runtime_route = match &runtime.flat_control {
+            ExperimentalRidgeRuntimeOutcomeV2::Direct { route, .. } => route,
+            outcome => panic!("expected direct runtime control, got {outcome:?}"),
+        };
+        assert_eq!(&shadow.direct_route.route, direct_runtime_route);
+        let (
+            runtime_candidate_identity,
+            runtime_route,
+            runtime_crossing,
+            runtime_authority,
+            runtime_handoff_kinematics,
+            runtime_handoff_assessment,
+        ) = match &runtime.derived_mesa {
+            ExperimentalRidgeRuntimeOutcomeV2::OneWaypoint {
+                candidate_identity,
+                route,
+                crossing,
+                authority,
+                handoff_kinematics,
+                handoff_assessment,
+                ..
+            } => (
+                candidate_identity,
+                route,
+                crossing,
+                authority,
+                handoff_kinematics,
+                handoff_assessment,
+            ),
+            outcome => panic!("expected one-waypoint runtime repair, got {outcome:?}"),
+        };
         let adapter = &shadow.route_adapter;
+        assert_eq!(runtime_candidate_identity, &candidate.identity);
+        assert_eq!(adapter.route.as_ref(), Some(runtime_route));
+        assert_eq!(
+            adapter.actual_bridge_handoff.as_ref(),
+            Some(runtime_crossing)
+        );
+        assert_eq!(adapter.waypoint_authority.as_ref(), Some(runtime_authority));
+        assert_eq!(
+            adapter.waypoint_handoff_kinematics,
+            Some((*runtime_handoff_kinematics).into())
+        );
+        assert_eq!(
+            adapter.waypoint_handoff_assessment,
+            Some(waypoint_handoff_assessment_evidence(
+                runtime_handoff_assessment
+            ))
+        );
         assert!(adapter.analytical_certificate.certificate_passes);
         assert_eq!(
             adapter.analytical_certificate.candidate_margins,
@@ -2243,8 +2146,10 @@ mod tests {
     fn shadow_repeat_excludes_compute_timing_from_semantics() {
         let projection = evaluate_embedded_experimental_ridge_candidate_v2()
             .expect("experimental candidate projection");
-        let first = execute_shadow(&projection).expect("first shadow");
-        let second = execute_shadow(&projection).expect("second shadow");
+        let runtime = evaluate_embedded_experimental_ridge_runtime_v2()
+            .expect("experimental runtime projection");
+        let first = execute_shadow(&projection, &runtime).expect("first shadow");
+        let second = execute_shadow(&projection, &runtime).expect("second shadow");
         assert_eq!(
             semantic_digest(&first).unwrap(),
             semantic_digest(&second).unwrap()
