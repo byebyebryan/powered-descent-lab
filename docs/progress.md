@@ -34,9 +34,10 @@
   determinism issue; wiring repair only). A full pass authorizes only a
   production-integration design review. Production wiring, runtime replanning,
   multiple waypoints, new topologies, D2-D5, and tuning remain deferred.
-- F5a does not claim that analytical or controller evaluation has run. The
-  current stop boundary is before F5c; the `050` and `068` cases remain
-  development/regression evidence and cannot be reclassified as held out.
+- F5a was a pre-reveal design lock and made no claim that analytical or
+  controller evaluation had run. F5c has since recorded the mixed analytical
+  checkpoint below; the `050` and `068` cases remain development/regression
+  evidence and cannot be reclassified as held out.
 
 ### F5b source-controlled held-out seal
 
@@ -52,12 +53,46 @@
   identity is `5a654dd8762a1438` and the prediction-manifest identity is
   `f3d3ff2ee6e83403`.
 - The module and fixtures validate raw input and qualitative-prediction
-  identity, order, and cross-manifest binding only. No F5 analytical result,
-  runtime projection result, controller result, simulator result, or report
-  outcome was produced or inspected. F5c analytical reveal is next but has not
-  run; the current stop boundary remains before F5c. Historical H2/H4
-  manifests and results remain immutable, and the `050`/`068` cases remain
-  development/regression evidence rather than held-out F5 cases.
+  identity, order, and cross-manifest binding only; they contain no derived
+  outcome evidence. Historical H2/H4 manifests and results remain immutable,
+  and the `050`/`068` cases remain development/regression evidence rather than
+  held-out F5 cases. F5c's mixed analytical result is recorded below.
+
+### F5c mixed analytical reveal
+
+- F5c evaluated both sealed cases through the existing analytical and runtime-V2
+  path. The tracked compact result is
+  `fixtures/manifests/conservative_ballistic_ridge_f5_analytical_result_v1.json`,
+  identity `6ebab8240feaea3e`; it binds input seal `5a654dd8762a1438` and
+  prediction seal `f3d3ff2ee6e83403`. The detailed ignored summary/report are
+  under `outputs/eval/conservative-ballistic-ridge-f5-analytical-v1/` and
+  `outputs/reports/eval/conservative-ballistic-ridge-f5-analytical-v1/`, with
+  detailed artifact identity `ae9f3d7f01b1afdd`. The root status is
+  `one_or_more_cases_stopped` and `deterministic_repeat: true`.
+- `ridge_progress_056_probe` passed all eight candidate-comparison checks and
+  all five runtime checks, so it is `eligible_for_controller`. Runtime V2
+  observed `primary_crossing`, attempt `0`, with selected waypoint
+  approximately `(1913.111172, 1509.228848) m`. Case identity is
+  `3a9878d6c810d8ea`; the analytical canary, candidate projection, runtime
+  projection, and selected waypoint identities are
+  `fnv1a64:98ef17e48984553d`, `fnv1a64:72783b1cf7304dd5`,
+  `fnv1a64:a84b90a8c7d65bf3`, and `fnv1a64:78734b090f7b7088`.
+- `ridge_progress_072_probe` stopped independently at
+  `candidate_projection` / `derived_mesa` with typed `Unsupported` reason
+  `finite_waypoint_search_exhausted`; its certified waypoint count was zero.
+  Flat `Direct`, valid blocker, and nominal-direct terrain-clearance rejection
+  passed; only the derived-mesa one-waypoint and exactly-one certified
+  forward-progressing-waypoint predictions failed. Case identity is
+  `8ddca8a8fd7b921e`, with analytical canary, candidate projection, and
+  waypoint-search identities `fnv1a64:719cba774a6697c7`,
+  `fnv1a64:e949f651f543c08e`, and `fnv1a64:16861941f6c7608d`.
+- This is a mixed analytical checkpoint, not `INVALID SETUP`. It prevents the
+  overall F5 PASS/full-green result, but is not yet the final F5e `NARROW`
+  decision because `056` still needs controller evidence to establish
+  usefulness. The current stop boundary is before F5d: if execution continues,
+  only the three `056` controller lanes may run; `072` is not controller
+  eligible. No F5 controller or simulator result exists, and no input, policy,
+  search, threshold, terrain, controller, or requirement tuning occurred.
 
 ### F4 full-controller development result
 
@@ -92,10 +127,10 @@
   handoff-threshold, or terrain tuning occurred. F3 identity
   `aeb7338fd71c73e5` and frozen controller-shadow v4 identity
   `a69de7872ad039fd` remain unchanged.
-- The subsequent F5a documentation-only lock now defines genuinely new
-  predeclared inputs and predictions before any new controller outcome is
+- The subsequent F5a documentation-only lock defined genuinely new
+  predeclared inputs and predictions before any new controller outcome was
   inspected. The current `050` and `068` cases remain development/regression
-  cases and cannot become held out again; F5c remains unrevealed.
+  cases and cannot become held out again; F5c is recorded above.
 
 ### F0-F3 runtime handoff-selection development checkpoint
 

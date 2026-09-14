@@ -149,10 +149,12 @@ Current implementation status:
     `fnv1a64:b0dcdcbefac383b6`, with input-manifest identity
     `5a654dd8762a1438` and prediction-manifest identity `f3d3ff2ee6e83403`.
     The seal validates raw inputs and qualitative-prediction identity, order,
-    and binding only; no F5 analytical, runtime-projection, controller,
-    simulator, or report outcome was produced or inspected. F5c analytical
-    reveal and F5d controller reveal remain unrun, with F5d restricted to
-    analytically eligible cases.
+    and binding only. F5c subsequently completed as a mixed analytical
+    checkpoint: `ridge_progress_056_probe` is eligible for controller
+    evaluation, while `ridge_progress_072_probe` stopped at finite
+    waypoint-search exhaustion. The tracked compact result is
+    `6ebab8240feaea3e`; F5d remains unrun and is restricted to the three
+    `056` controller lanes.
     Cases advance independently, but a mismatch or `Unsupported` prevents a
     full green; F5e will classify the result as PASS, NARROW, STOP, or INVALID
     SETUP. A full pass authorizes only a production-integration design review.
@@ -787,9 +789,12 @@ implementing a predictor. The remaining evidence-first sequence is:
    completed green as the development full-controller test of that route, with
    flat-direct landing, mesa-direct terrain crash, and mesa-waypoint contract
    capture followed by target landing. This is exposed development evidence,
-   not held-out or physical proof. F5a now locks genuinely new predeclared
-   inputs and predictions before any new controller outcomes, and F5b has
-   sealed their source-controlled identities. F5c remains unrevealed. A
+   not held-out or physical proof. F5a locked genuinely new predeclared inputs
+   and predictions, F5b sealed their source-controlled identities, and F5c
+   completed as a mixed analytical checkpoint: `056` is eligible for
+   controller evaluation, while `072` stopped at finite waypoint-search
+   exhaustion. The tracked compact result is `6ebab8240feaea3e`; the current
+   stop boundary is before F5d, and no F5 controller outcome exists. A
    materially distinct topology remains deferred;
 5. D2-D3 (blocked): freeze genuinely uninspected inputs and predictions only
    after W1-W4 are reviewed and a separate advancement checkpoint defines an
@@ -846,7 +851,7 @@ remains unauthorized.
 
 ### F5 held-out checkpoint (current)
 
-F5 is the next bounded gameplay evidence sequence after the green F4
+F5 is the current bounded gameplay evidence sequence after the green F4
 development run. F5a's documentation-only design lock and F5b's
 source-controlled input/prediction seal are complete. F5a defined two fresh,
 same-family ridge-progress probes before any new result was inspected:
@@ -874,8 +879,34 @@ input identities are `fnv1a64:1685aab304642342` and
 `5a654dd8762a1438`, and the prediction-manifest identity is
 `f3d3ff2ee6e83403`. The seal validates raw input and qualitative-prediction
 identity, order, and binding only. No F5 analytical, runtime-projection,
-controller, simulator, or report outcome was produced or inspected, and the
+controller, simulator, or report outcome was included in those seals, and the
 historical H2/H4 manifests and results remain immutable.
+
+F5c has now completed as a mixed analytical checkpoint. The tracked compact
+result is
+`fixtures/manifests/conservative_ballistic_ridge_f5_analytical_result_v1.json`,
+identity `6ebab8240feaea3e`; it binds the input seal `5a654dd8762a1438` and
+prediction seal `f3d3ff2ee6e83403`. The detailed ignored artifact identity is
+`ae9f3d7f01b1afdd`, with summary/report directories under
+`outputs/eval/conservative-ballistic-ridge-f5-analytical-v1/` and
+`outputs/reports/eval/conservative-ballistic-ridge-f5-analytical-v1/`. The
+root status is `one_or_more_cases_stopped` with `deterministic_repeat: true`.
+
+- `ridge_progress_056_probe` passed all candidate and runtime checks and is
+  `eligible_for_controller`; runtime V2 observed `primary_crossing`, attempt
+  `0`, with a selected waypoint near `(1913.111172, 1509.228848) m`.
+- `ridge_progress_072_probe` stopped independently at
+  `candidate_projection` / `derived_mesa` with typed `Unsupported` reason
+  `finite_waypoint_search_exhausted`; no certified waypoint was found. Its
+  flat-direct and nominal terrain-clearance checks passed, but the one-waypoint
+  predictions did not.
+
+This is not `INVALID SETUP`, but it prevents an overall F5 PASS/full-green
+result. It is not yet the final F5e `NARROW` decision because `056` still
+needs controller evidence to establish usefulness. The current stop boundary
+is before F5d: only the three `056` controller lanes may run, and `072` must
+not run controller lanes. No input, policy, search, threshold, terrain,
+controller, or requirement tuning occurred.
 
 The phase order is F5a design lock, F5b source-controlled raw-input and
 qualitative-prediction seals, F5c analytical reveal, F5d controller reveal only
@@ -887,7 +918,7 @@ the other fails/stops; STOP means neither demonstrates the capability or both
 share a failure; INVALID SETUP covers provenance/scenario/launch/determinism
 and permits wiring repair only. A full pass authorizes a production-
 integration design review, not production wiring. The current stop boundary is
-before F5c; runtime replanning, multiple waypoints, new topologies, D2-D5, and
+before F5d; runtime replanning, multiple waypoints, new topologies, D2-D5, and
 tuning remain deferred.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more

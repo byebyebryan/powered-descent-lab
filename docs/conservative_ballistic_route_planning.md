@@ -25,10 +25,13 @@ simulation.
 F5 extends this checkpoint with a fresh, held-out pair from the same ridge
 family. Its purpose is to test whether the already-defined analytical and
 runtime-V2 behavior is repeatable on nearby inputs, not to tune the policy or
-to promote the experiment into production. The F5a documentation-only design
-lock and F5b source-controlled input/prediction seals are complete; they make
-no claim that an F5 analytical or controller evaluation has run. The current
-stop boundary is before the F5c analytical reveal.
+to promote the experiment into production. F5a and F5b locked and sealed the
+inputs and predictions, and F5c has now completed as a mixed analytical
+checkpoint: `ridge_progress_056_probe` is eligible for controller evaluation,
+while `ridge_progress_072_probe` stopped at finite waypoint-search exhaustion.
+This is not an `INVALID SETUP` result, but it prevents an overall F5 PASS/full
+green. The current stop boundary is before F5d; no F5 controller or simulator
+result exists yet.
 
 The research-grade D2 distinction remains unchanged. The W4 finite proposal
 backend found no useful development coverage, but that is `unknown` coverage
@@ -811,13 +814,48 @@ identity is `5a654dd8762a1438` and the prediction-manifest identity is
 
 The module and fixtures validate only raw input and qualitative-prediction
 identity, order, and cross-manifest binding. They contain no derived
-candidate, route, or outcome evidence. No F5 analytical result, runtime
-projection result, controller result, simulator result, or report outcome was
-produced or inspected. Historical H2/H4 manifests and results remain
-immutable. F5c analytical reveal is next but has not run; work stops here
-until that reveal is explicitly started. Production wiring, runtime
-replanning, multiple waypoints, new topologies, D2-D5, and tuning remain
-deferred.
+candidate, route, or outcome evidence. Historical H2/H4 manifests and results
+remain immutable. The F5c analytical reveal is recorded below; production
+wiring, runtime replanning, multiple waypoints, new topologies, D2-D5, and
+tuning remain deferred.
+
+##### F5c analytical reveal (complete; F5d not started)
+
+F5c evaluated both sealed cases through the existing analytical and runtime-V2
+path. The tracked compact result is
+[`conservative_ballistic_ridge_f5_analytical_result_v1.json`](../fixtures/manifests/conservative_ballistic_ridge_f5_analytical_result_v1.json),
+with identity `6ebab8240feaea3e`; it binds input seal `5a654dd8762a1438` and
+prediction seal `f3d3ff2ee6e83403`. The detailed ignored summary/report are
+under `outputs/eval/conservative-ballistic-ridge-f5-analytical-v1/` and
+`outputs/reports/eval/conservative-ballistic-ridge-f5-analytical-v1/`, with
+detailed artifact identity `ae9f3d7f01b1afdd`. The root status is
+`one_or_more_cases_stopped` and `deterministic_repeat: true`.
+
+- `ridge_progress_056_probe` passed all eight candidate-comparison checks and
+  all five runtime checks, so it is `eligible_for_controller`. Its observed
+  runtime-V2 handoff was `primary_crossing`, attempt `0`, with the selected
+  waypoint approximately `(1913.111172, 1509.228848) m`. The case identity is
+  `3a9878d6c810d8ea`; analytical canary, candidate projection, runtime
+  projection, and selected waypoint identities are
+  `fnv1a64:98ef17e48984553d`, `fnv1a64:72783b1cf7304dd5`,
+  `fnv1a64:a84b90a8c7d65bf3`, and `fnv1a64:78734b090f7b7088`.
+- `ridge_progress_072_probe` stopped independently at
+  `candidate_projection` / `derived_mesa` with typed `Unsupported` reason
+  `finite_waypoint_search_exhausted`; its certified waypoint count was zero.
+  The flat `Direct`, valid blocker, and nominal-direct terrain-clearance
+  rejection checks passed; only the derived-mesa one-waypoint and exactly-one
+  certified forward-progressing-waypoint predictions failed. Its case identity
+  is `8ddca8a8fd7b921e`, with analytical canary, candidate projection, and
+  waypoint-search identities `fnv1a64:719cba774a6697c7`,
+  `fnv1a64:e949f651f543c08e`, and `fnv1a64:16861941f6c7608d`.
+
+This is a mixed analytical checkpoint, not `INVALID SETUP`. It prevents the
+predeclared overall F5 PASS/full-green result, but it is not yet the final F5e
+`NARROW` decision: `056` still needs controller evidence to establish
+usefulness. If execution continues, F5d is restricted to the three controller
+lanes for `056`; `072` must not run controller lanes. No F5 controller or
+simulator result has been produced, and no input, policy, search, threshold,
+terrain, controller, or requirement tuning was performed.
 
 #### Same-family invariant and explicit deferrals
 
