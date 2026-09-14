@@ -1,0 +1,108 @@
+{
+  "schema_id": "conservative_ballistic_ridge_f5_analytical_result_v1",
+  "schema_version": 1,
+  "analytical_artifact_identity": "ae9f3d7f01b1afdd",
+  "input_manifest_identity": "5a654dd8762a1438",
+  "prediction_manifest_identity": "f3d3ff2ee6e83403",
+  "status": "one_or_more_cases_stopped",
+  "deterministic_repeat": true,
+  "cases": [
+    {
+      "case_id": "ridge_progress_056_probe",
+      "input_identity": "fnv1a64:1685aab304642342",
+      "prediction_identity": "79da75c63ea13ab",
+      "analytical_canary_identity": "fnv1a64:98ef17e48984553d",
+      "waypoint_search_identity": "fnv1a64:3e276e318c8ed92c",
+      "status": "eligible_for_controller",
+      "eligible_for_controller": true,
+      "candidate_projection_identity": "fnv1a64:72783b1cf7304dd5",
+      "runtime_projection_identity": "fnv1a64:a84b90a8c7d65bf3",
+      "flat_selected_candidate_identity": "fnv1a64:9e945d5489b448ef",
+      "derived_nominal_candidate_identity": "fnv1a64:99cb1c974ea922c7",
+      "selected_waypoint_candidate_identity": "fnv1a64:78734b090f7b7088",
+      "flat_runtime_outcome_identity": "fnv1a64:a163a9670f58a0b4",
+      "derived_runtime_outcome_identity": "fnv1a64:74b7f1a514ac8344",
+      "candidate_expectation": {
+        "flat_control_direct": true,
+        "flat_shortest_robust_certified": true,
+        "flat_duration_multiplier_matches": true,
+        "derived_blocker_valid": true,
+        "derived_nominal_terrain_clearance_rejected": true,
+        "derived_mesa_one_waypoint": true,
+        "exactly_one_certified_forward_progressing_waypoint": true,
+        "candidate_projection_validated": true
+      },
+      "runtime_expectation": {
+        "flat_direct_structurally_valid": true,
+        "derived_structurally_valid_one_waypoint": true,
+        "selected_semantic_handoff_contract_passes": true,
+        "selected_identity_chain_valid": true,
+        "runtime_projection_validated": true,
+        "observed_handoff": {
+          "selection_kind": "primary_crossing",
+          "selected_attempt_index": 0,
+          "handoff_selection_identity": "fnv1a64:54a6f7c7701bd2b2",
+          "selected_attempt_identity": "fnv1a64:4f0ea9194c5a2ba9",
+          "route_identity": "c2823e8c4c6c7515",
+          "waypoint_position_m": {
+            "x": 1913.1111716171902,
+            "y": 1509.2288476356555
+          }
+        }
+      },
+      "stop": null,
+      "case_identity": "3a9878d6c810d8ea"
+    },
+    {
+      "case_id": "ridge_progress_072_probe",
+      "input_identity": "fnv1a64:b0dcdcbefac383b6",
+      "prediction_identity": "f33a26a6ef62e58c",
+      "analytical_canary_identity": "fnv1a64:719cba774a6697c7",
+      "waypoint_search_identity": "fnv1a64:16861941f6c7608d",
+      "status": "stopped_candidate_unsupported",
+      "eligible_for_controller": false,
+      "candidate_projection_identity": "fnv1a64:e949f651f543c08e",
+      "runtime_projection_identity": null,
+      "flat_selected_candidate_identity": "fnv1a64:9e945d5489b448ef",
+      "derived_nominal_candidate_identity": "fnv1a64:5820614848f4adcd",
+      "selected_waypoint_candidate_identity": null,
+      "flat_runtime_outcome_identity": null,
+      "derived_runtime_outcome_identity": null,
+      "candidate_expectation": {
+        "flat_control_direct": true,
+        "flat_shortest_robust_certified": true,
+        "flat_duration_multiplier_matches": true,
+        "derived_blocker_valid": true,
+        "derived_nominal_terrain_clearance_rejected": true,
+        "derived_mesa_one_waypoint": false,
+        "exactly_one_certified_forward_progressing_waypoint": false,
+        "candidate_projection_validated": true
+      },
+      "runtime_expectation": null,
+      "stop": {
+        "stage": "candidate_projection",
+        "classification": "unsupported",
+        "reason": "candidate outcome is unsupported",
+        "detail": {
+          "kind": "unsupported",
+          "lane": "derived_mesa",
+          "reason": "finite_waypoint_search_exhausted",
+          "rejection_reasons": [
+            "coupled_thrust",
+            "terrain_clearance",
+            "source_attitude",
+            "coast_slew",
+            "mission_time",
+            "touchdown_attitude",
+            "no_source_bridge",
+            "no_intermediate_bridge",
+            "no_terminal_bridge",
+            "route_progress"
+          ]
+        }
+      },
+      "case_identity": "8ddca8a8fd7b921e"
+    }
+  ],
+  "identity": "6ebab8240feaea3e"
+}
