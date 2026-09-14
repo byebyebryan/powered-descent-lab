@@ -921,7 +921,7 @@ impl std::error::Error for ConservativeBallisticIntegrationErrorV1 {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pd_core::Vec2;
+    use pd_core::{RoutePlanningPolicy, RoutePlanningRequest, Vec2};
 
     fn generic_unsupported_input() -> ExperimentalRidgeCaseInputV1 {
         let fixture = load_conservative_ballistic_f6_input_v1().unwrap();
@@ -1163,5 +1163,29 @@ mod tests {
             scenario,
             ConservativeBallisticScenarioMismatchV1::MissionTime,
         );
+    }
+
+    #[test]
+    fn f6_adapter_does_not_change_the_ordinary_planner_result() {
+        let fixture = load_conservative_ballistic_f6_input_v1().unwrap();
+        let decision = resolve_conservative_ballistic_integration_v1(&fixture.input).unwrap();
+        let scenario = build_conservative_ballistic_f6_scenario_v1(&decision).unwrap();
+        let request = RoutePlanningRequest {
+            world: scenario.world.clone(),
+            vehicle: scenario.vehicle.clone(),
+            initial_state: scenario.initial_state.clone(),
+            source_pad_id: "source".to_owned(),
+            target_pad_id: "target".to_owned(),
+            policy: RoutePlanningPolicy::v1(),
+        };
+        let before = pd_plan::plan(&request);
+        let application =
+            apply_conservative_ballistic_integration_v1(&decision, &scenario).unwrap();
+        assert_eq!(
+            application.status,
+            ConservativeBallisticScenarioApplicationStatusV1::RouteInjected
+        );
+        let after = pd_plan::plan(&request);
+        assert_eq!(before, after);
     }
 }
