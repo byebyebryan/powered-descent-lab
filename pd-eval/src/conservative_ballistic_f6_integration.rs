@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use pd_control::{ControllerSpec, built_in_controller_spec};
+use pd_control::{ControlledRunArtifacts, ControllerSpec, built_in_controller_spec};
 use pd_core::{EndReason, MissionOutcome, PhysicalOutcome, ScenarioSpec, Vec2};
 use pd_plan::conservative_ballistic_bridge::MesaGeometryV2;
 use pd_report::site::ReportSite;
@@ -221,10 +221,10 @@ pub fn run_conservative_ballistic_f6_controller_integration_v1(
     let fresh_publication = publication_files(&output_dir, &first, &result_path, &result)?;
     validate_unique_destinations(&fresh_publication)?;
     let persisted_artifact = persisted_artifact(&summary_path, &first)?;
+    validate_existing_detailed_files(&output_dir, &persisted_artifact)?;
     let publication = publication_files(&output_dir, &persisted_artifact, &result_path, &result)?;
-    preflight_publication(&publication)?;
+    preflight_publication(&publication, &result_path)?;
     write_publication(&publication)?;
-    assert_no_mismatched_publication(&publication)?;
     let reloaded = load_conservative_ballistic_f6_controller_artifact_v1(&summary_path)?;
     if semantic_material(&reloaded) != semantic_material(&first) {
         bail!("F6 controller summary changed after reload");
@@ -751,20 +751,79 @@ fn publication_files(
     ])
 }
 
-fn preflight_publication(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
+fn preflight_publication(files: &[(PathBuf, Vec<u8>)], immutable_result_path: &Path) -> Result<()> {
     validate_unique_destinations(files)?;
     for (path, expected) in files {
-        if path.exists() {
+        if normalize_destination(path) == normalize_destination(immutable_result_path)
+            && path.exists()
+        {
             let existing = fs::read(path).with_context(|| {
-                format!("failed to read existing F6 evidence {}", path.display())
+                format!(
+                    "failed to read existing F6 compact result {}",
+                    path.display()
+                )
             })?;
             if existing != *expected {
                 bail!(
-                    "existing F6 evidence {} does not exactly match retained semantic evidence; nothing was written",
+                    "existing F6 compact result {} does not exactly match fresh evidence; nothing was written",
                     path.display()
                 );
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_existing_detailed_files(
+    output_dir: &Path,
+    artifact: &ConservativeBallisticF6ControllerArtifactV1,
+) -> Result<()> {
+    let lane_dir = output_dir.join("runs").join(F6_LANE_ID);
+    validate_optional_json(
+        &lane_dir.join("scenario.json"),
+        artifact
+            .lane
+            .scenario
+            .as_ref()
+            .ok_or_else(|| anyhow!("F6 retained artifact lacks scenario evidence"))?,
+    )?;
+    validate_optional_json(
+        &lane_dir.join("controller.json"),
+        artifact
+            .lane
+            .controller
+            .as_ref()
+            .ok_or_else(|| anyhow!("F6 retained artifact lacks controller evidence"))?,
+    )?;
+    validate_optional_json::<ControlledRunArtifacts>(
+        &lane_dir.join("run.json"),
+        artifact
+            .lane
+            .run
+            .as_ref()
+            .ok_or_else(|| anyhow!("F6 retained artifact lacks run evidence"))?,
+    )?;
+    Ok(())
+}
+
+fn validate_optional_json<T>(path: &Path, expected: &T) -> Result<()>
+where
+    T: for<'de> Deserialize<'de> + PartialEq,
+{
+    if !path.exists() {
+        return Ok(());
+    }
+    let observed = serde_json::from_slice::<T>(&fs::read(path)?).with_context(|| {
+        format!(
+            "existing F6 detailed evidence {} is not valid JSON",
+            path.display()
+        )
+    })?;
+    if &observed != expected {
+        bail!(
+            "existing F6 detailed evidence {} does not match the retained summary; nothing was written",
+            path.display()
+        );
     }
     Ok(())
 }
@@ -828,15 +887,6 @@ fn write_publication(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
         }
         fs::write(path, bytes)
             .with_context(|| format!("failed to write F6 evidence {}", path.display()))?;
-    }
-    Ok(())
-}
-
-fn assert_no_mismatched_publication(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
-    for (path, expected) in files {
-        if path.exists() && fs::read(path)? != *expected {
-            bail!("F6 evidence {} differs after publication", path.display());
-        }
     }
     Ok(())
 }
@@ -1009,7 +1059,7 @@ mod tests {
         fs::write(&result_path, b"mismatch").unwrap();
 
         let files = publication_files(&output_dir, &artifact, &result_path, &result).unwrap();
-        assert!(preflight_publication(&files).is_err());
+        assert!(preflight_publication(&files, &result_path).is_err());
         assert!(!output_dir.exists());
         assert_eq!(fs::read(&result_path).unwrap(), b"mismatch");
 
@@ -1033,7 +1083,7 @@ mod tests {
         let files =
             publication_files(&output_dir, &artifact, &aliased_result_path, &result).unwrap();
 
-        assert!(preflight_publication(&files).is_err());
+        assert!(preflight_publication(&files, &aliased_result_path).is_err());
         assert!(!root.exists());
     }
 
