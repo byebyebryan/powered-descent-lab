@@ -997,8 +997,7 @@ fn validate_compact_case_against_prepared(
         if lane.lane_id != id
             || lane.controller_id != controller.id()
             || lane.scenario_id != scenario.id
-            || !lane.semantic_identity.starts_with("fnv1a64:")
-            || lane.semantic_identity.len() != "fnv1a64:0000000000000000".len()
+            || !is_canonical_digest(&lane.semantic_identity)
         {
             bail!("F5 compact result lane {id} does not bind source scenario/controller evidence");
         }
@@ -1043,6 +1042,17 @@ fn validate_compact_case_against_prepared(
         );
     }
     Ok(())
+}
+
+/// `canonical_digest` renders an FNV-1a u64 as lowercase hexadecimal with a
+/// minimum width of 12. A semantic lane digest cannot be recomputed without
+/// replaying its simulator evidence, but it must retain this exact evaluator
+/// representation rather than a planner-owned `fnv1a64:` identity prefix.
+fn is_canonical_digest(value: &str) -> bool {
+    (12..=16).contains(&value.len())
+        && value.bytes().all(|byte| {
+            byte.is_ascii_digit() || (byte.is_ascii_lowercase() && byte.is_ascii_hexdigit())
+        })
 }
 
 fn compact_lane_outcomes_match_end_reason(lane: &F5ControllerCompactLaneV1) -> bool {
@@ -1854,7 +1864,7 @@ mod tests {
         let mut lanes = vec![
             F5ControllerCompactLaneV1 {
                 lane_id: "flat-direct".to_owned(),
-                semantic_identity: "fnv1a64:0000000000000000".to_owned(),
+                semantic_identity: "000000000000".to_owned(),
                 controller_id: case.direct_controller.id().to_owned(),
                 scenario_id: case.flat_scenario.id.clone(),
                 launch: valid_launch("flat-direct"),
@@ -1870,7 +1880,7 @@ mod tests {
             },
             F5ControllerCompactLaneV1 {
                 lane_id: "mesa-direct".to_owned(),
-                semantic_identity: "fnv1a64:0000000000000000".to_owned(),
+                semantic_identity: "000000000000".to_owned(),
                 controller_id: case.direct_controller.id().to_owned(),
                 scenario_id: case.mesa_direct_scenario.id.clone(),
                 launch: valid_launch("mesa-direct"),
@@ -1886,7 +1896,7 @@ mod tests {
             },
             F5ControllerCompactLaneV1 {
                 lane_id: "mesa-waypoint".to_owned(),
-                semantic_identity: "fnv1a64:0000000000000000".to_owned(),
+                semantic_identity: "000000000000".to_owned(),
                 controller_id: case.waypoint_controller.id().to_owned(),
                 scenario_id: case.mesa_waypoint_scenario.id.clone(),
                 launch: valid_launch("mesa-waypoint"),
@@ -2092,6 +2102,11 @@ mod tests {
         scenario.cases[0].lanes[2].scenario_id.push_str("-tampered");
         rehash_compact_result(&mut scenario);
         assert!(scenario.validate_against_source(root).is_err());
+
+        let mut semantic_format = result.clone();
+        semantic_format.cases[0].lanes[0].semantic_identity = "fnv1a64:0000000000000000".to_owned();
+        rehash_compact_result(&mut semantic_format);
+        assert!(semantic_format.validate_against_source(root).is_err());
 
         let mut gate = result.clone();
         gate.cases[0].gate.flat_target_landing.passes = false;
