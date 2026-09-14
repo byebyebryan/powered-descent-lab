@@ -14,6 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use pd_control::{ControllerSpec, built_in_controller_spec};
 use pd_core::{EndReason, MissionOutcome, PhysicalOutcome, ScenarioSpec, Vec2};
 use pd_plan::conservative_ballistic_bridge::MesaGeometryV2;
+use pd_report::site::ReportSite;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -161,6 +162,8 @@ pub struct ConservativeBallisticF6ControllerPathsV1 {
     pub output_dir: PathBuf,
     pub summary_path: PathBuf,
     pub result_path: PathBuf,
+    pub report_path: PathBuf,
+    pub preview_path: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -225,6 +228,19 @@ pub fn run_conservative_ballistic_f6_controller_integration_v1(
     }
     let reloaded_result = load_conservative_ballistic_f6_controller_result_v1(&result_path)?;
     reloaded_result.validate_against_artifact(&reloaded)?;
+    let (report_path, update_site) = resolve_report_path(repo_root, &output_dir)?;
+    let preview_path = report_path
+        .parent()
+        .expect("F6 controller report path has a parent")
+        .join("preview.svg");
+    pd_report::conservative_ballistic_f6_integration::write_conservative_ballistic_f6_integration_report(
+        &report_path,
+        &preview_path,
+        &serde_json::to_value(&reloaded)?,
+    )?;
+    if update_site {
+        ReportSite::new(repo_root).update_indexes_for_file(&report_path)?;
+    }
 
     Ok(ConservativeBallisticF6ControllerRunV1 {
         artifact: reloaded,
@@ -233,6 +249,8 @@ pub fn run_conservative_ballistic_f6_controller_integration_v1(
             output_dir,
             summary_path,
             result_path,
+            report_path,
+            preview_path,
         },
     })
 }
@@ -822,6 +840,23 @@ fn resolve_result_path(repo_root: &Path, requested: Option<&Path>) -> PathBuf {
             }
         })
         .unwrap_or_else(|| repo_root.join(CONSERVATIVE_BALLISTIC_F6_CONTROLLER_RESULT_FIXTURE_V1))
+}
+
+fn resolve_report_path(repo_root: &Path, output_dir: &Path) -> Result<(PathBuf, bool)> {
+    let site = ReportSite::new(repo_root);
+    if let (Ok(outputs), Ok(output)) = (
+        fs::canonicalize(repo_root.join("outputs")),
+        fs::canonicalize(output_dir),
+    ) && output.starts_with(outputs)
+    {
+        return Ok((
+            site.default_output_for_bundle(output_dir).ok_or_else(|| {
+                anyhow!("F6 controller output under outputs has no report bundle path")
+            })?,
+            true,
+        ));
+    }
+    Ok((output_dir.join("report/index.html"), false))
 }
 
 #[cfg(test)]

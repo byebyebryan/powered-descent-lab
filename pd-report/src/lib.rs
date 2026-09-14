@@ -17,6 +17,7 @@ use serde::Serialize;
 
 pub mod conservative_ballistic_f5_analytical;
 pub mod conservative_ballistic_f5_controller;
+pub mod conservative_ballistic_f6_integration;
 pub mod conservative_ballistic_handoff_controller_development;
 pub mod conservative_ballistic_handoff_development;
 pub mod conservative_ballistic_heldout;
