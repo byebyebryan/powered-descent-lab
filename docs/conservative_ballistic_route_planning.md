@@ -998,6 +998,35 @@ captures exactly one passing waypoint contract and lands on target, the
 interpretive flat/direct controls retain their established outcomes if run,
 and the ordinary planner remains unchanged.
 
+##### F6 result
+
+F6 is complete and **PASS** for this opt-in development seam. The dedicated
+input fixture (`feefa81872db45eb`) contains only retained `056`. Its typed
+decision (`4de1b2a1fca1cf9f`) selected one waypoint and its application
+(`ea87905351c8a2e5`) injected canonical route `c2823e8c4c6c7515` into the exact
+derived-mesa scenario. The unchanged `transfer_waypoint_pdg` controller then
+captured one passing contract at `33.25 s` and landed on the target at `85.7 s`.
+The deterministic detailed artifact is `d8e7bf750237ae28`; the tracked compact
+result is
+`fixtures/manifests/conservative_ballistic_ridge_f6_integration_result_v1.json`,
+identity `9c9876bc34eeca01`, status `integration_pass`.
+
+The report at
+`outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/`
+separates the smooth sampled trajectory from the dashed selected-route topology
+and shows the derived mesa, pads, selected waypoint, observed capture, and
+touchdown. Reruns bind the compact result byte-for-byte while comparing
+detailed evidence semantically with volatile performance timing excluded. A
+focused before/after regression also confirms that evaluating and applying the
+opt-in F6 route does not change the ordinary `pd_plan::plan()` result.
+
+This PASS does not broaden the F5 claim or promote a default planner path. It
+establishes only that the narrow typed decision-to-scenario-to-controller seam
+works for the retained `056` mission. `072` remains historical and excluded;
+arbitrary raw terrain, additional missions, multiple waypoints, runtime
+replanning, controller or policy tuning, production selection, and D2-D5
+remain deferred.
+
 #### Same-family invariant and explicit deferrals
 
 Both cases remain forward source-to-target transfers with one contiguous

@@ -942,7 +942,7 @@ stopping the capability now requires a separate product/design checkpoint.
 Runtime replanning, multiple waypoints, new topologies, D2-D5, production
 wiring, and tuning remain deferred.
 
-### F6 limited integration checkpoint (design-locked)
+### F6 limited integration checkpoint (complete: scoped PASS)
 
 F6 accepts the useful `056` result as one bounded capability and does not seek
 a replacement held-out partner for `072`. The F5 seals, results, and historical
@@ -975,6 +975,25 @@ controller run and visual report through the injected route; and F6d full
 non-regression/closure. Passing F6 establishes only that this opt-in
 development seam is sound. Default production selection and any neighborhood
 expansion require another explicit product checkpoint.
+
+F6 is now complete. Fixture `feefa81872db45eb` produced typed decision
+`4de1b2a1fca1cf9f`, application `ea87905351c8a2e5`, and selected route
+`c2823e8c4c6c7515`. The one injected `transfer_waypoint_pdg` lane captured one
+passing waypoint contract at `33.25 s` and target-landed at `85.7 s`. Detailed
+artifact `d8e7bf750237ae28` and compact result `9c9876bc34eeca01` are
+deterministic; the latter is tracked at
+`fixtures/manifests/conservative_ballistic_ridge_f6_integration_result_v1.json`.
+The corresponding report is under
+`outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/`, and an
+explicit before/after test preserves the ordinary planner result.
+
+The next product decision is therefore not more F6 implementation. It is
+whether to define a separate, still opt-in neighborhood-expansion checkpoint
+around the demonstrated mission or stop at this single-mission capability.
+Any such checkpoint must source-control its mission contract and predictions
+before evaluation. Default production selection, arbitrary raw-terrain
+adaptation, multiple waypoints, runtime replanning, tuning, and D2-D5 remain
+out of scope until explicitly reopened.
 
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical

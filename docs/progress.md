@@ -2,6 +2,44 @@
 
 ## 2026-09-14
 
+### F6b-F6d limited integration implementation and PASS closure
+
+- F6 is complete and **PASS** within its deliberately limited opt-in scope.
+  The source-controlled fixture contains only retained case
+  `ridge_progress_056_probe` and has identity `feefa81872db45eb`. The typed
+  evaluator decision (`4de1b2a1fca1cf9f`) selects one derived-mesa waypoint;
+  the application (`ea87905351c8a2e5`) injects canonical route
+  `c2823e8c4c6c7515` into a route-free `ScenarioSpec`. Invalid input and valid
+  `unsupported` decisions remain controller-ineligible, with no automatic
+  fallback.
+- The real `transfer_waypoint_pdg` controller ran only that injected scenario.
+  It captured exactly one `contract_pass` at `33.25 s` near
+  `(1821.487138, 1532.208664) m`, then landed on the target at `85.7 s` /
+  `10,284` physics steps with about `4,063.86 kg` fuel remaining. The detailed
+  semantic artifact is `d8e7bf750237ae28`, lane identity
+  `a0b38ea701fb350a`; the tracked compact result is
+  `fixtures/manifests/conservative_ballistic_ridge_f6_integration_result_v1.json`,
+  identity `9c9876bc34eeca01`, status `integration_pass`, with
+  `deterministic_repeat: true`.
+- The visual report is under
+  `outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/`.
+  It distinguishes the smooth sampled controller trajectory from the dashed
+  route topology and shows the derived mesa, pads, selected waypoint, observed
+  capture, and target touchdown. The detailed summary and lane bundle remain
+  under `outputs/eval/conservative-ballistic-ridge-f6-integration-v1/`.
+- Rerun persistence now rejects aliased output/result destinations before any
+  write, keeps the compact result byte-immutable, compares detailed evidence
+  semantically with volatile timing excluded, and structurally joins retained
+  scenario/controller/run files to the validated summary. The initial strict
+  detailed-byte reruns stopped without changing evidence; they exposed this
+  persistence distinction rather than a controller or route mismatch.
+- A focused before/after regression confirms the opt-in adapter does not alter
+  ordinary `pd_plan::plan()` results. F6 does not change `pd-plan`, `pd-core`,
+  `pd-control`, default selection, controller parameters, or any F5 artifact.
+  Arbitrary raw terrain, another mission, multiple waypoints, runtime
+  replanning, default production wiring, and D2-D5 remain separate product
+  checkpoints.
+
 ### F6a limited integration disposition and design lock
 
 - F6a is complete as a documentation-only lock for an opt-in evaluator route
