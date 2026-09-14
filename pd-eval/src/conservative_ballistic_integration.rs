@@ -4,9 +4,13 @@
 //! module selects the derived-mesa outcome into a compact evaluator decision;
 //! it neither calls the ordinary planner nor executes a controller.
 
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
-use pd_core::{RouteTopology, TransferRouteSpec};
+use pd_core::{
+    EvaluationGoal, LandingPadSpec, MissionSpec, RouteTopology, ScenarioSpec, SimConfig,
+    TerrainDefinition, TransferRouteSpec, VehicleGeometry, VehicleInitialState, VehicleSpec,
+    WorldSpec,
+};
 use pd_plan::conservative_ballistic_bridge::{
     DirectBridgeReasonV2, ExperimentalRidgeCandidateErrorV2, ExperimentalRidgeCaseInputV1,
     ExperimentalRidgeCaseProjectionV1, ExperimentalRidgeCaseRuntimeOutcomeV2,
@@ -207,6 +211,380 @@ impl ConservativeBallisticIntegrationDecisionV1 {
             return Err(ConservativeBallisticIntegrationErrorV1::DecisionMismatch);
         }
         Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConservativeBallisticScenarioMismatchV1 {
+    ScenarioInvalid,
+    PreauthoredRoute,
+    Terrain,
+    Pads,
+    Vehicle,
+    InitialState,
+    Goal,
+    PhysicsCadence,
+    ControllerCadence,
+    MissionTime,
+    DecisionRoute,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConservativeBallisticScenarioApplicationStatusV1 {
+    RouteInjected,
+    UnsupportedNoController,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConservativeBallisticScenarioApplicationV1 {
+    pub schema_id: String,
+    pub schema_version: u32,
+    pub decision: ConservativeBallisticIntegrationDecisionV1,
+    pub original_scenario_identity: String,
+    pub status: ConservativeBallisticScenarioApplicationStatusV1,
+    pub injected_scenario: Option<ScenarioSpec>,
+    pub injected_scenario_identity: Option<String>,
+    pub fallback: ConservativeBallisticFallbackDispositionV1,
+    pub controller_run: bool,
+    pub identity: String,
+}
+
+#[derive(Serialize)]
+struct F6ApplicationIdentityMaterial<'a> {
+    schema_id: &'a str,
+    schema_version: u32,
+    decision: &'a ConservativeBallisticIntegrationDecisionV1,
+    original_scenario_identity: &'a str,
+    status: ConservativeBallisticScenarioApplicationStatusV1,
+    injected_scenario: &'a Option<ScenarioSpec>,
+    injected_scenario_identity: &'a Option<String>,
+    fallback: ConservativeBallisticFallbackDispositionV1,
+    controller_run: bool,
+}
+
+impl ConservativeBallisticScenarioApplicationV1 {
+    pub fn validate_against_scenario(
+        &self,
+        original: &ScenarioSpec,
+    ) -> Result<(), ConservativeBallisticIntegrationErrorV1> {
+        validate_application_shape(self)?;
+        if self.identity != application_identity(self)? {
+            return Err(ConservativeBallisticIntegrationErrorV1::ApplicationIdentityMismatch);
+        }
+        let expected = apply_conservative_ballistic_integration_v1(&self.decision, original)?;
+        if self != &expected {
+            return Err(ConservativeBallisticIntegrationErrorV1::ApplicationMismatch);
+        }
+        Ok(())
+    }
+}
+
+fn application_identity(
+    application: &ConservativeBallisticScenarioApplicationV1,
+) -> Result<String, ConservativeBallisticIntegrationErrorV1> {
+    canonical_digest(&F6ApplicationIdentityMaterial {
+        schema_id: &application.schema_id,
+        schema_version: application.schema_version,
+        decision: &application.decision,
+        original_scenario_identity: &application.original_scenario_identity,
+        status: application.status,
+        injected_scenario: &application.injected_scenario,
+        injected_scenario_identity: &application.injected_scenario_identity,
+        fallback: application.fallback,
+        controller_run: application.controller_run,
+    })
+    .map_err(ConservativeBallisticIntegrationErrorV1::Identity)
+}
+
+fn validate_application_shape(
+    application: &ConservativeBallisticScenarioApplicationV1,
+) -> Result<(), ConservativeBallisticIntegrationErrorV1> {
+    if application.schema_id != CONSERVATIVE_BALLISTIC_F6_APPLICATION_SCHEMA_ID_V1
+        || application.schema_version != CONSERVATIVE_BALLISTIC_F6_APPLICATION_SCHEMA_VERSION_V1
+        || application.fallback != ConservativeBallisticFallbackDispositionV1::NotSelected
+        || application.controller_run
+        || application.original_scenario_identity.is_empty()
+    {
+        return Err(ConservativeBallisticIntegrationErrorV1::ApplicationContract);
+    }
+    match application.status {
+        ConservativeBallisticScenarioApplicationStatusV1::RouteInjected => {
+            let scenario = application
+                .injected_scenario
+                .as_ref()
+                .ok_or(ConservativeBallisticIntegrationErrorV1::ApplicationContract)?;
+            if !matches!(
+                application.decision.provenance.disposition,
+                ConservativeBallisticIntegrationDispositionV1::SupportedDirect
+                    | ConservativeBallisticIntegrationDispositionV1::SupportedOneWaypoint
+            ) || scenario.mission.transfer_route != application.decision.route
+                || application.injected_scenario_identity
+                    != Some(
+                        canonical_digest(scenario)
+                            .map_err(ConservativeBallisticIntegrationErrorV1::Identity)?,
+                    )
+            {
+                return Err(ConservativeBallisticIntegrationErrorV1::ApplicationContract);
+            }
+        }
+        ConservativeBallisticScenarioApplicationStatusV1::UnsupportedNoController => {
+            if application.decision.provenance.disposition
+                != ConservativeBallisticIntegrationDispositionV1::Unsupported
+                || application.injected_scenario.is_some()
+                || application.injected_scenario_identity.is_some()
+            {
+                return Err(ConservativeBallisticIntegrationErrorV1::ApplicationContract);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Build the route-free derived-mesa scenario used by the explicit F6 lane.
+/// The caller must still pass it through [`apply_conservative_ballistic_integration_v1`]
+/// before any controller execution.
+pub fn build_conservative_ballistic_f6_scenario_v1(
+    decision: &ConservativeBallisticIntegrationDecisionV1,
+) -> Result<ScenarioSpec, ConservativeBallisticIntegrationErrorV1> {
+    decision.validate_against_input(&decision.input)?;
+    let probe = &decision.input.probe;
+    let scenario = ScenarioSpec {
+        id: format!("f6-integration-{}-derived-mesa", probe.id),
+        name: format!("F6 integrated derived-mesa route for {}", probe.id),
+        description: "Opt-in F6 conservative-ballistic route injection scenario".to_owned(),
+        seed: 0,
+        tags: vec![
+            "development".to_owned(),
+            "conservative-ballistic-f6-integration".to_owned(),
+        ],
+        metadata: BTreeMap::from([
+            (
+                "route_source".to_owned(),
+                CONSERVATIVE_BALLISTIC_F6_ROUTE_SOURCE_V1.to_owned(),
+            ),
+            ("source_case_id".to_owned(), probe.id.clone()),
+            (
+                "integration_decision_identity".to_owned(),
+                decision.identity.clone(),
+            ),
+        ]),
+        sim: SimConfig {
+            physics_hz: crate::controller_shadow::CONTROLLER_SHADOW_PHYSICS_HZ,
+            controller_hz: crate::controller_shadow::CONTROLLER_SHADOW_CONTROLLER_HZ,
+            max_time_s: crate::controller_shadow::CONTROLLER_SHADOW_MAX_TIME_S,
+            sample_hz: Some(crate::controller_shadow::CONTROLLER_SHADOW_PHYSICS_HZ),
+        },
+        world: WorldSpec {
+            gravity_mps2: decision.input.policy.gravity_mps2,
+            terrain: TerrainDefinition::Heightfield {
+                points_m: decision.analytical_projection.mesa.terrain_points_m.clone(),
+            },
+            landing_pads: expected_landing_pads(decision),
+        },
+        vehicle: vehicle_spec(&decision.input.vehicle),
+        initial_state: VehicleInitialState {
+            position_m: probe.initial_position_m,
+            velocity_mps: probe.initial_velocity_mps,
+            attitude_rad: 0.0,
+            angular_rate_radps: 0.0,
+        },
+        mission: MissionSpec {
+            transfer_route: None,
+            goal: EvaluationGoal::LandingOnPad {
+                target_pad_id: "target".to_owned(),
+            },
+        },
+    };
+    scenario.validate().map_err(|_| {
+        ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::ScenarioInvalid,
+        )
+    })?;
+    Ok(scenario)
+}
+
+/// Apply a validated F6 decision without mutating the caller's scenario.
+/// Unsupported decisions return no scenario and therefore cannot launch a
+/// controller through this boundary.
+pub fn apply_conservative_ballistic_integration_v1(
+    decision: &ConservativeBallisticIntegrationDecisionV1,
+    original: &ScenarioSpec,
+) -> Result<ConservativeBallisticScenarioApplicationV1, ConservativeBallisticIntegrationErrorV1> {
+    decision.validate_against_input(&decision.input)?;
+    validate_scenario_for_decision(decision, original)?;
+    let original_scenario_identity =
+        canonical_digest(original).map_err(ConservativeBallisticIntegrationErrorV1::Identity)?;
+    let (status, injected_scenario, injected_scenario_identity) = if decision.provenance.disposition
+        == ConservativeBallisticIntegrationDispositionV1::Unsupported
+    {
+        (
+            ConservativeBallisticScenarioApplicationStatusV1::UnsupportedNoController,
+            None,
+            None,
+        )
+    } else {
+        let route = decision
+            .route
+            .clone()
+            .ok_or(ConservativeBallisticIntegrationErrorV1::ApplicationContract)?;
+        let mut scenario = original.clone();
+        scenario.mission.transfer_route = Some(route);
+        scenario.validate().map_err(|_| {
+            ConservativeBallisticIntegrationErrorV1::Scenario(
+                ConservativeBallisticScenarioMismatchV1::ScenarioInvalid,
+            )
+        })?;
+        let identity = canonical_digest(&scenario)
+            .map_err(ConservativeBallisticIntegrationErrorV1::Identity)?;
+        (
+            ConservativeBallisticScenarioApplicationStatusV1::RouteInjected,
+            Some(scenario),
+            Some(identity),
+        )
+    };
+    let mut application = ConservativeBallisticScenarioApplicationV1 {
+        schema_id: CONSERVATIVE_BALLISTIC_F6_APPLICATION_SCHEMA_ID_V1.to_owned(),
+        schema_version: CONSERVATIVE_BALLISTIC_F6_APPLICATION_SCHEMA_VERSION_V1,
+        decision: decision.clone(),
+        original_scenario_identity,
+        status,
+        injected_scenario,
+        injected_scenario_identity,
+        fallback: ConservativeBallisticFallbackDispositionV1::NotSelected,
+        controller_run: false,
+        identity: String::new(),
+    };
+    application.identity = application_identity(&application)?;
+    validate_application_shape(&application)?;
+    Ok(application)
+}
+
+fn validate_scenario_for_decision(
+    decision: &ConservativeBallisticIntegrationDecisionV1,
+    scenario: &ScenarioSpec,
+) -> Result<(), ConservativeBallisticIntegrationErrorV1> {
+    scenario.validate().map_err(|_| {
+        ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::ScenarioInvalid,
+        )
+    })?;
+    if scenario.mission.transfer_route.is_some() {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::PreauthoredRoute,
+        ));
+    }
+    if scenario.world.gravity_mps2 != decision.input.policy.gravity_mps2
+        || scenario.world.terrain
+            != (TerrainDefinition::Heightfield {
+                points_m: decision.analytical_projection.mesa.terrain_points_m.clone(),
+            })
+    {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::Terrain,
+        ));
+    }
+    if scenario.world.landing_pads != expected_landing_pads(decision) {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::Pads,
+        ));
+    }
+    if scenario.vehicle != vehicle_spec(&decision.input.vehicle) {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::Vehicle,
+        ));
+    }
+    let probe = &decision.input.probe;
+    if scenario.initial_state.position_m != probe.initial_position_m
+        || scenario.initial_state.velocity_mps != probe.initial_velocity_mps
+        || scenario.initial_state.attitude_rad != 0.0
+        || scenario.initial_state.angular_rate_radps != 0.0
+    {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::InitialState,
+        ));
+    }
+    if !matches!(
+        &scenario.mission.goal,
+        EvaluationGoal::LandingOnPad { target_pad_id } if target_pad_id == "target"
+    ) {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::Goal,
+        ));
+    }
+    if scenario.sim.physics_hz != decision.input.policy.physics_hz
+        || scenario.sim.physics_hz != crate::controller_shadow::CONTROLLER_SHADOW_PHYSICS_HZ
+    {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::PhysicsCadence,
+        ));
+    }
+    if scenario.sim.controller_hz != crate::controller_shadow::CONTROLLER_SHADOW_CONTROLLER_HZ {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::ControllerCadence,
+        ));
+    }
+    if scenario.sim.max_time_s != decision.input.policy.maximum_mission_time_s
+        || scenario.sim.max_time_s != crate::controller_shadow::CONTROLLER_SHADOW_MAX_TIME_S
+    {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::MissionTime,
+        ));
+    }
+    if let Some(route) = &decision.route
+        && (route.source_pad_id != "source"
+            || route.target_pad_id != "target"
+            || route.waypoints.len() > 1
+            || route.validate().is_err())
+    {
+        return Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+            ConservativeBallisticScenarioMismatchV1::DecisionRoute,
+        ));
+    }
+    Ok(())
+}
+
+fn expected_landing_pads(
+    decision: &ConservativeBallisticIntegrationDecisionV1,
+) -> Vec<LandingPadSpec> {
+    let probe = &decision.input.probe;
+    vec![
+        LandingPadSpec {
+            id: "source".to_owned(),
+            center_x_m: probe.source.center_x_m,
+            surface_y_m: probe.source.surface_y_m,
+            width_m: probe.source.width_m,
+        },
+        LandingPadSpec {
+            id: "target".to_owned(),
+            center_x_m: probe.target.center_x_m,
+            surface_y_m: probe.target.surface_y_m,
+            width_m: probe.target.width_m,
+        },
+    ]
+}
+
+fn vehicle_spec(vehicle: &pd_plan::conservative_ballistic_bridge::VehicleInputV2) -> VehicleSpec {
+    VehicleSpec {
+        geometry: VehicleGeometry {
+            hull_width_m: vehicle.geometry.hull_width_m,
+            hull_height_m: vehicle.geometry.hull_height_m,
+            touchdown_half_span_m: vehicle.geometry.touchdown_half_span_m,
+            touchdown_base_offset_m: vehicle.geometry.touchdown_base_offset_m,
+        },
+        dry_mass_kg: vehicle.dry_mass_kg,
+        initial_fuel_kg: vehicle.initial_fuel_kg,
+        max_fuel_kg: vehicle.max_fuel_kg,
+        max_thrust_n: vehicle.max_thrust_n,
+        max_fuel_burn_kgps: vehicle.max_fuel_burn_kgps,
+        min_throttle_frac: vehicle.min_throttle_frac,
+        max_rotation_rate_radps: vehicle.max_rotation_rate_radps,
+        safe_touchdown_normal_speed_mps: vehicle.safe_touchdown_normal_speed_mps,
+        safe_touchdown_tangential_speed_mps: vehicle.safe_touchdown_tangential_speed_mps,
+        safe_touchdown_attitude_error_rad: vehicle.safe_touchdown_attitude_error_rad,
+        safe_touchdown_angular_rate_radps: vehicle.safe_touchdown_angular_rate_radps,
     }
 }
 
@@ -494,6 +872,10 @@ pub enum ConservativeBallisticIntegrationErrorV1 {
     DecisionContract,
     DecisionIdentityMismatch,
     DecisionMismatch,
+    Scenario(ConservativeBallisticScenarioMismatchV1),
+    ApplicationContract,
+    ApplicationIdentityMismatch,
+    ApplicationMismatch,
 }
 
 impl fmt::Display for ConservativeBallisticIntegrationErrorV1 {
@@ -520,6 +902,16 @@ impl fmt::Display for ConservativeBallisticIntegrationErrorV1 {
             Self::DecisionMismatch => {
                 formatter.write_str("F6 decision does not recompute from its input")
             }
+            Self::Scenario(reason) => write!(formatter, "F6 scenario mismatch: {reason:?}"),
+            Self::ApplicationContract => {
+                formatter.write_str("F6 scenario application contract is invalid")
+            }
+            Self::ApplicationIdentityMismatch => {
+                formatter.write_str("F6 scenario application identity does not bind its contents")
+            }
+            Self::ApplicationMismatch => {
+                formatter.write_str("F6 scenario application does not recompute")
+            }
         }
     }
 }
@@ -530,6 +922,39 @@ impl std::error::Error for ConservativeBallisticIntegrationErrorV1 {}
 mod tests {
     use super::*;
     use pd_core::Vec2;
+
+    fn generic_unsupported_input() -> ExperimentalRidgeCaseInputV1 {
+        let fixture = load_conservative_ballistic_f6_input_v1().unwrap();
+        let mut probe = fixture.input.probe.clone();
+        probe.id = "generic_terminal_blocker".to_owned();
+        probe.terrain_points_m = vec![
+            Vec2::new(-40.0, 0.0),
+            Vec2::new(2675.0, 0.0),
+            Vec2::new(2725.0, 1200.0),
+            Vec2::new(2875.0, 1200.0),
+            Vec2::new(2975.0, 0.0),
+            Vec2::new(4040.0, 0.0),
+        ];
+        ExperimentalRidgeCaseInputV1::new(
+            fixture.input.policy.clone(),
+            fixture.input.vehicle.clone(),
+            probe,
+        )
+        .unwrap()
+    }
+
+    fn assert_scenario_mismatch(
+        decision: &ConservativeBallisticIntegrationDecisionV1,
+        scenario: ScenarioSpec,
+        expected: ConservativeBallisticScenarioMismatchV1,
+    ) {
+        let unchanged = scenario.clone();
+        assert_eq!(
+            validate_scenario_for_decision(decision, &scenario),
+            Err(ConservativeBallisticIntegrationErrorV1::Scenario(expected))
+        );
+        assert_eq!(scenario, unchanged);
+    }
 
     #[test]
     fn f6_fixture_contains_only_the_retained_056_input() {
@@ -597,23 +1022,7 @@ mod tests {
 
     #[test]
     fn generic_terminal_blocker_is_valid_unsupported_not_an_error() {
-        let fixture = load_conservative_ballistic_f6_input_v1().unwrap();
-        let mut probe = fixture.input.probe.clone();
-        probe.id = "generic_terminal_blocker".to_owned();
-        probe.terrain_points_m = vec![
-            Vec2::new(-40.0, 0.0),
-            Vec2::new(2675.0, 0.0),
-            Vec2::new(2725.0, 1200.0),
-            Vec2::new(2875.0, 1200.0),
-            Vec2::new(2975.0, 0.0),
-            Vec2::new(4040.0, 0.0),
-        ];
-        let input = ExperimentalRidgeCaseInputV1::new(
-            fixture.input.policy.clone(),
-            fixture.input.vehicle.clone(),
-            probe,
-        )
-        .unwrap();
+        let input = generic_unsupported_input();
         let decision = resolve_conservative_ballistic_integration_v1(&input).unwrap();
         assert_eq!(
             decision.provenance.disposition,
@@ -623,5 +1032,136 @@ mod tests {
         assert!(decision.unsupported_reason.is_some());
         assert!(!decision.provenance.controller_run);
         decision.validate_against_input(&input).unwrap();
+    }
+
+    #[test]
+    fn f6_application_injects_the_exact_selected_route_without_mutating_input() {
+        let fixture = load_conservative_ballistic_f6_input_v1().unwrap();
+        let decision = resolve_conservative_ballistic_integration_v1(&fixture.input).unwrap();
+        let original = build_conservative_ballistic_f6_scenario_v1(&decision).unwrap();
+        let unchanged = original.clone();
+        let application =
+            apply_conservative_ballistic_integration_v1(&decision, &original).unwrap();
+        assert_eq!(original, unchanged);
+        assert_eq!(
+            application.status,
+            ConservativeBallisticScenarioApplicationStatusV1::RouteInjected
+        );
+        assert!(!application.controller_run);
+        assert_eq!(
+            application
+                .injected_scenario
+                .as_ref()
+                .unwrap()
+                .mission
+                .transfer_route,
+            decision.route
+        );
+        application.validate_against_scenario(&original).unwrap();
+    }
+
+    #[test]
+    fn f6_unsupported_application_produces_no_scenario_or_controller_authority() {
+        let input = generic_unsupported_input();
+        let decision = resolve_conservative_ballistic_integration_v1(&input).unwrap();
+        let original = build_conservative_ballistic_f6_scenario_v1(&decision).unwrap();
+        let unchanged = original.clone();
+        let application =
+            apply_conservative_ballistic_integration_v1(&decision, &original).unwrap();
+        assert_eq!(original, unchanged);
+        assert_eq!(
+            application.status,
+            ConservativeBallisticScenarioApplicationStatusV1::UnsupportedNoController
+        );
+        assert!(application.injected_scenario.is_none());
+        assert!(application.injected_scenario_identity.is_none());
+        assert!(!application.controller_run);
+        application.validate_against_scenario(&original).unwrap();
+    }
+
+    #[test]
+    fn f6_application_rejects_every_v1_scenario_mismatch_without_mutation() {
+        let fixture = load_conservative_ballistic_f6_input_v1().unwrap();
+        let decision = resolve_conservative_ballistic_integration_v1(&fixture.input).unwrap();
+        let original = build_conservative_ballistic_f6_scenario_v1(&decision).unwrap();
+
+        let mut scenario = original.clone();
+        scenario.mission.transfer_route = decision.route.clone();
+        let unchanged = scenario.clone();
+        assert_eq!(
+            apply_conservative_ballistic_integration_v1(&decision, &scenario),
+            Err(ConservativeBallisticIntegrationErrorV1::Scenario(
+                ConservativeBallisticScenarioMismatchV1::PreauthoredRoute,
+            ))
+        );
+        assert_eq!(scenario, unchanged);
+
+        let mut scenario = original.clone();
+        let TerrainDefinition::Heightfield { points_m } = &mut scenario.world.terrain;
+        points_m[3].y += 1.0;
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::Terrain,
+        );
+
+        let mut scenario = original.clone();
+        scenario.world.landing_pads[1].width_m += 1.0;
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::Pads,
+        );
+
+        let mut scenario = original.clone();
+        scenario.vehicle.max_thrust_n += 1.0;
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::Vehicle,
+        );
+
+        let mut scenario = original.clone();
+        scenario.initial_state.attitude_rad = 0.01;
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::InitialState,
+        );
+
+        let mut scenario = original.clone();
+        scenario.mission.goal = EvaluationGoal::LandingOnPad {
+            target_pad_id: "source".to_owned(),
+        };
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::Goal,
+        );
+
+        let mut scenario = original.clone();
+        scenario.sim.physics_hz = 60;
+        scenario.sim.sample_hz = Some(60);
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::PhysicsCadence,
+        );
+
+        let mut scenario = original.clone();
+        scenario.sim.controller_hz = 40;
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::ControllerCadence,
+        );
+
+        let mut scenario = original;
+        scenario.sim.max_time_s -= 1.0;
+        assert_scenario_mismatch(
+            &decision,
+            scenario,
+            ConservativeBallisticScenarioMismatchV1::MissionTime,
+        );
     }
 }
