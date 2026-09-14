@@ -1,0 +1,185 @@
+{
+  "schema_id": "conservative_ballistic_ridge_f5_controller_result_v1",
+  "schema_version": 1,
+  "scope": {
+    "controller_run": true,
+    "simulation_run": true,
+    "physical_execution_run": false,
+    "non_claims": [
+      "F5 controller lanes run only after the committed analytical eligibility join",
+      "analytically stopped cases have no controller scenario, lane, or simulator data",
+      "controller and simulator observations do not tune the planner, route policy, or controller",
+      "simulator/controller evidence is not physical-execution evidence"
+    ]
+  },
+  "analytical_result_identity": "6ebab8240feaea3e",
+  "analytical_artifact_identity": "ae9f3d7f01b1afdd",
+  "input_manifest_identity": "5a654dd8762a1438",
+  "prediction_manifest_identity": "f3d3ff2ee6e83403",
+  "eligible_case_ids": [
+    "ridge_progress_056_probe"
+  ],
+  "analytically_ineligible_cases": [
+    {
+      "case_id": "ridge_progress_072_probe",
+      "input_identity": "fnv1a64:b0dcdcbefac383b6",
+      "analytical_case_identity": "8ddca8a8fd7b921e",
+      "analytical_status": "stopped_candidate_unsupported",
+      "reason": "analytically_ineligible_not_run",
+      "controller_lanes_executed": false
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "ridge_progress_056_probe",
+      "input_identity": "fnv1a64:1685aab304642342",
+      "prediction_identity": "79da75c63ea13ab",
+      "analytical_case_identity": "3a9878d6c810d8ea",
+      "candidate_projection_identity": "fnv1a64:72783b1cf7304dd5",
+      "selected_waypoint_candidate_identity": "fnv1a64:78734b090f7b7088",
+      "runtime_projection_identity": "fnv1a64:a84b90a8c7d65bf3",
+      "selected_attempt_index": 0,
+      "selected_attempt_identity": "fnv1a64:4f0ea9194c5a2ba9",
+      "selected_handoff_selection_kind": "primary_crossing",
+      "selected_handoff_selection_identity": "fnv1a64:54a6f7c7701bd2b2",
+      "selected_route_identity": "c2823e8c4c6c7515",
+      "selected_waypoint_position_m": {
+        "x": 1913.1111716171902,
+        "y": 1509.2288476356555
+      },
+      "lanes": [
+        {
+          "lane_id": "flat-direct",
+          "semantic_identity": "96ce11d1f22d7bcd",
+          "controller_id": "transfer_pdg_v1",
+          "scenario_id": "f5-controller-ridge_progress_056_probe-flat-direct",
+          "launch": {
+            "lane_id": "flat-direct",
+            "phase_takeoff": true,
+            "first_update_step_zero": true,
+            "upright_first_target": true,
+            "survived_source_launch": true,
+            "passes": true,
+            "reason": "flat-direct launch preflight is valid"
+          },
+          "class": "target_landing",
+          "end_reason": "touchdown_on_target",
+          "physical_outcome": "landed_on_target",
+          "mission_outcome": "success",
+          "terrain_contact_reconstruction_valid": null,
+          "waypoint_contract_pass": null,
+          "waypoint_contract_marker_count": null,
+          "waypoint_contract_resolution_reason": null,
+          "terrain_contact_within_derived_mesa_span": false
+        },
+        {
+          "lane_id": "mesa-direct",
+          "semantic_identity": "3385d4f346c45212",
+          "controller_id": "transfer_pdg_v1",
+          "scenario_id": "f5-controller-ridge_progress_056_probe-mesa-direct",
+          "launch": {
+            "lane_id": "mesa-direct",
+            "phase_takeoff": true,
+            "first_update_step_zero": true,
+            "upright_first_target": true,
+            "survived_source_launch": true,
+            "passes": true,
+            "reason": "mesa-direct launch preflight is valid"
+          },
+          "class": "terrain_crash",
+          "end_reason": "crash",
+          "physical_outcome": "crashed",
+          "mission_outcome": "failed_crash",
+          "terrain_contact_reconstruction_valid": true,
+          "waypoint_contract_pass": null,
+          "waypoint_contract_marker_count": null,
+          "waypoint_contract_resolution_reason": null,
+          "terrain_contact_within_derived_mesa_span": true
+        },
+        {
+          "lane_id": "mesa-waypoint",
+          "semantic_identity": "41e466285b5de92c",
+          "controller_id": "transfer_waypoint_pdg_v1",
+          "scenario_id": "f5-controller-ridge_progress_056_probe-mesa-waypoint",
+          "launch": {
+            "lane_id": "mesa-waypoint",
+            "phase_takeoff": true,
+            "first_update_step_zero": true,
+            "upright_first_target": true,
+            "survived_source_launch": true,
+            "passes": true,
+            "reason": "mesa-waypoint launch preflight is valid"
+          },
+          "class": "target_landing",
+          "end_reason": "touchdown_on_target",
+          "physical_outcome": "landed_on_target",
+          "mission_outcome": "success",
+          "terrain_contact_reconstruction_valid": null,
+          "waypoint_contract_pass": true,
+          "waypoint_contract_marker_count": 1,
+          "waypoint_contract_resolution_reason": "contract_pass",
+          "terrain_contact_within_derived_mesa_span": false
+        }
+      ],
+      "gate": {
+        "launches": [
+          {
+            "lane_id": "flat-direct",
+            "phase_takeoff": true,
+            "first_update_step_zero": true,
+            "upright_first_target": true,
+            "survived_source_launch": true,
+            "passes": true,
+            "reason": "flat-direct launch preflight is valid"
+          },
+          {
+            "lane_id": "mesa-direct",
+            "phase_takeoff": true,
+            "first_update_step_zero": true,
+            "upright_first_target": true,
+            "survived_source_launch": true,
+            "passes": true,
+            "reason": "mesa-direct launch preflight is valid"
+          },
+          {
+            "lane_id": "mesa-waypoint",
+            "phase_takeoff": true,
+            "first_update_step_zero": true,
+            "upright_first_target": true,
+            "survived_source_launch": true,
+            "passes": true,
+            "reason": "mesa-waypoint launch preflight is valid"
+          }
+        ],
+        "all_lane_launch_valid": {
+          "passes": true,
+          "reason": "all lanes began takeoff at controller step 0 with upright first target and survived source launch"
+        },
+        "flat_target_landing": {
+          "passes": true,
+          "reason": "flat-direct landed on target"
+        },
+        "mesa_direct_non_target_terrain_contact_before_target_touchdown": {
+          "passes": true,
+          "reason": "mesa-direct contacted non-target terrain within the derived mesa before target touchdown"
+        },
+        "waypoint_exactly_one_captured_contract_pass": {
+          "passes": true,
+          "reason": "mesa-waypoint emitted exactly one captured contract_pass marker"
+        },
+        "waypoint_target_landing": {
+          "passes": true,
+          "reason": "mesa-waypoint landed on target"
+        },
+        "controller_predictions_matched": {
+          "passes": true,
+          "reason": "all sealed F5 controller predictions matched"
+        }
+      },
+      "evidence_status": "controller_predictions_matched"
+    }
+  ],
+  "evidence_status": "controller_predictions_matched",
+  "deterministic_repeat": true,
+  "identity": "d08eb8ca50f34561"
+}
