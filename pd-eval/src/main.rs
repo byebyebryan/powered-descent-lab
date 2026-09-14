@@ -8,6 +8,7 @@ use pd_eval::{
     resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
+    run_conservative_ballistic_ridge_f5_analytical_v1,
     run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
     run_final_landing_audit, run_pack_file_cached, run_physical_executor_comparison,
     run_physical_witness_development, run_progress_interval_envelope_development_gate,
@@ -53,6 +54,8 @@ enum Commands {
     ControllerShadow(ControllerShadowArgs),
     /// Reveal the frozen ridge held-out analytical result only; a stopped result is not H3 authority.
     ConservativeBallisticHeldoutAnalytical(ConservativeBallisticHeldoutAnalyticalArgs),
+    /// Reveal the sealed F5 analytical/runtime-V2 evidence only; no controller run is performed.
+    ConservativeBallisticF5Analytical(ConservativeBallisticF5AnalyticalArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -261,6 +264,16 @@ struct ConservativeBallisticHeldoutAnalyticalArgs {
     result_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Parser)]
+struct ConservativeBallisticF5AnalyticalArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+
+    /// Immutable compact analytical result. Existing contents must exact-match fresh evidence.
+    #[arg(long, value_name = "RESULT_JSON")]
+    result_path: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -429,6 +442,14 @@ fn main() -> Result<()> {
         }
         Commands::ConservativeBallisticHeldoutAnalytical(args) => {
             let run = run_conservative_ballistic_ridge_heldout_analytical_v1(
+                &repo_root(),
+                args.output_dir.as_deref(),
+                args.result_path.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::ConservativeBallisticF5Analytical(args) => {
+            let run = run_conservative_ballistic_ridge_f5_analytical_v1(
                 &repo_root(),
                 args.output_dir.as_deref(),
                 args.result_path.as_deref(),
