@@ -396,17 +396,15 @@ fn text_path(value: &Value, keys: &[&str]) -> String {
         .unwrap_or_else(|| "unavailable".to_owned())
 }
 fn waypoint_summary(contract: Option<&Value>) -> String {
-    contract.map_or_else(
-        || "not applicable".to_owned(),
-        |contract| {
-            format!(
-                "markers={}; pass={}; reason={}",
-                text(contract, "marker_count"),
-                text(contract, "contract_pass"),
-                text(contract, "resolution_reason")
-            )
-        },
-    )
+    match contract {
+        None | Some(Value::Null) => "not applicable".to_owned(),
+        Some(contract) => format!(
+            "markers={}; pass={}; reason={}",
+            text(contract, "marker_count"),
+            text(contract, "contract_pass"),
+            text(contract, "resolution_reason")
+        ),
+    }
 }
 fn bounds(points: &[(f64, f64)]) -> (f64, f64, f64, f64) {
     if points.is_empty() {
@@ -469,9 +467,9 @@ mod tests {
                 "selected_attempt":{"selected_state":{"position_m":{"x":1.0,"y":2.0}}},
                 "gate": {},
                 "lanes": [
-                    {"id":"flat-direct","controller_id":"transfer_pdg"},
-                    {"id":"mesa-direct","controller_id":"transfer_pdg"},
-                    {"id":"mesa-waypoint","controller_id":"transfer_waypoint_pdg"}
+                    {"id":"flat-direct","controller_id":"transfer_pdg","waypoint_contract":null},
+                    {"id":"mesa-direct","controller_id":"transfer_pdg","waypoint_contract":null},
+                    {"id":"mesa-waypoint","controller_id":"transfer_waypoint_pdg","waypoint_contract":{"marker_count":1,"contract_pass":true,"resolution_reason":"captured"}}
                 ]
             }]
         });
@@ -489,6 +487,8 @@ mod tests {
         assert!(rendered.contains("flat-direct"));
         assert!(rendered.contains("mesa-direct"));
         assert!(rendered.contains("mesa-waypoint"));
+        assert_eq!(rendered.matches("not applicable").count(), 2);
+        assert!(rendered.contains("markers=1; pass=true; reason=captured"));
         assert!(preview.exists());
         let _ = fs::remove_dir_all(root);
     }
