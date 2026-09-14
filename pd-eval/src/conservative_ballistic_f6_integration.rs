@@ -218,7 +218,10 @@ pub fn run_conservative_ballistic_f6_controller_integration_v1(
     let output_dir = resolve_output_dir(repo_root, requested_output_dir);
     let summary_path = output_dir.join("summary.json");
     let result_path = resolve_result_path(repo_root, requested_result_path);
-    let publication = publication_files(&output_dir, &first, &result_path, &result)?;
+    let fresh_publication = publication_files(&output_dir, &first, &result_path, &result)?;
+    validate_unique_destinations(&fresh_publication)?;
+    let persisted_artifact = persisted_artifact(&summary_path, &first)?;
+    let publication = publication_files(&output_dir, &persisted_artifact, &result_path, &result)?;
     preflight_publication(&publication)?;
     write_publication(&publication)?;
     assert_no_mismatched_publication(&publication)?;
@@ -749,27 +752,51 @@ fn publication_files(
 }
 
 fn preflight_publication(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
-    let mut destinations = BTreeSet::new();
+    validate_unique_destinations(files)?;
     for (path, expected) in files {
-        if !destinations.insert(normalize_destination(path)) {
-            bail!(
-                "F6 evidence destination {} aliases another output; nothing was written",
-                path.display()
-            );
-        }
         if path.exists() {
             let existing = fs::read(path).with_context(|| {
                 format!("failed to read existing F6 evidence {}", path.display())
             })?;
             if existing != *expected {
                 bail!(
-                    "existing F6 evidence {} does not exactly match fresh evidence; nothing was written",
+                    "existing F6 evidence {} does not exactly match retained semantic evidence; nothing was written",
                     path.display()
                 );
             }
         }
     }
     Ok(())
+}
+
+fn validate_unique_destinations(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
+    let mut destinations = BTreeSet::new();
+    for (path, _) in files {
+        if !destinations.insert(normalize_destination(path)) {
+            bail!(
+                "F6 evidence destination {} aliases another output; nothing was written",
+                path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn persisted_artifact(
+    summary_path: &Path,
+    fresh: &ConservativeBallisticF6ControllerArtifactV1,
+) -> Result<ConservativeBallisticF6ControllerArtifactV1> {
+    if !summary_path.exists() {
+        return Ok(fresh.clone());
+    }
+    let existing = load_conservative_ballistic_f6_controller_artifact_v1(summary_path)?;
+    if semantic_material(&existing) != semantic_material(fresh) {
+        bail!(
+            "existing F6 summary {} does not semantically match fresh evidence; nothing was written",
+            summary_path.display()
+        );
+    }
+    Ok(existing)
 }
 
 fn normalize_destination(path: &Path) -> PathBuf {
@@ -1008,5 +1035,36 @@ mod tests {
 
         assert!(preflight_publication(&files).is_err());
         assert!(!root.exists());
+    }
+
+    #[test]
+    fn f6_rerun_retains_semantically_equal_detailed_artifact_verbatim() {
+        let fresh = executed_artifact();
+        let mut existing = fresh.clone();
+        existing.lane.run.as_mut().unwrap().performance.wall_time_us += 1;
+        existing.finalize_identity().unwrap();
+        assert_eq!(existing.identity, fresh.identity);
+        assert_ne!(existing, fresh);
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "pd-eval-f6-semantic-rerun-test-{}-{unique}",
+            std::process::id()
+        ));
+        let summary_path = root.join("summary.json");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&summary_path, serde_json::to_vec_pretty(&existing).unwrap()).unwrap();
+
+        let persisted = persisted_artifact(&summary_path, &fresh).unwrap();
+        assert_eq!(persisted.identity, existing.identity);
+        assert_eq!(
+            persisted.lane.run.unwrap().performance.wall_time_us,
+            existing.lane.run.unwrap().performance.wall_time_us
+        );
+
+        fs::remove_dir_all(&root).unwrap();
     }
 }
