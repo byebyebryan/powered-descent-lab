@@ -1,0 +1,75 @@
+{
+  "schema_id": "conservative_ballistic_f6_controller_integration_result_v1",
+  "schema_version": 1,
+  "setup_id": "conservative-ballistic-ridge-f6-integration-v1",
+  "scope": {
+    "controller_run": true,
+    "simulation_run": true,
+    "physical_execution_run": false,
+    "lane_count": 1,
+    "non_claims": [
+      "F6 runs only the retained 056 derived-mesa mission through the opt-in route application boundary",
+      "F6 does not establish support for arbitrary heightfields, additional waypoints, or the rejected 072 setup",
+      "controller evidence does not tune the analytical policy, route adapter, simulator, or controller",
+      "simulator/controller evidence is not physical-execution evidence"
+    ]
+  },
+  "artifact_identity": "d8e7bf750237ae28",
+  "fixture_identity": "feefa81872db45eb",
+  "decision_identity": "4de1b2a1fca1cf9f",
+  "application_identity": "ea87905351c8a2e5",
+  "selected_route_identity": "c2823e8c4c6c7515",
+  "selected_waypoint_position_m": {
+    "x": 1913.1111716171902,
+    "y": 1509.2288476356555
+  },
+  "lane": {
+    "lane_id": "mesa-waypoint",
+    "semantic_identity": "a0b38ea701fb350a",
+    "controller_id": "transfer_waypoint_pdg_v1",
+    "scenario_id": "f6-integration-ridge_progress_056_probe-derived-mesa",
+    "end_reason": "touchdown_on_target",
+    "physical_outcome": "landed_on_target",
+    "mission_outcome": "success",
+    "waypoint_contract_pass": true,
+    "waypoint_contract_marker_count": 1,
+    "waypoint_contract_resolution_reason": "contract_pass"
+  },
+  "gate": {
+    "decision_supported_one_waypoint": {
+      "passes": true,
+      "reason": "decision selected exactly one waypoint"
+    },
+    "route_application_injected": {
+      "passes": true,
+      "reason": "application produced the controller scenario"
+    },
+    "exact_route_join": {
+      "passes": true,
+      "reason": "controller lane carries the exact selected application route"
+    },
+    "launch": {
+      "phase_takeoff": true,
+      "first_update_step_zero": true,
+      "upright_first_target": true,
+      "survived_source_launch": true,
+      "passes": true,
+      "reason": "controller began takeoff at step 0, targeted upright, and survived source launch"
+    },
+    "exactly_one_contract_pass_capture": {
+      "passes": true,
+      "reason": "controller emitted exactly one contract_pass waypoint capture"
+    },
+    "target_landing": {
+      "passes": true,
+      "reason": "controller completed a successful target landing"
+    },
+    "integration_pass": {
+      "passes": true,
+      "reason": "selected route was injected, captured once, and landed on target"
+    }
+  },
+  "status": "integration_pass",
+  "deterministic_repeat": true,
+  "identity": "9c9876bc34eeca01"
+}
