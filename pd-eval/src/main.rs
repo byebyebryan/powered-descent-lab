@@ -6,6 +6,7 @@ use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
     promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
     resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
+    run_conservative_ballistic_f6_controller_integration_v1,
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_f5_analytical_v1,
@@ -59,6 +60,8 @@ enum Commands {
     ConservativeBallisticF5Analytical(ConservativeBallisticF5AnalyticalArgs),
     /// Reveal controller evidence only for F5c-eligible cases and seal the compact result.
     ConservativeBallisticF5Controller(ConservativeBallisticF5ControllerArgs),
+    /// Run the opt-in F6 route application through the frozen controller and simulator.
+    ConservativeBallisticF6Integration(ConservativeBallisticF6IntegrationArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -287,6 +290,16 @@ struct ConservativeBallisticF5ControllerArgs {
     result_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Parser)]
+struct ConservativeBallisticF6IntegrationArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+
+    /// Immutable compact integration result. Existing contents must exact-match fresh evidence.
+    #[arg(long, value_name = "RESULT_JSON")]
+    result_path: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -471,6 +484,14 @@ fn main() -> Result<()> {
         }
         Commands::ConservativeBallisticF5Controller(args) => {
             let run = run_conservative_ballistic_ridge_f5_controller_v1(
+                &repo_root(),
+                args.output_dir.as_deref(),
+                args.result_path.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::ConservativeBallisticF6Integration(args) => {
+            let run = run_conservative_ballistic_f6_controller_integration_v1(
                 &repo_root(),
                 args.output_dir.as_deref(),
                 args.result_path.as_deref(),
@@ -676,6 +697,30 @@ mod tests {
             Cli::try_parse_from([
                 "pd-eval",
                 "conservative-ballistic-f5-controller",
+                "--unknown",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn f6_integration_accepts_only_its_optional_evidence_paths() {
+        assert!(Cli::try_parse_from(["pd-eval", "conservative-ballistic-f6-integration"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "conservative-ballistic-f6-integration",
+                "--output-dir",
+                "/tmp/pd-eval-f6-controller-cli-test",
+                "--result-path",
+                "/tmp/pd-eval-f6-controller-result-cli-test.json",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "conservative-ballistic-f6-integration",
                 "--unknown",
             ])
             .is_err()
