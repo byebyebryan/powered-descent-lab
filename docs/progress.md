@@ -2,6 +2,20 @@
 
 ## 2026-09-14
 
+### F6 closure alignment
+
+- Reconciled the current-status surfaces in `README.md`, `docs/roadmap.md`,
+  this progress log, and the conservative-ballistic design document. No
+  technical or evidence result changed.
+- F6 stops as a single-mission, opt-in development capability for the retained
+  `ridge_progress_056_probe`; `ridge_progress_072_probe` remains immutable
+  historical evidence and stays excluded from F6 fixtures, gates, tuning, and
+  capability claims. No F7/neighborhood checkpoint is scheduled.
+- Broader mission-family work or production/default planner selection reopens
+  only for a concrete gameplay mission or production/default-selection need.
+  Arbitrary terrain, multiple waypoints, runtime replanning, tuning, and the
+  D2-D5 research lane remain separately deferred.
+
 ### F6b-F6d limited integration implementation and PASS closure
 
 - F6 is complete and **PASS** within its deliberately limited opt-in scope.

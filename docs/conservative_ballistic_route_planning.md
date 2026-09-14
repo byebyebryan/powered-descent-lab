@@ -19,8 +19,10 @@ one-waypoint analytical witness under the same policy.
 
 This is a scoped nominal-lane red/one-waypoint-green result, not proof that
 every direct route is impossible. Higher global direct replans still clear the
-mesa. The canary does not change the production planner or run a controller or
-simulation.
+mesa. This setup-only canary does not change the production planner or run a
+controller or simulation. The later F6 integration lane uses the same
+identity-bound decision and route through an explicit evaluator adapter and
+the unchanged real controller for one retained mission.
 
 F5 extends this checkpoint with a fresh, held-out pair from the same ridge
 family. Its purpose is to test whether the already-defined analytical and
@@ -31,12 +33,15 @@ controller expectations, while `ridge_progress_072_probe` stopped at finite
 waypoint-search exhaustion and did not run a controller lane. This is useful
 bounded evidence, not an overall F5 PASS/full green or production authority.
 
-F6 is now design-locked as a limited, opt-in integration checkpoint for the
-demonstrated `056` derived-mesa mission. It does not reopen F5 or search for a
-replacement held-out case. The sealed `072` record remains immutable
-historical evidence, but its derived blocker leaves an unrepresentative
-terminal-recovery region and it is rejected from all F6 fixtures, acceptance
-gates, tuning, and capability-boundary claims.
+F6 is complete as a limited, opt-in **PASS** for the demonstrated `056`
+derived-mesa mission. It does not reopen F5 or search for a replacement
+held-out case. The sealed `072` record remains immutable historical evidence,
+but its derived blocker leaves an unrepresentative terminal-recovery region
+and it is rejected from all F6 fixtures, acceptance gates, tuning, and
+capability-boundary claims. F6 stops at this single-mission development
+capability; no F7/neighborhood checkpoint is scheduled. Broader mission-family
+or production/default-planner work reopens only for a concrete gameplay
+mission or production/default-selection need.
 
 The research-grade D2 distinction remains unchanged. The W4 finite proposal
 backend found no useful development coverage, but that is `unknown` coverage
@@ -55,6 +60,21 @@ report:  outputs/reports/setups/conservative-ballistic-direct-bridge-v2/index.ht
 Those files are written when the command is run. They are analytical setup
 evidence only; they contain no controller run, event stream, sample stream, or
 simulation result.
+
+The completed F6 integration evidence is separately versioned:
+
+```text
+command: cargo run -p pd-eval -- conservative-ballistic-f6-integration
+fixture: fixtures/manifests/conservative_ballistic_ridge_f6_integration_input_v1.json
+result:  fixtures/manifests/conservative_ballistic_ridge_f6_integration_result_v1.json
+report:  outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/index.html
+```
+
+Unlike the setup-only command above, this opt-in lane runs the real
+`transfer_waypoint_pdg` controller against the injected one-waypoint route for
+`ridge_progress_056_probe`. It establishes only that narrow decision-to-route-
+to-controller seam; it does not claim arbitrary terrain, multiple waypoints,
+runtime replanning, mission-family coverage, or production selection.
 
 ## Product and evidence boundary
 
@@ -80,9 +100,11 @@ The current checkpoint therefore separates four concerns:
 - `pd-plan` derives and checks the analytical certificate from world, vehicle,
   mission, and versioned policy inputs;
 - `pd-report` renders the setup geometry and evidence without simulating it;
-- `pd-eval` recomputes and identity-validates the report; and
-- a real controller and full simulation remain a later validation step, after
-  a planner policy and any waypoint solver are frozen.
+- `pd-eval` recomputes and identity-validates the setup report; and
+- the separate F6 evaluator lane consumes the identity-bound decision and
+  route, then validates this one retained mission through the unchanged real
+  controller and full simulation. That lane is opt-in development evidence,
+  not production/default planner wiring.
 
 ## CB0 gameplay audit
 

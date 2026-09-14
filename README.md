@@ -100,7 +100,11 @@ without treating the old scenario files as fixtures to transliterate directly.
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge
   canary. The canary establishes a scoped flat-control-green, committed-
   nominal-direct-red, terrain-derived-one-waypoint-green result while retaining
-  higher direct arcs as global-replan diagnostics.
+  higher direct arcs as global-replan diagnostics. Its completed F6 opt-in
+  integration lane also demonstrates the typed analytical-decision to real-
+  controller route seam for the retained `ridge_progress_056_probe` mission;
+  this remains a one-mission development capability, not production planner
+  wiring or mission-family coverage.
 - [Bounded Trajectory Witness V1](docs/bounded_trajectory_witness.md) owns the
   locked post-R1 controller-neutral exact-witness contract and its implemented
   W1-W4 gates.
@@ -176,6 +180,7 @@ Stable HTML entrypoints also live under `outputs/reports/`, for example:
 - `outputs/reports/guidance/waypoint/index.html`
 - `outputs/reports/guidance/planner/index.html`
 - `outputs/reports/eval/index.html`
+- `outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/index.html`
 - `outputs/reports/setups/conservative-ballistic-direct-bridge-v2/index.html`
 - `outputs/reports/runs/latest/`
 - `outputs/reports/eval/latest/`
@@ -206,6 +211,20 @@ entrypoint under
 setup evidence only, not controller or simulation results. The ridge result is
 scoped to the flat-derived nominal lane plus its optimistic post-commit local-
 correction envelope; it does not claim that every global direct replan fails.
+
+The completed F6 opt-in integration lane is a separate command:
+
+```bash
+cargo run -p pd-eval -- conservative-ballistic-f6-integration
+```
+
+It consumes the retained `ridge_progress_056_probe` fixture, injects the
+identity-bound one-waypoint route, and runs the real controller/full
+simulation. Its stable report is
+`outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/index.html`.
+This is one-mission development/regression evidence; it does not promote a
+default planner path or claim arbitrary terrain, multiple waypoints, runtime
+replanning, or mission-family coverage.
 
 The default refresh covers packs in the guidance catalog. `--all` covers every
 captured fixture-backed pack. Both rebuild batch and per-run HTML from existing

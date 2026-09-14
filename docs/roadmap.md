@@ -161,7 +161,18 @@ Current implementation status:
     analytically stopped and unrun by the controller. This does not satisfy
     the full-pass condition for an automatic production-integration design
     review. Production wiring, runtime replanning, broader waypoint counts or
-    topologies, D2-D5, and tuning remain deferred;
+    topologies, D2-D5, and tuning remain deferred. F6 then closed the retained
+    `ridge_progress_056_probe` as a scoped opt-in **PASS**: its identity-bound
+    analytical decision injected one derived-mesa waypoint into the unchanged
+    real controller, which captured once and target-landed.
+    `ridge_progress_072_probe` remains immutable historical evidence and is
+    excluded from F6 fixtures, gates, tuning, and capability claims. This
+    proves one development seam only; it does not establish mission-family
+    coverage, arbitrary terrain support, multiple waypoints, runtime
+    replanning, or production/default planner selection. F6 stops at this
+    single-mission capability; no F7/neighborhood checkpoint is scheduled.
+    Expansion reopens only for a concrete gameplay mission or
+    production/default-selection need;
     see
     [Trajectory-tube shadow spike](trajectory_tube_spike.md) and the
     [source-departure/acquisition execution contract](source_departure_execution_contract.md)
@@ -987,10 +998,11 @@ The corresponding report is under
 `outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/`, and an
 explicit before/after test preserves the ordinary planner result.
 
-The next product decision is therefore not more F6 implementation. It is
-whether to define a separate, still opt-in neighborhood-expansion checkpoint
-around the demonstrated mission or stop at this single-mission capability.
-Any such checkpoint must source-control its mission contract and predictions
+The next product decision is therefore not more F6 implementation or a new
+neighborhood checkpoint. F6 stops at the demonstrated single-mission
+capability, with no F7 scheduled. A broader mission-family or default-planner
+path reopens only for a concrete gameplay mission or production/default-
+selection need, with its mission contract and predictions source-controlled
 before evaluation. Default production selection, arbitrary raw-terrain
 adaptation, multiple waypoints, runtime replanning, tuning, and D2-D5 remain
 out of scope until explicitly reopened.
