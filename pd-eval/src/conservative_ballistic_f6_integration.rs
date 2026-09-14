@@ -5,8 +5,9 @@
 //! setup, or change planner/controller behavior.
 
 use std::{
+    collections::BTreeSet,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -730,7 +731,14 @@ fn publication_files(
 }
 
 fn preflight_publication(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
+    let mut destinations = BTreeSet::new();
     for (path, expected) in files {
+        if !destinations.insert(normalize_destination(path)) {
+            bail!(
+                "F6 evidence destination {} aliases another output; nothing was written",
+                path.display()
+            );
+        }
         if path.exists() {
             let existing = fs::read(path).with_context(|| {
                 format!("failed to read existing F6 evidence {}", path.display())
@@ -744,6 +752,20 @@ fn preflight_publication(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn normalize_destination(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn write_publication(files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
@@ -930,5 +952,26 @@ mod tests {
         assert_eq!(fs::read(&result_path).unwrap(), b"mismatch");
 
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn f6_aliased_destination_fails_before_any_file_is_written() {
+        let artifact = executed_artifact();
+        let result = ConservativeBallisticF6ControllerResultV1::from_artifact(&artifact).unwrap();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "pd-eval-f6-alias-test-{}-{unique}",
+            std::process::id()
+        ));
+        let output_dir = root.join("output");
+        let aliased_result_path = output_dir.join("nested/../summary.json");
+        let files =
+            publication_files(&output_dir, &artifact, &aliased_result_path, &result).unwrap();
+
+        assert!(preflight_publication(&files).is_err());
+        assert!(!root.exists());
     }
 }
