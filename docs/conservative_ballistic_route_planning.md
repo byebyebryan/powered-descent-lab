@@ -31,6 +31,13 @@ controller expectations, while `ridge_progress_072_probe` stopped at finite
 waypoint-search exhaustion and did not run a controller lane. This is useful
 bounded evidence, not an overall F5 PASS/full green or production authority.
 
+F6 is now design-locked as a limited, opt-in integration checkpoint for the
+demonstrated `056` derived-mesa mission. It does not reopen F5 or search for a
+replacement held-out case. The sealed `072` record remains immutable
+historical evidence, but its derived blocker leaves an unrepresentative
+terminal-recovery region and it is rejected from all F6 fixtures, acceptance
+gates, tuning, and capability-boundary claims.
+
 The research-grade D2 distinction remains unchanged. The W4 finite proposal
 backend found no useful development coverage, but that is `unknown` coverage
 evidence, not proof of physical infeasibility. This document is about a simpler
@@ -905,6 +912,91 @@ limited `056`-like operating envelope, freeze another same-family confirmation
 case, or stop this capability is a separate product/design checkpoint.
 Production planner wiring, runtime replanning, multiple waypoints, new
 topologies, D2-D5, physical feasibility claims, and tuning remain deferred.
+
+#### F6 limited integration design lock
+
+F6 turns the already-demonstrated analytical-to-controller path into one
+explicit evaluator integration seam. It is development/regression work, not a
+new held-out experiment. Its positive input is the existing
+`ridge_progress_056_probe` raw input, copied into a single-case F6 fixture with
+its existing input identity. `ridge_progress_072_probe` is not an active F6
+input or negative test.
+
+The F6 mission is the conservative **derived mesa**, not an arbitrary raw
+heightfield. That is the terrain on which the frozen direct-red and
+one-waypoint-green controller evidence was established. Supporting an
+existing arbitrary mission terrain would require a separate terrain-adapter
+contract and new evidence.
+
+##### Integration boundary
+
+`pd-plan` remains the owner of the input-only analytical candidate and runtime
+V2 route projection. F6 adds an evaluator-owned adapter that consumes the
+generic projection chain and returns one typed derived-mesa decision:
+
+- `supported_direct`, with the selected direct `TransferRouteSpec` and exact
+  provenance;
+- `supported_one_waypoint`, with the selected one-waypoint route, handoff
+  selection, and exact provenance; or
+- `unsupported`, retaining the finite-search reason and rejection reasons.
+
+Malformed input, identity mismatch, invalid runtime evidence, scenario/input
+mismatch, or cadence mismatch is an error. A valid bounded-search exhaustion
+is `unsupported`, not an error and not evidence of physical infeasibility. An
+unsupported or invalid F6 lane stops before controller execution. Fallback is
+owned by a future caller; F6 does not silently retain an authored route or
+invoke the ordinary planner.
+
+The adapter must bind its decision to the input, analytical projection,
+runtime projection, selected outcome/candidate, canonical route, topology,
+waypoint count, derived-mesa identity, and explicit disposition. It may inject
+the supported route into `ScenarioSpec::mission.transfer_route` only through a
+new opt-in F6 evaluator lane. It must not emit `RoutePlan`,
+`RoutePlanProvenance`, or claim compatibility with ordinary full-pad
+`pd_core::validate_route`.
+
+##### V1 applicability and invariants
+
+F6 deliberately accepts the narrow contract already exercised by `056`:
+
+- forward `source` to `target` transfer, with those exact V1 pad IDs;
+- vehicle at rest and upright on the source pad with zero angular rate;
+- one conservative derived mesa and at most one selected waypoint;
+- scenario physics cadence equal to the analytical policy cadence and the
+  frozen controller-shadow controller cadence and mission-time bound; and
+- a structurally valid runtime-V2 route whose selected waypoint attempt passes
+  the canonical handoff contract.
+
+These are explicit applicability checks, not case-ID switches or newly tuned
+distance/altitude thresholds. The analytical certificate remains the only
+eligibility decision. `pd_plan::plan()`, its default behavior and identities,
+`pd-core` route validation, `pd-control`, controller parameters, and all F5
+fixtures/results remain unchanged.
+
+##### F6 execution and exit gate
+
+F6 is ordered as four committed checkpoints:
+
+1. **F6a — disposition and design lock.** Preserve F5 history, retire `072`
+   from future gates, and commit this contract before implementation.
+2. **F6b — typed adapter.** Add the single-case fixture, typed decision and
+   provenance, strict applicability validation, deterministic identity, and
+   fail-closed tests without executing a controller.
+3. **F6c — integrated controller evidence.** Resolve the `056` derived-mesa
+   route through the adapter, inject that exact route into the scenario, run
+   deterministic controller evidence, and render a visual report. Control
+   lanes may be retained for interpretation, but the selected waypoint lane
+   must bind to the adapter decision rather than reconstructing it.
+4. **F6d — closure.** Confirm ordinary planner non-regression, complete
+   workspace tests/lints/formatting, record the result, and decide only whether
+   the opt-in development seam is sound. Enabling a default production route
+   source or expanding the mission family remains a later product checkpoint.
+
+F6 passes only if the adapter deterministically selects the one-waypoint route,
+no controller runs on unsupported/invalid setup, the injected `056` route
+captures exactly one passing waypoint contract and lands on target, the
+interpretive flat/direct controls retain their established outcomes if run,
+and the ordinary planner remains unchanged.
 
 #### Same-family invariant and explicit deferrals
 

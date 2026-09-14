@@ -942,6 +942,40 @@ stopping the capability now requires a separate product/design checkpoint.
 Runtime replanning, multiple waypoints, new topologies, D2-D5, production
 wiring, and tuning remain deferred.
 
+### F6 limited integration checkpoint (design-locked)
+
+F6 accepts the useful `056` result as one bounded capability and does not seek
+a replacement held-out partner for `072`. The F5 seals, results, and historical
+`NARROW` label remain unchanged. `072` is retained only as experiment history:
+its derived blocker leaves an unrepresentative terminal-recovery region, so it
+is excluded from every F6 fixture, gate, tuning decision, and claimed
+operating-envelope boundary. Broader coverage remains unmeasured.
+
+The integration target is deliberately smaller than production planner
+promotion. A new explicit evaluator lane consumes the existing `pd-plan`
+generic analytical and runtime-V2 projections for the source-controlled `056`
+input, selects the derived-mesa route through a typed adapter, and injects that
+exact `TransferRouteSpec` into the controller scenario. The adapter records
+input, analytical, runtime, candidate, route, terrain, topology, waypoint, and
+disposition provenance. Valid bounded exhaustion is `unsupported`; malformed
+or mismatched evidence is invalid. Both stop before controller execution, and
+fallback remains a future caller decision.
+
+F6 retains exact `source`/`target` IDs, source-pad rest/upright state, frozen
+cadence, the derived-mesa terrain, and at most one waypoint as V1 applicability
+conditions. These are structural checks, not label branches or new geometric
+thresholds. The ordinary `pd_plan::plan()` API and result identities,
+`pd_core::validate_route`, controller behavior and parameters, F5 artifacts,
+runtime replanning, arbitrary raw terrain, multiple waypoints, broader
+topologies, and D2-D5 remain unchanged.
+
+The ordered implementation is F6a documentation lock; F6b single-case fixture,
+typed adapter, deterministic provenance, and fail-closed tests; F6c integrated
+controller run and visual report through the injected route; and F6d full
+non-regression/closure. Passing F6 establishes only that this opt-in
+development seam is sound. Default production selection and any neighborhood
+expansion require another explicit product checkpoint.
+
 Do not expand the research lane to runtime replanning, randomized terrain, more
 than two waypoints, or route/profile controller branches. The new analytical
 design may use a conservative fuel upper bound as planner policy, but ordinary

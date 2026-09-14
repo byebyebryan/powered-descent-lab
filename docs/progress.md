@@ -2,6 +2,31 @@
 
 ## 2026-09-14
 
+### F6a limited integration disposition and design lock
+
+- F6a is complete as a documentation-only lock for an opt-in evaluator route
+  seam around the demonstrated `ridge_progress_056_probe` derived-mesa
+  mission. F6 is development/regression evidence, not a replacement held-out
+  experiment and not authority to change ordinary `pd_plan::plan()`.
+- The sealed F5 manifests and `NARROW` decision remain immutable. The `072`
+  outcome is retained as historical experiment evidence, but its derived mesa
+  leaves an unrepresentative terminal-recovery region; it is rejected from F6
+  fixtures, gates, tuning, and operating-envelope claims. The current positive
+  claim is one held-out `056` success, with broader coverage unmeasured.
+- F6's typed adapter consumes the existing planner-owned generic analytical
+  and runtime-V2 projection, then returns `supported_direct`,
+  `supported_one_waypoint`, or valid `unsupported` with identity-bound
+  provenance. Invalid or unsupported lanes stop before controller execution;
+  fallback remains caller-owned. The F6 mission terrain is the derived mesa,
+  not an arbitrary raw heightfield.
+- The exit gate is deterministic adapter identity and route injection, one
+  passing waypoint capture followed by target landing through the real
+  scenario/controller seam, optional interpretive controls retaining their
+  established outcomes, and unchanged ordinary-planner behavior. Generic
+  production wiring, controller or analytical tuning, raw-terrain adaptation,
+  runtime replanning, multiple waypoints, broader topologies, and D2-D5 remain
+  deferred.
+
 ### F5d held-out controller reveal and F5e NARROW closure
 
 - F5d is complete. The identity-bound controller reveal ran only the three
