@@ -9,6 +9,7 @@ use pd_eval::{
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_f5_analytical_v1,
+    run_conservative_ballistic_ridge_f5_controller_v1,
     run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
     run_final_landing_audit, run_pack_file_cached, run_physical_executor_comparison,
     run_physical_witness_development, run_progress_interval_envelope_development_gate,
@@ -56,6 +57,8 @@ enum Commands {
     ConservativeBallisticHeldoutAnalytical(ConservativeBallisticHeldoutAnalyticalArgs),
     /// Reveal the sealed F5 analytical/runtime-V2 evidence only; no controller run is performed.
     ConservativeBallisticF5Analytical(ConservativeBallisticF5AnalyticalArgs),
+    /// Reveal controller evidence only for F5c-eligible cases and seal the compact result.
+    ConservativeBallisticF5Controller(ConservativeBallisticF5ControllerArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -274,6 +277,16 @@ struct ConservativeBallisticF5AnalyticalArgs {
     result_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Parser)]
+struct ConservativeBallisticF5ControllerArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+
+    /// Immutable compact controller result. Existing contents must exact-match fresh evidence.
+    #[arg(long, value_name = "RESULT_JSON")]
+    result_path: Option<PathBuf>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -450,6 +463,14 @@ fn main() -> Result<()> {
         }
         Commands::ConservativeBallisticF5Analytical(args) => {
             let run = run_conservative_ballistic_ridge_f5_analytical_v1(
+                &repo_root(),
+                args.output_dir.as_deref(),
+                args.result_path.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::ConservativeBallisticF5Controller(args) => {
+            let run = run_conservative_ballistic_ridge_f5_controller_v1(
                 &repo_root(),
                 args.output_dir.as_deref(),
                 args.result_path.as_deref(),
@@ -634,6 +655,30 @@ mod tests {
                 "/tmp/pd-eval-direct-bridge-v2-cli-test",
             ])
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn f5_controller_reveal_accepts_only_its_optional_evidence_paths() {
+        assert!(Cli::try_parse_from(["pd-eval", "conservative-ballistic-f5-controller"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "conservative-ballistic-f5-controller",
+                "--output-dir",
+                "/tmp/pd-eval-f5-controller-cli-test",
+                "--result-path",
+                "/tmp/pd-eval-f5-controller-result-cli-test.json",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "conservative-ballistic-f5-controller",
+                "--unknown",
+            ])
+            .is_err()
         );
     }
 }
