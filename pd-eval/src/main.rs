@@ -8,10 +8,11 @@ use pd_eval::{
     WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointDirectSourceDurationCanaryInputPaths,
     WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths, compare_batch_reports,
-    compare_waypoint_direct_generation_gate_a, load_batch_report,
-    load_waypoint_direct_generation_fresh_manifest, promote_pack_cache, refresh_report_outputs,
-    report::write_batch_report_artifacts, resolve_pack_compare_baseline, run_candidate_replay_case,
-    run_candidate_replay_development, run_conservative_ballistic_f6_controller_integration_v1,
+    compare_waypoint_direct_generation_gate_a, freeze_waypoint_direct_obstacle_discrimination,
+    load_batch_report, load_waypoint_direct_generation_fresh_manifest, promote_pack_cache,
+    refresh_report_outputs, report::write_batch_report_artifacts, resolve_pack_compare_baseline,
+    run_candidate_replay_case, run_candidate_replay_development,
+    run_conservative_ballistic_f6_controller_integration_v1,
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_f5_analytical_v1,
@@ -26,7 +27,8 @@ use pd_eval::{
     run_waypoint_direct_coupled_thrust_audit, run_waypoint_direct_flat_candidate_closure,
     run_waypoint_direct_generation_fresh_gate, run_waypoint_direct_launch_contact_contract,
     run_waypoint_direct_launch_feasibility, run_waypoint_direct_nominal_direct_generation,
-    run_waypoint_direct_nominal_plant, run_waypoint_direct_primitive_analytical,
+    run_waypoint_direct_nominal_plant, run_waypoint_direct_obstacle_discrimination_development,
+    run_waypoint_direct_obstacle_discrimination_fresh, run_waypoint_direct_primitive_analytical,
     run_waypoint_direct_source_contact, run_waypoint_direct_source_duration_canary,
     run_waypoint_direct_source_duration_held_cadence_diagnostic,
     run_waypoint_direct_source_duration_paired_command_feasibility,
@@ -129,6 +131,12 @@ enum Commands {
     WaypointDirectGenerationFreeze(WaypointDirectGenerationFreezeArgs),
     /// Evaluate all six sealed fresh cases under the accepted frozen policy.
     WaypointDirectGenerationFreshGate(WaypointDirectGenerationFreshGateArgs),
+    /// Evaluate four frozen development controls in diagnostic and generation lanes.
+    WaypointDirectObstacleDevelopment(WaypointDirectObstacleDevelopmentArgs),
+    /// Freeze implementation only after primary acceptance of development.
+    WaypointDirectObstacleFreeze(WaypointDirectObstacleFreezeArgs),
+    /// Evaluate all eight sealed obstacle cases under the accepted code freeze.
+    WaypointDirectObstacleFresh(WaypointDirectObstacleFreshArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -707,6 +715,30 @@ struct WaypointDirectGenerationFreshGateArgs {
     output_dir: PathBuf,
 }
 
+#[derive(Debug, Parser)]
+struct WaypointDirectObstacleDevelopmentArgs {
+    #[arg(long)]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectObstacleFreezeArgs {
+    #[arg(long)]
+    development_summary: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectObstacleFreshArgs {
+    #[arg(long)]
+    development_summary: PathBuf,
+    #[arg(long)]
+    code_freeze_summary: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -1242,6 +1274,30 @@ fn main() -> Result<()> {
             )?;
             println!("{}", serde_json::to_string_pretty(&gate)?);
         }
+        Commands::WaypointDirectObstacleDevelopment(args) => {
+            let result = run_waypoint_direct_obstacle_discrimination_development(
+                &repo_root(),
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Commands::WaypointDirectObstacleFreeze(args) => {
+            let result = freeze_waypoint_direct_obstacle_discrimination(
+                &repo_root(),
+                &args.development_summary,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        Commands::WaypointDirectObstacleFresh(args) => {
+            let result = run_waypoint_direct_obstacle_discrimination_fresh(
+                &repo_root(),
+                &args.development_summary,
+                &args.code_freeze_summary,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
     }
 
     Ok(())
@@ -1272,6 +1328,52 @@ fn repo_root() -> PathBuf {
 #[cfg(test)]
 mod direct_generation_cli_tests {
     use super::*;
+
+    #[test]
+    fn obstacle_gates_require_explicit_evidence_and_output_paths() {
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-obstacle-development",
+                "--output-dir",
+                "new"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-obstacle-freeze",
+                "--output-dir",
+                "new"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-obstacle-fresh",
+                "--development-summary",
+                "dev.json",
+                "--output-dir",
+                "new"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-obstacle-fresh",
+                "--development-summary",
+                "dev.json",
+                "--code-freeze-summary",
+                "freeze.json",
+                "--output-dir",
+                "new"
+            ])
+            .is_ok()
+        );
+    }
 
     #[test]
     fn preflight_needs_exactly_one_input_and_no_output() {

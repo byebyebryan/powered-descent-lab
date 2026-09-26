@@ -1,0 +1,1076 @@
+{
+  "schema_id": "waypoint_direct_obstacle_discrimination_fresh_inputs_v1",
+  "schema_version": 1,
+  "sealed_before_implementation": true,
+  "generation_policy": {
+    "version": "launch_aware_held60_nominal_direct_generation_v1",
+    "analytical_policy": {
+      "physics_hz": 120,
+      "gravity_mps2": 9.81,
+      "duration_multipliers": [
+        0.75,
+        1,
+        1.25,
+        1.5
+      ],
+      "minimum_clearance_m": 5,
+      "maximum_mission_time_s": 90,
+      "mission_time_reserve_s": 10,
+      "thrust_derate": 0.81,
+      "declared_robustness_margin": 0.075,
+      "handoff_interval_s": 0.25,
+      "bridge_duration_interval_s": 0.5,
+      "terminal_target_downward_speed_fraction": 0.5
+    },
+    "physics_hz": 120,
+    "controller_hz": 60,
+    "launch_upright_ticks": 60,
+    "launch_tilt_ticks": 12,
+    "source_duration_offsets_ticks": [
+      -240,
+      -180,
+      -120,
+      -60,
+      0
+    ],
+    "maximum_basis_candidates": 4,
+    "maximum_variants": 20,
+    "solver_version": "paired_mean_vector_damped_finite_difference_shooting_v1",
+    "maximum_solver_iterations": 6,
+    "maximum_line_search_steps": 8,
+    "finite_difference_step_mps2": 0.0001,
+    "maximum_correction_abs_mps2": 0.25,
+    "initial_damping": 0.001,
+    "position_tolerance_m": 0.000001,
+    "velocity_tolerance_mps": 0.000001,
+    "geometry_convention": "core_current_rotated_feet_and_hull",
+    "selection_rule": "complete accepted witnesses only; planned total mission time then stable witness identity"
+  },
+  "fresh_case_order": "span 700 then 900; each flat_control, low_obstacle, high_obstacle, late_broad",
+  "cases": [
+    {
+      "case_id": "fresh_flat_control_span_700",
+      "horizontal_span_m": 700,
+      "profile": "flat_control",
+      "center_fraction": 0,
+      "width_fraction": 0,
+      "height_fraction": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_flat_control_span_700",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_flat_control_span_700",
+        "name": "Frozen direct obstacle discrimination: fresh_flat_control_span_700",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "flat_control"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_flat_control_span_700",
+          "terrain_kind": "flat_control"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -860,
+                "y": 0
+              },
+              {
+                "x": -718,
+                "y": 0
+              },
+              {
+                "x": -682,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -700,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -700,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fresh_low_obstacle_span_700",
+      "horizontal_span_m": 700,
+      "profile": "low_obstacle",
+      "center_fraction": 0.4,
+      "width_fraction": 0.2,
+      "height_fraction": 0.2,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_low_obstacle_span_700",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_low_obstacle_span_700",
+        "name": "Frozen direct obstacle discrimination: fresh_low_obstacle_span_700",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "low_obstacle"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_low_obstacle_span_700",
+          "terrain_kind": "low_obstacle"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -860,
+                "y": 0
+              },
+              {
+                "x": -718,
+                "y": 0
+              },
+              {
+                "x": -682,
+                "y": 0
+              },
+              {
+                "x": -490,
+                "y": 0
+              },
+              {
+                "x": -455,
+                "y": 140
+              },
+              {
+                "x": -385,
+                "y": 140
+              },
+              {
+                "x": -350,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -700,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -700,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fresh_high_obstacle_span_700",
+      "horizontal_span_m": 700,
+      "profile": "high_obstacle",
+      "center_fraction": 0.6,
+      "width_fraction": 0.2,
+      "height_fraction": 0.55,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_high_obstacle_span_700",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_high_obstacle_span_700",
+        "name": "Frozen direct obstacle discrimination: fresh_high_obstacle_span_700",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "high_obstacle"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_high_obstacle_span_700",
+          "terrain_kind": "high_obstacle"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -860,
+                "y": 0
+              },
+              {
+                "x": -718,
+                "y": 0
+              },
+              {
+                "x": -682,
+                "y": 0
+              },
+              {
+                "x": -350,
+                "y": 0
+              },
+              {
+                "x": -315,
+                "y": 385.00000000000006
+              },
+              {
+                "x": -245,
+                "y": 385.00000000000006
+              },
+              {
+                "x": -210,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -700,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -700,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fresh_late_broad_span_700",
+      "horizontal_span_m": 700,
+      "profile": "late_broad",
+      "center_fraction": 0.7,
+      "width_fraction": 0.25,
+      "height_fraction": 0.35,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_late_broad_span_700",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_late_broad_span_700",
+        "name": "Frozen direct obstacle discrimination: fresh_late_broad_span_700",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "late_broad"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_late_broad_span_700",
+          "terrain_kind": "late_broad"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -860,
+                "y": 0
+              },
+              {
+                "x": -718,
+                "y": 0
+              },
+              {
+                "x": -682,
+                "y": 0
+              },
+              {
+                "x": -297.50000000000006,
+                "y": 0
+              },
+              {
+                "x": -253.75000000000006,
+                "y": 244.99999999999997
+              },
+              {
+                "x": -166.25000000000006,
+                "y": 244.99999999999997
+              },
+              {
+                "x": -122.50000000000006,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -700,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -700,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fresh_flat_control_span_900",
+      "horizontal_span_m": 900,
+      "profile": "flat_control",
+      "center_fraction": 0,
+      "width_fraction": 0,
+      "height_fraction": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_flat_control_span_900",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_flat_control_span_900",
+        "name": "Frozen direct obstacle discrimination: fresh_flat_control_span_900",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "flat_control"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_flat_control_span_900",
+          "terrain_kind": "flat_control"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1060,
+                "y": 0
+              },
+              {
+                "x": -918,
+                "y": 0
+              },
+              {
+                "x": -882,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -900,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -900,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fresh_low_obstacle_span_900",
+      "horizontal_span_m": 900,
+      "profile": "low_obstacle",
+      "center_fraction": 0.4,
+      "width_fraction": 0.2,
+      "height_fraction": 0.2,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_low_obstacle_span_900",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_low_obstacle_span_900",
+        "name": "Frozen direct obstacle discrimination: fresh_low_obstacle_span_900",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "low_obstacle"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_low_obstacle_span_900",
+          "terrain_kind": "low_obstacle"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1060,
+                "y": 0
+              },
+              {
+                "x": -918,
+                "y": 0
+              },
+              {
+                "x": -882,
+                "y": 0
+              },
+              {
+                "x": -630,
+                "y": 0
+              },
+              {
+                "x": -585,
+                "y": 180
+              },
+              {
+                "x": -495,
+                "y": 180
+              },
+              {
+                "x": -450,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -900,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -900,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fresh_high_obstacle_span_900",
+      "horizontal_span_m": 900,
+      "profile": "high_obstacle",
+      "center_fraction": 0.6,
+      "width_fraction": 0.2,
+      "height_fraction": 0.55,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_high_obstacle_span_900",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_high_obstacle_span_900",
+        "name": "Frozen direct obstacle discrimination: fresh_high_obstacle_span_900",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "high_obstacle"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_high_obstacle_span_900",
+          "terrain_kind": "high_obstacle"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1060,
+                "y": 0
+              },
+              {
+                "x": -918,
+                "y": 0
+              },
+              {
+                "x": -882,
+                "y": 0
+              },
+              {
+                "x": -450,
+                "y": 0
+              },
+              {
+                "x": -405,
+                "y": 495.00000000000006
+              },
+              {
+                "x": -315,
+                "y": 495.00000000000006
+              },
+              {
+                "x": -270,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -900,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -900,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "fresh_late_broad_span_900",
+      "horizontal_span_m": 900,
+      "profile": "late_broad",
+      "center_fraction": 0.7,
+      "width_fraction": 0.25,
+      "height_fraction": 0.35,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "fresh_late_broad_span_900",
+      "scenario": {
+        "id": "waypoint-direct-obstacle-fresh_late_broad_span_900",
+        "name": "Frozen direct obstacle discrimination: fresh_late_broad_span_900",
+        "description": "Predeclared terrain-only nominal direct obstacle discrimination; no cutaway, no authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "direct_obstacle_discrimination_fresh",
+          "late_broad"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_obstacle_discrimination_v1",
+          "case_id": "fresh_late_broad_span_900",
+          "terrain_kind": "late_broad"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1060,
+                "y": 0
+              },
+              {
+                "x": -918,
+                "y": 0
+              },
+              {
+                "x": -882,
+                "y": 0
+              },
+              {
+                "x": -382.5,
+                "y": 0
+              },
+              {
+                "x": -326.25,
+                "y": 315
+              },
+              {
+                "x": -213.75,
+                "y": 315
+              },
+              {
+                "x": -157.5,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -900,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -900,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -11,6 +11,12 @@ closes the scoped input-driven nominal flat/uphill/downhill question; it does
 not close robustness, obstacle demand, in-flight waypoint composition, or
 production planner/controller integration.
 
+The subsequent [frozen obstacle-discrimination checkpoint](waypoint_direct_obstacle_discrimination_results.md)
+preserves all six baseline artifact bytes, accepts six of eight sealed
+obstacle/control cases, and retains two valid high-obstacle unknowns. It also
+demonstrates a blocked selected flat program with another accepted direct arc.
+The baseline evidence below remains the original generation checkpoint.
+
 ## Gate A: extraction accepted
 
 The input-only known-flat result has four bases, twenty predeclared rows,

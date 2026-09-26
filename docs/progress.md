@@ -2,6 +2,38 @@
 
 ## 2026-09-25
 
+### Frozen direct-generator obstacle discrimination checkpoint
+
+- Completed the opt-in [obstacle discrimination pass](waypoint_direct_obstacle_discrimination_results.md)
+  under the unchanged input-only generator, source fitter, body-clearance and
+  core contact rules. A fixed-command terrain-twin diagnostic is separate from
+  regenerated complete witness acceptance; neither changes production V1.
+- Four development controls passed. Uncut flat and the 160 m obstacle each
+  retain four accepted direct witnesses. The 440 m / 1,600 m controls block
+  the fixed flat program during source acquisition and remain valid finite
+  unknowns. All six earlier generation artifacts reproduce their original
+  bytes after the shared-helper extraction.
+- After primary acceptance and code freeze, all eight sealed 700/900 m cases
+  were evaluated without retuning: 160 rows, 84 analytical skips, 76 schedules,
+  34 accepted witnesses, and 42 target-contact rejections. Six cases are
+  Direct, two high obstacles Unknown. The 900 m late/broad obstacle blocks the
+  selected flat arc but accepts a slower, higher direct alternative.
+- Both fresh runs have byte-identical gate summaries and all eight full case
+  artifacts; gate identity `fnv1a64:a484e83d323f3e02`. The high-case unknowns
+  include six terrain-clear complete schedules rejected at target contact for
+  excessive upper-foot clearance and normal speed. They do not establish
+  waypoint necessity; no source-first-step crash occurred.
+- The bounded discrimination question is closed. Next research should isolate
+  actual first-contact terminal capture on those retained six schedules with
+  matched terminal-entry states and frozen source/terrain, not retune this
+  sealed pass or infer waypoint demand from Unknown. Selected contact margins
+  remain millimetre-scale; robust/default authority and waypoint composition
+  are still open and were not expanded here.
+- Validation passed 703 workspace tests in twelve suites, strict all-target
+  Clippy, formatting and diff checks. V1/default planning, core/controller
+  behavior, V2/F6 classifications, and historical artifact bytes are unchanged.
+  Research checkpoint reviewed and committed; no push or deployment.
+
 ### Input-driven nominal ballistic-direct generation checkpoint
 
 - Added an opt-in scenario-input generator using shared physical helpers,

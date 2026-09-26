@@ -15,6 +15,9 @@ use pd_core::{
 use pd_plan::conservative_ballistic_bridge::{KinematicStateV2, PadInputV2};
 use serde::{Deserialize, Serialize};
 
+mod terrain_twin;
+pub use terrain_twin::*;
+
 use super::super::{
     CommandSaturationEvidence, NominalProfile, PlantStateEvidence, RolloutCadence,
     WaypointDirectCoupledThrustAuditInputGateEvidence,
@@ -2145,19 +2148,7 @@ fn write_artifact(
     Ok(())
 }
 
-fn neutral_replay_and_clearance(
-    context: &RunContext,
-    run: &LaunchFeasibilityCadenceRunEvidence,
-    clearance_policy: ClearancePolicy,
-    source_reference: NeutralSourceReference<'_>,
-    authoritative_replay: &ReplayTraceResult,
-) -> Result<NeutralReplayOutcome> {
-    let NeutralSourceReference {
-        source_commands,
-        profile,
-        source_bridge_tick_count,
-        verify_generated_reference,
-    } = source_reference;
+fn replay_log_ticks(run: &LaunchFeasibilityCadenceRunEvidence) -> Vec<ReplayLogTick<'_>> {
     let mut logs = Vec::with_capacity(run.launch.samples.len() + run.rollout.per_step.len());
     logs.extend(run.launch.samples.iter().map(|tick| ReplayLogTick {
         physics_step: tick.physics_step,
@@ -2179,6 +2170,36 @@ fn neutral_replay_and_clearance(
         attitude_before_step_rad: tick.attitude_before_step_rad,
         logged_applied_throttle_frac: Some(tick.applied_throttle_frac),
     }));
+    logs
+}
+
+fn empty_clearance_scan() -> GeometryClearanceScanEvidence {
+    GeometryClearanceScanEvidence {
+        poststep_state_count: 0,
+        airborne_state_count: 0,
+        source_corridor_state_count: 0,
+        terminal_corridor_state_count: 0,
+        exact_clearance_query_count: 0,
+        all_airborne_states_passed: true,
+        first_violation: None,
+        minimum_airborne: None,
+    }
+}
+
+fn neutral_replay_and_clearance(
+    context: &RunContext,
+    run: &LaunchFeasibilityCadenceRunEvidence,
+    clearance_policy: ClearancePolicy,
+    source_reference: NeutralSourceReference<'_>,
+    authoritative_replay: &ReplayTraceResult,
+) -> Result<NeutralReplayOutcome> {
+    let NeutralSourceReference {
+        source_commands,
+        profile,
+        source_bridge_tick_count,
+        verify_generated_reference,
+    } = source_reference;
+    let logs = replay_log_ticks(run);
     let mut ordinary = SimulationState::new(context)?;
     let mut neutral = SimulationState::new(context)?;
     let mut contiguous = true;
@@ -2194,16 +2215,7 @@ fn neutral_replay_and_clearance(
     let mut first_mismatch = None;
     let mut expected_thrust_reference_coverage = true;
     let mut recomputed_saturation = empty_saturation();
-    let mut scan = GeometryClearanceScanEvidence {
-        poststep_state_count: 0,
-        airborne_state_count: 0,
-        source_corridor_state_count: 0,
-        terminal_corridor_state_count: 0,
-        exact_clearance_query_count: 0,
-        all_airborne_states_passed: true,
-        first_violation: None,
-        minimum_airborne: None,
-    };
+    let mut scan = empty_clearance_scan();
     let interval = context.sim.control_interval_steps();
     for tick in &logs {
         if ordinary.is_terminal() || neutral.is_terminal() {

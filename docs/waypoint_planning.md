@@ -41,8 +41,17 @@ demand or a production planner decision.
 ### Latest direct-planning research checkpoint (2026-09-25)
 
 The latest result is the opt-in
-[input-driven nominal direct generator](waypoint_direct_generation_results.md),
-not a change to `pd_plan::plan()`. It generates a contact-safe launch, reseeded
+[frozen obstacle-discrimination pass](waypoint_direct_obstacle_discrimination_results.md),
+not a change to `pd_plan::plan()`. Four development controls and all eight
+sealed 700/900 m cases passed their declared gates without retuning. Six fresh
+cases have complete Direct witnesses and two high obstacles remain finite
+Unknown; all 160 rows and both-run byte parity are retained. The 900 m
+late/broad obstacle blocks the selected flat program but the unchanged
+generator accepts a different direct arc. No waypoint was added.
+
+The preceding
+[input-driven nominal direct generator](waypoint_direct_generation_results.md)
+generates a contact-safe launch, reseeded
 source bridge with paired held-60 Hz commands, ballistic coast, and terminal
 bridge from scenario inputs alone. Gate A exactly reproduced the
 [known-flat acceptance checkpoint](waypoint_direct_complete_flat_acceptance_protocol.md):
@@ -66,12 +75,17 @@ must not be promoted to robust or production/default authority. The
 also records an analytical direct-to-waypoint boundary, but its controller
 execution slice has not passed its exact-trajectory compatibility gate.
 
-The input-driven nominal baseline question is now closed at this bounded
-six-case gate. A separate obstacle-boundary pass may be planned next, while
-robust contact, arbitrary incoming waypoint states, waypoint composition, and
-default/controller integration remain open. Neither a controller crash nor
-finite direct-family exhaustion proves that every physically possible direct
-transfer is blocked; the latter remains an explicit `unknown`.
+The input-driven nominal baseline and bounded obstacle-discrimination
+questions are now closed at their respective six/eight-case gates. The high
+obstacle unknowns include six terrain-clear schedules that fail only at target
+contact: excessive upper-foot clearance and normal speed. Next research
+should isolate actual first-contact terminal capture with matched entry
+states and frozen launch/source/terrain, rather than infer waypoint demand
+or retune the sealed cases. Robust contact, arbitrary incoming waypoint
+states, waypoint composition and default/controller integration remain open.
+Neither a controller crash nor finite direct-family exhaustion proves that
+every physically possible direct transfer is blocked; the latter remains an
+explicit `unknown`.
 
 ### Post-closure expansion finding
 

@@ -131,6 +131,9 @@ pub use waypoint_direct_nominal_plant::*;
 pub mod waypoint_direct_generation_gates;
 pub use waypoint_direct_generation_gates::*;
 
+pub mod waypoint_direct_obstacle_discrimination;
+pub use waypoint_direct_obstacle_discrimination::*;
+
 mod controller_shadow;
 pub use controller_shadow::*;
 
