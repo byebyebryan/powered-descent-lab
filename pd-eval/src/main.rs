@@ -3,10 +3,13 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
-    BatchRegressionPolicyStatus, MissingComparePolicy, compare_batch_reports, load_batch_report,
-    promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
-    resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
-    run_conservative_ballistic_f6_controller_integration_v1,
+    BatchRegressionPolicyStatus, MissingComparePolicy,
+    WaypointDirectCompleteFlatAcceptanceInputPaths, WaypointDirectCoupledThrustAuditInputPaths,
+    WaypointDirectSourceDurationCanaryInputPaths,
+    WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths, compare_batch_reports,
+    load_batch_report, promote_pack_cache, refresh_report_outputs,
+    report::write_batch_report_artifacts, resolve_pack_compare_baseline, run_candidate_replay_case,
+    run_candidate_replay_development, run_conservative_ballistic_f6_controller_integration_v1,
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_f5_analytical_v1,
@@ -16,7 +19,24 @@ use pd_eval::{
     run_physical_witness_development, run_progress_interval_envelope_development_gate,
     run_route_execution_development_case, run_route_execution_development_gate,
     run_source_transition_development_case, run_source_transition_development_gate,
-    run_terrain_equivalence_spike,
+    run_terrain_equivalence_spike, run_waypoint_direct_characterization,
+    run_waypoint_direct_complete_flat_acceptance, run_waypoint_direct_controller_comparison,
+    run_waypoint_direct_coupled_thrust_audit, run_waypoint_direct_flat_candidate_closure,
+    run_waypoint_direct_launch_contact_contract, run_waypoint_direct_launch_feasibility,
+    run_waypoint_direct_nominal_plant, run_waypoint_direct_primitive_analytical,
+    run_waypoint_direct_source_contact, run_waypoint_direct_source_duration_canary,
+    run_waypoint_direct_source_duration_held_cadence_diagnostic,
+    run_waypoint_direct_source_duration_paired_command_feasibility,
+    run_waypoint_direct_topology_boundary, run_waypoint_direct_topology_sweep,
+    validate_waypoint_direct_complete_flat_acceptance_inputs,
+    validate_waypoint_direct_coupled_thrust_audit_inputs,
+    validate_waypoint_direct_flat_candidate_closure_inputs,
+    validate_waypoint_direct_launch_contact_contract_inputs,
+    validate_waypoint_direct_launch_feasibility_inputs,
+    validate_waypoint_direct_source_contact_inputs,
+    validate_waypoint_direct_source_duration_canary_inputs,
+    validate_waypoint_direct_source_duration_held_cadence_diagnostic_inputs,
+    validate_waypoint_direct_source_duration_paired_command_feasibility_inputs,
 };
 
 #[derive(Debug, Parser)]
@@ -62,6 +82,40 @@ enum Commands {
     ConservativeBallisticF5Controller(ConservativeBallisticF5ControllerArgs),
     /// Run the opt-in F6 route application through the frozen controller and simulator.
     ConservativeBallisticF6Integration(ConservativeBallisticF6IntegrationArgs),
+    /// Run the opt-in direct-route waypoint-planning characterization report.
+    WaypointDirectCharacterization(WaypointDirectCharacterizationArgs),
+    /// Run the controller-free V2 primitive baseline and continuous-row early gate.
+    WaypointDirectPrimitiveAnalytical(WaypointDirectPrimitiveAnalyticalArgs),
+    /// Run the frozen controller-free 24-cell direct and one-waypoint topology sweep.
+    WaypointDirectTopologySweep(WaypointDirectTopologySweepArgs),
+    /// Run the frozen controller-free direct-first boundary decision gate.
+    WaypointDirectTopologyBoundary(WaypointDirectTopologyBoundaryArgs),
+    /// Compare the sealed direct-only analytical sweep with the unchanged direct controller.
+    WaypointDirectControllerComparison(WaypointDirectControllerComparisonArgs),
+    /// Validate and characterize the sealed direct-bridge nominal plant inputs.
+    WaypointDirectNominalPlant(WaypointDirectNominalPlantArgs),
+    /// Measure source-pad contact and explicitly counterfactual profile continuation.
+    WaypointDirectSourceContact(WaypointDirectSourceContactArgs),
+    /// Run the additive fixed-protocol launch-aware direct-profile canary.
+    WaypointDirectLaunchFeasibility(WaypointDirectLaunchFeasibilityArgs),
+    /// Audit the exact first-contact contract for frozen launch-feasibility replays.
+    WaypointDirectLaunchContactContract(WaypointDirectLaunchContactContractArgs),
+    /// Close the third certified flat profile under the frozen launch and contact contract.
+    WaypointDirectFlatCandidateClosure(WaypointDirectFlatCandidateClosureArgs),
+    /// Audit coupled thrust on the three frozen flat candidates without a new flight.
+    WaypointDirectCoupledThrustAudit(WaypointDirectCoupledThrustAuditArgs),
+    /// Run the fixed 3 x 5 evaluator-only flat source-duration canary.
+    WaypointDirectSourceDurationCanary(WaypointDirectSourceDurationCanaryArgs),
+    /// Diagnose the frozen source-duration canary's held-command cadence effects.
+    WaypointDirectSourceDurationHeldCadenceDiagnostic(
+        WaypointDirectSourceDurationHeldCadenceDiagnosticArgs,
+    ),
+    /// Fit and replay bounded paired 60 Hz source commands against frozen handoffs.
+    WaypointDirectSourceDurationPairedCommandFeasibility(
+        WaypointDirectSourceDurationPairedCommandFeasibilityArgs,
+    ),
+    /// Accept and select complete nominal flat direct witnesses from the frozen paired-command family.
+    WaypointDirectCompleteFlatAcceptance(WaypointDirectCompleteFlatAcceptanceArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -300,6 +354,276 @@ struct ConservativeBallisticF6IntegrationArgs {
     result_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Parser)]
+struct WaypointDirectCharacterizationArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectPrimitiveAnalyticalArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectTopologySweepArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectTopologyBoundaryArgs {
+    #[arg(long, value_name = "OUTPUT_DIR")]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectControllerComparisonArgs {
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectNominalPlantArgs {
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectSourceContactArgs {
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate sealed identities and profile bindings without running physics.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectLaunchFeasibilityArgs {
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate the frozen identities and launch protocol without running physics.
+    #[arg(long)]
+    preflight_only: bool,
+
+    /// Run only the frozen flat gate, leaving conditional cases for review.
+    #[arg(long)]
+    flat_gate_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectLaunchContactContractArgs {
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "LAUNCH_SUMMARY", required = true)]
+    launch_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate all frozen identities and bindings without running physics.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectFlatCandidateClosureArgs {
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "LAUNCH_SUMMARY", required = true)]
+    launch_summary: PathBuf,
+
+    #[arg(long, value_name = "CONTACT_AUDIT_SUMMARY", required = true)]
+    contact_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate all frozen identities and profile bindings without running physics.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectCoupledThrustAuditArgs {
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "LAUNCH_SUMMARY", required = true)]
+    launch_summary: PathBuf,
+
+    #[arg(long, value_name = "CONTACT_AUDIT_SUMMARY", required = true)]
+    contact_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "FLAT_CANARY_SUMMARY", required = true)]
+    flat_canary_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate all frozen identities and bindings without constructing simulation state.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectSourceDurationCanaryArgs {
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "LAUNCH_SUMMARY", required = true)]
+    launch_summary: PathBuf,
+
+    #[arg(long, value_name = "CONTACT_AUDIT_SUMMARY", required = true)]
+    contact_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "FLAT_CANARY_SUMMARY", required = true)]
+    flat_canary_summary: PathBuf,
+
+    #[arg(long, value_name = "COUPLED_THRUST_AUDIT_SUMMARY", required = true)]
+    coupled_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate all frozen identities and the finite variant family without running physics.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectSourceDurationHeldCadenceDiagnosticArgs {
+    #[arg(long, value_name = "SOURCE_DURATION_SUMMARY", required = true)]
+    source_duration_summary: PathBuf,
+
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "LAUNCH_SUMMARY", required = true)]
+    launch_summary: PathBuf,
+
+    #[arg(long, value_name = "CONTACT_AUDIT_SUMMARY", required = true)]
+    contact_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "FLAT_CANARY_SUMMARY", required = true)]
+    flat_canary_summary: PathBuf,
+
+    #[arg(long, value_name = "COUPLED_THRUST_AUDIT_SUMMARY", required = true)]
+    coupled_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate the frozen source-duration summary and all upstream gates without physics.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectSourceDurationPairedCommandFeasibilityArgs {
+    #[arg(long, value_name = "SOURCE_DURATION_SUMMARY", required = true)]
+    source_duration_summary: PathBuf,
+
+    #[arg(long, value_name = "BASELINE_SUMMARY", required = true)]
+    baseline_summary: PathBuf,
+
+    #[arg(long, value_name = "SWEEP_SUMMARY", required = true)]
+    sweep_summary: PathBuf,
+
+    #[arg(long, value_name = "NOMINAL_PLANT_SUMMARY", required = true)]
+    nominal_summary: PathBuf,
+
+    #[arg(long, value_name = "LAUNCH_SUMMARY", required = true)]
+    launch_summary: PathBuf,
+
+    #[arg(long, value_name = "CONTACT_AUDIT_SUMMARY", required = true)]
+    contact_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "FLAT_CANARY_SUMMARY", required = true)]
+    flat_canary_summary: PathBuf,
+
+    #[arg(long, value_name = "COUPLED_THRUST_AUDIT_SUMMARY", required = true)]
+    coupled_audit_summary: PathBuf,
+
+    #[arg(long, value_name = "OUTPUT_DIR", required = true)]
+    output_dir: PathBuf,
+
+    /// Validate all frozen identities and family coverage without running physics.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectCompleteFlatAcceptanceArgs {
+    #[arg(long, value_name = "PAIRED_COMMAND_SUMMARY", required = true)]
+    paired_command_summary: PathBuf,
+
+    #[command(flatten)]
+    source: WaypointDirectSourceDurationPairedCommandFeasibilityArgs,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -498,6 +822,275 @@ fn main() -> Result<()> {
             )?;
             println!("{}", serde_json::to_string_pretty(&run.paths)?);
         }
+        Commands::WaypointDirectCharacterization(args) => {
+            let run =
+                run_waypoint_direct_characterization(&repo_root(), args.output_dir.as_deref())?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::WaypointDirectPrimitiveAnalytical(args) => {
+            let run =
+                run_waypoint_direct_primitive_analytical(&repo_root(), args.output_dir.as_deref())?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::WaypointDirectTopologySweep(args) => {
+            let run = run_waypoint_direct_topology_sweep(&repo_root(), args.output_dir.as_deref())?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::WaypointDirectTopologyBoundary(args) => {
+            let run =
+                run_waypoint_direct_topology_boundary(&repo_root(), args.output_dir.as_deref())?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::WaypointDirectControllerComparison(args) => {
+            let run = run_waypoint_direct_controller_comparison(
+                &repo_root(),
+                &args.sweep_summary,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::WaypointDirectNominalPlant(args) => {
+            let run = run_waypoint_direct_nominal_plant(
+                &repo_root(),
+                &args.baseline_summary,
+                &args.sweep_summary,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&run.paths)?);
+        }
+        Commands::WaypointDirectSourceContact(args) => {
+            if args.preflight_only {
+                let gate = validate_waypoint_direct_source_contact_inputs(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_source_contact(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                    &args.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectLaunchFeasibility(args) => {
+            if args.preflight_only {
+                let gate = validate_waypoint_direct_launch_feasibility_inputs(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_launch_feasibility(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                    &args.output_dir,
+                    args.flat_gate_only,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectLaunchContactContract(args) => {
+            if args.preflight_only {
+                let gate = validate_waypoint_direct_launch_contact_contract_inputs(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                    &args.launch_summary,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_launch_contact_contract(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                    &args.launch_summary,
+                    &args.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectFlatCandidateClosure(args) => {
+            if args.preflight_only {
+                let gate = validate_waypoint_direct_flat_candidate_closure_inputs(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                    &args.launch_summary,
+                    &args.contact_audit_summary,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_flat_candidate_closure(
+                    &repo_root(),
+                    &args.baseline_summary,
+                    &args.sweep_summary,
+                    &args.nominal_summary,
+                    &args.launch_summary,
+                    &args.contact_audit_summary,
+                    &args.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectCoupledThrustAudit(args) => {
+            let input_paths = WaypointDirectCoupledThrustAuditInputPaths {
+                baseline_summary: args.baseline_summary,
+                sweep_summary: args.sweep_summary,
+                nominal_summary: args.nominal_summary,
+                launch_summary: args.launch_summary,
+                contact_audit_summary: args.contact_audit_summary,
+                flat_canary_summary: args.flat_canary_summary,
+            };
+            if args.preflight_only {
+                let gate = validate_waypoint_direct_coupled_thrust_audit_inputs(
+                    &repo_root(),
+                    &input_paths,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_coupled_thrust_audit(
+                    &repo_root(),
+                    &input_paths,
+                    &args.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectSourceDurationCanary(args) => {
+            let input_paths = WaypointDirectSourceDurationCanaryInputPaths {
+                frozen_inputs: WaypointDirectCoupledThrustAuditInputPaths {
+                    baseline_summary: args.baseline_summary,
+                    sweep_summary: args.sweep_summary,
+                    nominal_summary: args.nominal_summary,
+                    launch_summary: args.launch_summary,
+                    contact_audit_summary: args.contact_audit_summary,
+                    flat_canary_summary: args.flat_canary_summary,
+                },
+                coupled_audit_summary: args.coupled_audit_summary,
+            };
+            if args.preflight_only {
+                let gate = validate_waypoint_direct_source_duration_canary_inputs(
+                    &repo_root(),
+                    &input_paths,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_source_duration_canary(
+                    &repo_root(),
+                    &input_paths,
+                    &args.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectSourceDurationHeldCadenceDiagnostic(args) => {
+            let input_paths = WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths {
+                source_duration_summary: args.source_duration_summary,
+                frozen_inputs: WaypointDirectSourceDurationCanaryInputPaths {
+                    frozen_inputs: WaypointDirectCoupledThrustAuditInputPaths {
+                        baseline_summary: args.baseline_summary,
+                        sweep_summary: args.sweep_summary,
+                        nominal_summary: args.nominal_summary,
+                        launch_summary: args.launch_summary,
+                        contact_audit_summary: args.contact_audit_summary,
+                        flat_canary_summary: args.flat_canary_summary,
+                    },
+                    coupled_audit_summary: args.coupled_audit_summary,
+                },
+            };
+            if args.preflight_only {
+                let gate = validate_waypoint_direct_source_duration_held_cadence_diagnostic_inputs(
+                    &repo_root(),
+                    &input_paths,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_source_duration_held_cadence_diagnostic(
+                    &repo_root(),
+                    &input_paths,
+                    &args.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectSourceDurationPairedCommandFeasibility(args) => {
+            let input_paths = WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths {
+                source_duration_summary: args.source_duration_summary,
+                frozen_inputs: WaypointDirectSourceDurationCanaryInputPaths {
+                    frozen_inputs: WaypointDirectCoupledThrustAuditInputPaths {
+                        baseline_summary: args.baseline_summary,
+                        sweep_summary: args.sweep_summary,
+                        nominal_summary: args.nominal_summary,
+                        launch_summary: args.launch_summary,
+                        contact_audit_summary: args.contact_audit_summary,
+                        flat_canary_summary: args.flat_canary_summary,
+                    },
+                    coupled_audit_summary: args.coupled_audit_summary,
+                },
+            };
+            if args.preflight_only {
+                let gate =
+                    validate_waypoint_direct_source_duration_paired_command_feasibility_inputs(
+                        &repo_root(),
+                        &input_paths,
+                    )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_source_duration_paired_command_feasibility(
+                    &repo_root(),
+                    &input_paths,
+                    &args.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectCompleteFlatAcceptance(args) => {
+            let source = args.source;
+            let input_paths = WaypointDirectCompleteFlatAcceptanceInputPaths {
+                paired_command_summary: args.paired_command_summary,
+                source_inputs: WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths {
+                    source_duration_summary: source.source_duration_summary,
+                    frozen_inputs: WaypointDirectSourceDurationCanaryInputPaths {
+                        frozen_inputs: WaypointDirectCoupledThrustAuditInputPaths {
+                            baseline_summary: source.baseline_summary,
+                            sweep_summary: source.sweep_summary,
+                            nominal_summary: source.nominal_summary,
+                            launch_summary: source.launch_summary,
+                            contact_audit_summary: source.contact_audit_summary,
+                            flat_canary_summary: source.flat_canary_summary,
+                        },
+                        coupled_audit_summary: source.coupled_audit_summary,
+                    },
+                },
+            };
+            if source.preflight_only {
+                let gate = validate_waypoint_direct_complete_flat_acceptance_inputs(
+                    &repo_root(),
+                    &input_paths,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&gate)?);
+            } else {
+                let run = run_waypoint_direct_complete_flat_acceptance(
+                    &repo_root(),
+                    &input_paths,
+                    &source.output_dir,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
     }
 
     Ok(())
@@ -588,6 +1181,311 @@ mod tests {
         ];
         assert!(Cli::try_parse_from(with_manifest).is_ok());
         assert!(Cli::try_parse_from(["pd-eval", "final-landing-audit"]).is_err());
+    }
+
+    #[test]
+    fn waypoint_direct_characterization_accepts_optional_output_dir() {
+        assert!(Cli::try_parse_from(["pd-eval", "waypoint-direct-characterization"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-characterization",
+                "--output-dir",
+                "/tmp/pd-direct-characterization",
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_primitive_analytical_accepts_optional_output_dir() {
+        assert!(Cli::try_parse_from(["pd-eval", "waypoint-direct-primitive-analytical"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-primitive-analytical",
+                "--output-dir",
+                "/tmp/pd-direct-primitive-analytical",
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_topology_sweep_accepts_optional_output_dir() {
+        assert!(Cli::try_parse_from(["pd-eval", "waypoint-direct-topology-sweep"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-topology-sweep",
+                "--output-dir",
+                "/tmp/pd-direct-topology-sweep",
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_topology_boundary_accepts_optional_output_dir() {
+        assert!(Cli::try_parse_from(["pd-eval", "waypoint-direct-topology-boundary"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-topology-boundary",
+                "--output-dir",
+                "/tmp/pd-direct-topology-boundary",
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_controller_comparison_requires_sealed_input_and_output_paths() {
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-controller-comparison",
+                "--sweep-summary",
+                "/tmp/pd-topology/summary.json",
+                "--output-dir",
+                "/tmp/pd-controller-comparison",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-controller-comparison",
+                "--output-dir",
+                "/tmp/pd-controller-comparison",
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-controller-comparison",
+                "--sweep-summary",
+                "/tmp/pd-topology/summary.json",
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-source-contact",
+                "--baseline-summary",
+                "/tmp/pd-primitive/summary.json",
+                "--sweep-summary",
+                "/tmp/pd-sweep/summary.json",
+                "--nominal-summary",
+                "/tmp/pd-nominal/summary.json",
+                "--output-dir",
+                "/tmp/pd-source-contact-unused-by-preflight",
+                "--preflight-only",
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_nominal_plant_requires_both_sealed_inputs_and_output() {
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-nominal-plant",
+                "--baseline-summary",
+                "/tmp/pd-primitive/summary.json",
+                "--sweep-summary",
+                "/tmp/pd-sweep/summary.json",
+                "--output-dir",
+                "/tmp/pd-nominal-plant",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-nominal-plant",
+                "--sweep-summary",
+                "/tmp/pd-sweep/summary.json",
+                "--output-dir",
+                "/tmp/pd-nominal-plant",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_source_contact_requires_all_sealed_inputs_and_output() {
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-source-contact",
+                "--baseline-summary",
+                "/tmp/pd-primitive/summary.json",
+                "--sweep-summary",
+                "/tmp/pd-sweep/summary.json",
+                "--nominal-summary",
+                "/tmp/pd-nominal/summary.json",
+                "--output-dir",
+                "/tmp/pd-source-contact",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-source-contact",
+                "--baseline-summary",
+                "/tmp/pd-primitive/summary.json",
+                "--sweep-summary",
+                "/tmp/pd-sweep/summary.json",
+                "--nominal-summary",
+                "/tmp/pd-nominal/summary.json",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_launch_contact_contract_requires_frozen_launch_and_supports_preflight() {
+        let common = [
+            "pd-eval",
+            "waypoint-direct-launch-contact-contract",
+            "--baseline-summary",
+            "/tmp/pd-primitive/summary.json",
+            "--sweep-summary",
+            "/tmp/pd-sweep/summary.json",
+            "--nominal-summary",
+            "/tmp/pd-nominal/summary.json",
+            "--launch-summary",
+            "/tmp/pd-launch/summary.json",
+            "--output-dir",
+            "/tmp/pd-contact-contract",
+        ];
+        assert!(Cli::try_parse_from(common).is_ok());
+
+        let mut preflight = common.to_vec();
+        preflight.push("--preflight-only");
+        assert!(Cli::try_parse_from(preflight).is_ok());
+
+        let missing_launch = [
+            "pd-eval",
+            "waypoint-direct-launch-contact-contract",
+            "--baseline-summary",
+            "/tmp/pd-primitive/summary.json",
+            "--sweep-summary",
+            "/tmp/pd-sweep/summary.json",
+            "--nominal-summary",
+            "/tmp/pd-nominal/summary.json",
+            "--output-dir",
+            "/tmp/pd-contact-contract",
+            "--preflight-only",
+        ];
+        assert!(Cli::try_parse_from(missing_launch).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-launch-contact-contract",
+                "--baseline-summary",
+                "/tmp/pd-primitive/summary.json",
+                "--sweep-summary",
+                "/tmp/pd-sweep/summary.json",
+                "--nominal-summary",
+                "/tmp/pd-nominal/summary.json",
+                "--launch-summary",
+                "/tmp/pd-launch/summary.json",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn waypoint_direct_flat_candidate_closure_requires_all_frozen_inputs_and_output() {
+        let common = [
+            "pd-eval",
+            "waypoint-direct-flat-candidate-closure",
+            "--baseline-summary",
+            "/tmp/pd-primitive/summary.json",
+            "--sweep-summary",
+            "/tmp/pd-sweep/summary.json",
+            "--nominal-summary",
+            "/tmp/pd-nominal/summary.json",
+            "--launch-summary",
+            "/tmp/pd-launch/summary.json",
+            "--contact-audit-summary",
+            "/tmp/pd-contact-contract/summary.json",
+            "--output-dir",
+            "/tmp/pd-flat-candidate-closure",
+        ];
+        assert!(Cli::try_parse_from(common).is_ok());
+
+        let mut preflight = common.to_vec();
+        preflight.push("--preflight-only");
+        assert!(Cli::try_parse_from(preflight).is_ok());
+
+        let missing_contact = [
+            "pd-eval",
+            "waypoint-direct-flat-candidate-closure",
+            "--baseline-summary",
+            "/tmp/pd-primitive/summary.json",
+            "--sweep-summary",
+            "/tmp/pd-sweep/summary.json",
+            "--nominal-summary",
+            "/tmp/pd-nominal/summary.json",
+            "--launch-summary",
+            "/tmp/pd-launch/summary.json",
+            "--output-dir",
+            "/tmp/pd-flat-candidate-closure",
+            "--preflight-only",
+        ];
+        assert!(Cli::try_parse_from(missing_contact).is_err());
+    }
+
+    #[test]
+    fn waypoint_direct_coupled_thrust_audit_requires_all_frozen_inputs_and_supports_preflight() {
+        let common = [
+            "pd-eval",
+            "waypoint-direct-coupled-thrust-audit",
+            "--baseline-summary",
+            "/tmp/pd-primitive/summary.json",
+            "--sweep-summary",
+            "/tmp/pd-sweep/summary.json",
+            "--nominal-summary",
+            "/tmp/pd-nominal/summary.json",
+            "--launch-summary",
+            "/tmp/pd-launch/summary.json",
+            "--contact-audit-summary",
+            "/tmp/pd-contact/summary.json",
+            "--flat-canary-summary",
+            "/tmp/pd-flat-canary/summary.json",
+            "--output-dir",
+            "/tmp/pd-coupled-thrust-audit",
+        ];
+        assert!(Cli::try_parse_from(common).is_ok());
+        let mut preflight = common.to_vec();
+        preflight.push("--preflight-only");
+        assert!(Cli::try_parse_from(preflight).is_ok());
+
+        let missing_canary = [
+            "pd-eval",
+            "waypoint-direct-coupled-thrust-audit",
+            "--baseline-summary",
+            "/tmp/pd-primitive/summary.json",
+            "--sweep-summary",
+            "/tmp/pd-sweep/summary.json",
+            "--nominal-summary",
+            "/tmp/pd-nominal/summary.json",
+            "--launch-summary",
+            "/tmp/pd-launch/summary.json",
+            "--contact-audit-summary",
+            "/tmp/pd-contact/summary.json",
+            "--output-dir",
+            "/tmp/pd-coupled-thrust-audit",
+            "--preflight-only",
+        ];
+        assert!(Cli::try_parse_from(missing_canary).is_err());
     }
 
     #[test]
@@ -722,6 +1620,128 @@ mod tests {
                 "pd-eval",
                 "conservative-ballistic-f6-integration",
                 "--unknown",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn held_cadence_diagnostic_requires_frozen_inputs_and_accepts_preflight() {
+        let required = [
+            "pd-eval",
+            "waypoint-direct-source-duration-held-cadence-diagnostic",
+            "--source-duration-summary",
+            "run_d/summary.json",
+            "--baseline-summary",
+            "baseline/summary.json",
+            "--sweep-summary",
+            "sweep/summary.json",
+            "--nominal-summary",
+            "nominal/summary.json",
+            "--launch-summary",
+            "launch/summary.json",
+            "--contact-audit-summary",
+            "contact/summary.json",
+            "--flat-canary-summary",
+            "flat/summary.json",
+            "--coupled-audit-summary",
+            "coupled/summary.json",
+            "--output-dir",
+            "diagnostic",
+        ];
+        assert!(Cli::try_parse_from(required).is_ok());
+        let mut preflight = required.to_vec();
+        preflight.push("--preflight-only");
+        assert!(Cli::try_parse_from(preflight).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-source-duration-held-cadence-diagnostic",
+                "--preflight-only",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn paired_command_feasibility_requires_frozen_inputs_and_accepts_preflight() {
+        let required = [
+            "pd-eval",
+            "waypoint-direct-source-duration-paired-command-feasibility",
+            "--source-duration-summary",
+            "run_d/summary.json",
+            "--baseline-summary",
+            "baseline/summary.json",
+            "--sweep-summary",
+            "sweep/summary.json",
+            "--nominal-summary",
+            "nominal/summary.json",
+            "--launch-summary",
+            "launch/summary.json",
+            "--contact-audit-summary",
+            "contact/summary.json",
+            "--flat-canary-summary",
+            "flat/summary.json",
+            "--coupled-audit-summary",
+            "coupled/summary.json",
+            "--output-dir",
+            "paired-command",
+        ];
+        assert!(Cli::try_parse_from(required).is_ok());
+        let mut preflight = required.to_vec();
+        preflight.push("--preflight-only");
+        assert!(Cli::try_parse_from(preflight).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-source-duration-paired-command-feasibility",
+                "--preflight-only",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn complete_flat_acceptance_requires_frozen_inputs_and_accepts_preflight() {
+        let required = [
+            "pd-eval",
+            "waypoint-direct-complete-flat-acceptance",
+            "--paired-command-summary",
+            "paired/run_e/summary.json",
+            "--source-duration-summary",
+            "source/run_d/summary.json",
+            "--baseline-summary",
+            "baseline/summary.json",
+            "--sweep-summary",
+            "sweep/summary.json",
+            "--nominal-summary",
+            "nominal/summary.json",
+            "--launch-summary",
+            "launch/summary.json",
+            "--contact-audit-summary",
+            "contact/summary.json",
+            "--flat-canary-summary",
+            "flat/summary.json",
+            "--coupled-audit-summary",
+            "coupled/summary.json",
+            "--output-dir",
+            "complete-flat",
+        ];
+        assert!(Cli::try_parse_from(required).is_ok());
+        let mut preflight = required.to_vec();
+        preflight.push("--preflight-only");
+        assert!(Cli::try_parse_from(preflight).is_ok());
+        let without_paired: Vec<_> = required[..2]
+            .iter()
+            .chain(required[4..].iter())
+            .copied()
+            .collect();
+        assert!(Cli::try_parse_from(without_paired).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-complete-flat-acceptance",
+                "--preflight-only",
             ])
             .is_err()
         );

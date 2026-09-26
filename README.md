@@ -95,6 +95,18 @@ without treating the old scenario files as fixtures to transliterate directly.
   waypoint, and planner/guidance responsibilities.
 - [Waypoint Planning V1](docs/waypoint_planning.md) owns the implemented bounded
   planner contract, search policy, evidence model, and closure sequence.
+- [Waypoint direct-route characterization](docs/waypoint_direct_characterization.md)
+  records the opt-in continuous-terrain mismatch between V1's exact direct
+  chord and the unchanged direct controller; it does not select or implement a
+  replacement leg-profile model.
+- [Direct-leg primitive research](docs/waypoint_direct_primitive_research.md)
+  records the fixed 90 s analytical baseline, 24-cell obstacle sweep, and
+  unchanged-controller comparison. It locates a tracking gap on taller terrain
+  without demonstrating a need for an operational waypoint.
+- [Complete flat direct acceptance](docs/waypoint_direct_complete_flat_acceptance_protocol.md)
+  records the latest opt-in result: four complete launch-aware, held-60 Hz
+  direct witnesses land on uncut flat terrain. It accepts before ranking and
+  does not change planner defaults or establish held-out coverage.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge

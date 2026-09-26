@@ -24,6 +24,7 @@ pub mod conservative_ballistic_heldout;
 pub mod controller_shadow;
 pub mod setup;
 pub mod site;
+pub mod waypoint_direct_characterization;
 
 const PLOTLY_CDN_URL: &str = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";
 

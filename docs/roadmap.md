@@ -67,6 +67,29 @@ Current implementation status:
   - retained focused captures close at `54 / 54` landings and `36 / 36`
     handoff/ordered contracts with zero invalidations; every maintained
     no-regression pack reproduced its declared baseline
+  - the opt-in
+    [waypoint direct-route characterization](waypoint_direct_characterization.md)
+    freezes a separate continuous-terrain mismatch: V1 rejects flat, uphill,
+    and downhill direct rows while the unchanged direct controller lands them
+    with positive sampled en-route clearance. This is research evidence for a
+    future bounded per-leg profile or certificate, not a V1 rewrite, default
+    selection change, or selected V2 model
+  - the bounded
+    [direct-leg primitive research pass](waypoint_direct_primitive_research.md)
+    mapped a single 90 s V2 bridge/coast policy to the five characterization
+    inputs, then certified direct routes for all 24 fixed obstacle cells.
+    The unchanged direct controller landed on the 12 lower cells and crashed
+    on the 12 taller cells; no analytical one-waypoint row was eligible.
+    This historical controller split does not establish certificate execution
+    or justify inferring waypoint demand from controller crashes
+  - the latest opt-in
+    [complete-flat acceptance checkpoint](waypoint_direct_complete_flat_acceptance_protocol.md)
+    accepts four new launch-aware held-60 Hz direct witnesses without a floor
+    cutaway and rejects five shorter target-contact crashes before ranking.
+    It closes known-flat nominal acceptance only; reusable generation,
+    held-out flat/uphill/downhill execution, robustness, and controller/default
+    integration remain open. V1 and F6 are unchanged; the analytical boundary
+    study remains distinct from this simulator acceptance result
   - the first nominal-radius `r-60 | r+60` expansion remains diagnostic rather
     than accepted: its disposable local contract snapshot closed at `11 / 24`,
     and the research-only center-to-center trajectory-tube model failed the

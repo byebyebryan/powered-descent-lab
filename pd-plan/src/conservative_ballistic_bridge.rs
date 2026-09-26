@@ -1963,6 +1963,19 @@ fn candidate_steps(policy: &DirectBridgePolicyV2, horizontal_span_m: f64) -> Vec
     steps
 }
 
+fn candidate_steps_for_multiplier(
+    policy: &DirectBridgePolicyV2,
+    horizontal_span_m: f64,
+    multiplier: f64,
+) -> Result<u64, String> {
+    let nominal_s = (2.0 * horizontal_span_m / policy.gravity_mps2).sqrt();
+    let ticks = nominal_s * multiplier * f64::from(policy.physics_hz);
+    if !ticks.is_finite() || ticks >= u64::MAX as f64 {
+        return Err("waypoint leg duration exceeds the supported tick range".to_owned());
+    }
+    Ok(ticks.round().max(1.0) as u64)
+}
+
 fn bridge_duration_steps(policy: &DirectBridgePolicyV2) -> Vec<u64> {
     let interval = policy.bridge_interval_ticks();
     let maximum = (policy.mission_budget_s() * f64::from(policy.physics_hz)).floor() as u64;
@@ -5447,6 +5460,209 @@ pub fn evaluate_ridge_canary_case_v2(
     evaluate_ridge_canary_case_internal(policy, vehicle, case).map_err(|error| error.to_string())
 }
 
+/// Evaluate one arbitrary validated v2 direct-bridge probe with the same
+/// analytical machinery used by the frozen fixture evaluator.
+pub fn evaluate_direct_bridge_case_v2(
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+    case: &DirectBridgeProbeV2,
+) -> Result<DirectBridgeProbeResultV2, String> {
+    policy.validate()?;
+    vehicle.validate()?;
+    case.validate(policy, vehicle)?;
+    Ok(evaluate_case(policy, vehicle, case))
+}
+
+/// Return the shared research waypoint spacing derived from the unrotated hull
+/// envelope. This exposes proposal spacing to evaluators without generating or
+/// modifying waypoint positions.
+pub fn waypoint_position_step_v2(
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+) -> Result<Vec2, String> {
+    policy.validate()?;
+    vehicle.validate()?;
+    let envelope = rotated_hull_envelope(None, vehicle, policy.minimum_clearance_m);
+    let step = Vec2::new(
+        envelope.horizontal_extent_m.max(policy.minimum_clearance_m),
+        envelope.vertical_extent_m.max(policy.minimum_clearance_m),
+    );
+    if !step.x.is_finite() || !step.y.is_finite() {
+        return Err("waypoint position step must be finite".to_owned());
+    }
+    Ok(step)
+}
+
+/// Search a caller-supplied, finite set of one-waypoint proposals. Exhaustion
+/// means only that none of these proposals certified; it is not a physical
+/// impossibility result.
+pub fn evaluate_one_waypoint_case_v2(
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+    case: &DirectBridgeProbeV2,
+    waypoint_positions_m: &[Vec2],
+) -> Result<WaypointSearchEvidenceV2, String> {
+    policy.validate()?;
+    vehicle.validate()?;
+    case.validate(policy, vehicle)?;
+    if !(1..=4).contains(&waypoint_positions_m.len()) {
+        return Err("waypoint_positions_m must contain between one and four positions".to_owned());
+    }
+
+    let release_x_m = release_reference(case, policy, vehicle).x;
+    let touchdown_x_m = touchdown_reference(case, vehicle).x;
+    let domain_start_x_m = case
+        .terrain_points_m
+        .first()
+        .expect("validated probe has terrain domain")
+        .x;
+    let domain_end_x_m = case
+        .terrain_points_m
+        .last()
+        .expect("validated probe has terrain domain")
+        .x;
+    let legal_left_x_m = release_x_m.max(domain_start_x_m.min(domain_end_x_m));
+    let legal_right_x_m = touchdown_x_m.min(domain_start_x_m.max(domain_end_x_m));
+
+    let mut positions = waypoint_positions_m.to_vec();
+    for (index, position) in positions.iter().enumerate() {
+        if !position.x.is_finite() || !position.y.is_finite() {
+            return Err(format!("waypoint position {index} must be finite"));
+        }
+    }
+    positions.sort_by(|left, right| {
+        left.x
+            .total_cmp(&right.x)
+            .then_with(|| left.y.total_cmp(&right.y))
+    });
+    for (index, position) in positions.iter().enumerate() {
+        if position.x <= legal_left_x_m || position.x >= legal_right_x_m {
+            return Err(format!(
+                "waypoint position {index} must be strictly within the release-touchdown ground-track and terrain domain"
+            ));
+        }
+        if positions.iter().take(index).any(|previous| {
+            (previous.x - position.x).abs() <= ENDPOINT_TOLERANCE
+                && (previous.y - position.y).abs() <= ENDPOINT_TOLERANCE
+        }) {
+            return Err("waypoint_positions_m must not contain duplicate positions".to_owned());
+        }
+    }
+
+    let mut prepared_positions = Vec::with_capacity(positions.len());
+    for position in positions.iter().copied() {
+        let source_span_m = position.x - release_x_m;
+        let target_span_m = touchdown_x_m - position.x;
+        let mut pairs = Vec::with_capacity(16);
+        for source_multiplier in policy.duration_multipliers.iter().copied() {
+            let source_steps =
+                candidate_steps_for_multiplier(policy, source_span_m, source_multiplier)?;
+            for target_multiplier in policy.duration_multipliers.iter().copied() {
+                let target_steps =
+                    candidate_steps_for_multiplier(policy, target_span_m, target_multiplier)?;
+                let duration_pair_steps = source_steps
+                    .checked_add(target_steps)
+                    .ok_or_else(|| "waypoint leg duration tick sum overflowed".to_owned())?;
+                pairs.push((
+                    duration_pair_steps,
+                    source_multiplier,
+                    target_multiplier,
+                    source_steps,
+                    target_steps,
+                ));
+            }
+        }
+        pairs.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then_with(|| left.1.total_cmp(&right.1))
+                .then_with(|| left.2.total_cmp(&right.2))
+                .then_with(|| left.3.cmp(&right.3))
+                .then_with(|| left.4.cmp(&right.4))
+        });
+        prepared_positions.push((position, pairs));
+    }
+
+    let max_candidates = positions.len() * 16;
+    let leg_duration_pair_count = max_candidates;
+    let mut rejection_counts = std::collections::BTreeMap::new();
+    let mut selected_candidate = None;
+    let mut candidate_count = 0;
+    let probe_terrain = terrain(case);
+    'positions: for (position, pairs) in &prepared_positions {
+        for &(_, source_multiplier, target_multiplier, _, _) in pairs {
+            candidate_count += 1;
+            let candidate = evaluate_waypoint_candidate(
+                policy,
+                vehicle,
+                case,
+                &probe_terrain,
+                *position,
+                source_multiplier,
+                target_multiplier,
+            );
+            if candidate.classification == CertificationV2::Certified {
+                selected_candidate = Some(candidate);
+                break 'positions;
+            }
+            for reason in &candidate.reasons {
+                *rejection_counts.entry(*reason).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let certified_candidate_count = usize::from(selected_candidate.is_some());
+    let candidates = selected_candidate.clone().into_iter().collect::<Vec<_>>();
+    let selected_candidate_identity = selected_candidate
+        .as_ref()
+        .map(|candidate| candidate.identity.clone());
+    let rejection_counts = rejection_counts.into_iter().collect::<Vec<_>>();
+    let mut evidence = WaypointSearchEvidenceV2 {
+        max_candidates,
+        waypoint_position_count: positions.len(),
+        leg_duration_pair_count,
+        candidate_count,
+        certified_candidate_count,
+        rejection_counts,
+        selected_candidate_identity,
+        selected_candidate,
+        candidates,
+        identity: String::new(),
+    };
+    #[derive(Serialize)]
+    struct OneWaypointCaseIdentityV2<'a> {
+        policy: &'a DirectBridgePolicyV2,
+        vehicle: &'a VehicleInputV2,
+        case: &'a DirectBridgeProbeV2,
+        waypoint_positions_m: &'a [Vec2],
+        max_candidates: usize,
+        waypoint_position_count: usize,
+        leg_duration_pair_count: usize,
+        candidate_count: usize,
+        certified_candidate_count: usize,
+        rejection_counts: &'a [(DirectBridgeReasonV2, usize)],
+        selected_candidate_identity: Option<&'a String>,
+        selected_candidate: Option<&'a WaypointCandidateV2>,
+        candidates: &'a [WaypointCandidateV2],
+    }
+    evidence.identity = digest(&OneWaypointCaseIdentityV2 {
+        policy,
+        vehicle,
+        case,
+        waypoint_positions_m: &positions,
+        max_candidates: evidence.max_candidates,
+        waypoint_position_count: evidence.waypoint_position_count,
+        leg_duration_pair_count: evidence.leg_duration_pair_count,
+        candidate_count: evidence.candidate_count,
+        certified_candidate_count: evidence.certified_candidate_count,
+        rejection_counts: &evidence.rejection_counts,
+        selected_candidate_identity: evidence.selected_candidate_identity.as_ref(),
+        selected_candidate: evidence.selected_candidate.as_ref(),
+        candidates: &evidence.candidates,
+    });
+    Ok(evidence)
+}
+
 pub fn evaluate_ridge_canary_fixture_v2(
     fixture: &DirectBridgeFixtureV2,
 ) -> Result<RidgeCanaryEvidenceV2, String> {
@@ -8257,6 +8473,147 @@ mod tests {
                     && pair[0].duration_multiplier < pair[1].duration_multiplier
             }));
         }
+    }
+
+    #[test]
+    fn generic_direct_case_v2_matches_every_frozen_fixture_result() {
+        let fixture = fixture();
+        let expected = evaluation();
+        for case in &fixture.cases {
+            let actual = evaluate_direct_bridge_case_v2(&fixture.policy, &fixture.vehicle, case)
+                .expect("validated frozen probe evaluates");
+            let frozen = expected
+                .results
+                .iter()
+                .find(|result| result.id == case.id)
+                .expect("fixture evaluator returns each frozen probe");
+            assert_eq!(
+                &actual, frozen,
+                "probe {} changed under generic API",
+                case.id
+            );
+        }
+    }
+
+    #[test]
+    fn generic_direct_case_v2_is_deterministic() {
+        let fixture = fixture();
+        let case = fixture
+            .cases
+            .iter()
+            .find(|case| case.id == "clear_direct_probe")
+            .expect("embedded clear probe");
+        let first = evaluate_direct_bridge_case_v2(&fixture.policy, &fixture.vehicle, case)
+            .expect("validated frozen probe evaluates");
+        let second = evaluate_direct_bridge_case_v2(&fixture.policy, &fixture.vehicle, case)
+            .expect("validated frozen probe evaluates again");
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn generic_direct_case_v2_rejects_invalid_case() {
+        let fixture = fixture();
+        let mut case = fixture.cases[0].clone();
+        case.id.clear();
+        let error = evaluate_direct_bridge_case_v2(&fixture.policy, &fixture.vehicle, &case)
+            .expect_err("empty probe id must fail closed");
+        assert!(error.contains("probe id must not be empty"));
+    }
+
+    #[test]
+    fn waypoint_position_step_v2_uses_shared_unrotated_hull_envelope() {
+        let fixture = fixture();
+        let actual = waypoint_position_step_v2(&fixture.policy, &fixture.vehicle).unwrap();
+        let envelope =
+            rotated_hull_envelope(None, &fixture.vehicle, fixture.policy.minimum_clearance_m);
+        assert_eq!(
+            actual,
+            Vec2::new(
+                envelope
+                    .horizontal_extent_m
+                    .max(fixture.policy.minimum_clearance_m),
+                envelope
+                    .vertical_extent_m
+                    .max(fixture.policy.minimum_clearance_m),
+            )
+        );
+    }
+
+    #[test]
+    fn one_waypoint_case_v2_rejects_invalid_duplicate_and_out_of_span_positions() {
+        let fixture = fixture();
+        let case = fixture
+            .cases
+            .iter()
+            .find(|case| case.id == "clear_direct_probe")
+            .unwrap();
+        let release = release_reference(case, &fixture.policy, &fixture.vehicle);
+        let touchdown = touchdown_reference(case, &fixture.vehicle);
+        let valid = Vec2::new((release.x + touchdown.x) * 0.5, release.y + 20.0);
+
+        let non_finite = Vec2::new(valid.x, f64::NAN);
+        let error =
+            evaluate_one_waypoint_case_v2(&fixture.policy, &fixture.vehicle, case, &[non_finite])
+                .unwrap_err();
+        assert!(error.contains("must be finite"));
+
+        let error =
+            evaluate_one_waypoint_case_v2(&fixture.policy, &fixture.vehicle, case, &[valid, valid])
+                .unwrap_err();
+        assert!(error.contains("duplicate positions"));
+
+        let error = evaluate_one_waypoint_case_v2(
+            &fixture.policy,
+            &fixture.vehicle,
+            case,
+            &[Vec2::new(release.x, valid.y)],
+        )
+        .unwrap_err();
+        assert!(error.contains("strictly within"));
+    }
+
+    #[test]
+    fn one_waypoint_case_v2_is_deterministic_for_generic_probe_and_positions() {
+        let fixture = fixture();
+        let case = fixture
+            .cases
+            .iter()
+            .find(|case| case.id == "clear_direct_probe")
+            .unwrap();
+        let release = release_reference(case, &fixture.policy, &fixture.vehicle);
+        let touchdown = touchdown_reference(case, &fixture.vehicle);
+        let positions = [Vec2::new((release.x + touchdown.x) * 0.5, release.y + 20.0)];
+        let first =
+            evaluate_one_waypoint_case_v2(&fixture.policy, &fixture.vehicle, case, &positions)
+                .expect("valid generic waypoint search");
+        let second =
+            evaluate_one_waypoint_case_v2(&fixture.policy, &fixture.vehicle, case, &positions)
+                .expect("same generic waypoint search");
+        assert_eq!(first, second);
+        assert_eq!(first.waypoint_position_count, 1);
+        assert_eq!(first.leg_duration_pair_count, 16);
+        assert!(first.candidate_count <= first.max_candidates);
+        assert_eq!(
+            first.certified_candidate_count,
+            usize::from(first.selected_candidate.is_some())
+        );
+        if let Some(selected) = &first.selected_candidate {
+            assert_eq!(selected.classification, CertificationV2::Certified);
+            assert_eq!(
+                first.selected_candidate_identity.as_deref(),
+                Some(selected.identity.as_str())
+            );
+        } else {
+            assert_eq!(first.certified_candidate_count, 0);
+            assert!(first.candidates.is_empty());
+        }
+    }
+
+    #[test]
+    fn frozen_ridge_canary_and_waypoint_search_identities_are_pinned() {
+        let canary = &evaluation().ridge_canary;
+        assert_eq!(canary.identity, "fnv1a64:43f7e8bb46696733");
+        assert_eq!(canary.waypoint_search.identity, "fnv1a64:402076b715be3322");
     }
 
     #[test]

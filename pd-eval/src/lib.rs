@@ -110,6 +110,24 @@ pub use candidate_replay::*;
 mod final_landing_audit;
 pub use final_landing_audit::*;
 
+mod waypoint_direct_characterization;
+pub use waypoint_direct_characterization::*;
+
+pub mod waypoint_direct_primitive_analytical;
+pub use waypoint_direct_primitive_analytical::*;
+
+pub mod waypoint_direct_topology_sweep;
+pub use waypoint_direct_topology_sweep::*;
+
+pub mod waypoint_direct_topology_boundary;
+pub use waypoint_direct_topology_boundary::*;
+
+pub mod waypoint_direct_controller_comparison;
+pub use waypoint_direct_controller_comparison::*;
+
+pub mod waypoint_direct_nominal_plant;
+pub use waypoint_direct_nominal_plant::*;
+
 mod controller_shadow;
 pub use controller_shadow::*;
 

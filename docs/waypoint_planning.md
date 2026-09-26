@@ -17,6 +17,52 @@ each single `pd_plan::plan` call without making timing part of deterministic
 plan or batch identity. The maintained terminal, direct-transfer, and authored
 waypoint gates also reproduced their declared baselines.
 
+An opt-in post-closure
+[direct-route characterization](waypoint_direct_characterization.md) now
+records a narrower modeling mismatch without revising those retained V1
+results. V1 rejects continuous flat, uphill, and downhill terrain because its
+exact direct corridor follows the endpoint-shaped pad-to-pad chord, while the
+unchanged direct controller lands all three by flying a lofted trajectory. The
+same artifact retains bounded ridge and mesa controls, separates planner and
+controller claims, and deliberately does not choose or implement a V2 leg
+profile or certificate.
+
+The follow-on opt-in
+[direct-leg primitive research](waypoint_direct_primitive_research.md) mapped
+the existing V2 source-bridge/coast/terminal-bridge certificate onto those
+five exact inputs with their 90 s mission horizon. Flat, uphill, and downhill
+all passed the direct-certificate gate. A fixed 24-cell obstacle sweep then
+certified a direct route in every cell, while the unchanged `transfer_pdg`
+controller landed on the 12 lower obstacles and crashed on the 12 taller
+ones. The analytical profile is a candidate for direct-leg work; the observed
+split is a controller/profile-tracking question, not demonstrated waypoint
+demand or a production planner decision.
+
+### Latest direct-planning research checkpoint (2026-09-25)
+
+The latest result is the opt-in
+[complete-flat direct acceptance gate](waypoint_direct_complete_flat_acceptance_protocol.md),
+not a change to `pd_plan::plan()`. It composes a contact-safe launch, a reseeded
+source bridge with paired held-60 Hz commands, the ballistic coast, and the
+terminal bridge into a new identity-bound witness. Four of nine flown wrappers
+pass the full nominal gate on uncut flat terrain. Five shorter wrappers crash
+at target contact and are rejected before ranking; the fastest accepted
+wrapper plans `34.35 s` and lands at `34.275 s`.
+
+Keep the evidence levels separate: the earlier V2 analytical certificates
+retain their original classifications, the original source-contact failures
+remain valid, and the new launch-aware wrappers are nominal simulator witnesses
+rather than V2 certificates or robustness proofs. The
+[direct-first boundary protocol](ballistic_direct_first_decision_protocol.md)
+also records an analytical direct-to-waypoint boundary, but its controller
+execution slice has not passed its exact-trajectory compatibility gate.
+
+The next separately scoped question is reusable direct-witness generation for
+new inputs, followed by held-out flat/uphill/downhill execution under the same
+acceptance rule. Waypoint composition and default/controller integration come
+later; neither a controller crash nor finite direct-family exhaustion proves
+that every physically possible direct transfer is blocked.
+
 ### Post-closure expansion finding
 
 The first diagnostic nominal-radius `r-60 | r+60` expansion exposed a boundary
@@ -37,8 +83,9 @@ The model, corrected results, limitations, and escalation gate are recorded in
 The follow-on [source-departure/acquisition execution contract](source_departure_execution_contract.md)
 closes the design prerequisites with an initial-state pad-departure/acquisition
 contract, neutral source and route-wide evidence artifacts, explicit tri-state
-phase composition, and a blinded implementation sequence. It remains
-unimplemented and does not reopen V1 closure.
+phase composition, and a blinded implementation sequence. D0a/D0b observational
+evidence is implemented; the planner-facing predictive capability from D2
+onward remains blocked and unimplemented. This does not reopen V1 closure.
 
 This document defines the first waypoint-planning slice above the closed
 terminal, direct-transfer, and preplanned-waypoint guidance stack. It owns the

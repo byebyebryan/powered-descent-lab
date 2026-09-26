@@ -1,5 +1,94 @@
 # Progress
 
+## 2026-09-25
+
+### Complete nominal flat direct acceptance checkpoint
+
+- The direct-planning research chain now separates ordinary V1 chord decisions,
+  analytical V2 certificates, controller observations, and complete nominal
+  command-witness acceptance. The
+  [direct-first boundary study](ballistic_direct_first_decision_protocol.md)
+  retained seven analytical direct cells, five analytical one-waypoint cells,
+  and a valid unknown control; its original selected-profile execution gate
+  remains stopped at the documented source-contact failure.
+- Launch-aware wrappers have new identities. Fixed launch, reseeded source
+  bridges, source-duration screens, authoritative contact audits, and bounded
+  paired 60 Hz source commands lead to the separately scoped
+  [complete-flat acceptance gate](waypoint_direct_complete_flat_acceptance_protocol.md).
+  The fifteen-row family retains six analytical skips and nine replays. Four
+  wrappers pass all gates; five research-shortest wrappers clear departure but
+  crash at target contact and cannot participate in selection.
+- Selection chooses native row 1, wrapper `fnv1a64:b805659d7f10768c`, at
+  `34.35 s` planned time and `34.275 s` stable target contact, without a floor
+  cutaway. The complete result identity is `fnv1a64:ba51ace2c0bf1d08`;
+  independent fresh-path summaries are byte-identical.
+- This closes only the known-flat nominal acceptance/selection question.
+  Reusable generation, held-out flat/uphill/downhill execution, robustness,
+  and controller/default integration remain open. The tightest touchdown
+  predicate margin is about `0.0167 m`; no robust certificate is claimed.
+- Validation passed 677 workspace tests, focused module/CLI tests, strict
+  Clippy, formatting, and diff checks. V1/default selection, controllers,
+  core physics/contact rules, F6, and frozen historical artifacts are unchanged.
+
+## 2026-09-23
+
+### Bounded direct-leg primitive research pass
+
+- Added a generic single-case entry to the existing V2 bridge/coast
+  certificate and a bounded generic one-waypoint search, keeping the frozen
+  ridge-canary identities unchanged. The shared analytical policy uses the
+  characterization missions' 90 s horizon; the vehicle, physics rate,
+  gravity, duration multipliers, and other V2 policy fields are fixed.
+- The opt-in five-case analytical baseline passed its flat/uphill/downhill
+  gate with `3 / 4`, `2 / 4`, and `2 / 4` certified direct candidates. The
+  narrow-ridge and broad-mesa controls each certified `3 / 4`.
+- The frozen 24-cell normalized obstacle sweep certified a direct route in
+  every cell. Each height tier of six cells certified `3`, `3`, `2`, and `1`
+  direct candidates per cell, respectively; no one-waypoint fallback was
+  eligible. Analytical artifact identity: `fnv1a64:1bcd5a3bd6c6da01`.
+- The separately sealed, unchanged `transfer_pdg` comparison landed on all
+  `12 / 12` cells at 80 m and 160 m obstacle height, and crashed on all
+  `12 / 12` cells at 240 m and 320 m, with negative sampled en-route hull
+  clearance on every crash. Two controller summaries were byte-identical;
+  comparison identity: `fnv1a64:3569ec11f2645656`.
+- The bounded result supports a shared analytical direct-leg primitive but
+  exposes a profile-tracking gap on taller terrain. It does not demonstrate
+  operational waypoint demand, select a production planner, or alter ordinary
+  planner/controller/F6 behavior or defaults. The protocol and limits are in
+  [Direct-leg primitive research](waypoint_direct_primitive_research.md).
+- Final validation passed 616 workspace tests, strict Clippy, formatting,
+  and diff checks. The legacy characterization JSON/HTML/SVG remained
+  byte-identical, and two controller-comparison runs produced byte-identical
+  summaries.
+
+## 2026-09-22
+
+### Waypoint direct-route characterization checkpoint
+
+- Added the opt-in `waypoint-direct-characterization` evaluator and static
+  HTML/SVG report. The artifact freezes five deterministic rows: continuous
+  flat `r00`, uphill `r+30`, downhill `r-30`, a bounded narrow ridge, and a
+  bounded broad mesa. All rows use one shared vehicle, planner policy,
+  controller, radius, cadence, and construction protocol.
+- Locked the evidence vocabulary without changing planner behavior: `Direct`
+  means zero operational handoffs; future leg profiles or certificates remain
+  separate from `TransferRouteSpec` waypoints; typed planner rejection, exact
+  direct-chord clearance, sampled controller execution, and the unmapped
+  conservative-ballistic lane remain distinct claims.
+- The unchanged V1 planner rejects all five rows with
+  `no_route_within_policy`. The exact direct-chord margins are about `-25.40 m`
+  on flat terrain, `-51.15 m` uphill and downhill, and `-205.40 m` for both
+  obstacle controls. The unchanged `transfer_pdg` controller lands all five;
+  sampled en-route hull-clearance minima are about `99.74 m`, `187.66 m`,
+  `159.59 m`, `32.28 m`, and `17.46 m`, respectively.
+- This closes the baseline-mismatch characterization only. It does not revise
+  retained V1 evidence, select or implement a V2 per-leg profile, adapt the
+  frozen conservative-ballistic fixture, change default selection, or alter
+  controller/F6 behavior.
+- Two fresh runs produced byte-identical semantic JSON and SVG previews. Final
+  validation passed `592` workspace tests, strict Clippy, formatting, and
+  `git diff --check`.
+
 ## 2026-09-14
 
 ### F6 closure alignment
