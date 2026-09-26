@@ -41,27 +41,37 @@ demand or a production planner decision.
 ### Latest direct-planning research checkpoint (2026-09-25)
 
 The latest result is the opt-in
-[complete-flat direct acceptance gate](waypoint_direct_complete_flat_acceptance_protocol.md),
-not a change to `pd_plan::plan()`. It composes a contact-safe launch, a reseeded
-source bridge with paired held-60 Hz commands, the ballistic coast, and the
-terminal bridge into a new identity-bound witness. Four of nine flown wrappers
-pass the full nominal gate on uncut flat terrain. Five shorter wrappers crash
-at target contact and are rejected before ranking; the fastest accepted
-wrapper plans `34.35 s` and lands at `34.275 s`.
+[input-driven nominal direct generator](waypoint_direct_generation_results.md),
+not a change to `pd_plan::plan()`. It generates a contact-safe launch, reseeded
+source bridge with paired held-60 Hz commands, ballistic coast, and terminal
+bridge from scenario inputs alone. Gate A exactly reproduced the
+[known-flat acceptance checkpoint](waypoint_direct_complete_flat_acceptance_protocol.md):
+four of nine flown wrappers accepted, with a `34.35 s` planned winner and
+`34.275 s` stable target contact. Historical adapters retain their original
+artifact bytes.
+
+After Gate A and code freeze, all six predeclared 600/1,000 m flat/uphill/
+downhill cases passed under one unchanged policy, without cutaways or
+retuning. The finite family retained 120 rows, 76 full schedules, and 28
+accepted witnesses. Forty-eight target-contact crashes were rejected before
+ranking. Two fresh runs produced byte-identical complete artifacts.
 
 Keep the evidence levels separate: the earlier V2 analytical certificates
 retain their original classifications, the original source-contact failures
 remain valid, and the new launch-aware wrappers are nominal simulator witnesses
-rather than V2 certificates or robustness proofs. The
+rather than V2 certificates or robustness proofs. The smallest selected
+fresh-case hull-penetration margin is only about `+2.245 mm`; nominal success
+must not be promoted to robust or production/default authority. The
 [direct-first boundary protocol](ballistic_direct_first_decision_protocol.md)
 also records an analytical direct-to-waypoint boundary, but its controller
 execution slice has not passed its exact-trajectory compatibility gate.
 
-The next separately scoped question is reusable direct-witness generation for
-new inputs, followed by held-out flat/uphill/downhill execution under the same
-acceptance rule. Waypoint composition and default/controller integration come
-later; neither a controller crash nor finite direct-family exhaustion proves
-that every physically possible direct transfer is blocked.
+The input-driven nominal baseline question is now closed at this bounded
+six-case gate. A separate obstacle-boundary pass may be planned next, while
+robust contact, arbitrary incoming waypoint states, waypoint composition, and
+default/controller integration remain open. Neither a controller crash nor
+finite direct-family exhaustion proves that every physically possible direct
+transfer is blocked; the latter remains an explicit `unknown`.
 
 ### Post-closure expansion finding
 

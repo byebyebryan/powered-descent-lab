@@ -2,6 +2,38 @@
 
 ## 2026-09-25
 
+### Input-driven nominal ballistic-direct generation checkpoint
+
+- Added an opt-in scenario-input generator using shared physical helpers,
+  fixed launch/source-duration/paired-command policy, independent complete
+  witness verification, and accepted-only ranking. Historical summaries are
+  comparison references, never generation inputs. The contract and complete
+  result are in [the protocol](waypoint_direct_generation_protocol.md) and
+  [the results](waypoint_direct_generation_results.md).
+- Gate A reproduced all nine historical paired schedules and all fifteen
+  corresponding physical acceptance rows exactly. Four complete witnesses
+  remain accepted; the native `-180` winner still plans `34.35 s` and lands at
+  `34.275 s`. Both historical adapters also reproduced their original bytes.
+- After Gate A acceptance and code freeze, all six predeclared 600/1,000 m
+  flat/uphill/downhill cases passed with continuous terrain, no cutaway, and
+  no retuning. The family retained 120 rows: 44 analytical skips, 76 complete
+  schedules, 28 accepted witnesses, and 48 target-contact crash rejections.
+  Every case has a selected stable target landing; no source-first-step crash
+  occurred in these complete schedules.
+- Two fresh runs produced byte-identical gate summaries and all six complete
+  case artifacts. Fresh gate identity: `fnv1a64:5826978a52f72e3f`. The sealed
+  manifest and historical reference digests are unchanged.
+- This closes the scoped input-driven nominal baseline question, not general
+  robustness or production integration. The 1,000 m uphill selected witness
+  has only about `+2.245 mm` hull-penetration margin under the current core
+  contact rule. Arbitrary incoming waypoint states are unsupported; finite
+  direct exhaustion remains `unknown`, not proof of waypoint demand.
+- Final validation passed 691 workspace tests in twelve suites, strict
+  all-target workspace Clippy, formatting, and diff checks. V1/default
+  planning, controllers, core physics/contact rules, V2 classifications, and
+  F6 are unchanged. No commit, push, deployment, obstacle expansion, or
+  waypoint composition was performed in this pass.
+
 ### Complete nominal flat direct acceptance checkpoint
 
 - The direct-planning research chain now separates ordinary V1 chord decisions,

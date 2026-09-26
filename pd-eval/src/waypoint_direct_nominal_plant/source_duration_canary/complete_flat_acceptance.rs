@@ -15,9 +15,8 @@ use pd_core::{
 use pd_plan::conservative_ballistic_bridge::{KinematicStateV2, PadInputV2};
 use serde::{Deserialize, Serialize};
 
-use super::super::flat_candidate_closure::CoupledThrustAuditCandidateInput;
 use super::super::{
-    CommandSaturationEvidence, PlantStateEvidence, RolloutCadence,
+    CommandSaturationEvidence, NominalProfile, PlantStateEvidence, RolloutCadence,
     WaypointDirectCoupledThrustAuditInputGateEvidence,
     launch_contact_contract::{
         FirstContactEvidence, FirstContactPredicateMarginsEvidence, ReplayTraceParityEvidence,
@@ -316,6 +315,41 @@ struct PreparedAcceptanceInputs {
     paired: WaypointDirectSourceDurationPairedCommandFeasibilityArtifact,
 }
 
+/// Physical verifier inputs, independent of historical summary adapters.
+pub(in crate::waypoint_direct_nominal_plant) struct CompleteWitnessVerifierRequest<'a> {
+    pub context: &'a RunContext,
+    pub scenario: &'a pd_core::ScenarioSpec,
+    pub probe: &'a pd_plan::conservative_ballistic_bridge::DirectBridgeProbeV2,
+    pub candidate: &'a pd_plan::conservative_ballistic_bridge::DirectBridgeCandidateV2,
+    pub selected: &'a super::super::PreparedProfileCandidate,
+    pub profile: &'a NominalProfile,
+    pub source_pad: &'a PadInputV2,
+    pub target_pad: &'a PadInputV2,
+    pub policy: &'a pd_plan::conservative_ballistic_bridge::DirectBridgePolicyV2,
+    pub row_index: usize,
+    pub basis_candidate_identity: &'a str,
+    pub source_bridge_tick_count: u64,
+    pub source_handoff: KinematicStateV2,
+    pub launch: &'a LaunchEvidence,
+    pub reseeded_bridge: &'a Option<super::super::launch_feasibility::ReseededBridgeEvidence>,
+    pub schedule: &'a PairedScheduleEvidence,
+    pub scenario_identity: &'a str,
+    pub baseline_replay_parity: bool,
+    pub identity_bindings: CompleteWitnessIdentityBindings<'a>,
+}
+
+#[derive(Clone, Copy)]
+pub(in crate::waypoint_direct_nominal_plant) enum CompleteWitnessIdentityBindings<'a> {
+    Historical {
+        source_duration_identity: &'a str,
+        paired_command_identity: &'a str,
+    },
+    Generated {
+        request_identity: &'a str,
+        generation_policy_identity: &'a str,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct ExpectedRowBinding {
     row_index: usize,
@@ -361,6 +395,8 @@ struct NeutralReplayOutcome {
     first_contact: Option<FirstContactEvidence>,
     first_contact_margins: Option<FirstContactPredicateMarginsEvidence>,
     saturation: CommandSaturationEvidence,
+    source_handoff_state: Option<PlantStateEvidence>,
+    phase_boundaries_match: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -423,6 +459,13 @@ struct ReplayLogTick<'a> {
     commanded_throttle_frac: f64,
     attitude_before_step_rad: f64,
     logged_applied_throttle_frac: Option<f64>,
+}
+
+struct NeutralSourceReference<'a> {
+    source_commands: &'a [super::paired_command_feasibility::HeldCommandEvidence],
+    profile: &'a NominalProfile,
+    source_bridge_tick_count: u64,
+    verify_generated_reference: bool,
 }
 
 /// Rebuild the sealed source family and validate the paired schedule summary.
@@ -1030,29 +1073,69 @@ fn run_wrapper(
             binding.row_index
         )
     })?;
-    let rollout = schedule.full_flight_rollout.as_ref().ok_or_else(|| {
-        anyhow!(
-            "validated rollout for row {} disappeared",
-            binding.row_index
-        )
-    })?;
-    let launch = analysis.launch.clone();
-    let reseeded_bridge = analysis.reseeded_bridge.clone();
+    let scenario_identity = stable_digest(&prepared.source.validated.flat_case.scenario)?;
+    verify_complete_witness(&CompleteWitnessVerifierRequest {
+        context,
+        scenario: &prepared.source.validated.flat_case.scenario,
+        probe: &prepared.source.validated.flat_case.probe,
+        candidate: &candidate_input.candidate,
+        selected: &candidate_input.selected_profile,
+        profile: &candidate_input.selected_profile.profile,
+        source_pad: &prepared.source.validated.flat_case.probe.source,
+        target_pad: &prepared.source.validated.flat_case.probe.target,
+        policy: &prepared.source.validated.policy,
+        row_index: binding.row_index,
+        basis_candidate_identity: &binding.candidate_identity,
+        source_bridge_tick_count: binding.source_bridge_tick_count,
+        source_handoff: binding.source_handoff,
+        launch: &analysis.launch,
+        reseeded_bridge: &analysis.reseeded_bridge,
+        schedule,
+        scenario_identity: &scenario_identity,
+        baseline_replay_parity: paired_row.baseline_pair.as_ref().is_some_and(|pair| {
+            pair.both_match_frozen_canary
+                && pair.direct_120_hz.replay_trace.passed
+                && pair.held_60_hz.replay_trace.passed
+        }),
+        identity_bindings: CompleteWitnessIdentityBindings::Historical {
+            source_duration_identity,
+            paired_command_identity,
+        },
+    })
+}
+
+pub(in crate::waypoint_direct_nominal_plant) fn verify_complete_witness(
+    request: &CompleteWitnessVerifierRequest<'_>,
+) -> Result<CompleteFlatWrapperEvidence> {
+    let context = request.context;
+    let profile = request.profile;
+    let schedule = request.schedule;
+    let source_pad = request.source_pad;
+    let target_pad = request.target_pad;
+    let policy = request.policy;
+    let row_index = request.row_index;
+    let source_bridge_tick_count = request.source_bridge_tick_count;
+    let generated = matches!(
+        request.identity_bindings,
+        CompleteWitnessIdentityBindings::Generated { .. }
+    );
+    let rollout = schedule
+        .full_flight_rollout
+        .as_ref()
+        .ok_or_else(|| anyhow!("validated rollout for row {} disappeared", row_index))?;
+    let launch = request.launch.clone();
+    let reseeded_bridge = request.reseeded_bridge.clone();
     let run = LaunchFeasibilityCadenceRunEvidence {
         cadence: HELD_CADENCE.to_owned(),
         launch: launch.clone(),
         reseeded_bridge,
         rollout: rollout.clone(),
     };
-    let stored_trace = schedule.full_flight_replay_trace.clone().ok_or_else(|| {
-        anyhow!(
-            "stored replay trace for row {} disappeared",
-            binding.row_index
-        )
-    })?;
+    let stored_trace = schedule
+        .full_flight_replay_trace
+        .clone()
+        .ok_or_else(|| anyhow!("stored replay trace for row {} disappeared", row_index))?;
     let replay = replay_logged_cadence(context, &run)?;
-    let source_pad = &prepared.source.validated.flat_case.probe.source;
-    let target_pad = &prepared.source.validated.flat_case.probe.target;
     let source_bounds = flat_pad_bounds(context, source_pad);
     let target_bounds = flat_pad_bounds(context, target_pad);
     let neutral = neutral_replay_and_clearance(
@@ -1061,11 +1144,14 @@ fn run_wrapper(
         ClearancePolicy {
             source_pad: source_bounds,
             target_pad: target_bounds,
-            minimum_clearance_m: prepared.source.validated.policy.minimum_clearance_m,
+            minimum_clearance_m: policy.minimum_clearance_m,
         },
-        &schedule.commands,
-        candidate_input,
-        binding.source_bridge_tick_count,
+        NeutralSourceReference {
+            source_commands: &schedule.commands,
+            profile,
+            source_bridge_tick_count,
+            verify_generated_reference: generated,
+        },
         &replay,
     )?;
     let first_contact = replay.first_contact.clone();
@@ -1082,17 +1168,77 @@ fn run_wrapper(
     let replay_trace_matches =
         stored_trace == replay.trace && stored_trace.passed && replay.trace.passed;
     let frozen_launch_matches =
-        neutral.evidence.contiguous_from_step_one && run.launch == analysis.launch;
-    let source_position_error = schedule.position_error_m;
-    let source_velocity_error = schedule.velocity_error_mps;
+        neutral.evidence.contiguous_from_step_one && run.launch == *request.launch;
+    let source_position_error = if generated {
+        neutral
+            .source_handoff_state
+            .as_ref()
+            .map(|state| distance(state.position_m, request.source_handoff.position_m))
+    } else {
+        schedule.position_error_m
+    };
+    let source_velocity_error = if generated {
+        neutral
+            .source_handoff_state
+            .as_ref()
+            .map(|state| distance(state.velocity_mps, request.source_handoff.velocity_mps))
+    } else {
+        schedule.velocity_error_mps
+    };
+    let independently_matched_endpoint = source_endpoint_matches(
+        neutral.source_handoff_state.as_ref(),
+        schedule.endpoint_state.as_ref(),
+    );
     let strict_handoff = schedule.screens.source_handoff_reached
         && schedule.screens.source_contact_free
         && source_position_error
             .is_some_and(|error| error.is_finite() && error <= STRICT_HANDOFF_TOLERANCE_M)
         && source_velocity_error
-            .is_some_and(|error| error.is_finite() && error <= STRICT_HANDOFF_TOLERANCE_MPS);
-    let launch_to_source_join = launch_join_passed(&launch, &run, &analysis.reseeded_bridge);
-    let source_screens = source_screens_passed(schedule);
+            .is_some_and(|error| error.is_finite() && error <= STRICT_HANDOFF_TOLERANCE_MPS)
+        && (!generated || independently_matched_endpoint && neutral.phase_boundaries_match);
+    let launch_to_source_join = launch_join_passed(&launch, &run, request.reseeded_bridge);
+    let independent_source = if generated {
+        let vehicle = super::super::vehicle_input_v2(&context.vehicle);
+        Some(
+            super::paired_command_feasibility::replay_source_schedule_screens_from_physical(
+                &super::paired_command_feasibility::PhysicalScheduleScreenReplayRequest {
+                    scenario: request.scenario,
+                    probe: request.probe,
+                    policy,
+                    vehicle: &vehicle,
+                    candidate: request.candidate,
+                    selected: request.selected,
+                    source_bridge_tick_count,
+                    launch_tilt_attitude_rad: request.launch.commanded_tilt_attitude_rad,
+                    commands: &schedule.commands,
+                },
+            )?,
+        )
+    } else {
+        None
+    };
+    let independently_verified_source_screens = independent_source.as_ref().is_none_or(|source| {
+        source.screens == schedule.screens
+            && source.screens.passed
+            && source.source_handoff_reached
+            && source.source_handoff_contact_free
+            && source.screens.strict_position_passed
+            && source.screens.strict_velocity_passed
+            && source.replay_trace.passed
+            && source.launch == *request.launch
+            && source.reseeded_bridge == *request.reseeded_bridge
+    });
+    let independent_prefix = independent_source.as_ref().is_none_or(|source| {
+        source.source_rollout.per_step.as_slice()
+            == rollout
+                .per_step
+                .get(..source.source_rollout.per_step.len())
+                .unwrap_or_default()
+            && source.source_rollout.per_step.len() as u64 == source_bridge_tick_count
+            && source.source_handoff_position_error_m == source_position_error
+            && source.source_handoff_velocity_error_mps == source_velocity_error
+    });
+    let source_screens = source_screens_passed(schedule) && independently_verified_source_screens;
     let prefix_parity = schedule.scheduled_source_prefix_parity.passed
         && schedule
             .scheduled_source_prefix_parity
@@ -1111,7 +1257,9 @@ fn run_wrapper(
             .source_contacts_match
         && schedule
             .scheduled_source_prefix_parity
-            .launch_and_bridge_match;
+            .launch_and_bridge_match
+        && (!generated || independently_matched_endpoint && neutral.phase_boundaries_match)
+        && independent_prefix;
     let supported_rest = supported_source_pad_rest(context, source_pad, &source_bounds);
     let first_contact_is_stable_target = first_contact
         .as_ref()
@@ -1131,7 +1279,7 @@ fn run_wrapper(
         neutral.terminal_entry_state.as_ref(),
         &neutral.clearance_scan,
     );
-    let terminal_handoff_descending = frozen_terminal_handoff_descending(candidate_input)
+    let terminal_handoff_descending = frozen_terminal_handoff_descending(profile)
         && neutral
             .terminal_entry_state
             .as_ref()
@@ -1141,19 +1289,12 @@ fn run_wrapper(
     let actual_touchdown_fuel_remaining = actual_touchdown.map(|state| state.fuel_kg);
     let actual_touchdown_fuel_used =
         actual_touchdown.map(|state| context.vehicle.initial_fuel_kg - state.fuel_kg);
-    let basis = prepared
-        .source
-        .frozen
-        .bases
-        .get(binding.row_index / 5)
-        .ok_or_else(|| anyhow!("frozen basis for row {} disappeared", binding.row_index))?;
     let physics_hz = f64::from(context.sim.physics_hz);
     let planned_total_time = (LAUNCH_TICKS
-        + binding.source_bridge_tick_count
-        + basis.frozen_coast_tick_count
-        + basis.frozen_terminal_bridge_tick_count) as f64
+        + source_bridge_tick_count
+        + profile.accounting.coast_tick_count
+        + profile.accounting.terminal_bridge_sample_count) as f64
         / physics_hz;
-    let policy = &prepared.source.validated.policy;
     let actual_budget_passed = actual_touchdown_time.is_some_and(|time| {
         time.is_finite()
             && time <= policy.maximum_mission_time_s
@@ -1161,9 +1302,8 @@ fn run_wrapper(
             && time <= policy.mission_budget_s()
     }) && actual_touchdown_fuel_remaining
         .is_some_and(|fuel| fuel.is_finite() && fuel >= 0.0)
-        && actual_touchdown_fuel_used.is_some_and(|fuel| {
-            fuel.is_finite() && fuel <= prepared.source.validated.vehicle.initial_fuel_kg
-        })
+        && actual_touchdown_fuel_used
+            .is_some_and(|fuel| fuel.is_finite() && fuel <= context.vehicle.initial_fuel_kg)
         && rollout.saturation.below_minimum_saturation_count == 0
         && rollout.saturation.above_maximum_saturation_count == 0
         && rollout.saturation.fuel_burn_capped_tick_count == 0
@@ -1183,11 +1323,7 @@ fn run_wrapper(
         && stored_first_contact_matches
         && schedule_margins_match
         && frozen_launch_matches
-        && paired_row.baseline_pair.as_ref().is_some_and(|pair| {
-            pair.both_match_frozen_canary
-                && pair.direct_120_hz.replay_trace.passed
-                && pair.held_60_hz.replay_trace.passed
-        });
+        && request.baseline_replay_parity;
     let clearance_passed = neutral.clearance_scan.all_airborne_states_passed;
     let gates = CompleteFlatAcceptanceGatesEvidence {
         supported_source_pad_rest_state: supported_rest,
@@ -1229,7 +1365,7 @@ fn run_wrapper(
             .map(|state| state.physics_step),
         _ => None,
     });
-    let scenario_identity = stable_digest(&prepared.source.validated.flat_case.scenario)?;
+    let scenario_identity = request.scenario_identity.to_owned();
     let old_policy_identity = stable_digest(policy)?;
     let acceptance_policy_identity = stable_digest(&AcceptancePolicyIdentityInput {
         frozen_policy: policy,
@@ -1249,20 +1385,48 @@ fn run_wrapper(
     let tail_command_identity_rows = rollout
         .per_step
         .iter()
-        .filter(|tick| tick.physics_step > LAUNCH_TICKS + binding.source_bridge_tick_count)
+        .filter(|tick| tick.physics_step > LAUNCH_TICKS + source_bridge_tick_count)
         .map(logged_command_identity)
         .collect::<Vec<_>>();
     let tail_command_schedule_identity = stable_digest(&tail_command_identity_rows)?;
-    let profile_identity = frozen_tail_profile_identity(candidate_input)?;
+    let profile_identity = frozen_tail_profile_identity(profile)?;
+    let (source_duration_identity, paired_command_identity, launch_rule) =
+        match request.identity_bindings {
+            CompleteWitnessIdentityBindings::Historical {
+                source_duration_identity,
+                paired_command_identity,
+            } => (
+                source_duration_identity.to_owned(),
+                paired_command_identity.to_owned(),
+                "frozen_72_tick_upright_then_tilt_source_pad_launch_v1",
+            ),
+            CompleteWitnessIdentityBindings::Generated {
+                request_identity, ..
+            } => (
+                stable_digest(&(
+                    "input_driven_source_program_v1",
+                    request_identity,
+                    request.basis_candidate_identity,
+                    source_bridge_tick_count,
+                    &launch,
+                ))?,
+                stable_digest(&(
+                    "input_driven_paired_command_schedule_v1",
+                    request_identity,
+                    schedule,
+                ))?,
+                "bounded_72_tick_upright_then_tilt_source_pad_launch_v1",
+            ),
+        };
     let identity_input = WrapperIdentityInput {
-        source_row_index: binding.row_index,
-        frozen_basis_identity: &binding.candidate_identity,
-        source_duration_identity,
-        paired_command_identity,
+        source_row_index: row_index,
+        frozen_basis_identity: request.basis_candidate_identity,
+        source_duration_identity: &source_duration_identity,
+        paired_command_identity: &paired_command_identity,
         scenario_identity: &scenario_identity,
         policy_identity: &old_policy_identity,
         acceptance_policy_identity: &acceptance_policy_identity,
-        launch_rule: "frozen_72_tick_upright_then_tilt_source_pad_launch_v1",
+        launch_rule,
         cadence: HELD_CADENCE,
         geometry_convention: GEOMETRY_CONVENTION,
         launch_schedule_identity: &launch_schedule_identity,
@@ -1270,10 +1434,21 @@ fn run_wrapper(
         tail_command_schedule_identity: &tail_command_schedule_identity,
         frozen_tail_profile_identity: &profile_identity,
     };
-    let wrapper_identity = stable_digest(&identity_input)?;
+    let wrapper_identity = match request.identity_bindings {
+        CompleteWitnessIdentityBindings::Historical { .. } => stable_digest(&identity_input)?,
+        CompleteWitnessIdentityBindings::Generated {
+            request_identity,
+            generation_policy_identity,
+        } => stable_digest(&(
+            "input_driven_complete_nominal_direct_witness_v1",
+            request_identity,
+            generation_policy_identity,
+            &identity_input,
+        ))?,
+    };
     let provenance = CompleteFlatWrapperProvenanceEvidence {
-        source_row_index: binding.row_index,
-        frozen_basis_identity: binding.candidate_identity.clone(),
+        source_row_index: row_index,
+        frozen_basis_identity: request.basis_candidate_identity.to_owned(),
         source_duration_identity: source_duration_identity.to_owned(),
         paired_command_identity: paired_command_identity.to_owned(),
         scenario_identity: scenario_identity.clone(),
@@ -1342,6 +1517,21 @@ fn source_screens_passed(schedule: &PairedScheduleEvidence) -> bool {
         && screens.aggregate_time_passed
         && screens.strict_position_passed
         && screens.strict_velocity_passed
+}
+
+fn source_endpoint_matches(
+    actual: Option<&PlantStateEvidence>,
+    stored: Option<&super::paired_command_feasibility::EndpointStateEvidence>,
+) -> bool {
+    actual.zip(stored).is_some_and(|(actual, stored)| {
+        actual.physics_step == stored.physics_step
+            && actual.sim_time_s == stored.sim_time_s
+            && actual.position_m == stored.position_m
+            && actual.velocity_mps == stored.velocity_mps
+            && actual.attitude_rad == stored.attitude_rad
+            && actual.angular_rate_radps == stored.angular_rate_radps
+            && actual.fuel_kg == stored.fuel_kg
+    })
 }
 
 fn launch_join_passed(
@@ -1586,8 +1776,8 @@ fn terminal_entry_passed(
     body_points_clear(context, &state).unwrap_or_default()
 }
 
-fn frozen_terminal_handoff_descending(candidate: &CoupledThrustAuditCandidateInput) -> bool {
-    frozen_terminal_handoff(candidate).is_some_and(|state| state.velocity_mps.y < 0.0)
+fn frozen_terminal_handoff_descending(profile: &NominalProfile) -> bool {
+    frozen_terminal_handoff(profile).is_some_and(|state| state.velocity_mps.y < 0.0)
 }
 
 fn frozen_tail_profile_index(
@@ -1600,10 +1790,7 @@ fn frozen_tail_profile_index(
     usize::try_from(tail_start.checked_add(tail_offset)?).ok()
 }
 
-fn frozen_terminal_handoff(
-    candidate: &CoupledThrustAuditCandidateInput,
-) -> Option<KinematicStateV2> {
-    let profile = &candidate.selected_profile.profile;
+fn frozen_terminal_handoff(profile: &NominalProfile) -> Option<KinematicStateV2> {
     let terminal_index = profile
         .ticks
         .iter()
@@ -1614,8 +1801,7 @@ fn frozen_terminal_handoff(
         .map(|tick| tick.expected_state)
 }
 
-fn frozen_tail_profile_identity(candidate: &CoupledThrustAuditCandidateInput) -> Result<String> {
-    let profile = &candidate.selected_profile.profile;
+fn frozen_tail_profile_identity(profile: &NominalProfile) -> Result<String> {
     let start = usize::try_from(profile.accounting.source_bridge_sample_count)
         .map_err(|_| anyhow!("frozen tail profile start index exceeds usize"))?;
     let tail = profile
@@ -1963,11 +2149,15 @@ fn neutral_replay_and_clearance(
     context: &RunContext,
     run: &LaunchFeasibilityCadenceRunEvidence,
     clearance_policy: ClearancePolicy,
-    source_commands: &[super::paired_command_feasibility::HeldCommandEvidence],
-    candidate: &CoupledThrustAuditCandidateInput,
-    source_bridge_tick_count: u64,
+    source_reference: NeutralSourceReference<'_>,
     authoritative_replay: &ReplayTraceResult,
 ) -> Result<NeutralReplayOutcome> {
+    let NeutralSourceReference {
+        source_commands,
+        profile,
+        source_bridge_tick_count,
+        verify_generated_reference,
+    } = source_reference;
     let mut logs = Vec::with_capacity(run.launch.samples.len() + run.rollout.per_step.len());
     logs.extend(run.launch.samples.iter().map(|tick| ReplayLogTick {
         physics_step: tick.physics_step,
@@ -1999,6 +2189,8 @@ fn neutral_replay_and_clearance(
     let mut first_contact_classification = None;
     let mut first_contact_state = None;
     let mut terminal_entry_state = None;
+    let mut source_handoff_state = None;
+    let mut phase_boundaries_match = true;
     let mut first_mismatch = None;
     let mut expected_thrust_reference_coverage = true;
     let mut recomputed_saturation = empty_saturation();
@@ -2041,6 +2233,24 @@ fn neutral_replay_and_clearance(
         if tick.phase == "terminal_bridge" && terminal_entry_state.is_none() {
             terminal_entry_state = Some(plant_state_evidence(&neutral, context));
         }
+        let expected_phase = if tick.physics_step <= 60 {
+            "upright"
+        } else if tick.physics_step <= LAUNCH_TICKS {
+            "tilt"
+        } else if tick.physics_step <= LAUNCH_TICKS + source_bridge_tick_count {
+            "source_bridge"
+        } else {
+            frozen_tail_profile_index(
+                tick.physics_step,
+                source_bridge_tick_count,
+                profile.accounting.source_bridge_sample_count,
+            )
+            .and_then(|index| profile.ticks.get(index))
+            .map_or("missing_tail_reference", |tick| tick.phase.as_str())
+        };
+        if tick.phase != expected_phase {
+            phase_boundaries_match = false;
+        }
         let cadence = RolloutCadence::ControllerCadence;
         let (throttle_update_due, attitude_update_due) = component_update_schedule(
             SourceDurationHoldMode::Together,
@@ -2081,12 +2291,8 @@ fn neutral_replay_and_clearance(
             });
         }
         let pre_step_fuel_kg = neutral.fuel_kg;
-        let expected_thrust = expected_thrust_acceleration(
-            tick,
-            source_commands,
-            candidate,
-            source_bridge_tick_count,
-        );
+        let expected_thrust =
+            expected_thrust_acceleration(tick, source_commands, profile, source_bridge_tick_count);
         let expected_thrust = match expected_thrust {
             Ok(acceleration) => acceleration,
             Err(error) => {
@@ -2124,6 +2330,66 @@ fn neutral_replay_and_clearance(
                     recomputed_saturation.on_at_exact_minimum_count += 1;
                 }
                 ThrottleSaturation::None => {}
+            }
+            if verify_generated_reference
+                && throttle_update_due
+                && neutral.held_command.throttle_frac != desired.command_fraction
+            {
+                commands_match = false;
+                record_replay_mismatch(
+                    &mut first_mismatch,
+                    Some(tick.physics_step),
+                    "generated_throttle_reference",
+                    desired.command_fraction.to_string(),
+                    neutral.held_command.throttle_frac.to_string(),
+                );
+            }
+        }
+        if verify_generated_reference {
+            let reference_target = if tick.physics_step <= 60 {
+                Some(0.0)
+            } else if tick.physics_step <= LAUNCH_TICKS {
+                Some(run.launch.commanded_tilt_attitude_rad)
+            } else if tick.physics_step <= LAUNCH_TICKS + source_bridge_tick_count {
+                let pair_index =
+                    (tick.physics_step - LAUNCH_TICKS - 1) / COMMAND_HOLD_PHYSICS_TICKS;
+                source_commands
+                    .get(pair_index as usize)
+                    .filter(|command| {
+                        command.pair_index == pair_index as usize
+                            && command.first_physics_step
+                                == LAUNCH_TICKS + 1 + pair_index * COMMAND_HOLD_PHYSICS_TICKS
+                            && command.last_physics_step == command.first_physics_step + 1
+                            && command.target_attitude_rad
+                                == command
+                                    .desired_thrust_acceleration_mps2
+                                    .x
+                                    .atan2(command.desired_thrust_acceleration_mps2.y)
+                    })
+                    .map(|command| command.target_attitude_rad)
+            } else {
+                frozen_tail_profile_index(
+                    tick.physics_step,
+                    source_bridge_tick_count,
+                    profile.accounting.source_bridge_sample_count,
+                )
+                .and_then(|index| profile.ticks.get(index))
+                .map(|tick| tick.target_attitude_rad)
+            };
+            if reference_target != Some(tick.desired_target_attitude_rad)
+                || tick.physics_step <= LAUNCH_TICKS && tick.commanded_throttle_frac != 1.0
+                || expected_thrust.is_some_and(|thrust| thrust.length() == 0.0)
+                    && throttle_update_due
+                    && tick.commanded_throttle_frac != 0.0
+            {
+                commands_match = false;
+                record_replay_mismatch(
+                    &mut first_mismatch,
+                    Some(tick.physics_step),
+                    "generated_phase_command_reference",
+                    format!("{reference_target:?}"),
+                    tick.desired_target_attitude_rad.to_string(),
+                );
             }
         }
         let actual_applied_throttle = super::super::plant_applied_throttle(
@@ -2173,6 +2439,9 @@ fn neutral_replay_and_clearance(
         let neutral_classification = neutral.step_physics_and_classify_contact(context);
         let neutral_label = contact_classification_label(&neutral_classification);
         let neutral_state = plant_state_evidence(&neutral, context);
+        if tick.physics_step == LAUNCH_TICKS + source_bridge_tick_count {
+            source_handoff_state = Some(neutral_state.clone());
+        }
         scan.poststep_state_count += 1;
         let actual_contact = neutral_label != "none";
         if actual_contact && first_contact_physics_step.is_none() {
@@ -2275,13 +2544,15 @@ fn neutral_replay_and_clearance(
         first_contact,
         first_contact_margins: authoritative_replay.first_contact_margins.clone(),
         saturation: recomputed_saturation,
+        source_handoff_state,
+        phase_boundaries_match,
     })
 }
 
 fn expected_thrust_acceleration(
     tick: &ReplayLogTick<'_>,
     source_commands: &[super::paired_command_feasibility::HeldCommandEvidence],
-    candidate: &CoupledThrustAuditCandidateInput,
+    profile: &NominalProfile,
     source_bridge_tick_count: u64,
 ) -> Result<Option<Vec2>> {
     if tick.phase == "upright" || tick.phase == "tilt" {
@@ -2299,7 +2570,6 @@ fn expected_thrust_acceleration(
             .ok_or_else(|| anyhow!("source command index {pair_index} is missing"))?;
         return Ok(Some(command.desired_thrust_acceleration_mps2));
     }
-    let profile = &candidate.selected_profile.profile;
     let flight_index = tick
         .physics_step
         .checked_sub(LAUNCH_TICKS + 1)
@@ -2581,6 +2851,30 @@ mod tests {
             surface_y_m: 0.0,
             flat: true,
         }
+    }
+
+    #[test]
+    fn generated_source_endpoint_requires_replayed_state_not_stored_flags() {
+        let context = test_context();
+        let state = SimulationState::new(&context).unwrap();
+        let actual = plant_state_evidence(&state, &context);
+        let mut stored = super::super::paired_command_feasibility::EndpointStateEvidence {
+            physics_step: actual.physics_step,
+            sim_time_s: actual.sim_time_s,
+            position_m: actual.position_m,
+            velocity_mps: actual.velocity_mps,
+            attitude_rad: actual.attitude_rad,
+            angular_rate_radps: actual.angular_rate_radps,
+            fuel_kg: actual.fuel_kg,
+        };
+        assert!(source_endpoint_matches(Some(&actual), Some(&stored)));
+        stored.position_m.x += 0.01;
+        assert!(!source_endpoint_matches(Some(&actual), Some(&stored)));
+        stored.position_m = actual.position_m;
+        stored.physics_step += 1;
+        assert!(!source_endpoint_matches(Some(&actual), Some(&stored)));
+        assert!(!source_endpoint_matches(None, Some(&stored)));
+        assert!(!source_endpoint_matches(Some(&actual), None));
     }
 
     fn selection_row(

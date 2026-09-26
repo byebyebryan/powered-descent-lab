@@ -835,7 +835,8 @@ pub(super) fn run_lane(
 ) -> Result<RunWithSamples> {
     let diagnostic = run_source_duration_variant_diagnostic(
         SourceDurationRunRequest {
-            case: &prepared.flat_case,
+            scenario: &prepared.flat_case.scenario,
+            probe: &prepared.flat_case.probe,
             selected: &candidate_input.selected_profile,
             basis: &candidate_input.candidate,
             policy: &prepared.policy,

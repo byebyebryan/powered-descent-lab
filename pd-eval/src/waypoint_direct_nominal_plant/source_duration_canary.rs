@@ -45,6 +45,8 @@ mod paired_command_feasibility;
 pub use paired_command_feasibility::*;
 mod complete_flat_acceptance;
 pub use complete_flat_acceptance::*;
+mod direct_generation;
+pub use direct_generation::*;
 
 pub const WAYPOINT_DIRECT_SOURCE_DURATION_CANARY_ID: &str =
     "waypoint-direct-source-duration-canary";
@@ -772,7 +774,36 @@ fn execute_basis_variants(
     candidate_input: &super::flat_candidate_closure::CoupledThrustAuditCandidateInput,
     variants: Vec<PreparedDurationVariant>,
 ) -> Result<SourceDurationBasisEvidence> {
-    let candidate = &candidate_input.candidate;
+    execute_basis_variants_from_physical(
+        &prepared.flat_case.scenario,
+        &prepared.flat_case.probe,
+        &prepared.policy,
+        &prepared.vehicle,
+        &candidate_input.candidate,
+        &candidate_input.selected_profile,
+        Some(candidate_input),
+        match candidate_input.candidate.identity.as_str() {
+            "fnv1a64:dee613017622ca16" => "native",
+            "fnv1a64:4e6c0b23f9eb1b8f" => "research_shortest",
+            "fnv1a64:a18a98ad6e334014" => "third",
+            _ => "unknown",
+        },
+        variants,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_basis_variants_from_physical(
+    scenario: &pd_core::ScenarioSpec,
+    probe: &pd_plan::conservative_ballistic_bridge::DirectBridgeProbeV2,
+    policy: &super::DirectBridgePolicyV2,
+    vehicle: &super::VehicleInputV2,
+    candidate: &DirectBridgeCandidateV2,
+    selected_profile: &super::PreparedProfileCandidate,
+    historical_binding: Option<&super::flat_candidate_closure::CoupledThrustAuditCandidateInput>,
+    role: &str,
+    variants: Vec<PreparedDurationVariant>,
+) -> Result<SourceDurationBasisEvidence> {
     let source_bridge = candidate.source_bridge.as_ref().ok_or_else(|| {
         anyhow!(
             "basis {} lost its original source bridge",
@@ -790,13 +821,11 @@ fn execute_basis_variants(
         .terminal_bridge
         .as_ref()
         .ok_or_else(|| anyhow!("basis {} lost its terminal bridge", candidate.identity))?;
-    let original_tail_start = candidate_input
-        .selected_profile
+    let original_tail_start = selected_profile
         .profile
         .accounting
         .source_bridge_sample_count as usize;
-    let frozen_tail = candidate_input
-        .selected_profile
+    let frozen_tail = selected_profile
         .profile
         .ticks
         .get(original_tail_start..)
@@ -814,6 +843,7 @@ fn execute_basis_variants(
             })
             .collect::<Vec<_>>(),
     )?;
+    let expected_variant_count = variants.len();
     let mut evidence = Vec::with_capacity(variants.len());
     for variant in variants {
         let mut row = SourceDurationVariantEvidence {
@@ -855,11 +885,12 @@ fn execute_basis_variants(
         };
 
         let analysis = run_source_duration_variant(SourceDurationRunRequest {
-            case: &prepared.flat_case,
-            selected: &candidate_input.selected_profile,
+            scenario,
+            probe,
+            selected: selected_profile,
             basis: candidate,
-            policy: &prepared.policy,
-            vehicle: &prepared.vehicle,
+            policy,
+            vehicle,
             source_bridge_steps: variant.source_bridge_tick_count,
             launch_tilt_attitude_rad: launch_target_attitude_rad,
             cadence: RolloutCadence::DirectPerTick,
@@ -876,27 +907,25 @@ fn execute_basis_variants(
             }
         };
         let reseeded = analysis.reseeded_bridge.clone();
-        let analytical_screen = build_analytical_screen(
-            reseeded.as_ref(),
-            candidate,
-            &prepared.policy,
-            &prepared.vehicle,
-        )?;
+        let analytical_screen =
+            build_analytical_screen(reseeded.as_ref(), candidate, policy, vehicle)?;
         let first_tick_equivalence = build_first_tick_equivalence(
             launch_target_attitude_rad,
             unlaunched_bridge,
             reseeded.as_ref(),
             analysis.launch.end_state.as_ref(),
             candidate,
-            &prepared.policy,
-            &prepared.vehicle,
+            policy,
+            vehicle,
         );
         let frozen_original_duration_parity = if variant.duration_offset_ticks == 0 {
-            Some(frozen_original_duration_parity(
-                candidate_input,
-                &analysis,
-                &row.unlaunched_source_bridge,
-            ))
+            historical_binding.map(|candidate_input| {
+                frozen_original_duration_parity(
+                    candidate_input,
+                    &analysis,
+                    &row.unlaunched_source_bridge,
+                )
+            })
         } else {
             None
         };
@@ -928,11 +957,12 @@ fn execute_basis_variants(
         }
 
         let source_gate = run_source_duration_variant(SourceDurationRunRequest {
-            case: &prepared.flat_case,
-            selected: &candidate_input.selected_profile,
+            scenario,
+            probe,
+            selected: selected_profile,
             basis: candidate,
-            policy: &prepared.policy,
-            vehicle: &prepared.vehicle,
+            policy,
+            vehicle,
             source_bridge_steps: variant.source_bridge_tick_count,
             launch_tilt_attitude_rad: launch_target_attitude_rad,
             cadence: RolloutCadence::DirectPerTick,
@@ -1000,22 +1030,16 @@ fn execute_basis_variants(
 
         evidence.push(row);
     }
-    if evidence.len() != DURATION_OFFSETS_TICKS.len() {
+    if evidence.len() != expected_variant_count {
         bail!(
             "basis {} omitted one or more duration rows",
             candidate.identity
         );
     }
-    let coast_ticks = (coast.duration_s * f64::from(prepared.policy.physics_hz)).round() as u64;
+    let coast_ticks = (coast.duration_s * f64::from(policy.physics_hz)).round() as u64;
     Ok(SourceDurationBasisEvidence {
         candidate_identity: candidate.identity.clone(),
-        role: match candidate.identity.as_str() {
-            "fnv1a64:dee613017622ca16" => "native",
-            "fnv1a64:4e6c0b23f9eb1b8f" => "research_shortest",
-            "fnv1a64:a18a98ad6e334014" => "third",
-            _ => "unknown",
-        }
-        .to_owned(),
+        role: role.to_owned(),
         original_v2_classification: candidate.classification,
         original_v2_reasons: candidate.reasons.clone(),
         original_source_bridge_identity: source_bridge.identity.clone(),
@@ -1072,7 +1096,8 @@ fn complete_full_flights(
                 RolloutCadence::ControllerCadence,
             ] {
                 let full = run_source_duration_variant(SourceDurationRunRequest {
-                    case: &prepared.flat_case,
+                    scenario: &prepared.flat_case.scenario,
+                    probe: &prepared.flat_case.probe,
                     selected: &candidate_input.selected_profile,
                     basis: candidate,
                     policy: &prepared.policy,
@@ -1833,7 +1858,8 @@ mod tests {
             .map(|sample| direction_angle(sample.thrust_acceleration_mps2))
             .expect("first powered direction exists");
         let analysis = run_source_duration_variant(SourceDurationRunRequest {
-            case: flat,
+            scenario: &flat.scenario,
+            probe: &flat.probe,
             selected,
             basis: candidate,
             policy: &prepared.baseline.evaluated_policy,
@@ -1867,7 +1893,8 @@ mod tests {
         );
 
         let source_gate = run_source_duration_variant(SourceDurationRunRequest {
-            case: flat,
+            scenario: &flat.scenario,
+            probe: &flat.probe,
             selected,
             basis: candidate,
             policy: &prepared.baseline.evaluated_policy,

@@ -128,6 +128,9 @@ pub use waypoint_direct_controller_comparison::*;
 pub mod waypoint_direct_nominal_plant;
 pub use waypoint_direct_nominal_plant::*;
 
+pub mod waypoint_direct_generation_gates;
+pub use waypoint_direct_generation_gates::*;
+
 mod controller_shadow;
 pub use controller_shadow::*;
 

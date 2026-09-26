@@ -5,9 +5,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use pd_eval::{
     BatchRegressionPolicyStatus, MissingComparePolicy,
     WaypointDirectCompleteFlatAcceptanceInputPaths, WaypointDirectCoupledThrustAuditInputPaths,
+    WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointDirectSourceDurationCanaryInputPaths,
     WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths, compare_batch_reports,
-    load_batch_report, promote_pack_cache, refresh_report_outputs,
+    compare_waypoint_direct_generation_gate_a, load_batch_report,
+    load_waypoint_direct_generation_fresh_manifest, promote_pack_cache, refresh_report_outputs,
     report::write_batch_report_artifacts, resolve_pack_compare_baseline, run_candidate_replay_case,
     run_candidate_replay_development, run_conservative_ballistic_f6_controller_integration_v1,
     run_conservative_ballistic_handoff_controller_development,
@@ -22,21 +24,24 @@ use pd_eval::{
     run_terrain_equivalence_spike, run_waypoint_direct_characterization,
     run_waypoint_direct_complete_flat_acceptance, run_waypoint_direct_controller_comparison,
     run_waypoint_direct_coupled_thrust_audit, run_waypoint_direct_flat_candidate_closure,
-    run_waypoint_direct_launch_contact_contract, run_waypoint_direct_launch_feasibility,
+    run_waypoint_direct_generation_fresh_gate, run_waypoint_direct_launch_contact_contract,
+    run_waypoint_direct_launch_feasibility, run_waypoint_direct_nominal_direct_generation,
     run_waypoint_direct_nominal_plant, run_waypoint_direct_primitive_analytical,
     run_waypoint_direct_source_contact, run_waypoint_direct_source_duration_canary,
     run_waypoint_direct_source_duration_held_cadence_diagnostic,
     run_waypoint_direct_source_duration_paired_command_feasibility,
     run_waypoint_direct_topology_boundary, run_waypoint_direct_topology_sweep,
-    validate_waypoint_direct_complete_flat_acceptance_inputs,
+    seal_waypoint_direct_generation_code, validate_waypoint_direct_complete_flat_acceptance_inputs,
     validate_waypoint_direct_coupled_thrust_audit_inputs,
     validate_waypoint_direct_flat_candidate_closure_inputs,
     validate_waypoint_direct_launch_contact_contract_inputs,
     validate_waypoint_direct_launch_feasibility_inputs,
+    validate_waypoint_direct_nominal_direct_generation_request,
     validate_waypoint_direct_source_contact_inputs,
     validate_waypoint_direct_source_duration_canary_inputs,
     validate_waypoint_direct_source_duration_held_cadence_diagnostic_inputs,
     validate_waypoint_direct_source_duration_paired_command_feasibility_inputs,
+    waypoint_direct_known_flat_generation_request,
 };
 
 #[derive(Debug, Parser)]
@@ -116,6 +121,14 @@ enum Commands {
     ),
     /// Accept and select complete nominal flat direct witnesses from the frozen paired-command family.
     WaypointDirectCompleteFlatAcceptance(WaypointDirectCompleteFlatAcceptanceArgs),
+    /// Generate bounded nominal ballistic-direct witnesses from scenario inputs only.
+    WaypointDirectGeneration(WaypointDirectGenerationArgs),
+    /// Compare independently generated known-flat evidence with sealed history.
+    WaypointDirectGenerationGateA(WaypointDirectGenerationGateAArgs),
+    /// Freeze production inputs after the accepted compatibility gate.
+    WaypointDirectGenerationFreeze(WaypointDirectGenerationFreezeArgs),
+    /// Evaluate all six sealed fresh cases under the accepted frozen policy.
+    WaypointDirectGenerationFreshGate(WaypointDirectGenerationFreshGateArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -624,6 +637,76 @@ struct WaypointDirectCompleteFlatAcceptanceArgs {
     source: WaypointDirectSourceDurationPairedCommandFeasibilityArgs,
 }
 
+#[derive(Debug, Parser)]
+#[command(group(clap::ArgGroup::new("input").required(true).multiple(false)
+    .args(["scenario", "known_flat", "sealed_case"])))]
+struct WaypointDirectGenerationArgs {
+    #[arg(long, value_name = "SCENARIO_JSON")]
+    scenario: Option<PathBuf>,
+
+    /// Build only the known-flat input, without opening historical summaries.
+    #[arg(long)]
+    known_flat: bool,
+
+    /// Load a predeclared fresh input. Run only after Gate A and code freeze.
+    #[arg(long, value_name = "CASE_ID")]
+    sealed_case: Option<String>,
+
+    #[arg(long, requires = "scenario", conflicts_with_all = ["known_flat", "sealed_case"])]
+    source_pad_id: Option<String>,
+
+    #[arg(long, requires = "scenario", conflicts_with_all = ["known_flat", "sealed_case"])]
+    target_pad_id: Option<String>,
+
+    /// Identity label only; required for a custom scenario.
+    #[arg(long, requires = "scenario", conflicts_with_all = ["known_flat", "sealed_case"])]
+    probe_id: Option<String>,
+
+    #[arg(long, value_name = "POLICY_JSON", requires = "scenario", conflicts_with_all = ["known_flat", "sealed_case"])]
+    policy: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "OUTPUT_DIR",
+        required_unless_present = "preflight_only"
+    )]
+    output_dir: Option<PathBuf>,
+
+    /// Validate input support only: no candidate solving, physics or writes.
+    #[arg(long)]
+    preflight_only: bool,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectGenerationGateAArgs {
+    #[arg(long)]
+    generated_summary: PathBuf,
+    #[arg(long)]
+    paired_command_summary: PathBuf,
+    #[arg(long)]
+    acceptance_summary: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectGenerationFreezeArgs {
+    #[arg(long)]
+    gate_a_summary: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectGenerationFreshGateArgs {
+    #[arg(long)]
+    gate_a_summary: PathBuf,
+    #[arg(long)]
+    code_freeze_summary: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum MissingComparePolicyArg {
     Skip,
@@ -1091,6 +1174,74 @@ fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&run.paths)?);
             }
         }
+        Commands::WaypointDirectGeneration(args) => {
+            let request = if args.known_flat {
+                waypoint_direct_known_flat_generation_request(&repo_root())?
+            } else if let Some(case_id) = args.sealed_case {
+                load_waypoint_direct_generation_fresh_manifest(&repo_root())?.request(&case_id)?
+            } else {
+                let scenario_path = args.scenario.expect("clap input group requires a scenario");
+                let scenario = serde_json::from_slice(&std::fs::read(scenario_path)?)?;
+                let policy = match args.policy {
+                    Some(path) => serde_json::from_slice(&std::fs::read(path)?)?,
+                    None => WaypointDirectNominalDirectGenerationPolicyV1::default(),
+                };
+                WaypointDirectNominalDirectGenerationRequest {
+                    scenario,
+                    source_pad_id: args
+                        .source_pad_id
+                        .unwrap_or_else(|| "pad_source".to_owned()),
+                    target_pad_id: args.target_pad_id.unwrap_or_else(|| "pad_main".to_owned()),
+                    probe_id: args
+                        .probe_id
+                        .ok_or_else(|| anyhow::anyhow!("a custom scenario requires --probe-id"))?,
+                    policy,
+                }
+            };
+            if args.preflight_only {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &validate_waypoint_direct_nominal_direct_generation_request(&request)?
+                    )?
+                );
+            } else {
+                let run = run_waypoint_direct_nominal_direct_generation(
+                    &repo_root(),
+                    &request,
+                    args.output_dir
+                        .as_deref()
+                        .expect("clap requires output directory"),
+                )?;
+                println!("{}", serde_json::to_string_pretty(&run.paths)?);
+            }
+        }
+        Commands::WaypointDirectGenerationGateA(args) => {
+            let gate = compare_waypoint_direct_generation_gate_a(
+                &args.generated_summary,
+                &args.paired_command_summary,
+                &args.acceptance_summary,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&gate)?);
+        }
+        Commands::WaypointDirectGenerationFreeze(args) => {
+            let freeze = seal_waypoint_direct_generation_code(
+                &repo_root(),
+                &args.gate_a_summary,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&freeze)?);
+        }
+        Commands::WaypointDirectGenerationFreshGate(args) => {
+            let gate = run_waypoint_direct_generation_fresh_gate(
+                &repo_root(),
+                &args.gate_a_summary,
+                &args.code_freeze_summary,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&gate)?);
+        }
     }
 
     Ok(())
@@ -1116,6 +1267,82 @@ fn repo_root() -> PathBuf {
         .parent()
         .expect("pd-eval crate should live under repo root")
         .to_path_buf()
+}
+
+#[cfg(test)]
+mod direct_generation_cli_tests {
+    use super::*;
+
+    #[test]
+    fn preflight_needs_exactly_one_input_and_no_output() {
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-generation",
+                "--known-flat",
+                "--preflight-only",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from(["pd-eval", "waypoint-direct-generation", "--preflight-only",])
+                .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-generation",
+                "--known-flat",
+                "--scenario",
+                "input.json",
+                "--preflight-only",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn evaluation_requires_an_explicit_create_only_output_path() {
+        assert!(
+            Cli::try_parse_from(["pd-eval", "waypoint-direct-generation", "--known-flat",])
+                .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-generation",
+                "--known-flat",
+                "--output-dir",
+                "new-path",
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn factory_inputs_cannot_silently_ignore_custom_pad_options() {
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-generation",
+                "--known-flat",
+                "--source-pad-id",
+                "custom",
+                "--preflight-only",
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-direct-generation",
+                "--sealed-case",
+                "fresh_flat_span_600_delta_000",
+                "--preflight-only",
+            ])
+            .is_ok()
+        );
+    }
 }
 
 fn default_eval_output_dir(pack_path: &std::path::Path) -> PathBuf {

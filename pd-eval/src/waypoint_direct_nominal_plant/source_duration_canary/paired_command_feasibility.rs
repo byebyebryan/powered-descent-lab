@@ -7,9 +7,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use pd_core::{RunContext, Vec2};
+use pd_core::{RunContext, ScenarioSpec, Vec2};
 use pd_plan::conservative_ballistic_bridge::{
-    AnalyticalBridgeV2, BridgeKindV2, KinematicStateV2, exact_discrete_bridge_v2,
+    AnalyticalBridgeV2, BridgeKindV2, DirectBridgeCandidateV2, DirectBridgePolicyV2,
+    DirectBridgeProbeV2, KinematicStateV2, VehicleInputV2, exact_discrete_bridge_v2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -356,12 +357,41 @@ struct ScheduleEvaluation {
 }
 
 struct ShootingContext<'a> {
-    prepared: &'a PreparedHeldCadenceInputs,
-    candidate_input: &'a super::super::flat_candidate_closure::CoupledThrustAuditCandidateInput,
-    variant: &'a PreparedDurationVariant,
+    scenario: &'a ScenarioSpec,
+    probe: &'a DirectBridgeProbeV2,
+    policy: &'a DirectBridgePolicyV2,
+    vehicle: &'a VehicleInputV2,
+    candidate: &'a DirectBridgeCandidateV2,
+    selected: &'a super::super::PreparedProfileCandidate,
+    source_bridge_tick_count: u64,
     handoff: KinematicStateV2,
     launch_target: f64,
     seed: &'a [HeldSourceCommand],
+}
+
+pub(in crate::waypoint_direct_nominal_plant) struct PhysicalScheduleScreenReplayRequest<'a> {
+    pub scenario: &'a ScenarioSpec,
+    pub probe: &'a DirectBridgeProbeV2,
+    pub policy: &'a DirectBridgePolicyV2,
+    pub vehicle: &'a VehicleInputV2,
+    pub candidate: &'a DirectBridgeCandidateV2,
+    pub selected: &'a super::super::PreparedProfileCandidate,
+    pub source_bridge_tick_count: u64,
+    pub launch_tilt_attitude_rad: f64,
+    pub commands: &'a [HeldCommandEvidence],
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::waypoint_direct_nominal_plant) struct SourceScheduleIndependentReplayEvidence {
+    pub launch: super::super::LaunchEvidence,
+    pub reseeded_bridge: Option<super::super::ReseededBridgeEvidence>,
+    pub source_rollout: super::super::LaunchRolloutEvidence,
+    pub screens: ScheduleScreenEvidence,
+    pub source_handoff_position_error_m: Option<f64>,
+    pub source_handoff_velocity_error_mps: Option<f64>,
+    pub source_handoff_reached: bool,
+    pub source_handoff_contact_free: bool,
+    pub replay_trace: ReplayTraceParityEvidence,
 }
 
 struct IterationEvidenceInput {
@@ -711,22 +741,44 @@ fn run_schedule_experiment(
     variant: &PreparedDurationVariant,
     held_baseline: &RunWithSamples,
 ) -> Result<PairedScheduleEvidence> {
+    run_schedule_experiment_from_physical(
+        &prepared.validated.flat_case.scenario,
+        &prepared.validated.flat_case.probe,
+        &prepared.validated.policy,
+        &prepared.validated.vehicle,
+        &candidate_input.candidate,
+        &candidate_input.selected_profile,
+        variant,
+        held_baseline,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_schedule_experiment_from_physical(
+    scenario: &ScenarioSpec,
+    probe: &DirectBridgeProbeV2,
+    policy: &DirectBridgePolicyV2,
+    vehicle: &VehicleInputV2,
+    candidate: &DirectBridgeCandidateV2,
+    selected: &super::super::PreparedProfileCandidate,
+    variant: &PreparedDurationVariant,
+    held_baseline: &RunWithSamples,
+) -> Result<PairedScheduleEvidence> {
     let launch_target = variant
         .launch_target_attitude_rad
-        .ok_or_else(|| anyhow!("row {} has no frozen launch target", variant.row_index))?;
+        .ok_or_else(|| anyhow!("row {} has no source launch target", variant.row_index))?;
     let launch_state = held_baseline.run.launch.end_state.as_ref().ok_or_else(|| {
         anyhow!(
             "row {} held baseline has no launch end state",
             variant.row_index
         )
     })?;
-    let handoff = candidate_input
-        .candidate
+    let handoff = candidate
         .source_handoff
-        .ok_or_else(|| anyhow!("row {} has no frozen handoff", variant.row_index))?;
+        .ok_or_else(|| anyhow!("row {} has no generated source handoff", variant.row_index))?;
     let reference = exact_discrete_bridge_v2(
-        &prepared.validated.policy,
-        &prepared.validated.vehicle,
+        policy,
+        vehicle,
         BridgeKindV2::Source,
         KinematicStateV2 {
             position_m: launch_state.position_m,
@@ -737,7 +789,7 @@ fn run_schedule_experiment(
     )
     .map_err(|error| {
         anyhow!(
-            "row {} held-launch reference bridge failed: {error}",
+            "row {} held-launch source reference bridge failed: {error}",
             variant.row_index
         )
     })?;
@@ -749,30 +801,34 @@ fn run_schedule_experiment(
         != Some(reference.identity.as_str())
     {
         bail!(
-            "row {} reconstructed reference bridge differs from held-60 baseline",
+            "row {} source reference bridge differs from its held-60 baseline",
             variant.row_index
         );
     }
     let seed = paired_mean_seed(&reference, launch_target)?;
     let shooting_context = ShootingContext {
-        prepared,
-        candidate_input,
-        variant,
+        scenario,
+        probe,
+        policy,
+        vehicle,
+        candidate,
+        selected,
+        source_bridge_tick_count: variant.source_bridge_tick_count,
         handoff: handoff.state,
         launch_target,
         seed: &seed,
     };
     let (best_correction, best_evaluation, iterations, status) = fit_schedule(&shooting_context)?;
     let schedule = build_schedule(&reference, launch_target, best_correction)?;
-    let context = RunContext::from_scenario(&prepared.validated.flat_case.scenario)
-        .map_err(anyhow::Error::msg)?;
+    let context = RunContext::from_scenario(scenario).map_err(anyhow::Error::msg)?;
     let full = run_source_duration_variant_with_held_schedule(
         SourceDurationRunRequest {
-            case: &prepared.validated.flat_case,
-            selected: &candidate_input.selected_profile,
-            basis: &candidate_input.candidate,
-            policy: &prepared.validated.policy,
-            vehicle: &prepared.validated.vehicle,
+            scenario,
+            probe,
+            selected,
+            basis: candidate,
+            policy,
+            vehicle,
             source_bridge_steps: variant.source_bridge_tick_count,
             launch_tilt_attitude_rad: launch_target,
             cadence: RolloutCadence::ControllerCadence,
@@ -835,6 +891,84 @@ fn run_schedule_experiment(
         full_flight_first_contact_margins: first_contact_margins,
         full_flight_replay_trace: Some(replay.trace),
         full_flight_rollout: Some(full_rollout),
+    })
+}
+
+pub(in crate::waypoint_direct_nominal_plant) fn replay_source_schedule_screens_from_physical(
+    request: &PhysicalScheduleScreenReplayRequest<'_>,
+) -> Result<SourceScheduleIndependentReplayEvidence> {
+    let source_ticks = request.source_bridge_tick_count;
+    let interval_steps = request.scenario.sim.control_interval_steps();
+    if source_ticks == 0
+        || interval_steps != 2
+        || !source_ticks.is_multiple_of(interval_steps)
+        || request.commands.len() != (source_ticks / interval_steps) as usize
+        || !request.launch_tilt_attitude_rad.is_finite()
+    {
+        bail!("independent source replay received an invalid cadence or schedule length");
+    }
+    let mut held_commands = Vec::with_capacity(request.commands.len());
+    for (pair_index, command) in request.commands.iter().enumerate() {
+        let expected_first = LAUNCH_TICKS + 1 + pair_index as u64 * interval_steps;
+        if command.pair_index != pair_index
+            || command.first_physics_step != expected_first
+            || command.last_physics_step != expected_first + interval_steps - 1
+            || !command.desired_thrust_acceleration_mps2.x.is_finite()
+            || !command.desired_thrust_acceleration_mps2.y.is_finite()
+            || !command.target_attitude_rad.is_finite()
+        {
+            bail!("independent source replay command provenance changed at pair {pair_index}");
+        }
+        held_commands.push(HeldSourceCommand {
+            thrust_acceleration_mps2: command.desired_thrust_acceleration_mps2,
+            target_attitude_rad: command.target_attitude_rad,
+        });
+    }
+    let handoff = request
+        .candidate
+        .source_handoff
+        .ok_or_else(|| anyhow!("independent source replay basis has no source handoff"))?;
+    let launch_target = request.launch_tilt_attitude_rad;
+    let context = ShootingContext {
+        scenario: request.scenario,
+        probe: request.probe,
+        policy: request.policy,
+        vehicle: request.vehicle,
+        candidate: request.candidate,
+        selected: request.selected,
+        source_bridge_tick_count: source_ticks,
+        handoff: handoff.state,
+        launch_target,
+        seed: &held_commands,
+    };
+    let source = run_source_duration_variant_with_held_schedule(
+        SourceDurationRunRequest {
+            scenario: request.scenario,
+            probe: request.probe,
+            selected: request.selected,
+            basis: request.candidate,
+            policy: request.policy,
+            vehicle: request.vehicle,
+            source_bridge_steps: source_ticks,
+            launch_tilt_attitude_rad: launch_target,
+            cadence: RolloutCadence::ControllerCadence,
+            stage: SourceDurationReplayStage::SourceHandoff,
+        },
+        &held_commands,
+    )?;
+    let screens = schedule_screens(&source, &held_commands, &context);
+    let replay_context = RunContext::from_scenario(request.scenario).map_err(anyhow::Error::msg)?;
+    let replay_trace = replay_logged_cadence(&replay_context, &source.run)?.trace;
+    Ok(SourceScheduleIndependentReplayEvidence {
+        launch: source.run.launch.clone(),
+        reseeded_bridge: source.run.reseeded_bridge.clone(),
+        source_rollout: source.run.rollout.clone(),
+        screens,
+        source_handoff_position_error_m: source.run.rollout.source_handoff_position_error_m,
+        source_handoff_velocity_error_mps: source.run.rollout.source_handoff_velocity_error_mps,
+        source_handoff_reached: source.run.rollout.source_handoff_reached,
+        source_handoff_contact_free: source.run.rollout.source_handoff_contact_free,
+        replay_trace,
     })
 }
 
@@ -1113,25 +1247,23 @@ fn evaluate_correction(
     correction: Correction,
 ) -> Result<ScheduleEvaluation> {
     let schedule = apply_correction(context.seed, correction);
-    let prepared = context.prepared;
-    let candidate_input = context.candidate_input;
-    let variant = context.variant;
     let launch_target = context.launch_target;
     let run = run_source_duration_variant_with_held_schedule(
         SourceDurationRunRequest {
-            case: &prepared.validated.flat_case,
-            selected: &candidate_input.selected_profile,
-            basis: &candidate_input.candidate,
-            policy: &prepared.validated.policy,
-            vehicle: &prepared.validated.vehicle,
-            source_bridge_steps: variant.source_bridge_tick_count,
+            scenario: context.scenario,
+            probe: context.probe,
+            selected: context.selected,
+            basis: context.candidate,
+            policy: context.policy,
+            vehicle: context.vehicle,
+            source_bridge_steps: context.source_bridge_tick_count,
             launch_tilt_attitude_rad: launch_target,
             cadence: RolloutCadence::ControllerCadence,
             stage: SourceDurationReplayStage::SourceHandoff,
         },
         &schedule,
     )?;
-    let residual = endpoint_residual(&run, context.handoff, variant.source_bridge_tick_count);
+    let residual = endpoint_residual(&run, context.handoff, context.source_bridge_tick_count);
     let screens = schedule_screens(&run, &schedule, context);
     Ok(ScheduleEvaluation {
         run,
@@ -1184,12 +1316,12 @@ fn schedule_screens(
     schedule: &[HeldSourceCommand],
     context: &ShootingContext<'_>,
 ) -> ScheduleScreenEvidence {
-    let policy = &context.prepared.validated.policy;
-    let vehicle = &context.prepared.validated.vehicle;
-    let case = &context.prepared.validated.flat_case;
-    let candidate = &context.candidate_input.candidate;
+    let policy = context.policy;
+    let vehicle = context.vehicle;
+    let probe = context.probe;
+    let candidate = context.candidate;
     let launch_target = context.launch_target;
-    let source_steps = context.variant.source_bridge_tick_count;
+    let source_steps = context.source_bridge_tick_count;
     let max_requested = schedule
         .iter()
         .map(|command| command.thrust_acceleration_mps2.length())
@@ -1311,10 +1443,10 @@ fn schedule_screens(
                     velocity_mps: sample.velocity_mps,
                 },
                 direction,
-                &case.probe.source,
+                &probe.source,
                 vehicle,
                 policy,
-                &case.scenario.world.terrain,
+                &context.scenario.world.terrain,
             )
         })
         .collect::<Vec<_>>();

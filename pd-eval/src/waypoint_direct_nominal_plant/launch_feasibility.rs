@@ -11,10 +11,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use pd_core::{Command, EventKind, RunContext, SimulationState, Vec2};
+use pd_core::{Command, EventKind, RunContext, ScenarioSpec, SimulationState, Vec2};
 use pd_plan::conservative_ballistic_bridge::{
     AnalyticalBridgeV2, BridgeKindV2, CertificationV2, ComponentMarginsV2, DirectBridgeCandidateV2,
-    DirectBridgePolicyV2, DirectBridgeReasonV2, KinematicStateV2, MarginV2,
+    DirectBridgePolicyV2, DirectBridgeProbeV2, DirectBridgeReasonV2, KinematicStateV2, MarginV2,
     exact_discrete_bridge_v2,
 };
 use serde::{Deserialize, Serialize};
@@ -320,7 +320,8 @@ pub struct ContactTransitionStateErrorEvidence {
 
 #[derive(Clone, Copy)]
 struct CandidateProfileRunContext<'a> {
-    case: &'a PreparedCase,
+    scenario: &'a ScenarioSpec,
+    probe: &'a DirectBridgeProbeV2,
     selected: &'a PreparedProfileCandidate,
     basis: &'a DirectBridgeCandidateV2,
     policy: &'a DirectBridgePolicyV2,
@@ -337,7 +338,8 @@ pub(super) enum SourceDurationReplayStage {
 }
 
 pub(super) struct SourceDurationRunRequest<'a> {
-    pub(super) case: &'a PreparedCase,
+    pub(super) scenario: &'a ScenarioSpec,
+    pub(super) probe: &'a DirectBridgeProbeV2,
     pub(super) selected: &'a PreparedProfileCandidate,
     pub(super) basis: &'a DirectBridgeCandidateV2,
     pub(super) policy: &'a DirectBridgePolicyV2,
@@ -820,7 +822,8 @@ fn run_candidate_profile(
     let frozen_first_powered_attitude_rad = frozen_first_powered_attitude(selected)?;
     let coast_tick_count = (coast.duration_s * f64::from(policy.physics_hz)).round() as u64;
     let candidate_context = CandidateProfileRunContext {
-        case,
+        scenario: &case.scenario,
+        probe: &case.probe,
         selected,
         basis,
         policy,
@@ -878,7 +881,8 @@ pub(super) fn run_flat_third_candidate_with_source_gate(
     let frozen_first_powered_attitude_rad = frozen_first_powered_attitude(selected)?;
     let coast_tick_count = (coast.duration_s * f64::from(policy.physics_hz)).round() as u64;
     let candidate_context = CandidateProfileRunContext {
-        case,
+        scenario: &case.scenario,
+        probe: &case.probe,
         selected,
         basis,
         policy,
@@ -1038,7 +1042,8 @@ fn run_source_duration_variant_with_hold_mode_and_schedule(
     held_source_schedule: Option<&[HeldSourceCommand]>,
 ) -> Result<SourceDurationDiagnosticCadenceRun> {
     let SourceDurationRunRequest {
-        case,
+        scenario,
+        probe,
         selected,
         basis,
         policy,
@@ -1060,7 +1065,8 @@ fn run_source_duration_variant_with_hold_mode_and_schedule(
         .ok_or_else(|| anyhow!("candidate {} has no selected coast", basis.identity))?;
     let coast_tick_count = (coast.duration_s * f64::from(policy.physics_hz)).round() as u64;
     let context = CandidateProfileRunContext {
-        case,
+        scenario,
+        probe,
         selected,
         basis,
         policy,
@@ -1138,13 +1144,14 @@ fn run_cadence_with_variant_and_hold_mode_and_schedule(
         held_source_schedule,
     } = request;
     let CandidateProfileRunContext {
-        case,
+        scenario,
+        probe,
         basis,
         policy,
         vehicle,
         ..
     } = *candidate;
-    let context = RunContext::from_scenario(&case.scenario).map_err(anyhow::Error::msg)?;
+    let context = RunContext::from_scenario(scenario).map_err(anyhow::Error::msg)?;
     if context.sim.physics_hz != policy.physics_hz
         || context.sim.controller_hz != 60
         || context.sim.control_interval_steps() != 2
@@ -1303,10 +1310,10 @@ fn run_cadence_with_variant_and_hold_mode_and_schedule(
         let bridge_is_finite = bridge_is_finite(&source_bridge);
         let source_clearance = source_clearance_screen(
             &source_bridge,
-            &case.probe.source,
+            &probe.source,
             vehicle,
             policy,
-            &case.scenario.world.terrain,
+            &scenario.world.terrain,
         );
         let source_attitude_margin = source_attitude_margin(&source_bridge, vehicle, policy);
         let launch_boundary = launch_boundary(&state, &source_bridge, vehicle, policy);
@@ -1469,6 +1476,8 @@ fn run_materialized_rollout(
         mut command_samples,
     } = diagnostic_capture;
     let CandidateProfileRunContext {
+        scenario: _,
+        probe: _,
         selected,
         basis,
         coast_tick_count,
