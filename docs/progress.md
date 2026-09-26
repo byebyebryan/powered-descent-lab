@@ -24,8 +24,9 @@
   independent fresh-path summaries are byte-identical.
 - This closes only the known-flat nominal acceptance/selection question.
   Reusable generation, held-out flat/uphill/downhill execution, robustness,
-  and controller/default integration remain open. The tightest touchdown
-  predicate margin is about `0.0167 m`; no robust certificate is claimed.
+  and controller/default integration remain open. The selected touchdown's
+  maximum-foot-clearance margin is about `0.0167 m`, and its hull-penetration
+  margin is about `0.0083 m`; no robust certificate is claimed.
 - Validation passed 677 workspace tests, focused module/CLI tests, strict
   Clippy, formatting, and diff checks. V1/default selection, controllers,
   core physics/contact rules, F6, and frozen historical artifacts are unchanged.

@@ -169,8 +169,10 @@ authoritative stable target contact occurs at `34.275 s`, using
 fuel-exhaustion, and fuel-burn-cap counters are zero. Its tightest airborne
 clearance is `0.000553356 m` on the first upright launch tick, wholly inside
 the source-pad transition corridor; outside pad corridors the unchanged
-`5 m` reserve applies. Its stable maximum-foot-clearance margin is only
-`0.0166934 m`, so nominal acceptance is not robustness evidence.
+`5 m` reserve applies. Its stable maximum-foot-clearance margin is
+`0.0166934 m`, and its stable hull-penetration margin is only `0.00825558 m`.
+These are separate spatial predicates; nominal acceptance is not robustness
+evidence.
 
 This closes the known-flat acceptance/selection question without a cutaway.
 It does not close reusable generation, held-out flat/uphill/downhill coverage,
@@ -182,5 +184,6 @@ No expansion is executed by this pass.
 Validation: 677 workspace tests pass across twelve suites. After the lint-only
 cleanup, all seven focused module/CLI tests pass and the integrated-tree
 replay remains byte-identical. Workspace formatting, strict all-target Clippy,
-and `git diff --check` pass. The prior dirty worktree is preserved; no commit,
-push, deployment, controller change, or default-planner change was made.
+and `git diff --check` pass. That implementation pass preserved the prior dirty
+worktree and made no commit, push, deployment, controller change, or
+default-planner change.
