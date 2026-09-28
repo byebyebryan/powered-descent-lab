@@ -2,6 +2,61 @@
 
 ## 2026-09-28
 
+### Opt-in nominal direct flight integration checkpoint
+
+- The [complete-program flight adapter](nominal_direct_flight_integration_results.md)
+  generates from mission inputs, independently verifies the accepted selected
+  witness, then executes through the ordinary controller/simulator runner.
+  Neutral core contracts preserve the original global 120/60 Hz clock;
+  existing physics, generator policy, built-in controllers and defaults stay
+  unchanged. Direct carries an executable program, not only a route label.
+- All 24 now-exposed body-aware controls pass exact full-case, selected-command,
+  first-contact/fuel, safe-target and independent action-replay parity in two
+  sequential release runs. Both roots have identity
+  `fnv1a64:3ea6e074f6de460e`; 288 deterministic file pairs, 24 timing-normalized
+  command traces and 24 timing-normalized flight summaries agree. All 252
+  schedules remain accepted; all 480 rows and 302 attempts are retained.
+  The 119-file current source/input/protocol binding and 26 historical archive
+  digests remain unchanged. These are regression controls, not new held-out cases.
+- The mission-input CLI passes read-only preflight and ordinary flat-600 flight
+  at tick 3342 / 27.85 s. Invalid/Unsupported inputs and finite Unknown execute
+  no flight; self-rehashed command tampering and existing-root overwrites are
+  rejected. Typed failure evidence and inspectable Direct bundles are retained.
+- Release medians are 943.888 ms generation, 661.560 ms selected verification,
+  1.862 ms whole-flight ordinary execution, 0.663 ms action replay and 9.837 ms
+  artifact/report writing. The research backend still includes old comparison
+  work and source regeneration; total generation tick accounting remains
+  explicitly uninstrumented, not a mislabeled subtotal or real-time claim.
+- Validation passes 766 workspace tests in twelve suites in an artifact-free
+  source-matching staged checkout with Git metadata and a separate target
+  directory; one historical-output integration test remains explicitly ignored
+  by default. The 24-control acceptance command runs separately. Fifteen focused
+  adapter/gate/CLI tests, strict all-target workspace Clippy, formatting and diff
+  checks pass. No commit, push, deployment or roadmap/default change.
+- Close the nominal flight integration here. Hull-penetration margins remain
+  6.29–7.50 mm; robust contact and useful setup cost remain gates before
+  production authority. Waypoint search/composition and arbitrary incoming
+  waypoint states are not implemented by this pass.
+
+### Nominal direct flight review and commit closure
+
+- Review finds no blocking defect within the opt-in nominal contract. Existing
+  planner/controller defaults and flight physics are unchanged; the neutral
+  program validator is not itself a physical safety certificate, and the
+  evaluator retains independent selected-witness and ordinary replay acceptance.
+- All 24 focused contract/playback/adapter/gate/CLI tests pass again, with strict
+  all-target workspace Clippy, formatting and diff checks. The 119 bound files
+  exactly match the artifact-free 766-test checkout. Both 24-case acceptance
+  runs, 288 byte-identical file pairs and all timing-normalized command logs and
+  flight summaries are rechecked; source, binary and historical archive hashes
+  remain unchanged. Review changes only documentation, so no additional full
+  workspace or flight rerun is required.
+- The source/documentation checkpoint is reviewed and committed. Generated
+  evidence remains local and ignored; no push, deployment, roadmap expansion or
+  default promotion. Nominal direct generation-to-flight integration is closed;
+  robustness, useful setup cost and ballistic waypoint composition remain
+  separate boundaries.
+
 ### Body-aware nominal direct terminal checkpoint
 
 - The evaluator-only [body-aware terminal prototype](waypoint_direct_body_aware_terminal_results.md)

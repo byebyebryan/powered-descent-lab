@@ -140,6 +140,12 @@ pub use waypoint_direct_terminal_admissibility::*;
 pub mod waypoint_direct_body_aware_terminal;
 pub use waypoint_direct_body_aware_terminal::*;
 
+pub mod nominal_direct_flight;
+pub use nominal_direct_flight::*;
+
+mod nominal_direct_flight_gate;
+pub use nominal_direct_flight_gate::*;
+
 mod controller_shadow;
 pub use controller_shadow::*;
 

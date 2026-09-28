@@ -5,6 +5,7 @@ use pd_core::{Observation, RunArtifacts, RunContext, SimulationError, run_simula
 use serde::{Deserialize, Serialize};
 
 mod controllers;
+mod flight_program;
 mod guidance;
 pub mod kit;
 mod terminal;
@@ -15,6 +16,7 @@ pub use controllers::{
     StagedDescentController, StagedDescentControllerConfig, TransferPdgController,
     TransferPdgControllerConfig, built_in_controller_spec,
 };
+pub use flight_program::run_flight_program;
 pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, standard_marker};
 pub use terminal::{TerminalPdgController, TerminalPdgControllerConfig};
 

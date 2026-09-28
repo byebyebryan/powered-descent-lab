@@ -1,4 +1,5 @@
 pub mod eval;
+pub mod flight_program;
 pub mod math;
 pub mod model;
 pub mod planning;
@@ -6,6 +7,7 @@ pub mod sim;
 pub mod terrain;
 
 pub use eval::ContactClassification;
+pub use flight_program::{FlightProgramBindingV1, FlightProgramUpdateV1, FlightProgramV1};
 pub use math::Vec2;
 pub use model::{
     ActionLogEntry, CheckpointRunSummary, Command, EndReason, EvaluationGoal, EventKind,

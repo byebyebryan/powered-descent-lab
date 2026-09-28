@@ -116,6 +116,11 @@ without treating the old scenario files as fixtures to transliterate directly.
   execution. The latest [body-aware terminal prototype](docs/waypoint_direct_body_aware_terminal_results.md)
   accepts all fourteen development and ten newly sealed direct-flight cases
   at held 60 Hz, without cutaways, waypoints or planner/controller/default changes.
+- [Nominal direct flight integration](docs/nominal_direct_flight_integration_results.md)
+  adds an opt-in mission-input CLI and complete timed-program executor through
+  the ordinary controller/simulator path. All 24 now-exposed checkpoint cases
+  have exact parity in two release runs. Defaults remain unchanged; robustness,
+  useful setup cost and waypoint composition remain separate gates.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge
@@ -251,6 +256,27 @@ The default refresh covers packs in the guidance catalog. `--all` covers every
 captured fixture-backed pack. Both rebuild batch and per-run HTML from existing
 JSON bundles, preserve a recorded comparison when its basis is still readable,
 and leave `summary.json` evidence unchanged.
+
+## Opt-in Nominal Direct Flight
+
+`pd-eval nominal-direct-flight` generates, independently verifies and executes
+a complete accepted ballistic-direct program from a full scenario. It does not
+use stored successful commands or call the V1 chord planner. Supply exact pad
+IDs from that scenario and a new output directory:
+
+```bash
+cargo run --release -p pd-eval -- nominal-direct-flight \
+  --scenario SCENARIO.json --source-pad-id SOURCE_PAD_ID \
+  --target-pad-id TARGET_PAD_ID --output-dir NEW_FLIGHT_ROOT
+```
+
+Replace the uppercase arguments with real values. Use `--preflight-only`
+instead of `--output-dir` for read-only validation. Direct output includes the
+program, safety/contact audit, ordinary replay artifacts and `report.html`.
+Unknown, Unsupported and Invalid execute no flight; Unknown is finite-family
+exhaustion, not a waypoint-necessity claim or automatic fallback. Output roots
+are create-only. See the [results and measured costs](docs/nominal_direct_flight_integration_results.md)
+for the 24-control regression command and current nominal limits.
 
 ## Batch Eval
 

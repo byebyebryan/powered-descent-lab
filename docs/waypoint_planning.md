@@ -38,11 +38,27 @@ ones. The analytical profile is a candidate for direct-leg work; the observed
 split is a controller/profile-tracking question, not demonstrated waypoint
 demand or a production planner decision.
 
-### Latest direct-planning research checkpoint (2026-09-28)
+### Latest direct-planning checkpoint (2026-09-28)
 
 The latest result is the opt-in
-[body-aware terminal prototype](waypoint_direct_body_aware_terminal_results.md),
-not a production planner/controller change. Under one generic fixed policy,
+[nominal direct flight integration](nominal_direct_flight_integration_results.md).
+It executes complete accepted timed programs through the ordinary controller
+and simulator path from mission inputs. All 24 now-exposed body-aware controls
+have exact full-generation, selected-command, safe-contact and action-replay
+parity in two independent release runs. No saved command schedule is a generator
+input, no floor cutaway or waypoint is added, and production V1/default behavior
+is unchanged. The CLI returns finite Unknown without fallback; valid unsupported
+inputs and malformed bindings are separately typed and execute no flight.
+
+Measured local release medians are about 944 ms for the unchanged research
+generator and 662 ms for selected verification, versus 1.86 ms for ordinary
+execution of the entire offline flight. This includes old-policy comparison and
+source-family regeneration; it is not optimized production setup cost. Small
+contact margins and perturbation robustness remain separate boundaries.
+
+The preceding
+[body-aware terminal prototype](waypoint_direct_body_aware_terminal_results.md)
+was not a production planner/controller change. Under one generic fixed policy,
 all fourteen development cases and all ten cases sealed before implementation
 have complete accepted Direct flights without cutaways or waypoints. All 152
 development and 100 fresh source schedules pass; every previously accepted
@@ -107,13 +123,13 @@ also records an analytical direct-to-waypoint boundary, but its controller
 execution slice has not passed its exact-trajectory compatibility gate.
 
 The input-driven nominal baseline, bounded obstacle discrimination, terminal
-causal diagnostic and body-aware nominal terminal pass are closed at their
-declared gates. Do not restart source fitting or cadence-only experiments.
-The next separately scoped capability is an opt-in
-direct-first adapter using a complete accepted ballistic-direct witness.
-The production V1 chord model is still unchanged. Robust contact, measured
-setup cost, arbitrary incoming waypoint states, waypoint composition and
-default/controller integration remain open; changing policy requires a new
+causal diagnostic, body-aware nominal terminal pass and opt-in complete-program
+flight integration are closed at their declared gates. Do not restart source
+fitting or cadence-only experiments. The production V1 chord model is still
+unchanged. Setup cost is now measured for the research backend, not optimized
+or accepted against a production budget. Robust contact, arbitrary incoming
+waypoint states, waypoint composition and production/default selection remain
+open; changing flight policy requires a new
 boundary and held-out seal, not retuning inspected cases.
 Neither a controller crash nor finite direct-family exhaustion proves that
 every physically possible direct transfer is blocked; the latter remains an
