@@ -104,9 +104,18 @@ without treating the old scenario files as fixtures to transliterate directly.
   unchanged-controller comparison. It locates a tracking gap on taller terrain
   without demonstrating a need for an operational waypoint.
 - [Complete flat direct acceptance](docs/waypoint_direct_complete_flat_acceptance_protocol.md)
-  records the latest opt-in result: four complete launch-aware, held-60 Hz
+  records the known-flat milestone: four complete launch-aware, held-60 Hz
   direct witnesses land on uncut flat terrain. It accepts before ranking and
   does not change planner defaults or establish held-out coverage.
+- [Input-driven direct generation](docs/waypoint_direct_generation_results.md)
+  records six uncut flat/uphill/downhill cases; the subsequent
+  [obstacle discrimination](docs/waypoint_direct_obstacle_discrimination_results.md)
+  separates blocked chosen arcs, accepted alternative direct arcs, and finite
+  unknowns. The [terminal diagnostic](docs/waypoint_direct_terminal_admissibility_results.md)
+  separates inadmissible ideal contact references from cadence-sensitive
+  execution. The latest [body-aware terminal prototype](docs/waypoint_direct_body_aware_terminal_results.md)
+  accepts all fourteen development and ten newly sealed direct-flight cases
+  at held 60 Hz, without cutaways, waypoints or planner/controller/default changes.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge

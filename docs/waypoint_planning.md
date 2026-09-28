@@ -38,14 +38,44 @@ ones. The analytical profile is a candidate for direct-leg work; the observed
 split is a controller/profile-tracking question, not demonstrated waypoint
 demand or a production planner decision.
 
-### Latest direct-planning research checkpoint (2026-09-25)
+### Latest direct-planning research checkpoint (2026-09-28)
 
 The latest result is the opt-in
+[body-aware terminal prototype](waypoint_direct_body_aware_terminal_results.md),
+not a production planner/controller change. Under one generic fixed policy,
+all fourteen development cases and all ten cases sealed before implementation
+have complete accepted Direct flights without cutaways or waypoints. All 152
+development and 100 fresh source schedules pass; every previously accepted
+development row is retained. Both exposed and both fresh high obstacles now
+land directly at the intended global held-60 Hz cadence under 120 Hz physics.
+Launch/source commands and all fourteen historical baseline bytes are unchanged.
+
+The new terminal reference adds a zero final horizontal acceleration constraint
+and audits actual first core contact; the executor averages adjacent thrust
+vectors and inverts throttle against both post-burn masses. Complete ordinary
+and neutral replay validates body clearance, real attitude joins and command
+clock, fuel and time budgets, and stable safe target contact. Upper-foot margin
+is about 0.154 m and incoming normal speed about 1.5 m/s, but selected
+hull-penetration margin remains only 6.29–7.50 mm. Nominal acceptance is not
+perturbation robustness, swept-path proof or real-time planning authority.
+
+The preceding
+[terminal-admissibility and cadence diagnostic](waypoint_direct_terminal_admissibility_results.md),
+was diagnostic-only, not a planner/controller change. All 76 retained schedules
+reproduced their frozen contact results. Of 42 rejected schedules, 32 have inadmissible
+ideal first-contact foot geometry, while ten have admissible reference poses
+but fail under held-60 Hz execution. Matched-entry terminal-only 120 Hz commands
+land those ten and preserve all three accepted controls, but the six high-case
+tails still fail upper-foot contact geometry despite essentially exact tracking.
+Two independent runs retain byte-identical complete evidence. This separates
+reference construction from execution cadence; it does not promote new witnesses.
+
+The preceding
 [frozen obstacle-discrimination pass](waypoint_direct_obstacle_discrimination_results.md),
-not a change to `pd_plan::plan()`. Four development controls and all eight
-sealed 700/900 m cases passed their declared gates without retuning. Six fresh
-cases have complete Direct witnesses and two high obstacles remain finite
-Unknown; all 160 rows and both-run byte parity are retained. The 900 m
+also did not change `pd_plan::plan()`. Four development controls and all eight
+sealed 700/900 m cases passed their declared gates without retuning. At that
+checkpoint, six cases had complete Direct witnesses and two high obstacles
+were finite Unknown; all 160 rows and both-run byte parity are retained. The 900 m
 late/broad obstacle blocks the selected flat program but the unchanged
 generator accepts a different direct arc. No waypoint was added.
 
@@ -68,21 +98,23 @@ ranking. Two fresh runs produced byte-identical complete artifacts.
 Keep the evidence levels separate: the earlier V2 analytical certificates
 retain their original classifications, the original source-contact failures
 remain valid, and the new launch-aware wrappers are nominal simulator witnesses
-rather than V2 certificates or robustness proofs. The smallest selected
-fresh-case hull-penetration margin is only about `+2.245 mm`; nominal success
+rather than V2 certificates or robustness proofs. The original generation
+checkpoint's smallest selected fresh-case hull-penetration margin was only
+about `+2.245 mm`; nominal success
 must not be promoted to robust or production/default authority. The
 [direct-first boundary protocol](ballistic_direct_first_decision_protocol.md)
 also records an analytical direct-to-waypoint boundary, but its controller
 execution slice has not passed its exact-trajectory compatibility gate.
 
-The input-driven nominal baseline and bounded obstacle-discrimination
-questions are now closed at their respective six/eight-case gates. The high
-obstacle unknowns include six terrain-clear schedules that fail only at target
-contact: excessive upper-foot clearance and normal speed. Next research
-should isolate actual first-contact terminal capture with matched entry
-states and frozen launch/source/terrain, rather than infer waypoint demand
-or retune the sealed cases. Robust contact, arbitrary incoming waypoint
-states, waypoint composition and default/controller integration remain open.
+The input-driven nominal baseline, bounded obstacle discrimination, terminal
+causal diagnostic and body-aware nominal terminal pass are closed at their
+declared gates. Do not restart source fitting or cadence-only experiments.
+The next separately scoped capability is an opt-in
+direct-first adapter using a complete accepted ballistic-direct witness.
+The production V1 chord model is still unchanged. Robust contact, measured
+setup cost, arbitrary incoming waypoint states, waypoint composition and
+default/controller integration remain open; changing policy requires a new
+boundary and held-out seal, not retuning inspected cases.
 Neither a controller crash nor finite direct-family exhaustion proves that
 every physically possible direct transfer is blocked; the latter remains an
 explicit `unknown`.

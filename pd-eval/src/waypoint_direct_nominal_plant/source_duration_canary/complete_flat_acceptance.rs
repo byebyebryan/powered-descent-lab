@@ -17,6 +17,10 @@ use serde::{Deserialize, Serialize};
 
 mod terrain_twin;
 pub use terrain_twin::*;
+mod terminal_admissibility;
+pub use terminal_admissibility::*;
+mod body_aware_terminal;
+pub use body_aware_terminal::*;
 
 use super::super::{
     CommandSaturationEvidence, NominalProfile, PlantStateEvidence, RolloutCadence,
@@ -2795,7 +2799,7 @@ mod tests {
         VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec,
     };
 
-    fn test_context() -> RunContext {
+    pub(super) fn test_context() -> RunContext {
         RunContext::from_scenario(&ScenarioSpec {
             id: "complete-flat-acceptance-test".to_owned(),
             name: "Complete flat acceptance test".to_owned(),

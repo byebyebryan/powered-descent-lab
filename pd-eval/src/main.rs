@@ -8,11 +8,15 @@ use pd_eval::{
     WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointDirectSourceDurationCanaryInputPaths,
     WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths, compare_batch_reports,
-    compare_waypoint_direct_generation_gate_a, freeze_waypoint_direct_obstacle_discrimination,
-    load_batch_report, load_waypoint_direct_generation_fresh_manifest, promote_pack_cache,
-    refresh_report_outputs, report::write_batch_report_artifacts, resolve_pack_compare_baseline,
-    run_candidate_replay_case, run_candidate_replay_development,
-    run_conservative_ballistic_f6_controller_integration_v1,
+    compare_waypoint_direct_generation_gate_a, freeze_waypoint_direct_body_aware_terminal,
+    freeze_waypoint_direct_obstacle_discrimination, load_batch_report,
+    load_waypoint_direct_generation_fresh_manifest,
+    preflight_waypoint_direct_body_aware_terminal_development,
+    preflight_waypoint_direct_body_aware_terminal_freeze,
+    preflight_waypoint_direct_body_aware_terminal_fresh_gate,
+    preflight_waypoint_direct_terminal_admissibility, promote_pack_cache, refresh_report_outputs,
+    report::write_batch_report_artifacts, resolve_pack_compare_baseline, run_candidate_replay_case,
+    run_candidate_replay_development, run_conservative_ballistic_f6_controller_integration_v1,
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_f5_analytical_v1,
@@ -22,7 +26,8 @@ use pd_eval::{
     run_physical_witness_development, run_progress_interval_envelope_development_gate,
     run_route_execution_development_case, run_route_execution_development_gate,
     run_source_transition_development_case, run_source_transition_development_gate,
-    run_terrain_equivalence_spike, run_waypoint_direct_characterization,
+    run_terrain_equivalence_spike, run_waypoint_direct_body_aware_terminal_development,
+    run_waypoint_direct_body_aware_terminal_fresh_gate, run_waypoint_direct_characterization,
     run_waypoint_direct_complete_flat_acceptance, run_waypoint_direct_controller_comparison,
     run_waypoint_direct_coupled_thrust_audit, run_waypoint_direct_flat_candidate_closure,
     run_waypoint_direct_generation_fresh_gate, run_waypoint_direct_launch_contact_contract,
@@ -32,8 +37,9 @@ use pd_eval::{
     run_waypoint_direct_source_contact, run_waypoint_direct_source_duration_canary,
     run_waypoint_direct_source_duration_held_cadence_diagnostic,
     run_waypoint_direct_source_duration_paired_command_feasibility,
-    run_waypoint_direct_topology_boundary, run_waypoint_direct_topology_sweep,
-    seal_waypoint_direct_generation_code, validate_waypoint_direct_complete_flat_acceptance_inputs,
+    run_waypoint_direct_terminal_admissibility, run_waypoint_direct_topology_boundary,
+    run_waypoint_direct_topology_sweep, seal_waypoint_direct_generation_code,
+    validate_waypoint_direct_complete_flat_acceptance_inputs,
     validate_waypoint_direct_coupled_thrust_audit_inputs,
     validate_waypoint_direct_flat_candidate_closure_inputs,
     validate_waypoint_direct_launch_contact_contract_inputs,
@@ -137,6 +143,74 @@ enum Commands {
     WaypointDirectObstacleFreeze(WaypointDirectObstacleFreezeArgs),
     /// Evaluate all eight sealed obstacle cases under the accepted code freeze.
     WaypointDirectObstacleFresh(WaypointDirectObstacleFreshArgs),
+    /// Audit frozen terminal references and isolate terminal-only command cadence.
+    WaypointDirectTerminalAdmissibility(WaypointDirectTerminalAdmissibilityArgs),
+    /// Run the fourteen-case development gate, or its input-only preflight.
+    WaypointDirectBodyAwareTerminalDevelopment(WaypointDirectBodyAwareTerminalDevelopmentArgs),
+    /// Freeze reviewed body-aware development evidence against exact source and inputs.
+    WaypointDirectBodyAwareTerminalFreeze(WaypointDirectBodyAwareTerminalFreezeArgs),
+    /// Evaluate the ten sealed body-aware terminal cases under the accepted freeze.
+    WaypointDirectBodyAwareTerminalFreshGate(WaypointDirectBodyAwareTerminalFreshGateArgs),
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectTerminalAdmissibilityArgs {
+    #[arg(
+        long,
+        value_name = "INPUT_ROOT",
+        default_value = "outputs/research/waypoint_direct_obstacle_discrimination_20260925/fresh_run_a"
+    )]
+    input_root: PathBuf,
+    #[arg(long, conflicts_with = "output_dir")]
+    preflight_only: bool,
+    #[arg(
+        long,
+        value_name = "OUTPUT_DIR",
+        required_unless_present = "preflight_only"
+    )]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectBodyAwareTerminalDevelopmentArgs {
+    #[arg(long, conflicts_with = "output_dir")]
+    preflight_only: bool,
+    #[arg(
+        long,
+        value_name = "OUTPUT_DIR",
+        required_unless_present = "preflight_only"
+    )]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectBodyAwareTerminalFreezeArgs {
+    #[arg(long, value_name = "SUMMARY")]
+    development_summary: PathBuf,
+    #[arg(long, conflicts_with = "output_dir")]
+    preflight_only: bool,
+    #[arg(
+        long,
+        value_name = "OUTPUT_DIR",
+        required_unless_present = "preflight_only"
+    )]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointDirectBodyAwareTerminalFreshGateArgs {
+    #[arg(long, value_name = "SUMMARY")]
+    development_summary: PathBuf,
+    #[arg(long, value_name = "SUMMARY")]
+    code_freeze_summary: PathBuf,
+    #[arg(long, conflicts_with = "output_dir")]
+    preflight_only: bool,
+    #[arg(
+        long,
+        value_name = "OUTPUT_DIR",
+        required_unless_present = "preflight_only"
+    )]
+    output_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -1298,6 +1372,78 @@ fn main() -> Result<()> {
             )?;
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
+        Commands::WaypointDirectTerminalAdmissibility(args) => {
+            let input_root = if args.input_root.is_absolute() {
+                args.input_root
+            } else {
+                repo_root().join(args.input_root)
+            };
+            if args.preflight_only {
+                let result = preflight_waypoint_direct_terminal_admissibility(&input_root)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let result = run_waypoint_direct_terminal_admissibility(
+                    &input_root,
+                    args.output_dir
+                        .as_deref()
+                        .expect("clap requires output dir"),
+                )?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+        }
+        Commands::WaypointDirectBodyAwareTerminalDevelopment(args) => {
+            if args.preflight_only {
+                let result =
+                    preflight_waypoint_direct_body_aware_terminal_development(&repo_root())?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let result = run_waypoint_direct_body_aware_terminal_development(
+                    &repo_root(),
+                    args.output_dir
+                        .as_deref()
+                        .expect("clap requires output dir"),
+                )?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+        }
+        Commands::WaypointDirectBodyAwareTerminalFreeze(args) => {
+            if args.preflight_only {
+                let result = preflight_waypoint_direct_body_aware_terminal_freeze(
+                    &repo_root(),
+                    &args.development_summary,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let result = freeze_waypoint_direct_body_aware_terminal(
+                    &repo_root(),
+                    &args.development_summary,
+                    args.output_dir
+                        .as_deref()
+                        .expect("clap requires output dir"),
+                )?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+        }
+        Commands::WaypointDirectBodyAwareTerminalFreshGate(args) => {
+            if args.preflight_only {
+                let result = preflight_waypoint_direct_body_aware_terminal_fresh_gate(
+                    &repo_root(),
+                    &args.development_summary,
+                    &args.code_freeze_summary,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let result = run_waypoint_direct_body_aware_terminal_fresh_gate(
+                    &repo_root(),
+                    &args.development_summary,
+                    &args.code_freeze_summary,
+                    args.output_dir
+                        .as_deref()
+                        .expect("clap requires output dir"),
+                )?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+        }
     }
 
     Ok(())
@@ -1328,6 +1474,103 @@ fn repo_root() -> PathBuf {
 #[cfg(test)]
 mod direct_generation_cli_tests {
     use super::*;
+
+    #[test]
+    fn terminal_diagnostic_requires_preflight_or_create_only_output() {
+        let command = ["pd-eval", "waypoint-direct-terminal-admissibility"];
+        assert!(Cli::try_parse_from(command).is_err());
+        assert!(Cli::try_parse_from([command[0], command[1], "--preflight-only"]).is_ok());
+        assert!(Cli::try_parse_from([command[0], command[1], "--output-dir", "new"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                command[0],
+                command[1],
+                "--preflight-only",
+                "--output-dir",
+                "new"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn body_aware_terminal_gates_require_stage_inputs_or_preflight_only() {
+        let command = ["pd-eval", "waypoint-direct-body-aware-terminal-development"];
+        assert!(Cli::try_parse_from(command).is_err());
+        assert!(Cli::try_parse_from([command[0], command[1], "--preflight-only"]).is_ok());
+        assert!(Cli::try_parse_from([command[0], command[1], "--output-dir", "new"]).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                command[0],
+                command[1],
+                "--preflight-only",
+                "--output-dir",
+                "new"
+            ])
+            .is_err()
+        );
+
+        let freeze = ["pd-eval", "waypoint-direct-body-aware-terminal-freeze"];
+        assert!(Cli::try_parse_from([freeze[0], freeze[1], "--preflight-only"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                freeze[0],
+                freeze[1],
+                "--development-summary",
+                "dev.json",
+                "--preflight-only"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                freeze[0],
+                freeze[1],
+                "--development-summary",
+                "dev.json",
+                "--output-dir",
+                "new"
+            ])
+            .is_ok()
+        );
+
+        let fresh = ["pd-eval", "waypoint-direct-body-aware-terminal-fresh-gate"];
+        assert!(
+            Cli::try_parse_from([
+                fresh[0],
+                fresh[1],
+                "--development-summary",
+                "dev.json",
+                "--preflight-only"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                fresh[0],
+                fresh[1],
+                "--development-summary",
+                "dev.json",
+                "--code-freeze-summary",
+                "freeze.json",
+                "--preflight-only"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                fresh[0],
+                fresh[1],
+                "--development-summary",
+                "dev.json",
+                "--code-freeze-summary",
+                "freeze.json",
+                "--output-dir",
+                "new"
+            ])
+            .is_ok()
+        );
+    }
 
     #[test]
     fn obstacle_gates_require_explicit_evidence_and_output_paths() {

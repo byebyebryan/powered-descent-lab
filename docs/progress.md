@@ -1,5 +1,74 @@
 # Progress
 
+## 2026-09-28
+
+### Body-aware nominal direct terminal checkpoint
+
+- The evaluator-only [body-aware terminal prototype](waypoint_direct_body_aware_terminal_results.md)
+  passes all fourteen exposed development cases and all ten cases sealed before
+  implementation. It keeps launch/source commands unchanged and uses a generic
+  quadratic-horizontal / affine-vertical reference with an actual first-contact
+  audit and paired-mass executor on the original held-60 Hz command clock.
+- All 152 development source schedules and all 100 fresh schedules have complete
+  accepted flights. All 62 previously accepted development rows are retained;
+  128 development and 100 fresh source-stage skips remain recorded. Both exposed
+  and both fresh high obstacles now have Direct witnesses, without a floor
+  cutaway, waypoint, contact-threshold relaxation or per-case retuning.
+- All fourteen regenerated original baseline summaries match their historical
+  bytes. The old obstacle ledger remains 34 accepted / 42 rejected, and the
+  September 27 causal diagnostic is preserved. The new results have separate
+  identities and do not revise production V1, controllers, core, V2/F6 or defaults.
+- Selected incoming normal speed is about 1.5 m/s and upper-foot margin about
+  0.154 m. Hull-penetration margin remains only 6.29–7.50 mm, so discrete nominal
+  success is not swept-path or perturbation robustness. Arbitrary incoming
+  waypoint states, composition and real-time setup cost remain unproven.
+- The independent audit exposed a saved-ledger omission/ranking integrity gap;
+  full finite-ledger regeneration and tamper regressions close it before source
+  freeze. Validation passes 742 workspace tests in twelve suites, strict
+  all-target Clippy, formatting and diff checks. Both development and fresh
+  roots and all 24 case files are byte-identical across independent repeats;
+  source/input/historical digests match after evaluation.
+- Review closes test portability: the default full workspace gate passes
+  742 tests in an artifact-free staged checkout with Git metadata. One
+  retained-artifact integration test is explicitly ignored by default and
+  passes separately against the local historical outputs. Only test code
+  changed after measurement; the original all-source freeze is historical,
+  while flight-engine/protocol/input/output bytes remain unchanged. The
+  diagnostic and prototype are reviewed and committed; no push, deployment
+  or default promotion.
+- Close nominal terminal research here. Next is a separately
+  scoped opt-in direct-first witness adapter, with robustness and setup-cost
+  gates before production authority. More source fitting, cadence-only work or
+  obstacle sweeps are not required to resolve this checkpoint.
+
+## 2026-09-27
+
+### Frozen terminal-admissibility and execution-isolation checkpoint
+
+- Completed the evaluator-only [terminal diagnostic](waypoint_direct_terminal_admissibility_results.md)
+  on the retained eight-case obstacle gate, without generator/fitter calls or
+  core/controller/planner/default changes. All 76 frozen baseline/contact
+  replays, reference bindings, pose/core probes and predicate mirrors pass.
+- Of the 42 rejected complete schedules, 32 already have inadmissible ideal
+  thrust-aligned first-contact geometry; all fail upper-foot clearance despite
+  safe reference normal speed. The other ten have admissible reference poses.
+  All 34 accepted witnesses retain admissible reference contact.
+- Nineteen matched-entry, original-clock comparisons isolate terminal-only
+  command cadence. At 120 Hz the ten flat/low near-margin failures land and all
+  three accepted controls remain stable. The six high-case failures still
+  crash: near-exact tracking removes their speed violation but leaves upper
+  feet around 0.48–0.52 m against the unchanged 0.15 m contact limit.
+- This closes the causal diagnostic, not a policy fix. Next design should make
+  terminal reference construction body-aware at first contact, then provide
+  an intended-60 Hz commandable executor. Do not resume source fitting,
+  weaken contact rules or interpret the remaining unknowns as waypoint demand.
+  A policy change requires separate approval and newly sealed held-out inputs.
+- Both independent roots and all eight full case summaries are byte-identical;
+  result identity `fnv1a64:55268bb4947877fc`. Validation passed 721 workspace
+  tests in twelve suites, strict all-target Clippy, formatting, diff and
+  source/input/output digest checks. Historical acceptance remains 34/42;
+  no new witness promotion, commit, push or deployment.
+
 ## 2026-09-25
 
 ### Frozen direct-generator obstacle discrimination checkpoint

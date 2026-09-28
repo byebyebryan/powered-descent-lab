@@ -134,6 +134,12 @@ pub use waypoint_direct_generation_gates::*;
 pub mod waypoint_direct_obstacle_discrimination;
 pub use waypoint_direct_obstacle_discrimination::*;
 
+pub mod waypoint_direct_terminal_admissibility;
+pub use waypoint_direct_terminal_admissibility::*;
+
+pub mod waypoint_direct_body_aware_terminal;
+pub use waypoint_direct_body_aware_terminal::*;
+
 mod controller_shadow;
 pub use controller_shadow::*;
 

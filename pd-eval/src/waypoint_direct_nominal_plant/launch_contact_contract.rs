@@ -1624,7 +1624,7 @@ fn replay_logged_cadence_with_hold_mode(
     })
 }
 
-fn first_contact_predicate_margins(
+pub(super) fn first_contact_predicate_margins(
     state: &PreterminalContactStateEvidence,
     context: &RunContext,
 ) -> FirstContactPredicateMarginsEvidence {
@@ -1884,7 +1884,7 @@ fn event_contact_label(events: &[pd_core::EventRecord]) -> &'static str {
     "none"
 }
 
-fn mirror_contact_predicates(
+pub(super) fn mirror_contact_predicates(
     state: &SimulationState,
     context: &RunContext,
 ) -> ContactPredicateMirrorEvidence {
@@ -1963,7 +1963,7 @@ fn mirror_contact_predicates(
     }
 }
 
-fn preterminal_contact_state(
+pub(super) fn preterminal_contact_state(
     state: &SimulationState,
     context: &RunContext,
 ) -> PreterminalContactStateEvidence {

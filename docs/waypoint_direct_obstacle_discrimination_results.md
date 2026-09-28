@@ -12,6 +12,10 @@ finite `Unknown`. The 900 m late/broad case blocks the selected flat flight
 but accepts a different direct arc. This closes the bounded discrimination
 question, not waypoint necessity or production integration.
 
+The follow-up [terminal diagnostic](waypoint_direct_terminal_admissibility_results.md)
+now isolates ideal first-contact geometry from matched-entry execution cadence.
+The original gate and its witness ledger below remain unchanged.
+
 ## Preservation and development
 
 All six earlier 600/1,000 m flat/uphill/downhill generation artifacts were

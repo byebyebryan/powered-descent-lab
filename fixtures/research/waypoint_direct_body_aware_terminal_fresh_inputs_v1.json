@@ -1,0 +1,1276 @@
+{
+  "schema_id": "waypoint_direct_body_aware_terminal_fresh_inputs_v1",
+  "schema_version": 1,
+  "sealed_before_implementation": true,
+  "generation_policy": {
+    "version": "launch_aware_held60_nominal_direct_generation_v1",
+    "analytical_policy": {
+      "physics_hz": 120,
+      "gravity_mps2": 9.81,
+      "duration_multipliers": [
+        0.75,
+        1,
+        1.25,
+        1.5
+      ],
+      "minimum_clearance_m": 5,
+      "maximum_mission_time_s": 90,
+      "mission_time_reserve_s": 10,
+      "thrust_derate": 0.81,
+      "declared_robustness_margin": 0.075,
+      "handoff_interval_s": 0.25,
+      "bridge_duration_interval_s": 0.5,
+      "terminal_target_downward_speed_fraction": 0.5
+    },
+    "physics_hz": 120,
+    "controller_hz": 60,
+    "launch_upright_ticks": 60,
+    "launch_tilt_ticks": 12,
+    "source_duration_offsets_ticks": [
+      -240,
+      -180,
+      -120,
+      -60,
+      0
+    ],
+    "maximum_basis_candidates": 4,
+    "maximum_variants": 20,
+    "solver_version": "paired_mean_vector_damped_finite_difference_shooting_v1",
+    "maximum_solver_iterations": 6,
+    "maximum_line_search_steps": 8,
+    "finite_difference_step_mps2": 0.0001,
+    "maximum_correction_abs_mps2": 0.25,
+    "initial_damping": 0.001,
+    "position_tolerance_m": 0.000001,
+    "velocity_tolerance_mps": 0.000001,
+    "geometry_convention": "core_current_rotated_feet_and_hull",
+    "selection_rule": "complete accepted witnesses only; planned total mission time then stable witness identity"
+  },
+  "terminal_policy": {
+    "version": "body_aware_quadratic_terminal_held60_v1",
+    "reference_family": "quadratic_horizontal_affine_vertical_exact_discrete",
+    "duration_offsets_ticks": [
+      0,
+      60,
+      120,
+      180,
+      240,
+      300,
+      360
+    ],
+    "terminal_target_downward_speed_fraction": 0.5,
+    "contact_undershoot_m": 0.005,
+    "maximum_after_reference_ticks": 4,
+    "terminal_reference_extra_clearance_m": 0.1,
+    "scalar_inverse_iterations": 48,
+    "maximum_coast_clock_alignment_ticks": 1,
+    "geometry_convention": "core_current_rotated_feet_and_hull"
+  },
+  "fresh_case_order": "750 then 950 m; flat, uphill +100 m, downhill -100 m, high obstacle, late broad; all Direct required for a passing fresh capability gate",
+  "cases": [
+    {
+      "case_id": "unseen_flat_span_750",
+      "horizontal_span_m": 750,
+      "profile": "flat",
+      "height_change_m": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_flat_span_750",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_flat_span_750",
+        "name": "Sealed body-aware terminal direct: unseen_flat_span_750",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "flat"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_flat_span_750",
+          "terrain_kind": "flat"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -910,
+                "y": 0
+              },
+              {
+                "x": -768,
+                "y": 0
+              },
+              {
+                "x": -732,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -750,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -750,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_uphill_span_750",
+      "horizontal_span_m": 750,
+      "profile": "uphill",
+      "height_change_m": 100,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_uphill_span_750",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_uphill_span_750",
+        "name": "Sealed body-aware terminal direct: unseen_uphill_span_750",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "uphill"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_uphill_span_750",
+          "terrain_kind": "uphill"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -910,
+                "y": -100
+              },
+              {
+                "x": -768,
+                "y": -100
+              },
+              {
+                "x": -732,
+                "y": -100
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -750,
+              "surface_y_m": -100,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -750,
+            "y": -95
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_downhill_span_750",
+      "horizontal_span_m": 750,
+      "profile": "downhill",
+      "height_change_m": -100,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_downhill_span_750",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_downhill_span_750",
+        "name": "Sealed body-aware terminal direct: unseen_downhill_span_750",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "downhill"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_downhill_span_750",
+          "terrain_kind": "downhill"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -910,
+                "y": 100
+              },
+              {
+                "x": -768,
+                "y": 100
+              },
+              {
+                "x": -732,
+                "y": 100
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -750,
+              "surface_y_m": 100,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -750,
+            "y": 105
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_high_obstacle_span_750",
+      "horizontal_span_m": 750,
+      "profile": "high_obstacle",
+      "height_change_m": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_high_obstacle_span_750",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_high_obstacle_span_750",
+        "name": "Sealed body-aware terminal direct: unseen_high_obstacle_span_750",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "high_obstacle"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_high_obstacle_span_750",
+          "terrain_kind": "high_obstacle"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -910,
+                "y": 0
+              },
+              {
+                "x": -768,
+                "y": 0
+              },
+              {
+                "x": -732,
+                "y": 0
+              },
+              {
+                "x": -375,
+                "y": 0
+              },
+              {
+                "x": -337.5,
+                "y": 412.50000000000006
+              },
+              {
+                "x": -262.5,
+                "y": 412.50000000000006
+              },
+              {
+                "x": -225,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -750,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -750,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_late_broad_span_750",
+      "horizontal_span_m": 750,
+      "profile": "late_broad",
+      "height_change_m": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_late_broad_span_750",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_late_broad_span_750",
+        "name": "Sealed body-aware terminal direct: unseen_late_broad_span_750",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "late_broad"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_late_broad_span_750",
+          "terrain_kind": "late_broad"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -910,
+                "y": 0
+              },
+              {
+                "x": -768,
+                "y": 0
+              },
+              {
+                "x": -732,
+                "y": 0
+              },
+              {
+                "x": -360,
+                "y": 0
+              },
+              {
+                "x": -285,
+                "y": 187.5
+              },
+              {
+                "x": -135,
+                "y": 187.5
+              },
+              {
+                "x": -60,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -750,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -750,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_flat_span_950",
+      "horizontal_span_m": 950,
+      "profile": "flat",
+      "height_change_m": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_flat_span_950",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_flat_span_950",
+        "name": "Sealed body-aware terminal direct: unseen_flat_span_950",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "flat"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_flat_span_950",
+          "terrain_kind": "flat"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1110,
+                "y": 0
+              },
+              {
+                "x": -968,
+                "y": 0
+              },
+              {
+                "x": -932,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -950,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -950,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_uphill_span_950",
+      "horizontal_span_m": 950,
+      "profile": "uphill",
+      "height_change_m": 100,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_uphill_span_950",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_uphill_span_950",
+        "name": "Sealed body-aware terminal direct: unseen_uphill_span_950",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "uphill"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_uphill_span_950",
+          "terrain_kind": "uphill"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1110,
+                "y": -100
+              },
+              {
+                "x": -968,
+                "y": -100
+              },
+              {
+                "x": -932,
+                "y": -100
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -950,
+              "surface_y_m": -100,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -950,
+            "y": -95
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_downhill_span_950",
+      "horizontal_span_m": 950,
+      "profile": "downhill",
+      "height_change_m": -100,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_downhill_span_950",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_downhill_span_950",
+        "name": "Sealed body-aware terminal direct: unseen_downhill_span_950",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "downhill"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_downhill_span_950",
+          "terrain_kind": "downhill"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1110,
+                "y": 100
+              },
+              {
+                "x": -968,
+                "y": 100
+              },
+              {
+                "x": -932,
+                "y": 100
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -950,
+              "surface_y_m": 100,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -950,
+            "y": 105
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_high_obstacle_span_950",
+      "horizontal_span_m": 950,
+      "profile": "high_obstacle",
+      "height_change_m": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_high_obstacle_span_950",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_high_obstacle_span_950",
+        "name": "Sealed body-aware terminal direct: unseen_high_obstacle_span_950",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "high_obstacle"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_high_obstacle_span_950",
+          "terrain_kind": "high_obstacle"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1110,
+                "y": 0
+              },
+              {
+                "x": -968,
+                "y": 0
+              },
+              {
+                "x": -932,
+                "y": 0
+              },
+              {
+                "x": -475,
+                "y": 0
+              },
+              {
+                "x": -427.5,
+                "y": 522.5
+              },
+              {
+                "x": -332.5,
+                "y": 522.5
+              },
+              {
+                "x": -285,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -950,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -950,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "unseen_late_broad_span_950",
+      "horizontal_span_m": 950,
+      "profile": "late_broad",
+      "height_change_m": 0,
+      "source_pad_id": "pad_source",
+      "target_pad_id": "pad_main",
+      "probe_id": "unseen_late_broad_span_950",
+      "scenario": {
+        "id": "waypoint-direct-body-aware-terminal-unseen_late_broad_span_950",
+        "name": "Sealed body-aware terminal direct: unseen_late_broad_span_950",
+        "description": "Predeclared input-only nominal body-aware terminal gate; continuous terrain, no cutaway or authored waypoints.",
+        "seed": 7,
+        "tags": [
+          "waypoint_planning",
+          "body_aware_terminal_fresh",
+          "late_broad"
+        ],
+        "metadata": {
+          "research": "waypoint_direct_body_aware_terminal_v1",
+          "case_id": "unseen_late_broad_span_950",
+          "terrain_kind": "late_broad"
+        },
+        "sim": {
+          "physics_hz": 120,
+          "controller_hz": 60,
+          "max_time_s": 90,
+          "sample_hz": 10
+        },
+        "world": {
+          "gravity_mps2": 9.81,
+          "terrain": {
+            "kind": "heightfield",
+            "points_m": [
+              {
+                "x": -1110,
+                "y": 0
+              },
+              {
+                "x": -968,
+                "y": 0
+              },
+              {
+                "x": -932,
+                "y": 0
+              },
+              {
+                "x": -456,
+                "y": 0
+              },
+              {
+                "x": -361,
+                "y": 237.5
+              },
+              {
+                "x": -171,
+                "y": 237.5
+              },
+              {
+                "x": -76,
+                "y": 0
+              },
+              {
+                "x": -18,
+                "y": 0
+              },
+              {
+                "x": 18,
+                "y": 0
+              },
+              {
+                "x": 160,
+                "y": 0
+              }
+            ]
+          },
+          "landing_pads": [
+            {
+              "id": "pad_source",
+              "center_x_m": -950,
+              "surface_y_m": 0,
+              "width_m": 36
+            },
+            {
+              "id": "pad_main",
+              "center_x_m": 0,
+              "surface_y_m": 0,
+              "width_m": 36
+            }
+          ]
+        },
+        "vehicle": {
+          "geometry": {
+            "hull_width_m": 8,
+            "hull_height_m": 10,
+            "touchdown_half_span_m": 4,
+            "touchdown_base_offset_m": 5
+          },
+          "dry_mass_kg": 7200,
+          "initial_fuel_kg": 6300,
+          "max_fuel_kg": 6300,
+          "max_thrust_n": 240000,
+          "max_fuel_burn_kgps": 49.5,
+          "min_throttle_frac": 0.25,
+          "max_rotation_rate_radps": 1.5707963267948966,
+          "safe_touchdown_normal_speed_mps": 3,
+          "safe_touchdown_tangential_speed_mps": 2,
+          "safe_touchdown_attitude_error_rad": 0.15,
+          "safe_touchdown_angular_rate_radps": 0.35
+        },
+        "initial_state": {
+          "position_m": {
+            "x": -950,
+            "y": 5
+          },
+          "velocity_mps": {
+            "x": 0,
+            "y": 0
+          },
+          "attitude_rad": 0,
+          "angular_rate_radps": 0
+        },
+        "mission": {
+          "goal": {
+            "kind": "landing_on_pad",
+            "target_pad_id": "pad_main"
+          }
+        }
+      }
+    }
+  ]
+}

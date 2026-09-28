@@ -82,14 +82,36 @@ Current implementation status:
     on the 12 taller cells; no analytical one-waypoint row was eligible.
     This historical controller split does not establish certificate execution
     or justify inferring waypoint demand from controller crashes
-  - the latest opt-in
+  - the opt-in known-flat
     [complete-flat acceptance checkpoint](waypoint_direct_complete_flat_acceptance_protocol.md)
     accepts four new launch-aware held-60 Hz direct witnesses without a floor
     cutaway and rejects five shorter target-contact crashes before ranking.
-    It closes known-flat nominal acceptance only; reusable generation,
-    held-out flat/uphill/downhill execution, robustness, and controller/default
-    integration remain open. V1 and F6 are unchanged; the analytical boundary
-    study remains distinct from this simulator acceptance result
+    It closes known-flat nominal acceptance only. The subsequent
+    [input-driven generation checkpoint](waypoint_direct_generation_results.md)
+    passes all six uncut flat/uphill/downhill cases, and the
+    [obstacle-discrimination checkpoint](waypoint_direct_obstacle_discrimination_results.md)
+    accepts complete direct witnesses in six of eight cases. The two high
+    obstacles retain terrain-clear schedules rejected at target contact,
+    rather than proof of waypoint demand. Robustness, arbitrary incoming
+    waypoint states, composition and controller/default integration remain
+    open. V1 and F6 are unchanged; the analytical boundary study remains
+    distinct from these nominal simulator acceptance results
+  - the [terminal diagnostic](waypoint_direct_terminal_admissibility_results.md)
+    reproduces all 76 frozen schedules and separates 32 inadmissible ideal
+    contact references from ten cadence-sensitive failures. Terminal-only
+    120 Hz execution lands those ten, preserves three accepted controls and
+    still cannot land the six high-case tails despite nearly exact tracking.
+    It isolates the reference and cadence problems; its results and old ledgers
+    remain unchanged
+  - the latest [body-aware terminal prototype](waypoint_direct_body_aware_terminal_results.md)
+    accepts all fourteen development and ten newly sealed Direct cases at the
+    intended held-60 Hz cadence without cutaways or waypoints. All 152 / 100
+    available development / fresh source schedules pass, while historical
+    baseline bytes and launch/source commands remain unchanged. The nominal
+    terminal question is closed; selected hull-contact margin remains
+    millimetre-scale and robustness, setup cost and default authority are open.
+    Next is a separately scoped opt-in direct-first witness
+    adapter, not more source fitting or automatic waypoint expansion
   - the first nominal-radius `r-60 | r+60` expansion remains diagnostic rather
     than accepted: its disposable local contract snapshot closed at `11 / 24`,
     and the research-only center-to-center trajectory-tube model failed the
