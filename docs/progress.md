@@ -2,6 +2,66 @@
 
 ## 2026-09-28
 
+### One-update terminal-completion reserve review and commit closure
+
+- Primary review finds no blocking design defect in the separate completion
+  wrapper, integer limits, live-prefix capture, global segment clock, sample
+  ownership or independent counterfactual replay. Existing bounded-loop stop,
+  guard and callback ordering supports the proposed narrow seam; persisted
+  snapshots remain query-only and exact nominal authority is unchanged.
+- Fresh checks pass all four input-only preflights with no simulation created,
+  fixture geometry/policy/order checks, six integer-bound examples, three checked
+  overflow cases, local documentation links/whitespace, formatting and diff
+  checks. These are design/readiness checks, not runtime or flight acceptance;
+  no full runtime suite or measured mission gate is repeated.
+- All 128 existing bound runtime/input/protocol files, all 4,697 historical
+  archive files across four roots, the release binary and all three sealed
+  contract/protocol/manifest digests remain unchanged. Commit only the six
+  documentation/fixture files as a design checkpoint. Implementation and new
+  accepted continuation evidence still require a separate pass; no push,
+  deployment or planner/default promotion is included.
+
+### One-update terminal-completion reserve design checkpoint
+
+- The [reserve contract](nominal_direct_terminal_completion_reserve_contract.md)
+  specifies a separate opt-in one-update exact final-command policy, clipped by
+  original planned end. Saved coverage K, authorized A, effective R and hard H
+  retain distinct flags; issued actions and advanced reserve physics are separate.
+  `FlightProgramV1`, strict nominal/saved-coverage execution and defaults stay
+  unchanged. The reserve is designed, not implemented or accepted by flight.
+- Luna's read-only seam audit confirms an aligned shared-loop segment needs no
+  second integrator or broad restore framework. Primary resolves ephemeral live
+  prefix capture through the existing guard, query-only persisted snapshots,
+  global ordinal/replay, explicit shifted-entry terminal phase versus nominal
+  E coast accounting, pre-intervention sample labeling and exact reserve bits.
+- The [implementation protocol](nominal_direct_terminal_completion_reserve_protocol.md)
+  requires all 28 exposed plus four fresh nominal baselines before the fixed
+  nine-offset, two-lane study: 288 combinations per lane, 576 observations per
+  complete run and two independent repeats. Counterfactual segments are not
+  full flights or a continuous operating envelope. First failed gate stops
+  without replacement, tuning, second update or deadline expansion.
+- The [735/915 m fresh manifest](../fixtures/research/nominal_direct_terminal_completion_fresh_inputs_v1.json)
+  is resolved/sealed before implementation or generation. Existing release
+  preflight reports all four supported with no simulation created. Structural
+  checks preserve vehicle, rates, generation/terminal policies, uncut six-point
+  terrain and fixed metadata/offset order. Six integer-bound examples and two
+  overflow checks pass as design arithmetic, not runtime/physics validation.
+- Final documentation/link/whitespace, JSON/fixture and formatting checks pass.
+  All 128 existing runtime/input/protocol closure files and all 4,697 historical
+  archive files across four roots retain their captured inventory/bytes. No
+  runtime suite or flight measurement is repeated for design-only changes.
+  Primary authors policy, contract/protocol, input seal, status and acceptance;
+  Luna contributes only read-only seam investigation/review.
+- Final contract SHA-256:
+  `b43fb64270cb489c36d6f5c3a790e6186f55f16d876d3b46f1206496f29d5d0d`.
+  Protocol SHA-256:
+  `04578fb82bcbe530ca0f25d6e2656b1a34152709277869e0062db4aac1bae856`.
+  Fresh manifest SHA-256:
+  `57287ac683363b1e76fdfbea0486460a0df5b95f1af88e9ee31ee8ee8fdf716a`.
+- Close this implementation-ready design, not late-contact recovery or planner
+  integration. No runtime capability, accepted continuation witness, operating
+  tolerance, planner/default/roadmap change, commit, push or deployment occurs.
+
 ### Strict saved-coverage execution review and commit closure
 
 - Review finds no blocking defect in the neutral bounded runner, saved-program

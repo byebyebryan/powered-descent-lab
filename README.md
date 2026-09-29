@@ -127,6 +127,10 @@ without treating the old scenario files as fixtures to transliterate directly.
   exposed controls and four presealed uncut flat/uphill/downhill missions are
   Direct, completed-safe and Match in two final-source runs. No continuation,
   robustness claim or default planner/controller change is introduced.
+- [One-update terminal completion design](docs/nominal_direct_terminal_completion_reserve_contract.md)
+  specifies a separately versioned completion reserve and explicit counterfactual
+  segment/replay boundary. Four new physical inputs are input-only sealed; the
+  reserve is not implemented or flown, and current execution/defaults are unchanged.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge

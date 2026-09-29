@@ -40,6 +40,17 @@ demand or a production planner decision.
 
 ### Latest direct-planning checkpoint (2026-09-28)
 
+The next [one-update completion-reserve contract](nominal_direct_terminal_completion_reserve_contract.md)
+and [implementation protocol](nominal_direct_terminal_completion_reserve_protocol.md)
+are design-only. They specify one exact final-command update beyond saved
+coverage, clipped by the original planned end, without changing `FlightProgramV1`
+or strict execution. Fresh 735/915 m flat and 915 m ±75 m slope inputs are sealed
+and pass input-only readiness, not flight validation. The narrow shared segment
+seam uses freshly captured in-memory terminal-entry state, recorded vertical
+counterfactuals and independent replay; persisted snapshots remain query-only.
+No reserve capability, new flight measurement, accepted continuation, operating
+tolerance or default/direct-first planner change is introduced by this design.
+
 The opt-in
 [strict saved-coverage executor](nominal_direct_operational_execution_results.md)
 is implemented and validated: all 24 exposed controls retain exact nominal
