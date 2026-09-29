@@ -10,8 +10,8 @@ use pd_eval::{
     WaypointDirectSourceDurationHeldCadenceDiagnosticInputPaths, compare_batch_reports,
     compare_waypoint_direct_generation_gate_a, freeze_waypoint_direct_body_aware_terminal,
     freeze_waypoint_direct_obstacle_discrimination, load_batch_report,
-    load_waypoint_direct_generation_fresh_manifest, preflight_nominal_direct_flight,
-    preflight_nominal_direct_flight_regression,
+    load_waypoint_direct_generation_fresh_manifest, preflight_nominal_direct_contact_phase_study,
+    preflight_nominal_direct_flight, preflight_nominal_direct_flight_regression,
     preflight_waypoint_direct_body_aware_terminal_development,
     preflight_waypoint_direct_body_aware_terminal_freeze,
     preflight_waypoint_direct_body_aware_terminal_fresh_gate,
@@ -23,12 +23,12 @@ use pd_eval::{
     run_conservative_ballistic_ridge_f5_analytical_v1,
     run_conservative_ballistic_ridge_f5_controller_v1,
     run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
-    run_final_landing_audit, run_nominal_direct_flight, run_nominal_direct_flight_regression,
-    run_pack_file_cached, run_physical_executor_comparison, run_physical_witness_development,
-    run_progress_interval_envelope_development_gate, run_route_execution_development_case,
-    run_route_execution_development_gate, run_source_transition_development_case,
-    run_source_transition_development_gate, run_terrain_equivalence_spike,
-    run_waypoint_direct_body_aware_terminal_development,
+    run_final_landing_audit, run_nominal_direct_contact_phase_study, run_nominal_direct_flight,
+    run_nominal_direct_flight_regression, run_pack_file_cached, run_physical_executor_comparison,
+    run_physical_witness_development, run_progress_interval_envelope_development_gate,
+    run_route_execution_development_case, run_route_execution_development_gate,
+    run_source_transition_development_case, run_source_transition_development_gate,
+    run_terrain_equivalence_spike, run_waypoint_direct_body_aware_terminal_development,
     run_waypoint_direct_body_aware_terminal_fresh_gate, run_waypoint_direct_characterization,
     run_waypoint_direct_complete_flat_acceptance, run_waypoint_direct_controller_comparison,
     run_waypoint_direct_coupled_thrust_audit, run_waypoint_direct_flat_candidate_closure,
@@ -157,6 +157,8 @@ enum Commands {
     NominalDirectFlight(NominalDirectFlightArgs),
     /// Compare ordinary-run flight integration to all 24 exposed checkpoint controls.
     NominalDirectFlightRegression(NominalDirectFlightRegressionArgs),
+    /// Study bounded terminal-entry height sensitivity and saved-command coverage.
+    NominalDirectContactPhase(NominalDirectContactPhaseArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -185,6 +187,24 @@ struct NominalDirectFlightRegressionArgs {
         default_value = "outputs/research/waypoint_direct_body_aware_terminal_20260928"
     )]
     archive_root: PathBuf,
+    #[arg(long, conflicts_with = "output_dir")]
+    preflight_only: bool,
+    #[arg(
+        long,
+        value_name = "NEW_OUTPUT_DIR",
+        required_unless_present = "preflight_only"
+    )]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct NominalDirectContactPhaseArgs {
+    #[arg(
+        long,
+        value_name = "INPUT_ROOT",
+        default_value = "outputs/research/nominal_direct_flight_integration_20260928/gate_a"
+    )]
+    input_root: PathBuf,
     #[arg(long, conflicts_with = "output_dir")]
     preflight_only: bool,
     #[arg(
@@ -1568,6 +1588,44 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::NominalDirectContactPhase(args) => {
+            let input_root = if args.input_root.is_absolute() {
+                args.input_root
+            } else {
+                repo_root().join(args.input_root)
+            };
+            if args.preflight_only {
+                let result = preflight_nominal_direct_contact_phase_study(&input_root)?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                if !result.ready {
+                    bail!("nominal direct contact phase input preflight failed");
+                }
+            } else {
+                let output_dir = args
+                    .output_dir
+                    .as_deref()
+                    .expect("clap requires output dir");
+                let result = run_nominal_direct_contact_phase_study(&input_root, output_dir)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "passed": result.artifact.passed,
+                        "identity": result.artifact.identity,
+                        "verdict": result.artifact.verdict,
+                        "deterministic_decision": result.artifact.deterministic_decision,
+                        "completed_row_count": result.artifact.completed_row_count,
+                        "expected_row_count": result.artifact.expected_row_count,
+                        "output_dir": output_dir,
+                    }))?
+                );
+                if !result.artifact.passed {
+                    bail!(
+                        "nominal direct contact phase study is incomplete or failed its baseline gate; evidence retained at {}",
+                        output_dir.display()
+                    );
+                }
+            }
+        }
     }
 
     Ok(())
@@ -1894,6 +1952,38 @@ mod tests {
                 "--output-dir",
                 "/tmp/pd-eval-direct-gate",
                 "--preflight-only"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn nominal_direct_contact_phase_requires_output_or_read_only_preflight() {
+        assert!(Cli::try_parse_from(["pd-eval", "nominal-direct-contact-phase"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "nominal-direct-contact-phase",
+                "--preflight-only"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "nominal-direct-contact-phase",
+                "--output-dir",
+                "/tmp/pd-contact-phase-cli"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "nominal-direct-contact-phase",
+                "--preflight-only",
+                "--output-dir",
+                "/tmp/pd-contact-phase-cli"
             ])
             .is_err()
         );

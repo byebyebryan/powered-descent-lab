@@ -992,7 +992,7 @@ fn safe_archive_file(archive_root: &Path, relative: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn source_binding(repo_root: &Path) -> Result<NominalDirectFlightSourceBindingV1> {
+pub(crate) fn source_binding(repo_root: &Path) -> Result<NominalDirectFlightSourceBindingV1> {
     let mut relative_paths = BTreeSet::new();
     for package in PACKAGE_NAMES {
         collect_rust_files(

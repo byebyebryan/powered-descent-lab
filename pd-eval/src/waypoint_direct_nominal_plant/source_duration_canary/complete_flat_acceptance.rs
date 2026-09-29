@@ -21,6 +21,8 @@ mod terminal_admissibility;
 pub use terminal_admissibility::*;
 mod body_aware_terminal;
 pub use body_aware_terminal::*;
+mod contact_phase_study;
+pub use contact_phase_study::*;
 
 use super::super::{
     CommandSaturationEvidence, NominalProfile, PlantStateEvidence, RolloutCadence,

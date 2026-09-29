@@ -2,6 +2,49 @@
 
 ## 2026-09-28
 
+### Nominal direct first-contact and command-coverage diagnostic
+
+- The evaluator-only [fixed height-offset study](nominal_direct_contact_phase_results.md)
+  proves all 24 exact baseline entry/command/contact/tick/fuel and ordinary
+  replay checks before perturbing only terminal-entry vertical position by
+  0, ±1, ±5, ±10 and ±20 mm. Two complete runs retain 432 observations with
+  identity `fnv1a64:7195a7ab25d24515`; all 241 non-summary file pairs and
+  timing-normalized root summaries agree.
+- Per run, saved programs reach 168 safe target contacts and stop at missing
+  command coverage in 48 rows. The diagnostic last-command continuation reaches
+  216 safe target contacts: 120 at the expected tick, 48 earlier and 48 later.
+  Every later row uses one additional global 60 Hz update and contacts within
+  two 120 Hz ticks, before the unchanged four-tick planned-end reserve.
+  No crash, clearance/domain violation, fuel exhaustion or harness failure
+  occurs. The hold is not a new accepted program or operational fallback.
+- All 337 used input pins, 120 source-binding files and the separate protocol
+  remain unchanged; all 911 historical archive files retain their bytes and
+  inventory. Validation passes 780 artifact-free workspace tests in twelve
+  suites, with one explicit historical-artifact ignore, fourteen focused
+  study/CLI tests, strict all-target Clippy, formatting and diff checks.
+- Close this matrix at the operational completion / command-coverage boundary,
+  not a physical terminal-control failure. Keep the exact nominal verifier
+  strict; next is a separately scoped completion/coverage design, not another
+  obstacle sweep, threshold change or automatic hold-policy promotion. Core,
+  control, planner, generator policies and defaults are unchanged. No commit,
+  push, deployment or robustness claim.
+
+### Nominal direct contact-phase review and commit closure
+
+- Review finds no blocking defect within the evaluator-only fixed-matrix
+  contract. Actual first contact, exact nominal tick equality, finite command
+  coverage and diagnostic continuation remain separate evidence; no hold
+  policy, robustness certificate or default behavior is promoted.
+- All fourteen focused study/CLI tests pass again, with strict all-target
+  workspace Clippy, formatting and diff checks. All 121 bound files still
+  match the artifact-free 780-test checkout; source and runtime protocol are
+  unchanged, so no additional full workspace or measured flight run is needed.
+  Both retained matrices, 241 byte-identical file pairs, normalized summaries,
+  all 337 input pins, the release binary and all 911 historical archive files
+  are rechecked. Review adds only this documentation closure.
+- The checkpoint is reviewed and committed. Generated evidence remains local
+  and ignored; no push, deployment, policy change or default promotion.
+
 ### Opt-in nominal direct flight integration checkpoint
 
 - The [complete-program flight adapter](nominal_direct_flight_integration_results.md)

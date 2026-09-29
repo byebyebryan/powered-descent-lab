@@ -40,7 +40,18 @@ demand or a production planner decision.
 
 ### Latest direct-planning checkpoint (2026-09-28)
 
-The latest result is the opt-in
+The latest diagnostic is the evaluator-only
+[first-contact and command-coverage study](nominal_direct_contact_phase_results.md).
+All 24 nominal baselines reproduce exactly before vertical-only terminal-entry
+offsets. Two complete 216-row runs agree: saved programs reach 168 safe contacts
+and stop at missing commands in 48 rows; bounded diagnostic final-command hold
+reaches safe target contact in all 216, within the original planned end. No
+unsafe contact, clearance/domain violation or parity failure occurs. This is
+not general robustness or an approved fallback. The next justified boundary is
+operational completion and finite command coverage, while exact nominal proof
+stays strict. It does not call for another source fit or obstacle sweep.
+
+The latest executable capability remains the opt-in
 [nominal direct flight integration](nominal_direct_flight_integration_results.md).
 It executes complete accepted timed programs through the ordinary controller
 and simulator path from mission inputs. All 24 now-exposed body-aware controls
@@ -53,8 +64,9 @@ inputs and malformed bindings are separately typed and execute no flight.
 Measured local release medians are about 944 ms for the unchanged research
 generator and 662 ms for selected verification, versus 1.86 ms for ordinary
 execution of the entire offline flight. This includes old-policy comparison and
-source-family regeneration; it is not optimized production setup cost. Small
-contact margins and perturbation robustness remain separate boundaries.
+source-family regeneration; it is not optimized production setup cost.
+Contact-predicate margins are not obstacle clearances or an operating tolerance;
+general perturbation robustness remains unproven by the vertical-only study.
 
 The preceding
 [body-aware terminal prototype](waypoint_direct_body_aware_terminal_results.md)
@@ -123,11 +135,13 @@ also records an analytical direct-to-waypoint boundary, but its controller
 execution slice has not passed its exact-trajectory compatibility gate.
 
 The input-driven nominal baseline, bounded obstacle discrimination, terminal
-causal diagnostic, body-aware nominal terminal pass and opt-in complete-program
-flight integration are closed at their declared gates. Do not restart source
+causal diagnostic, body-aware nominal terminal pass, opt-in complete-program
+flight integration and fixed contact-phase diagnostic are closed at their
+declared gates. Do not restart source
 fitting or cadence-only experiments. The production V1 chord model is still
 unchanged. Setup cost is now measured for the research backend, not optimized
-or accepted against a production budget. Robust contact, arbitrary incoming
+or accepted against a production budget. Operational completion/coverage,
+general robust contact, arbitrary incoming
 waypoint states, waypoint composition and production/default selection remain
 open; changing flight policy requires a new
 boundary and held-out seal, not retuning inspected cases.
