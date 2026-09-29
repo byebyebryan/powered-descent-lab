@@ -12,6 +12,7 @@ use pd_eval::{
     freeze_waypoint_direct_obstacle_discrimination, load_batch_report,
     load_waypoint_direct_generation_fresh_manifest, preflight_nominal_direct_contact_phase_study,
     preflight_nominal_direct_flight, preflight_nominal_direct_flight_regression,
+    preflight_nominal_direct_operational_gate,
     preflight_waypoint_direct_body_aware_terminal_development,
     preflight_waypoint_direct_body_aware_terminal_freeze,
     preflight_waypoint_direct_body_aware_terminal_fresh_gate,
@@ -24,7 +25,8 @@ use pd_eval::{
     run_conservative_ballistic_ridge_f5_controller_v1,
     run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
     run_final_landing_audit, run_nominal_direct_contact_phase_study, run_nominal_direct_flight,
-    run_nominal_direct_flight_regression, run_pack_file_cached, run_physical_executor_comparison,
+    run_nominal_direct_flight_regression, run_nominal_direct_operational_flight,
+    run_nominal_direct_operational_gate, run_pack_file_cached, run_physical_executor_comparison,
     run_physical_witness_development, run_progress_interval_envelope_development_gate,
     run_route_execution_development_case, run_route_execution_development_gate,
     run_source_transition_development_case, run_source_transition_development_gate,
@@ -157,6 +159,10 @@ enum Commands {
     NominalDirectFlight(NominalDirectFlightArgs),
     /// Compare ordinary-run flight integration to all 24 exposed checkpoint controls.
     NominalDirectFlightRegression(NominalDirectFlightRegressionArgs),
+    /// Execute an admitted nominal program under strict saved coverage, without continuation.
+    NominalDirectOperationalFlight(NominalDirectFlightArgs),
+    /// Validate 24 exposed controls and four sealed fresh operational missions.
+    NominalDirectOperationalGate(NominalDirectOperationalGateArgs),
     /// Study bounded terminal-entry height sensitivity and saved-command coverage.
     NominalDirectContactPhase(NominalDirectContactPhaseArgs),
 }
@@ -187,6 +193,18 @@ struct NominalDirectFlightRegressionArgs {
         default_value = "outputs/research/waypoint_direct_body_aware_terminal_20260928"
     )]
     archive_root: PathBuf,
+    #[arg(long, conflicts_with = "output_dir")]
+    preflight_only: bool,
+    #[arg(
+        long,
+        value_name = "NEW_OUTPUT_DIR",
+        required_unless_present = "preflight_only"
+    )]
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct NominalDirectOperationalGateArgs {
     #[arg(long, conflicts_with = "output_dir")]
     preflight_only: bool,
     #[arg(
@@ -1553,6 +1571,87 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::NominalDirectOperationalFlight(args) => {
+            let scenario: pd_core::ScenarioSpec =
+                serde_json::from_slice(&std::fs::read(&args.scenario)?)?;
+            let request = WaypointDirectNominalDirectGenerationRequest {
+                probe_id: scenario.id.clone(),
+                scenario,
+                source_pad_id: args.source_pad_id,
+                target_pad_id: args.target_pad_id,
+                policy: WaypointDirectNominalDirectGenerationPolicyV1::default(),
+            };
+            let policy = BodyAwareTerminalPolicyV1::default();
+            if args.preflight_only {
+                let result = preflight_nominal_direct_flight(&request, &policy);
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                if !result.supported {
+                    bail!("operational input is unsupported or invalid");
+                }
+            } else {
+                let output = args
+                    .output_dir
+                    .as_deref()
+                    .expect("clap requires output dir");
+                let result = run_nominal_direct_operational_flight(&request, &policy, output)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": result.decision.status(), "identity": result.identity,
+                        "output_dir": output,
+                        "operational_outcome": result.execution.as_ref().map(|execution| execution.operational_outcome),
+                        "nominal_comparison": result.execution.as_ref().map(|execution| execution.nominal_comparison),
+                        "admission_error": result.admission_error,
+                        "scope": "strict saved coverage; no continuation/default promotion",
+                    }))?
+                );
+                if result.admission_error.is_some()
+                    || matches!(
+                        result.decision,
+                        NominalDirectFlightDecisionV1::Invalid { .. }
+                            | NominalDirectFlightDecisionV1::Unsupported { .. }
+                    )
+                    || result.execution.as_ref().is_some_and(|execution| {
+                        execution.operational_outcome
+                            != pd_eval::NominalDirectOperationalOutcomeV1::CompletedSafeTarget
+                    })
+                {
+                    bail!(
+                        "operational completion not achieved; typed evidence retained at {}",
+                        output.display()
+                    );
+                }
+            }
+        }
+        Commands::NominalDirectOperationalGate(args) => {
+            if args.preflight_only {
+                let result = preflight_nominal_direct_operational_gate(&repo_root())?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                let output = args
+                    .output_dir
+                    .as_deref()
+                    .expect("clap requires output dir");
+                let result = run_nominal_direct_operational_gate(&repo_root(), output)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "passed": result.passed, "identity": result.identity,
+                        "exposed_exact_safe_match_count": result.exposed_exact_safe_match_count,
+                        "fresh_direct_safe_match_count": result.fresh_direct_safe_match_count,
+                        "case_count": result.cases.len(), "output_dir": output,
+                        "source_unchanged": result.source_unchanged, "archive_unchanged": result.archive_unchanged,
+                        "verdict": result.verdict,
+                    }))?
+                );
+                if !result.passed {
+                    bail!(
+                        "operational gate failed; all case evidence retained at {}",
+                        output.display()
+                    );
+                }
+            }
+        }
         Commands::NominalDirectFlightRegression(args) => {
             let archive_root = if args.archive_root.is_absolute() {
                 args.archive_root
@@ -1671,6 +1770,43 @@ mod direct_generation_cli_tests {
                 "--output-dir",
                 "new"
             ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn operational_modes_require_create_only_output_or_read_only_preflight() {
+        let flight = [
+            "pd-eval",
+            "nominal-direct-operational-flight",
+            "--scenario",
+            "scenario.json",
+            "--source-pad-id",
+            "pad_source",
+            "--target-pad-id",
+            "pad_main",
+        ];
+        assert!(Cli::try_parse_from(flight).is_err());
+        assert!(Cli::try_parse_from(flight.into_iter().chain(["--preflight-only"])).is_ok());
+        assert!(Cli::try_parse_from(flight.into_iter().chain(["--output-dir", "new"])).is_ok());
+        assert!(
+            Cli::try_parse_from(flight.into_iter().chain([
+                "--preflight-only",
+                "--output-dir",
+                "new"
+            ]))
+            .is_err()
+        );
+        let gate = ["pd-eval", "nominal-direct-operational-gate"];
+        assert!(Cli::try_parse_from(gate).is_err());
+        assert!(Cli::try_parse_from(gate.into_iter().chain(["--preflight-only"])).is_ok());
+        assert!(Cli::try_parse_from(gate.into_iter().chain(["--output-dir", "new"])).is_ok());
+        assert!(
+            Cli::try_parse_from(gate.into_iter().chain([
+                "--preflight-only",
+                "--output-dir",
+                "new"
+            ]))
             .is_err()
         );
     }

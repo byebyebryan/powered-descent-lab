@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     math::Vec2,
     model::{
@@ -7,7 +9,8 @@ use crate::{
     sim::SimulationState,
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ContactClassification {
     None,
     StableTouchdown { on_target: bool },

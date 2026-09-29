@@ -146,6 +146,11 @@ pub use nominal_direct_flight::*;
 mod nominal_direct_flight_gate;
 pub use nominal_direct_flight_gate::*;
 
+pub mod nominal_direct_operational;
+pub use nominal_direct_operational::*;
+mod nominal_direct_operational_gate;
+pub use nominal_direct_operational_gate::*;
+
 mod controller_shadow;
 pub use controller_shadow::*;
 

@@ -121,6 +121,12 @@ without treating the old scenario files as fixtures to transliterate directly.
   the ordinary controller/simulator path. All 24 now-exposed checkpoint cases
   have exact parity in two release runs. Defaults remain unchanged; robustness,
   useful setup cost and waypoint composition remain separate gates.
+- [Nominal direct operational execution](docs/nominal_direct_operational_execution_results.md)
+  implements strict saved-command coverage with separate actual outcomes,
+  exact nominal comparison and truthful partial-run/replay evidence. All 24
+  exposed controls and four presealed uncut flat/uphill/downhill missions are
+  Direct, completed-safe and Match in two final-source runs. No continuation,
+  robustness claim or default planner/controller change is introduced.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge

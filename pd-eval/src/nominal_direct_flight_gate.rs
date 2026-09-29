@@ -494,6 +494,33 @@ fn load_regression_inputs(repo_root: &Path) -> Result<Vec<RegressionInputCase>> 
     Ok(cases)
 }
 
+/// Input-only controls and independently pinned comparison payloads for the
+/// separate operational gate. Archived programs never seed generation.
+pub(crate) fn operational_regression_controls(
+    repo_root: &Path,
+    archive_root: &Path,
+) -> Result<
+    Vec<(
+        String,
+        WaypointDirectNominalDirectGenerationRequest,
+        BodyAwareTerminalCaseArtifactV1,
+    )>,
+> {
+    let inputs = load_regression_inputs(repo_root)?;
+    let (pins, _) = load_archive_pins(archive_root, &inputs)?;
+    inputs
+        .into_iter()
+        .zip(pins)
+        .map(|(input, pin)| {
+            let archived = serde_json::from_slice(&fs::read(safe_archive_file(
+                archive_root,
+                Path::new(&pin.relative_path),
+            )?)?)?;
+            Ok((input.case_id, input.request, archived))
+        })
+        .collect()
+}
+
 fn validate_body_aware_fresh_manifest(manifest: &BodyAwareFreshManifestV1) -> Result<()> {
     if manifest.schema_id != "waypoint_direct_body_aware_terminal_fresh_inputs_v1"
         || manifest.schema_version != 1

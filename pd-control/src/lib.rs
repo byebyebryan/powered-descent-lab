@@ -16,7 +16,10 @@ pub use controllers::{
     StagedDescentController, StagedDescentControllerConfig, TransferPdgController,
     TransferPdgControllerConfig, built_in_controller_spec,
 };
-pub use flight_program::run_flight_program;
+pub use flight_program::{
+    OPERATIONAL_FLIGHT_PROGRAM_CONTROLLER_ID, OperationalFlightProgramArtifactsV1,
+    replay_flight_program_operational, run_flight_program, run_flight_program_operational,
+};
 pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, standard_marker};
 pub use terminal::{TerminalPdgController, TerminalPdgControllerConfig};
 

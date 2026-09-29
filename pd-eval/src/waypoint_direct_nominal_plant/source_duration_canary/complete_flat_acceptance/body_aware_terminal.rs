@@ -397,7 +397,7 @@ fn paired_throttle(
     }
 }
 
-fn clearance_policy(
+pub(super) fn clearance_policy(
     context: &RunContext,
     request: &WaypointDirectNominalDirectGenerationRequest,
 ) -> Result<ClearancePolicy> {
@@ -815,7 +815,7 @@ fn empty_verification(context: &RunContext, planned_steps: u64) -> BodyAwareTerm
     }
 }
 
-fn phase_at(step: u64, source_end: u64, terminal_start: u64) -> &'static str {
+pub(super) fn phase_at(step: u64, source_end: u64, terminal_start: u64) -> &'static str {
     if step <= 60 {
         "upright"
     } else if step <= LAUNCH_TICKS {

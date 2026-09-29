@@ -2,6 +2,90 @@
 
 ## 2026-09-28
 
+### Strict saved-coverage execution review and commit closure
+
+- Review finds no blocking defect in the neutral bounded runner, saved-program
+  playback/replay, fixed evaluator guard, admission or create-only integrated
+  gate. Actual contact, operational completion and exact nominal comparison
+  remain separate; no runtime source or execution policy changes during review.
+- Fresh validation passes 219 core/control tests, fourteen operational/CLI tests,
+  strict all-target workspace Clippy, formatting and staged diff checks. The
+  retained artifact-free 809-test result and full 24-control plus four-fresh-input
+  gates remain applicable: all 128 bound files match that tested source exactly.
+- Read-only revalidation confirms all 619 repeat artifact pairs, their stable
+  identity (`fnv1a64:ac75e5bbc3d2a16d`) and all 1,395 historical archive files.
+  Commit the implementation and its reviewed contract/results as one checkpoint;
+  generated evidence remains local and ignored. No push, deployment, continuation
+  policy or production/default planner promotion is included.
+
+### Strict saved-coverage nominal direct execution checkpoint
+
+- The [opt-in operational executor](nominal_direct_operational_execution_results.md)
+  implements the reviewed completion contract. It retains incoming authoritative
+  contact before normalization, truthful finite prefixes and independently
+  recomputed full-program bounded replay. Initial source support, every-tick
+  command/fuel budget and airborne/contact validity are separate fixed-guard
+  stages. Raw core outcomes, operational outcome and exact nominal comparison
+  remain distinct; exact nominal playback/verification is unchanged.
+- Final-source strict nominal regression preserves all 24 exposed exact controls
+  (`fnv1a64:73429341077b7008`). Two operational runs each retain those 24 and all
+  four presealed uncut 685/845 m flat and 845 m ±75 m slope inputs as
+  Direct/completed-safe/Match (`fnv1a64:ac75e5bbc3d2a16d`). All 80 fresh source
+  rows and 27 skips remain recorded; 53 complete schedules are accepted. No
+  first-step crash, coverage gap, cutaway, waypoint or policy tuning occurs.
+- All 619 final artifact pairs agree: 530 are byte-identical and 89 differ only
+  in explicitly excluded observational compute timings. All 128 bound source/
+  input/protocol/contract files match the artifact-free test checkout and remain
+  unchanged during measurements; all 1,395 historical archive files retain their
+  before-work inventory/bytes. New output roots are create-only.
+- Final review catches unknown-field acceptance on new evaluator evidence DTOs;
+  only deserialization/test contracts are tightened. First successful roots and
+  their test checkout are preserved, and all final gates are rerun in separate
+  `*_schema_v1` roots. All 28 case/program identities and 588 case-bundle pairs
+  retain deterministic parity across that correction. No physical retuning.
+- Validation passes 809 artifact-free workspace tests in twelve suites (one
+  explicit historical-artifact ignore), all fourteen focused operational/CLI
+  tests, strict all-target workspace Clippy, formatting and diff checks. Luna
+  implements settled core/control seams; primary owns contract/seals, fixed
+  guard/admission, adapter/CLI/gates, review and acceptance.
+- Close this finite execution boundary, not general robustness or continuation.
+  Fresh contact hull margins remain only 6.46–6.78 mm; the diagnostic's 48 late
+  cases are not recovered. No idle fallback, repeated final command, extra
+  coverage or hard-end extension is authorized. Production V1/default behavior,
+  arbitrary waypoint-state composition and setup-budget authority are unchanged.
+  Work is ready for separate review/commit; no commit, push or deployment.
+
+### Nominal direct completion / saved-coverage design checkpoint
+
+- The [operational completion contract](nominal_direct_execution_completion_contract.md)
+  selects strict saved-command coverage for a separate opt-in executor. Actual
+  safe target contact and exact nominal proof are distinct; existing witnesses,
+  `FlightProgramV1` and strict nominal playback/verification stay unchanged.
+  No automatic idle, last-command hold, appended command or larger reserve is
+  authorized. This design does not recover the diagnostic's 48 later-contact
+  observations or establish robustness.
+- Derived coverage ends at the next global update (`updates.len * interval`),
+  not necessarily the expected contact tick. The planned end is a separate hard
+  cap. Contact at a reached boundary wins before a new callback; missing coverage
+  stops before unplanned commands/physics. Airborne driver stops retain truthful
+  Running/Flying/InProgress prefixes in a new bounded envelope, with incoming
+  contact evidence and separately recomputed bounded replay.
+- The implementation-ready sequence seals four new supported nominal inputs,
+  then adds the neutral bounded seam, opt-in playback, admitted evaluator adapter
+  and integrated gate. Full 24-control exact regression, artifact-free negative
+  boundary fixtures, fresh nominal validation and source/archive provenance are
+  required. No runtime implementation, new flight measurement, policy tuning,
+  archive modification, commit, push or default/planner change occurs here.
+- Luna's read-only seam audit confirms global callback/contact ordering,
+  coverage bounds, incoming-contact capture, partial-artifact/replay limits and
+  fuel semantics. Primary owns policy, writing and final review; review clarifies
+  structural validation versus strict playback versus evaluator physical proof.
+  Documentation gates pass formatting, whitespace/diff checks and all 64 local
+  links across four changed documents. No runtime suite or flight run is repeated
+  because this pass changes documentation only. The design is ready for the
+  separately authorized implementation gate; the four fresh inputs are prescribed,
+  not yet resolved/sealed or evaluated.
+
 ### Nominal direct first-contact and command-coverage diagnostic
 
 - The evaluator-only [fixed height-offset study](nominal_direct_contact_phase_results.md)

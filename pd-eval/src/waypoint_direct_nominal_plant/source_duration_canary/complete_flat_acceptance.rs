@@ -23,6 +23,8 @@ mod body_aware_terminal;
 pub use body_aware_terminal::*;
 mod contact_phase_study;
 pub use contact_phase_study::*;
+mod operational_audit;
+pub use operational_audit::*;
 
 use super::super::{
     CommandSaturationEvidence, NominalProfile, PlantStateEvidence, RolloutCadence,

@@ -1,4 +1,10 @@
 use crate::{
+    bounded_run::{
+        BOUNDED_RUN_SCHEMA_VERSION, BoundedGuardFailureDispositionV1, BoundedRunArtifactsV1,
+        BoundedRunFailureStageV1, BoundedRunFailureV1, BoundedRunGuard, BoundedRunLimitsV1,
+        BoundedRunNonFiniteCategoryV1, BoundedRunStopCauseV1, IncomingContactV1,
+        SimulationStateSnapshotV1, SimulationStepReportV1,
+    },
     eval::{
         ContactClassification, apply_contact_classification, apply_max_time,
         apply_progress_evaluation,
@@ -125,26 +131,59 @@ impl SimulationState {
     }
 
     pub fn step(&mut self, ctx: &RunContext) -> Vec<EventRecord> {
+        self.step_with_contact_report_inner(ctx, false).events
+    }
+
+    /// Advance one ordinary transition while also retaining any incoming
+    /// contact state before mission handling normalizes a stable touchdown.
+    pub fn step_with_contact_report(&mut self, ctx: &RunContext) -> SimulationStepReportV1 {
+        self.step_with_contact_report_inner(ctx, true)
+    }
+
+    fn step_with_contact_report_inner(
+        &mut self,
+        ctx: &RunContext,
+        capture_contact: bool,
+    ) -> SimulationStepReportV1 {
         if self.is_terminal() {
-            return Vec::new();
+            return SimulationStepReportV1::default();
         }
 
         let contact = self.step_physics_and_classify_contact(ctx);
+        let incoming_contact =
+            (capture_contact && contact != ContactClassification::None).then(|| {
+                IncomingContactV1 {
+                    classification: contact.clone(),
+                    state: SimulationStateSnapshotV1::from_state(self),
+                }
+            });
         let contact_events = apply_contact_classification(ctx, self, contact);
         if self.is_terminal() {
-            return contact_events;
+            return SimulationStepReportV1 {
+                incoming_contact,
+                events: contact_events,
+            };
         }
 
         let progress_events = apply_progress_evaluation(ctx, self);
         if self.is_terminal() {
-            return progress_events;
+            return SimulationStepReportV1 {
+                incoming_contact,
+                events: progress_events,
+            };
         }
 
         if self.sim_time_s >= ctx.sim.max_time_s {
-            return apply_max_time(self);
+            return SimulationStepReportV1 {
+                incoming_contact,
+                events: apply_max_time(self),
+            };
         }
 
-        contact_events.into_iter().chain(progress_events).collect()
+        SimulationStepReportV1 {
+            incoming_contact,
+            events: contact_events.into_iter().chain(progress_events).collect(),
+        }
     }
 
     /// Advance exactly one discrete plant transition and return the
@@ -507,6 +546,748 @@ pub fn replay_simulation(
     })
 }
 
+/// Execute an ordinary simulation with finite saved-command and hard-end
+/// boundaries. Unlike `run_simulation`, command selection can fail without
+/// discarding the valid artifact prefix.
+pub fn run_simulation_bounded<F>(
+    ctx: &RunContext,
+    controller_id: &str,
+    limits: BoundedRunLimitsV1,
+    mut controller: F,
+    guard: &mut dyn BoundedRunGuard,
+) -> Result<BoundedRunArtifactsV1, SimulationError>
+where
+    F: FnMut(&RunContext, &Observation) -> Result<Command, String>,
+{
+    let mut state = SimulationState::new(ctx)?;
+    validate_bounded_limits(ctx, limits)?;
+    let control_interval_steps = ctx.sim.control_interval_steps();
+    let sample_interval_steps = ctx.sim.sample_interval_steps();
+    let mut actions = Vec::new();
+    let mut events = Vec::new();
+    let mut samples = Vec::new();
+    let mut controller_update_index = 0_u64;
+    let mut incoming_contact = None;
+    if let Some(failure) = first_nonfinite_artifact_projection_failure(
+        ctx,
+        &state,
+        BoundedRunFailureStageV1::InitialGuard,
+        state.physics_step,
+    ) {
+        return Err(SimulationError::InvalidContext(format!(
+            "bounded run has no finite initial state: {}",
+            failure.reason
+        )));
+    }
+
+    maybe_push_sample(&mut samples, &state, ctx, sample_interval_steps);
+
+    let failure = if let Err(guard_failure) = guard.initial(ctx, &state) {
+        Some(wrap_guard_failure(
+            BoundedRunFailureStageV1::InitialGuard,
+            &state,
+            guard_failure,
+        ))
+    } else {
+        None
+    };
+    if let Some(failure) = failure {
+        let stop = stop_for_failure(&failure);
+        return Ok(build_bounded_run_artifacts(
+            ctx,
+            controller_id,
+            limits,
+            stop,
+            Some(failure),
+            incoming_contact,
+            state,
+            controller_update_index,
+            actions,
+            events,
+            samples,
+        ));
+    }
+
+    if let Some(stop) = bounded_stop_at_state(&state, limits) {
+        return Ok(build_bounded_run_artifacts(
+            ctx,
+            controller_id,
+            limits,
+            stop,
+            None,
+            incoming_contact,
+            state,
+            controller_update_index,
+            actions,
+            events,
+            samples,
+        ));
+    }
+
+    if let Err(command_failure) = issue_bounded_controller_update(
+        ctx,
+        &mut state,
+        &mut controller,
+        &mut controller_update_index,
+        &mut actions,
+        &mut events,
+    ) {
+        let stop = stop_for_failure(&command_failure);
+        return Ok(build_bounded_run_artifacts(
+            ctx,
+            controller_id,
+            limits,
+            stop,
+            Some(command_failure),
+            incoming_contact,
+            state,
+            controller_update_index,
+            actions,
+            events,
+            samples,
+        ));
+    }
+
+    let mut failure = None;
+    let stop = loop {
+        if let Err(guard_failure) = guard.before_transition(ctx, &state, state.held_command) {
+            let pre_failure = wrap_guard_failure(
+                BoundedRunFailureStageV1::PreTransitionGuard,
+                &state,
+                guard_failure,
+            );
+            let stop = stop_for_failure(&pre_failure);
+            failure = Some(pre_failure);
+            break stop;
+        }
+
+        let last_valid_state = state.clone();
+        let transition = state.step_with_contact_report(ctx);
+        if let Some(numeric_failure) = first_nonfinite_transition_failure(ctx, &state, &transition)
+        {
+            state = last_valid_state;
+            let stop = stop_for_failure(&numeric_failure);
+            failure = Some(numeric_failure);
+            break stop;
+        }
+
+        events.extend(transition.events);
+        maybe_push_sample(&mut samples, &state, ctx, sample_interval_steps);
+        let transition_contact = transition.incoming_contact;
+        if let Some(contact) = &transition_contact {
+            incoming_contact = Some(contact.clone());
+        }
+
+        if let Err(guard_failure) = guard.after_transition(ctx, &state, transition_contact.as_ref())
+        {
+            let post_failure = wrap_guard_failure(
+                BoundedRunFailureStageV1::PostTransitionGuard,
+                &state,
+                guard_failure,
+            );
+            let stop = stop_for_failure(&post_failure);
+            failure = Some(post_failure);
+            break stop;
+        }
+
+        if state.is_terminal() {
+            break if matches!(state.end_reason, EndReason::MaxTimeReached) {
+                BoundedRunStopCauseV1::ScenarioHorizonReached
+            } else {
+                BoundedRunStopCauseV1::MissionTerminal
+            };
+        }
+
+        if let Some(stop) = bounded_stop_at_state(&state, limits) {
+            break stop;
+        }
+
+        if state.physics_step.is_multiple_of(control_interval_steps)
+            && let Err(command_failure) = issue_bounded_controller_update(
+                ctx,
+                &mut state,
+                &mut controller,
+                &mut controller_update_index,
+                &mut actions,
+                &mut events,
+            )
+        {
+            let stop = stop_for_failure(&command_failure);
+            failure = Some(command_failure);
+            break stop;
+        }
+    };
+
+    Ok(build_bounded_run_artifacts(
+        ctx,
+        controller_id,
+        limits,
+        stop,
+        failure,
+        incoming_contact,
+        state,
+        controller_update_index,
+        actions,
+        events,
+        samples,
+    ))
+}
+
+/// Replay a bounded artifact action prefix under caller-supplied limits and a
+/// fresh guard. The returned envelope retains valid actions if replay input
+/// becomes invalid at a later callback or contains unused records.
+pub fn replay_simulation_bounded(
+    ctx: &RunContext,
+    controller_id: &str,
+    actions: &[ActionLogEntry],
+    limits: BoundedRunLimitsV1,
+    guard: &mut dyn BoundedRunGuard,
+) -> Result<BoundedRunArtifactsV1, SimulationError> {
+    let mut next_action_index = 0_usize;
+    let mut nonfinite_action_failure = None;
+    let mut result = run_simulation_bounded(
+        ctx,
+        controller_id,
+        limits,
+        |_, observation| {
+            let index = next_action_index;
+            let Some(action) = actions.get(index) else {
+                return Err(format!(
+                    "action log ended before controller update {index} at physics step {}",
+                    observation.physics_step
+                ));
+            };
+            if let Some(failure) = nonfinite_value_failure(
+                "action.sim_time_s",
+                action.sim_time_s,
+                BoundedRunFailureStageV1::ReplayInput,
+                observation.physics_step,
+            ) {
+                let reason = failure.reason.clone();
+                nonfinite_action_failure = Some(failure);
+                return Err(reason);
+            }
+            if let Some(failure) = nonfinite_command_failure(
+                action.command,
+                BoundedRunFailureStageV1::ReplayInput,
+                observation.physics_step,
+            ) {
+                let reason = failure.reason.clone();
+                nonfinite_action_failure = Some(failure);
+                return Err(reason);
+            }
+            validate_bounded_action(action, index, observation, ctx)?;
+            next_action_index += 1;
+            Ok(action.command)
+        },
+        guard,
+    )?;
+
+    if let Some(failure) = result.failure.as_mut()
+        && failure.stage == BoundedRunFailureStageV1::CommandSelection
+    {
+        failure.stage = BoundedRunFailureStageV1::ReplayInput;
+    }
+    if let Some(failure) = nonfinite_action_failure {
+        result.stop = BoundedRunStopCauseV1::ExecutionInvalid;
+        result.failure = Some(failure);
+    }
+
+    if next_action_index != actions.len() {
+        let unused = actions.len() - next_action_index;
+        let reason = match result.failure.as_ref() {
+            Some(prior)
+                if prior.disposition == BoundedGuardFailureDispositionV1::SafetyRejected =>
+            {
+                format!(
+                    "action log contains {unused} unused controller updates after a safety rejection at physics step {}: {}",
+                    prior.boundary_physics_step, prior.reason
+                )
+            }
+            Some(_) => return Ok(result),
+            None => format!(
+                "action log contains {unused} unused controller updates after bounded termination"
+            ),
+        };
+        let failure = BoundedRunFailureV1::new(
+            BoundedRunFailureStageV1::ReplayInput,
+            BoundedGuardFailureDispositionV1::ExecutionInvalid,
+            result.final_state.physics_step,
+            reason,
+        );
+        result.stop = BoundedRunStopCauseV1::ExecutionInvalid;
+        result.failure = Some(failure);
+    }
+
+    Ok(result)
+}
+
+fn validate_bounded_limits(
+    ctx: &RunContext,
+    limits: BoundedRunLimitsV1,
+) -> Result<(), SimulationError> {
+    let interval = ctx.sim.control_interval_steps();
+    if !limits
+        .command_coverage_end_physics_step
+        .is_multiple_of(interval)
+    {
+        return Err(SimulationError::InvalidContext(
+            "bounded command coverage end must be on the global control clock".to_owned(),
+        ));
+    }
+    let horizon_product = ctx.sim.max_time_s * f64::from(ctx.sim.physics_hz);
+    if !horizon_product.is_finite() || horizon_product.ceil() > u64::MAX as f64 {
+        return Err(SimulationError::InvalidContext(
+            "simulation horizon is not representable in physics steps".to_owned(),
+        ));
+    }
+    let horizon_steps = horizon_product.ceil() as u64;
+    if limits.hard_end_physics_step > horizon_steps {
+        return Err(SimulationError::InvalidContext(
+            "bounded hard end exceeds the simulation horizon".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn bounded_stop_at_state(
+    state: &SimulationState,
+    limits: BoundedRunLimitsV1,
+) -> Option<BoundedRunStopCauseV1> {
+    if state.physics_step >= limits.hard_end_physics_step {
+        Some(BoundedRunStopCauseV1::HardDeadlineReached)
+    } else if state.physics_step >= limits.command_coverage_end_physics_step {
+        Some(BoundedRunStopCauseV1::CoverageExhausted)
+    } else {
+        None
+    }
+}
+
+fn wrap_guard_failure(
+    stage: BoundedRunFailureStageV1,
+    state: &SimulationState,
+    failure: crate::bounded_run::BoundedGuardFailureV1,
+) -> BoundedRunFailureV1 {
+    BoundedRunFailureV1::new(
+        stage,
+        failure.disposition,
+        state.physics_step,
+        failure.reason,
+    )
+}
+
+fn stop_for_failure(failure: &BoundedRunFailureV1) -> BoundedRunStopCauseV1 {
+    match failure.disposition {
+        BoundedGuardFailureDispositionV1::SafetyRejected => BoundedRunStopCauseV1::SafetyRejected,
+        BoundedGuardFailureDispositionV1::ExecutionInvalid => {
+            BoundedRunStopCauseV1::ExecutionInvalid
+        }
+    }
+}
+
+fn issue_bounded_controller_update<F>(
+    ctx: &RunContext,
+    state: &mut SimulationState,
+    controller: &mut F,
+    controller_update_index: &mut u64,
+    actions: &mut Vec<ActionLogEntry>,
+    events: &mut Vec<EventRecord>,
+) -> Result<(), BoundedRunFailureV1>
+where
+    F: FnMut(&RunContext, &Observation) -> Result<Command, String>,
+{
+    let observation = state.build_observation(ctx);
+    let command = controller(ctx, &observation).map_err(|reason| {
+        BoundedRunFailureV1::new(
+            BoundedRunFailureStageV1::CommandSelection,
+            BoundedGuardFailureDispositionV1::ExecutionInvalid,
+            state.physics_step,
+            reason,
+        )
+    })?;
+    if let Some(failure) = nonfinite_command_failure(
+        command,
+        BoundedRunFailureStageV1::CommandSelection,
+        state.physics_step,
+    ) {
+        return Err(failure);
+    }
+    if let Some(reason) = invalid_bounded_command(command) {
+        return Err(BoundedRunFailureV1::new(
+            BoundedRunFailureStageV1::CommandSelection,
+            BoundedGuardFailureDispositionV1::ExecutionInvalid,
+            state.physics_step,
+            reason,
+        ));
+    }
+    let next_index = controller_update_index.checked_add(1).ok_or_else(|| {
+        BoundedRunFailureV1::new(
+            BoundedRunFailureStageV1::CommandSelection,
+            BoundedGuardFailureDispositionV1::ExecutionInvalid,
+            state.physics_step,
+            "controller update count overflow",
+        )
+    })?;
+    state.set_command(command);
+    actions.push(ActionLogEntry {
+        sim_time_s: state.sim_time_s,
+        physics_step: state.physics_step,
+        controller_update_index: *controller_update_index,
+        command: state.held_command,
+    });
+    events.push(EventRecord {
+        sim_time_s: state.sim_time_s,
+        physics_step: state.physics_step,
+        kind: EventKind::ControllerUpdated,
+        message: "controller_updated".to_owned(),
+    });
+    *controller_update_index = next_index;
+    Ok(())
+}
+
+fn validate_bounded_action(
+    action: &ActionLogEntry,
+    index: usize,
+    observation: &Observation,
+    ctx: &RunContext,
+) -> Result<(), String> {
+    if action.physics_step != observation.physics_step {
+        return Err(format!(
+            "action {index} expected physics_step {}, got {}",
+            observation.physics_step, action.physics_step
+        ));
+    }
+    if action.controller_update_index != index as u64 {
+        return Err(format!(
+            "action {index} expected controller_update_index {index}, got {}",
+            action.controller_update_index
+        ));
+    }
+    if action.sim_time_s.to_bits() != observation.sim_time_s.to_bits() {
+        return Err(format!(
+            "action {index} expected sim_time_s {:.12}, got {:.12}",
+            observation.sim_time_s, action.sim_time_s
+        ));
+    }
+    if action.physics_step != 0
+        && !action
+            .physics_step
+            .is_multiple_of(ctx.sim.control_interval_steps())
+    {
+        return Err(format!("action {index} is not on the global control clock"));
+    }
+    invalid_bounded_command(action.command).map_or(Ok(()), Err)
+}
+
+fn invalid_bounded_command(command: Command) -> Option<String> {
+    if !command.throttle_frac.is_finite() || !command.target_attitude_rad.is_finite() {
+        return Some("bounded command values must be finite".to_owned());
+    }
+    if !(0.0..=1.0).contains(&command.throttle_frac) {
+        return Some("bounded command throttle_frac must be within [0, 1]".to_owned());
+    }
+    if !(-std::f64::consts::PI..=std::f64::consts::PI).contains(&command.target_attitude_rad) {
+        return Some("bounded command target attitude must be canonical".to_owned());
+    }
+    None
+}
+
+fn nonfinite_command_failure(
+    command: Command,
+    stage: BoundedRunFailureStageV1,
+    boundary_physics_step: u64,
+) -> Option<BoundedRunFailureV1> {
+    [
+        ("command.throttle_frac", command.throttle_frac),
+        ("command.target_attitude_rad", command.target_attitude_rad),
+    ]
+    .into_iter()
+    .find_map(|(field, value)| nonfinite_value_failure(field, value, stage, boundary_physics_step))
+}
+
+fn nonfinite_value_failure(
+    field: impl Into<String>,
+    value: f64,
+    stage: BoundedRunFailureStageV1,
+    boundary_physics_step: u64,
+) -> Option<BoundedRunFailureV1> {
+    let category = if value.is_nan() {
+        BoundedRunNonFiniteCategoryV1::Nan
+    } else if value == f64::INFINITY {
+        BoundedRunNonFiniteCategoryV1::PositiveInfinity
+    } else if value == f64::NEG_INFINITY {
+        BoundedRunNonFiniteCategoryV1::NegativeInfinity
+    } else {
+        return None;
+    };
+    Some(BoundedRunFailureV1::non_finite(
+        stage,
+        field,
+        category,
+        boundary_physics_step,
+    ))
+}
+
+fn first_nonfinite_transition_failure(
+    ctx: &RunContext,
+    state: &SimulationState,
+    transition: &SimulationStepReportV1,
+) -> Option<BoundedRunFailureV1> {
+    if let Some(failure) = first_nonfinite_artifact_projection_failure(
+        ctx,
+        state,
+        BoundedRunFailureStageV1::PhysicsTransition,
+        state.physics_step,
+    ) {
+        return Some(failure);
+    }
+    transition.incoming_contact.as_ref().and_then(|contact| {
+        first_nonfinite_artifact_projection_failure(
+            ctx,
+            &contact.state.to_simulation_state(),
+            BoundedRunFailureStageV1::PhysicsTransition,
+            state.physics_step,
+        )
+    })
+}
+
+fn first_nonfinite_artifact_projection_failure(
+    ctx: &RunContext,
+    state: &SimulationState,
+    stage: BoundedRunFailureStageV1,
+    boundary_physics_step: u64,
+) -> Option<BoundedRunFailureV1> {
+    if let Some(failure) = first_nonfinite_state_failure(state, stage, boundary_physics_step) {
+        return Some(failure);
+    }
+
+    let observation = state.build_observation(ctx);
+    let observation_values = [
+        ("observation.sim_time_s", observation.sim_time_s),
+        ("observation.position_m.x", observation.position_m.x),
+        ("observation.position_m.y", observation.position_m.y),
+        ("observation.velocity_mps.x", observation.velocity_mps.x),
+        ("observation.velocity_mps.y", observation.velocity_mps.y),
+        ("observation.attitude_rad", observation.attitude_rad),
+        (
+            "observation.angular_rate_radps",
+            observation.angular_rate_radps,
+        ),
+        ("observation.mass_kg", observation.mass_kg),
+        ("observation.fuel_kg", observation.fuel_kg),
+        ("observation.gravity_mps2", observation.gravity_mps2),
+        ("observation.target_dx_m", observation.target_dx_m),
+        (
+            "observation.height_above_target_m",
+            observation.height_above_target_m,
+        ),
+        (
+            "observation.target_surface_y_m",
+            observation.target_surface_y_m,
+        ),
+        (
+            "observation.target_pad_half_width_m",
+            observation.target_pad_half_width_m,
+        ),
+        (
+            "observation.touchdown_clearance_m",
+            observation.touchdown_clearance_m,
+        ),
+        (
+            "observation.min_hull_clearance_m",
+            observation.min_hull_clearance_m,
+        ),
+    ];
+    for (field, value) in observation_values {
+        if let Some(failure) = nonfinite_value_failure(field, value, stage, boundary_physics_step) {
+            return Some(failure);
+        }
+    }
+
+    let summary = state.build_run_summary(ctx);
+    let mut summary_values = vec![
+        ("summary.fuel_remaining_kg", summary.fuel_remaining_kg),
+        ("summary.fuel_used_kg", summary.fuel_used_kg),
+        (
+            "summary.min_touchdown_clearance_m",
+            summary.min_touchdown_clearance_m,
+        ),
+        ("summary.min_hull_clearance_m", summary.min_hull_clearance_m),
+        ("summary.max_speed_mps", summary.max_speed_mps),
+        ("summary.max_abs_attitude_rad", summary.max_abs_attitude_rad),
+        (
+            "summary.max_abs_angular_rate_radps",
+            summary.max_abs_angular_rate_radps,
+        ),
+    ];
+    if let Some(value) = summary.envelope_margin_ratio {
+        summary_values.push(("summary.envelope_margin_ratio", value));
+    }
+    if let Some(landing) = &summary.landing {
+        summary_values.extend([
+            (
+                "summary.landing.touchdown_center_offset_m",
+                landing.touchdown_center_offset_m,
+            ),
+            ("summary.landing.pad_margin_m", landing.pad_margin_m),
+            ("summary.landing.normal_speed_mps", landing.normal_speed_mps),
+            (
+                "summary.landing.tangential_speed_mps",
+                landing.tangential_speed_mps,
+            ),
+            (
+                "summary.landing.attitude_error_rad",
+                landing.attitude_error_rad,
+            ),
+            (
+                "summary.landing.angular_rate_radps",
+                landing.angular_rate_radps,
+            ),
+            (
+                "summary.landing.normal_speed_margin_mps",
+                landing.normal_speed_margin_mps,
+            ),
+            (
+                "summary.landing.tangential_speed_margin_mps",
+                landing.tangential_speed_margin_mps,
+            ),
+            (
+                "summary.landing.attitude_margin_rad",
+                landing.attitude_margin_rad,
+            ),
+            (
+                "summary.landing.angular_rate_margin_radps",
+                landing.angular_rate_margin_radps,
+            ),
+            (
+                "summary.landing.envelope_margin_ratio",
+                landing.envelope_margin_ratio,
+            ),
+        ]);
+    }
+    if let Some(checkpoint) = &summary.checkpoint {
+        summary_values.extend([
+            (
+                "summary.checkpoint.position_error_m",
+                checkpoint.position_error_m,
+            ),
+            (
+                "summary.checkpoint.velocity_error_mps",
+                checkpoint.velocity_error_mps,
+            ),
+            (
+                "summary.checkpoint.attitude_error_rad",
+                checkpoint.attitude_error_rad,
+            ),
+            (
+                "summary.checkpoint.position_margin_m",
+                checkpoint.position_margin_m,
+            ),
+            (
+                "summary.checkpoint.velocity_margin_mps",
+                checkpoint.velocity_margin_mps,
+            ),
+            (
+                "summary.checkpoint.attitude_margin_rad",
+                checkpoint.attitude_margin_rad,
+            ),
+            (
+                "summary.checkpoint.envelope_margin_ratio",
+                checkpoint.envelope_margin_ratio,
+            ),
+        ]);
+    }
+    summary_values.into_iter().find_map(|(field, value)| {
+        nonfinite_value_failure(field, value, stage, boundary_physics_step)
+    })
+}
+
+fn first_nonfinite_state_failure(
+    state: &SimulationState,
+    stage: BoundedRunFailureStageV1,
+    boundary_physics_step: u64,
+) -> Option<BoundedRunFailureV1> {
+    let values = [
+        ("sim_time_s", state.sim_time_s),
+        ("position_m.x", state.position_m.x),
+        ("position_m.y", state.position_m.y),
+        ("velocity_mps.x", state.velocity_mps.x),
+        ("velocity_mps.y", state.velocity_mps.y),
+        ("attitude_rad", state.attitude_rad),
+        ("angular_rate_radps", state.angular_rate_radps),
+        ("fuel_kg", state.fuel_kg),
+        (
+            "held_command.throttle_frac",
+            state.held_command.throttle_frac,
+        ),
+        (
+            "held_command.target_attitude_rad",
+            state.held_command.target_attitude_rad,
+        ),
+        ("min_touchdown_clearance_m", state.min_touchdown_clearance_m),
+        ("min_hull_clearance_m", state.min_hull_clearance_m),
+        ("max_speed_mps", state.max_speed_mps),
+        ("max_abs_attitude_rad", state.max_abs_attitude_rad),
+        (
+            "max_abs_angular_rate_radps",
+            state.max_abs_angular_rate_radps,
+        ),
+    ];
+    values.into_iter().find_map(|(field, value)| {
+        let category = if value.is_nan() {
+            Some(BoundedRunNonFiniteCategoryV1::Nan)
+        } else if value == f64::INFINITY {
+            Some(BoundedRunNonFiniteCategoryV1::PositiveInfinity)
+        } else if value == f64::NEG_INFINITY {
+            Some(BoundedRunNonFiniteCategoryV1::NegativeInfinity)
+        } else {
+            None
+        }?;
+        Some(BoundedRunFailureV1::non_finite(
+            stage,
+            field,
+            category,
+            boundary_physics_step,
+        ))
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_bounded_run_artifacts(
+    ctx: &RunContext,
+    controller_id: &str,
+    limits: BoundedRunLimitsV1,
+    stop: BoundedRunStopCauseV1,
+    failure: Option<BoundedRunFailureV1>,
+    incoming_contact: Option<IncomingContactV1>,
+    state: SimulationState,
+    controller_updates: u64,
+    actions: Vec<ActionLogEntry>,
+    events: Vec<EventRecord>,
+    samples: Vec<SampleRecord>,
+) -> BoundedRunArtifactsV1 {
+    let coverage_reached = state.physics_step >= limits.command_coverage_end_physics_step;
+    let hard_end_reached = state.physics_step >= limits.hard_end_physics_step;
+    let final_state = SimulationStateSnapshotV1::from_state(&state);
+    let run = RunArtifacts {
+        manifest: build_manifest(ctx, controller_id, &state, controller_updates),
+        actions,
+        events,
+        samples,
+    };
+    BoundedRunArtifactsV1 {
+        schema_version: BOUNDED_RUN_SCHEMA_VERSION,
+        limits,
+        stop,
+        coverage_reached,
+        hard_end_reached,
+        final_state,
+        incoming_contact,
+        failure,
+        run,
+    }
+}
+
 fn issue_controller_update<F>(
     state: &mut SimulationState,
     controller: &mut F,
@@ -788,6 +1569,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
+    use crate::AllowAllBoundedRunGuard;
     use crate::model::{
         EvaluationGoal, LandingPadSpec, MissionSpec, ScenarioSpec, SimConfig, VehicleGeometry,
         VehicleInitialState, VehicleSpec, WorldSpec,
@@ -1011,5 +1793,652 @@ mod tests {
         assert!(snapshot.normal_speed_mps.abs() < 1e-9);
         assert!((snapshot.tangential_speed_mps - 5.0).abs() < 1e-9);
         assert!(snapshot.attitude_error_rad.abs() < 1e-6);
+    }
+
+    #[derive(Default)]
+    struct RejectingBoundedGuard {
+        reject_initial: bool,
+        reject_pre_transition: bool,
+        pre_transition_calls: usize,
+    }
+
+    impl BoundedRunGuard for RejectingBoundedGuard {
+        fn initial(
+            &mut self,
+            _context: &RunContext,
+            _state: &SimulationState,
+        ) -> Result<(), crate::BoundedGuardFailureV1> {
+            if self.reject_initial {
+                return Err(crate::BoundedGuardFailureV1::new(
+                    BoundedGuardFailureDispositionV1::SafetyRejected,
+                    "fixture initial rejection",
+                ));
+            }
+            Ok(())
+        }
+
+        fn before_transition(
+            &mut self,
+            _context: &RunContext,
+            _state: &SimulationState,
+            _command: Command,
+        ) -> Result<(), crate::BoundedGuardFailureV1> {
+            self.pre_transition_calls += 1;
+            if self.reject_pre_transition {
+                return Err(crate::BoundedGuardFailureV1::new(
+                    BoundedGuardFailureDispositionV1::SafetyRejected,
+                    "fixture actuator budget rejection",
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    fn bounded_contact_context(center_y_m: f64) -> RunContext {
+        let mut scenario = smoke_scenario();
+        scenario.initial_state = VehicleInitialState {
+            position_m: Vec2::new(0.0, center_y_m),
+            velocity_mps: Vec2::new(0.25, -1.5),
+            attitude_rad: 0.0,
+            angular_rate_radps: 0.0,
+        };
+        RunContext::from_scenario(&scenario).unwrap()
+    }
+
+    #[test]
+    fn bounded_deadlines_stop_before_an_uncovered_callback_or_extra_step() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        for (hard_end, expected_step, expected_stop, expected_coverage, expected_hard) in [
+            (5, 4, BoundedRunStopCauseV1::CoverageExhausted, true, false),
+            (
+                3,
+                3,
+                BoundedRunStopCauseV1::HardDeadlineReached,
+                false,
+                true,
+            ),
+            (4, 4, BoundedRunStopCauseV1::HardDeadlineReached, true, true),
+        ] {
+            let mut callbacks = 0;
+            let mut guard = RejectingBoundedGuard::default();
+            let result = run_simulation_bounded(
+                &ctx,
+                "bounded_fixture",
+                BoundedRunLimitsV1 {
+                    command_coverage_end_physics_step: 4,
+                    hard_end_physics_step: hard_end,
+                },
+                |_, _| {
+                    callbacks += 1;
+                    Ok(Command::idle())
+                },
+                &mut guard,
+            )
+            .unwrap();
+
+            assert_eq!(result.final_state.physics_step, expected_step);
+            assert_eq!(result.run.manifest.physics_steps, expected_step);
+            assert_eq!(result.stop, expected_stop);
+            assert_eq!(result.coverage_reached, expected_coverage);
+            assert_eq!(result.hard_end_reached, expected_hard);
+            assert_eq!(callbacks, 2, "no callback is allowed at or after the bound");
+            assert_eq!(result.run.actions.len(), 2);
+            assert_eq!(guard.pre_transition_calls, expected_step as usize);
+            assert_eq!(result.run.manifest.end_reason, EndReason::Running);
+            assert!(result.run.events.iter().all(|event| {
+                event.kind != EventKind::MissionEnded && event.kind != EventKind::Crash
+            }));
+        }
+    }
+
+    #[test]
+    fn bounded_contact_keeps_incoming_state_before_stable_normalization() {
+        let ctx = bounded_contact_context(3.21);
+        let mut callbacks = 0;
+        let mut guard = AllowAllBoundedRunGuard;
+        let result = run_simulation_bounded(
+            &ctx,
+            "bounded_contact_fixture",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 2,
+                hard_end_physics_step: 1,
+            },
+            |_, _| {
+                callbacks += 1;
+                Ok(Command::idle())
+            },
+            &mut guard,
+        )
+        .unwrap();
+
+        let incoming = result.incoming_contact.as_ref().unwrap();
+        assert!(matches!(
+            incoming.classification,
+            ContactClassification::StableTouchdown { on_target: true }
+        ));
+        assert_eq!(incoming.state.physics_step, 1);
+        assert!(incoming.state.velocity_mps.y < -1.0);
+        assert!(incoming.state.velocity_mps.x > 0.0);
+        assert_eq!(result.final_state.velocity_mps, Vec2::new(0.0, 0.0));
+        assert_eq!(result.stop, BoundedRunStopCauseV1::MissionTerminal);
+        assert!(result.hard_end_reached);
+        assert!(!result.coverage_reached);
+        assert_eq!(result.run.manifest.physics_steps, 1);
+        assert_eq!(callbacks, 1);
+    }
+
+    #[test]
+    fn contact_on_a_tied_hard_and_coverage_boundary_wins_before_driver_stop() {
+        let ctx = bounded_contact_context(3.225);
+        let mut callbacks = 0;
+        let mut guard = AllowAllBoundedRunGuard;
+        let result = run_simulation_bounded(
+            &ctx,
+            "bounded_contact_tie_fixture",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 2,
+                hard_end_physics_step: 2,
+            },
+            |_, _| {
+                callbacks += 1;
+                Ok(Command::idle())
+            },
+            &mut guard,
+        )
+        .unwrap();
+
+        assert_eq!(result.final_state.physics_step, 2);
+        assert!(result.incoming_contact.is_some());
+        assert_eq!(result.stop, BoundedRunStopCauseV1::MissionTerminal);
+        assert!(result.coverage_reached && result.hard_end_reached);
+        assert_eq!(callbacks, 1, "contact prevents a tick-2 callback");
+    }
+
+    #[test]
+    fn bounded_initial_and_pretransition_rejections_keep_truthful_prefixes() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        let limits = BoundedRunLimitsV1 {
+            command_coverage_end_physics_step: 4,
+            hard_end_physics_step: 8,
+        };
+
+        let mut initial_guard = RejectingBoundedGuard {
+            reject_initial: true,
+            ..RejectingBoundedGuard::default()
+        };
+        let initial = run_simulation_bounded(
+            &ctx,
+            "bounded_initial_reject",
+            limits,
+            |_, _| Ok(Command::idle()),
+            &mut initial_guard,
+        )
+        .unwrap();
+        assert_eq!(initial.stop, BoundedRunStopCauseV1::SafetyRejected);
+        assert_eq!(initial.final_state.physics_step, 0);
+        assert!(initial.run.actions.is_empty());
+        assert!(initial.run.events.is_empty());
+        assert_eq!(
+            initial.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::InitialGuard
+        );
+
+        let mut guard = RejectingBoundedGuard {
+            reject_pre_transition: true,
+            ..RejectingBoundedGuard::default()
+        };
+        let pre_transition = run_simulation_bounded(
+            &ctx,
+            "bounded_pre_reject",
+            limits,
+            |_, _| Ok(Command::idle()),
+            &mut guard,
+        )
+        .unwrap();
+        assert_eq!(pre_transition.stop, BoundedRunStopCauseV1::SafetyRejected);
+        assert_eq!(pre_transition.final_state.physics_step, 0);
+        assert_eq!(pre_transition.run.actions.len(), 1);
+        assert_eq!(pre_transition.run.events.len(), 1);
+        assert_eq!(pre_transition.run.manifest.end_reason, EndReason::Running);
+        assert_eq!(
+            pre_transition.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::PreTransitionGuard
+        );
+    }
+
+    #[test]
+    fn callback_and_nonfinite_transition_failures_keep_serializable_finite_prefixes() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        let mut guard = AllowAllBoundedRunGuard;
+        let callback_failure = run_simulation_bounded(
+            &ctx,
+            "callback_failure_fixture",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 4,
+                hard_end_physics_step: 8,
+            },
+            |_, _| Err("fixture command selection failure".to_owned()),
+            &mut guard,
+        )
+        .unwrap();
+        assert_eq!(
+            callback_failure.stop,
+            BoundedRunStopCauseV1::ExecutionInvalid
+        );
+        assert_eq!(callback_failure.final_state.physics_step, 0);
+        assert!(callback_failure.final_state.sim_time_s.is_finite());
+        assert!(callback_failure.run.actions.is_empty());
+        assert_eq!(callback_failure.run.samples.len(), 1);
+        assert_eq!(
+            callback_failure.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::CommandSelection
+        );
+
+        let mut guard = AllowAllBoundedRunGuard;
+        let nonfinite_command = run_simulation_bounded(
+            &ctx,
+            "nonfinite_command_fixture",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 4,
+                hard_end_physics_step: 8,
+            },
+            |_, _| {
+                Ok(Command {
+                    throttle_frac: f64::NAN,
+                    target_attitude_rad: 0.0,
+                })
+            },
+            &mut guard,
+        )
+        .unwrap();
+        let command_failure = nonfinite_command.failure.as_ref().unwrap();
+        assert_eq!(
+            nonfinite_command.stop,
+            BoundedRunStopCauseV1::ExecutionInvalid
+        );
+        assert_eq!(
+            command_failure.stage,
+            BoundedRunFailureStageV1::CommandSelection
+        );
+        assert_eq!(
+            command_failure.non_finite.as_ref().unwrap().field,
+            "command.throttle_frac"
+        );
+        assert_eq!(
+            command_failure.non_finite.as_ref().unwrap().category,
+            BoundedRunNonFiniteCategoryV1::Nan
+        );
+        assert!(nonfinite_command.run.actions.is_empty());
+        let json = serde_json::to_string(&nonfinite_command).unwrap();
+        assert!(serde_json::from_str::<BoundedRunArtifactsV1>(&json).is_ok());
+
+        let mut nonfinite_projection_scenario = smoke_scenario();
+        nonfinite_projection_scenario.vehicle.dry_mass_kg = 1.0e308;
+        nonfinite_projection_scenario.vehicle.initial_fuel_kg = 1.0e308;
+        nonfinite_projection_scenario.vehicle.max_fuel_kg = 1.0e308;
+        let nonfinite_projection_context =
+            RunContext::from_scenario(&nonfinite_projection_scenario).unwrap();
+        let mut callback_called = false;
+        let mut guard = AllowAllBoundedRunGuard;
+        let projection_error = run_simulation_bounded(
+            &nonfinite_projection_context,
+            "nonfinite_initial_projection_fixture",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 4,
+                hard_end_physics_step: 8,
+            },
+            |_, _| {
+                callback_called = true;
+                Ok(Command::idle())
+            },
+            &mut guard,
+        )
+        .unwrap_err();
+        assert!(projection_error.to_string().contains("observation.mass_kg"));
+        assert!(!callback_called);
+
+        let mut extreme_scenario = smoke_scenario();
+        extreme_scenario.world.gravity_mps2 = 1.0e308;
+        let extreme_context = RunContext::from_scenario(&extreme_scenario).unwrap();
+        let mut guard = AllowAllBoundedRunGuard;
+        let numeric_failure = run_simulation_bounded(
+            &extreme_context,
+            "nonfinite_transition_fixture",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 4,
+                hard_end_physics_step: 8,
+            },
+            |_, _| Ok(Command::idle()),
+            &mut guard,
+        )
+        .unwrap();
+        let failure = numeric_failure.failure.as_ref().unwrap();
+        assert_eq!(
+            numeric_failure.stop,
+            BoundedRunStopCauseV1::ExecutionInvalid
+        );
+        assert_eq!(failure.stage, BoundedRunFailureStageV1::PhysicsTransition);
+        assert_eq!(
+            failure.disposition,
+            BoundedGuardFailureDispositionV1::ExecutionInvalid
+        );
+        assert_eq!(failure.boundary_physics_step, 1);
+        assert_eq!(failure.non_finite.as_ref().unwrap().field, "max_speed_mps");
+        assert_eq!(
+            failure.non_finite.as_ref().unwrap().category,
+            BoundedRunNonFiniteCategoryV1::PositiveInfinity
+        );
+        assert_eq!(numeric_failure.final_state.physics_step, 0);
+        assert_eq!(numeric_failure.run.manifest.end_reason, EndReason::Running);
+        assert!(numeric_failure.final_state.sim_time_s.is_finite());
+        assert!(numeric_failure.final_state.position_m.x.is_finite());
+        assert!(numeric_failure.final_state.position_m.y.is_finite());
+        assert!(numeric_failure.final_state.max_speed_mps.is_finite());
+        assert_eq!(numeric_failure.run.samples.len(), 1);
+        let json = serde_json::to_string(&numeric_failure).unwrap();
+        assert!(serde_json::from_str::<BoundedRunArtifactsV1>(&json).is_ok());
+    }
+
+    #[test]
+    fn finite_zero_fuel_idle_coast_is_not_a_core_terminal_condition() {
+        let mut scenario = smoke_scenario();
+        scenario.vehicle.initial_fuel_kg = 1.0e-6;
+        scenario.initial_state.position_m.y = 100.0;
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut guard = AllowAllBoundedRunGuard;
+        let result = run_simulation_bounded(
+            &ctx,
+            "zero_fuel_coast_fixture",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 4,
+                hard_end_physics_step: 8,
+            },
+            |_, observation| {
+                Ok(if observation.physics_step == 0 {
+                    Command {
+                        throttle_frac: 1.0,
+                        target_attitude_rad: 0.0,
+                    }
+                } else {
+                    Command::idle()
+                })
+            },
+            &mut guard,
+        )
+        .unwrap();
+
+        assert_eq!(result.stop, BoundedRunStopCauseV1::CoverageExhausted);
+        assert_eq!(result.final_state.physics_step, 4);
+        assert_eq!(result.final_state.fuel_kg, 0.0);
+        assert_eq!(result.run.manifest.end_reason, EndReason::Running);
+    }
+
+    #[test]
+    fn ordinary_horizon_is_real_terminal_but_contact_on_horizon_wins() {
+        let mut airborne_scenario = smoke_scenario();
+        airborne_scenario.sim.max_time_s = 10.0;
+        airborne_scenario.initial_state.position_m.y = 100.0;
+        airborne_scenario.initial_state.velocity_mps = Vec2::new(0.0, 0.0);
+        let airborne_context = RunContext::from_scenario(&airborne_scenario).unwrap();
+        let horizon_step = 1200;
+        let limits = BoundedRunLimitsV1 {
+            command_coverage_end_physics_step: horizon_step,
+            hard_end_physics_step: horizon_step,
+        };
+        let mut guard = AllowAllBoundedRunGuard;
+        let horizon = run_simulation_bounded(
+            &airborne_context,
+            "horizon_precedence_fixture",
+            limits,
+            |_, _| Ok(Command::idle()),
+            &mut guard,
+        )
+        .unwrap();
+        assert_eq!(horizon.stop, BoundedRunStopCauseV1::ScenarioHorizonReached);
+        assert_eq!(horizon.final_state.physics_step, horizon_step);
+        assert_eq!(horizon.run.manifest.end_reason, EndReason::MaxTimeReached);
+        assert!(horizon.coverage_reached && horizon.hard_end_reached);
+
+        let mut contact_scenario = smoke_scenario();
+        contact_scenario.sim.max_time_s = 10.0;
+        let dt_s = 1.0 / f64::from(contact_scenario.sim.physics_hz);
+        let steps = horizon_step as f64;
+        contact_scenario.initial_state.position_m.y = 3.1999;
+        contact_scenario.initial_state.velocity_mps.y =
+            contact_scenario.world.gravity_mps2 * dt_s * (steps + 1.0) * 0.5;
+        let contact_context = RunContext::from_scenario(&contact_scenario).unwrap();
+        let mut guard = AllowAllBoundedRunGuard;
+        let contact = run_simulation_bounded(
+            &contact_context,
+            "contact_at_horizon_fixture",
+            limits,
+            |_, _| Ok(Command::idle()),
+            &mut guard,
+        )
+        .unwrap();
+        assert_eq!(contact.final_state.physics_step, horizon_step);
+        assert_eq!(contact.stop, BoundedRunStopCauseV1::MissionTerminal);
+        assert_eq!(contact.run.manifest.end_reason, EndReason::Crash);
+        assert!(matches!(
+            contact
+                .incoming_contact
+                .as_ref()
+                .map(|incoming| &incoming.classification),
+            Some(ContactClassification::Crash)
+        ));
+        assert!(contact.coverage_reached && contact.hard_end_reached);
+    }
+
+    #[test]
+    fn bounded_replay_rejects_truncation_extra_actions_and_offclock_payloads() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        let limits = BoundedRunLimitsV1 {
+            command_coverage_end_physics_step: 4,
+            hard_end_physics_step: 8,
+        };
+        let mut allow = AllowAllBoundedRunGuard;
+        let original = run_simulation_bounded(
+            &ctx,
+            "bounded_replay_fixture",
+            limits,
+            |_, _| Ok(Command::idle()),
+            &mut allow,
+        )
+        .unwrap();
+        assert_eq!(original.run.actions.len(), 2);
+
+        let mut replay_guard = AllowAllBoundedRunGuard;
+        let exact = replay_simulation_bounded(
+            &ctx,
+            "bounded_replay_fixture",
+            &original.run.actions,
+            limits,
+            &mut replay_guard,
+        )
+        .unwrap();
+        assert_eq!(exact.run, original.run);
+        assert_eq!(exact.final_state, original.final_state);
+        assert_eq!(exact.stop, original.stop);
+
+        let mut truncated_guard = AllowAllBoundedRunGuard;
+        let truncated = replay_simulation_bounded(
+            &ctx,
+            "bounded_replay_fixture",
+            &original.run.actions[..1],
+            limits,
+            &mut truncated_guard,
+        )
+        .unwrap();
+        assert_eq!(truncated.stop, BoundedRunStopCauseV1::ExecutionInvalid);
+        assert_eq!(
+            truncated.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::ReplayInput
+        );
+        assert_eq!(truncated.run.manifest.physics_steps, 2);
+        assert_eq!(truncated.run.actions.len(), 1);
+
+        let mut extra_actions = original.run.actions.clone();
+        extra_actions.push(ActionLogEntry {
+            sim_time_s: 4.0 / f64::from(ctx.sim.physics_hz),
+            physics_step: 4,
+            controller_update_index: 2,
+            command: Command::idle(),
+        });
+        let mut extra_guard = AllowAllBoundedRunGuard;
+        let extra = replay_simulation_bounded(
+            &ctx,
+            "bounded_replay_fixture",
+            &extra_actions,
+            limits,
+            &mut extra_guard,
+        )
+        .unwrap();
+        assert_eq!(extra.stop, BoundedRunStopCauseV1::ExecutionInvalid);
+        assert_eq!(extra.run.manifest.physics_steps, 4);
+
+        let mut offclock_actions = original.run.actions.clone();
+        offclock_actions[0].physics_step = 1;
+        let mut offclock_guard = AllowAllBoundedRunGuard;
+        let offclock = replay_simulation_bounded(
+            &ctx,
+            "bounded_replay_fixture",
+            &offclock_actions,
+            limits,
+            &mut offclock_guard,
+        )
+        .unwrap();
+        assert_eq!(offclock.stop, BoundedRunStopCauseV1::ExecutionInvalid);
+        assert_eq!(
+            offclock.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::ReplayInput
+        );
+        assert!(offclock.run.actions.is_empty());
+
+        let mut nonfinite_timestamp_actions = original.run.actions.clone();
+        nonfinite_timestamp_actions[0].sim_time_s = f64::NAN;
+        let mut nonfinite_timestamp_guard = AllowAllBoundedRunGuard;
+        let nonfinite_timestamp = replay_simulation_bounded(
+            &ctx,
+            "bounded_replay_fixture",
+            &nonfinite_timestamp_actions,
+            limits,
+            &mut nonfinite_timestamp_guard,
+        )
+        .unwrap();
+        let timestamp_failure = nonfinite_timestamp.failure.as_ref().unwrap();
+        assert_eq!(
+            nonfinite_timestamp.stop,
+            BoundedRunStopCauseV1::ExecutionInvalid
+        );
+        assert_eq!(
+            timestamp_failure.non_finite.as_ref().unwrap().field,
+            "action.sim_time_s"
+        );
+        assert_eq!(
+            timestamp_failure.non_finite.as_ref().unwrap().category,
+            BoundedRunNonFiniteCategoryV1::Nan
+        );
+        assert!(nonfinite_timestamp.run.actions.is_empty());
+
+        let mut missing_guard = AllowAllBoundedRunGuard;
+        let missing = replay_simulation_bounded(
+            &ctx,
+            "bounded_replay_fixture",
+            &[],
+            limits,
+            &mut missing_guard,
+        )
+        .unwrap();
+        assert_eq!(missing.stop, BoundedRunStopCauseV1::ExecutionInvalid);
+        assert_eq!(missing.final_state.physics_step, 0);
+        assert_eq!(
+            missing.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::ReplayInput
+        );
+    }
+
+    #[test]
+    fn extra_replay_actions_after_initial_safety_stop_are_still_invalid() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        let actions = [ActionLogEntry {
+            sim_time_s: 0.0,
+            physics_step: 0,
+            controller_update_index: 0,
+            command: Command::idle(),
+        }];
+        let mut empty_guard = RejectingBoundedGuard {
+            reject_initial: true,
+            ..RejectingBoundedGuard::default()
+        };
+        let empty = replay_simulation_bounded(
+            &ctx,
+            "initial_stop_replay",
+            &[],
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 4,
+                hard_end_physics_step: 8,
+            },
+            &mut empty_guard,
+        )
+        .unwrap();
+        assert_eq!(empty.stop, BoundedRunStopCauseV1::SafetyRejected);
+        assert_eq!(
+            empty.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::InitialGuard
+        );
+        assert!(empty.run.actions.is_empty());
+
+        let mut guard = RejectingBoundedGuard {
+            reject_initial: true,
+            ..RejectingBoundedGuard::default()
+        };
+        let result = replay_simulation_bounded(
+            &ctx,
+            "initial_stop_replay",
+            &actions,
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 4,
+                hard_end_physics_step: 8,
+            },
+            &mut guard,
+        )
+        .unwrap();
+
+        assert_eq!(result.stop, BoundedRunStopCauseV1::ExecutionInvalid);
+        assert_eq!(
+            result.failure.as_ref().unwrap().stage,
+            BoundedRunFailureStageV1::ReplayInput
+        );
+        assert!(
+            result
+                .failure
+                .as_ref()
+                .unwrap()
+                .reason
+                .contains("fixture initial rejection")
+        );
+        assert!(result.run.actions.is_empty());
+        assert_eq!(result.final_state.physics_step, 0);
+    }
+
+    #[test]
+    fn ordinary_and_bounded_terminal_runs_keep_identical_legacy_artifacts() {
+        let ctx = RunContext::from_scenario(&smoke_scenario()).unwrap();
+        let ordinary = run_simulation(&ctx, "legacy-parity", |_, _| Command::idle()).unwrap();
+        let mut guard = AllowAllBoundedRunGuard;
+        let bounded = run_simulation_bounded(
+            &ctx,
+            "legacy-parity",
+            BoundedRunLimitsV1 {
+                command_coverage_end_physics_step: 1200,
+                hard_end_physics_step: 1200,
+            },
+            |_, _| Ok(Command::idle()),
+            &mut guard,
+        )
+        .unwrap();
+
+        assert_eq!(bounded.run, ordinary);
+        assert_eq!(bounded.stop, BoundedRunStopCauseV1::MissionTerminal);
     }
 }

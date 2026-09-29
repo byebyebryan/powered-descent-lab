@@ -40,6 +40,21 @@ demand or a production planner decision.
 
 ### Latest direct-planning checkpoint (2026-09-28)
 
+The opt-in
+[strict saved-coverage executor](nominal_direct_operational_execution_results.md)
+is implemented and validated: all 24 exposed controls retain exact nominal
+proof, and four inputs sealed before implementation (685/845 m flat and 845 m
+uphill/downhill ±75 m) are Direct, completed-safe and Match in two final-source
+runs. It separates actual contact/outcome from exact nominal comparison,
+retains incoming contact and truthful partial evidence, and recomputes bounded
+replay from the full program. An airborne run stops before an uncovered update
+or hard deadline; no idle, extra command or last-command hold is supplied. All
+809 workspace tests and strict lint pass; source and historical archive bytes
+are unchanged during measurements. Exact nominal verification stays strict.
+The [completion contract](nominal_direct_execution_completion_contract.md)
+does not recover the 48 diagnostic late-contact observations. Robustness,
+direct-first default wiring and airborne waypoint composition remain separate.
+
 The latest diagnostic is the evaluator-only
 [first-contact and command-coverage study](nominal_direct_contact_phase_results.md).
 All 24 nominal baselines reproduce exactly before vertical-only terminal-entry
@@ -47,11 +62,12 @@ offsets. Two complete 216-row runs agree: saved programs reach 168 safe contacts
 and stop at missing commands in 48 rows; bounded diagnostic final-command hold
 reaches safe target contact in all 216, within the original planned end. No
 unsafe contact, clearance/domain violation or parity failure occurs. This is
-not general robustness or an approved fallback. The next justified boundary is
-operational completion and finite command coverage, while exact nominal proof
-stays strict. It does not call for another source fit or obstacle sweep.
+not general robustness or an approved fallback. The operational pass now
+implements honest finite coverage/completion without promoting that diagnostic
+hold. Exact nominal proof stays strict; no new source fit or obstacle sweep is
+required to close this boundary.
 
-The latest executable capability remains the opt-in
+The preceding exact-nominal baseline remains the opt-in
 [nominal direct flight integration](nominal_direct_flight_integration_results.md).
 It executes complete accepted timed programs through the ordinary controller
 and simulator path from mission inputs. All 24 now-exposed body-aware controls
@@ -61,8 +77,9 @@ input, no floor cutaway or waypoint is added, and production V1/default behavior
 is unchanged. The CLI returns finite Unknown without fallback; valid unsupported
 inputs and malformed bindings are separately typed and execute no flight.
 
-Measured local release medians are about 944 ms for the unchanged research
-generator and 662 ms for selected verification, versus 1.86 ms for ordinary
+At that preceding checkpoint, local release medians were about 944 ms for the
+unchanged research generator and 662 ms for selected verification, versus 1.86 ms
+for ordinary
 execution of the entire offline flight. This includes old-policy comparison and
 source-family regeneration; it is not optimized production setup cost.
 Contact-predicate margins are not obstacle clearances or an operating tolerance;
@@ -136,11 +153,11 @@ execution slice has not passed its exact-trajectory compatibility gate.
 
 The input-driven nominal baseline, bounded obstacle discrimination, terminal
 causal diagnostic, body-aware nominal terminal pass, opt-in complete-program
-flight integration and fixed contact-phase diagnostic are closed at their
-declared gates. Do not restart source
+flight integration, fixed contact-phase diagnostic and strict saved-coverage
+operational execution are closed at their declared gates. Do not restart source
 fitting or cadence-only experiments. The production V1 chord model is still
 unchanged. Setup cost is now measured for the research backend, not optimized
-or accepted against a production budget. Operational completion/coverage,
+or accepted against a production budget. Commands/recovery beyond saved coverage,
 general robust contact, arbitrary incoming
 waypoint states, waypoint composition and production/default selection remain
 open; changing flight policy requires a new

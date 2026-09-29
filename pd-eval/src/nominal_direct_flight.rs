@@ -269,7 +269,7 @@ pub fn nominal_direct_flight_identity<T: Serialize>(value: &T) -> Result<String>
     ))
 }
 
-fn program_from_witness(
+pub(crate) fn program_from_witness(
     request: &WaypointDirectNominalDirectGenerationRequest,
     policy: &BodyAwareTerminalPolicyV1,
     witness: &BodyAwareTerminalWitnessV1,
