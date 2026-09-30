@@ -1,5 +1,73 @@
 # Progress
 
+## 2026-09-30
+
+### Canonical initial direct transfer foundation
+
+- The opt-in [canonical initial canary](canonical_initial_direct_canary_results.md)
+  passes all six sealed gates in two final-source runs. Eight uncut flat/slope
+  source-rest flights land safely, four blocking and four nonblocking terrain
+  twins retain identical complete nominal searches/commands, and twelve real
+  captures from the new initial flights regenerate accepted continuations.
+- Initial selection is endpoint/vehicle driven, ranked by lowest complete-flight
+  peak in the finite family, then independently audited against actual terrain.
+  The 900 m late/broad case blocks the fixed 232.373 m-peak choice even though
+  a freshly regenerated old terrain-aware control lands over it with a measured
+  513.659 m whole-flight peak. Terrain rejection never reranks the choice.
+- Both final roots have identity `fnv1a64:33c595b7ef7cecd1`; every deterministic
+  summary payload matches after excluding only declared timings. All 136 bound
+  files remain unchanged. Full final/incoming-contact snapshots and whole-source
+  replay actions/events/samples agree; selected initial flights need no
+  after-reference tail, command fallback, floor cutaway, or completion reserve.
+- The 24-control old source-rest regression passes exact parity and retains its
+  26 declared archive files. All four complete prior airborne-canary case
+  payloads also match their accepted evidence. Final validation passes 842
+  workspace tests, with one existing historical-artifact ignore, strict
+  all-target workspace Clippy, formatting, and whitespace checks.
+- Primary owns nominal basis/source/proposal/audit math, old-control peak proof,
+  integration review, and acceptance. Luna supplies the execution-seam audit
+  and bounded proof harness. No default, contact-physics, reserve, commit, push,
+  or deployment change is introduced. Measured offline costs are not real-time
+  or motion-during-computation safety evidence.
+- Close this canonical initial-transfer foundation. Next is one local clearing
+  maneuver with trajectory-derived handoff state, useful progress, finite safe
+  continuation, and actual-state replanning. Begin early enough to retain
+  authority, not at an already-violating conflict snapshot; immediate direct
+  landing and the literal feature far edge are not candidate requirements.
+
+## 2026-09-29
+
+### Airborne regeneration foundation
+
+- The [revised design](waypoint_planning.md) separates a terrain-blind canonical
+  transfer from its actual-terrain audit and local clearing/replanning. Waypoint
+  position and arrival velocity come from a feasible maneuver; immediate direct
+  landing and a literal obstacle far-edge coordinate are not candidate gates.
+- The opt-in [airborne canary](nominal_airborne_direct_canary_results.md) passes
+  all twelve real ascending/near-apex/descending captures on four exposed uncut
+  flat/uphill/downhill flights. All twelve terrain twins preserve the full
+  nominal search and reject through independent actual body-clearance audit.
+  Fresh in-memory state, global clock/fuel and supplied-command coverage remain
+  intact; source-rest baseline programs never seed the regenerated suffix.
+- Two final runs match identity `fnv1a64:46f616840230427e`, byte-identical
+  summaries and complete case payloads excluding only observational timings.
+  Full final and incoming-contact snapshots, source replay actions/events/samples
+  and standard replay agree. The earlier successful roots remain preserved;
+  a review correction strengthens contact evidence without changing proposals.
+- Four complete source-rest baselines plus the 24-control exact-parity regression
+  pass. Final validation passes 822 workspace tests, fifteen focused airborne/CLI
+  tests, strict workspace Clippy, formatting and whitespace checks. All 129
+  bound runtime/input/protocol files remain unchanged during measurements.
+- Primary owns proposal architecture/math, final replay/contact integration,
+  review and acceptance. Luna supplies the execution-seam audit, initial harness
+  and protocol implementation, and read-only review that catches the contact
+  comparison gap. No new core execution API, default promotion, reserve behavior,
+  commit, push or deployment is introduced.
+- Close this finite regeneration foundation. The source-rest canonical proposal
+  still needs terrain-independent selection, followed by a bounded local clearing
+  maneuver and observed-state replanning. Arbitrary handoff coverage, moving
+  during computation, robustness and a full multi-waypoint planner remain open.
+
 ## 2026-09-28
 
 ### One-update terminal-completion reserve review and commit closure

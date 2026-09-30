@@ -146,6 +146,12 @@ pub use nominal_direct_flight::*;
 mod nominal_direct_flight_gate;
 pub use nominal_direct_flight_gate::*;
 
+pub mod nominal_airborne_direct;
+pub use nominal_airborne_direct::*;
+
+pub mod canonical_initial_direct;
+pub use canonical_initial_direct::*;
+
 pub mod nominal_direct_operational;
 pub use nominal_direct_operational::*;
 mod nominal_direct_operational_gate;

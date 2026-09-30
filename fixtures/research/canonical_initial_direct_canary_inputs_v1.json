@@ -1,0 +1,25 @@
+{
+  "schema_id": "canonical_initial_direct_canary_inputs_v1",
+  "schema_version": 1,
+  "policy_id": "canonical_initial_direct_lowest_peak_v1",
+  "development_manifest": "fixtures/research/nominal_direct_operational_fresh_inputs_v1.json",
+  "development_case_ids": [
+    "operational_flat_span_685",
+    "operational_flat_span_845",
+    "operational_uphill_span_845",
+    "operational_downhill_span_845"
+  ],
+  "additional_endpoint_manifest": "fixtures/research/nominal_direct_terminal_completion_fresh_inputs_v1.json",
+  "additional_endpoint_case_ids": [
+    "completion_flat_span_735",
+    "completion_flat_span_915",
+    "completion_uphill_span_915",
+    "completion_downhill_span_915"
+  ],
+  "additional_input_scope": "Previously sealed physical endpoint inputs only; no terminal completion reserve, command extension, or hidden-input claim.",
+  "duration_multipliers": [0.75, 1.0, 1.25, 1.5],
+  "source_duration_offsets_ticks": [-240, -180, -120, -60, 0],
+  "terminal_duration_offsets_ticks": [0, 60, 120, 180, 240, 300, 360],
+  "maximum_outer_attempts_per_case": 140,
+  "stop_rule": "First decisive development compatibility failure stops downstream terrain, composition, and additional-case gates; persist failure and not-evaluated reasons without tuning."
+}

@@ -339,7 +339,9 @@ pub struct ScheduledLaunchBoundaryEvidence {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-struct Correction([f64; 4]);
+pub(in crate::waypoint_direct_nominal_plant) struct Correction(
+    pub(in crate::waypoint_direct_nominal_plant) [f64; 4],
+);
 
 #[derive(Clone, Copy, Debug)]
 struct ScheduleResidual {
@@ -1592,7 +1594,7 @@ fn schedule_screens(
     }
 }
 
-fn paired_mean_seed(
+pub(in crate::waypoint_direct_nominal_plant) fn paired_mean_seed(
     bridge: &AnalyticalBridgeV2,
     launch_target: f64,
 ) -> Result<Vec<HeldSourceCommand>> {
@@ -1649,7 +1651,10 @@ fn build_schedule(
     ))
 }
 
-fn apply_correction(seed: &[HeldSourceCommand], correction: Correction) -> Vec<HeldSourceCommand> {
+pub(in crate::waypoint_direct_nominal_plant) fn apply_correction(
+    seed: &[HeldSourceCommand],
+    correction: Correction,
+) -> Vec<HeldSourceCommand> {
     let first_powered_index = seed
         .iter()
         .position(|command| command.thrust_acceleration_mps2.length() > 1.0e-12)
@@ -1717,7 +1722,9 @@ fn held_command_evidence(
         .collect()
 }
 
-fn maximum_powered_slew(schedule: &[HeldSourceCommand]) -> f64 {
+pub(in crate::waypoint_direct_nominal_plant) fn maximum_powered_slew(
+    schedule: &[HeldSourceCommand],
+) -> f64 {
     let mut previous: Option<(usize, f64)> = None;
     let mut maximum = 0.0_f64;
     for (index, command) in schedule.iter().enumerate() {
@@ -1739,7 +1746,7 @@ fn maximum_powered_slew(schedule: &[HeldSourceCommand]) -> f64 {
 // These small fixed-size loops preserve the original row-major accumulation
 // order to keep the bounded experiment's floating-point schedule unchanged.
 #[allow(clippy::needless_range_loop)]
-fn damped_least_squares_step(
+pub(in crate::waypoint_direct_nominal_plant) fn damped_least_squares_step(
     jacobian: [[f64; 4]; 4],
     residual: [f64; 4],
     damping: f64,
@@ -1850,7 +1857,9 @@ fn schedule_is_gate_witness(schedule: &PairedScheduleEvidence) -> bool {
         && schedule.full_flight_first_contact.is_some()
 }
 
-fn clamp_correction(correction: Correction) -> Correction {
+pub(in crate::waypoint_direct_nominal_plant) fn clamp_correction(
+    correction: Correction,
+) -> Correction {
     Correction(std::array::from_fn(|index| {
         correction.0[index].clamp(-MAX_CORRECTION_MPS2, MAX_CORRECTION_MPS2)
     }))

@@ -18,13 +18,15 @@ use pd_eval::{
     preflight_waypoint_direct_body_aware_terminal_fresh_gate,
     preflight_waypoint_direct_terminal_admissibility, promote_pack_cache, refresh_report_outputs,
     report::write_batch_report_artifacts, resolve_pack_compare_baseline, run_candidate_replay_case,
-    run_candidate_replay_development, run_conservative_ballistic_f6_controller_integration_v1,
+    run_candidate_replay_development, run_canonical_initial_direct_canary,
+    run_conservative_ballistic_f6_controller_integration_v1,
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_f5_analytical_v1,
     run_conservative_ballistic_ridge_f5_controller_v1,
     run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
-    run_final_landing_audit, run_nominal_direct_contact_phase_study, run_nominal_direct_flight,
+    run_final_landing_audit, run_nominal_airborne_direct_canary,
+    run_nominal_direct_contact_phase_study, run_nominal_direct_flight,
     run_nominal_direct_flight_regression, run_nominal_direct_operational_flight,
     run_nominal_direct_operational_gate, run_pack_file_cached, run_physical_executor_comparison,
     run_physical_witness_development, run_progress_interval_envelope_development_gate,
@@ -163,8 +165,24 @@ enum Commands {
     NominalDirectOperationalFlight(NominalDirectFlightArgs),
     /// Validate 24 exposed controls and four sealed fresh operational missions.
     NominalDirectOperationalGate(NominalDirectOperationalGateArgs),
+    /// Regenerate finite nominal segments from real airborne baseline states.
+    NominalAirborneDirectCanary(NominalAirborneDirectCanaryArgs),
+    /// Run sealed opt-in canonical source-rest, terrain-twin, discriminator, live-state, and endpoint gates.
+    CanonicalInitialDirectCanary(CanonicalInitialDirectCanaryArgs),
     /// Study bounded terminal-entry height sensitivity and saved-command coverage.
     NominalDirectContactPhase(NominalDirectContactPhaseArgs),
+}
+
+#[derive(Debug, Parser)]
+struct NominalAirborneDirectCanaryArgs {
+    #[arg(long, value_name = "NEW_OUTPUT_DIR")]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct CanonicalInitialDirectCanaryArgs {
+    #[arg(long, value_name = "NEW_OUTPUT_DIR")]
+    output_dir: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -810,7 +828,7 @@ struct WaypointDirectGenerationArgs {
     #[arg(long)]
     known_flat: bool,
 
-    /// Load a predeclared fresh input. Run only after Gate A and code freeze.
+    /// Load a predeclared fresh input for this nominal-direct command.
     #[arg(long, value_name = "CASE_ID")]
     sealed_case: Option<String>,
 
@@ -1652,6 +1670,42 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::NominalAirborneDirectCanary(args) => {
+            let result = run_nominal_airborne_direct_canary(&repo_root(), &args.output_dir)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            if !result.passed {
+                bail!(
+                    "bounded airborne regeneration compatibility failed; evidence retained at {}",
+                    args.output_dir.display()
+                );
+            }
+        }
+        Commands::CanonicalInitialDirectCanary(args) => {
+            let root = repo_root();
+            let output_dir = if args.output_dir.is_absolute() {
+                args.output_dir
+            } else {
+                root.join(args.output_dir)
+            };
+            let result = run_canonical_initial_direct_canary(&root, &output_dir)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "passed": result.passed,
+                    "identity": result.identity,
+                    "case_count": result.cases.len(),
+                    "gates": result.gates,
+                    "stop_reason": result.stop_reason,
+                    "output_dir": output_dir,
+                }))?
+            );
+            if !result.passed {
+                bail!(
+                    "canonical initial direct canary did not pass every declared gate; evidence retained at {}",
+                    output_dir.display()
+                );
+            }
+        }
         Commands::NominalDirectFlightRegression(args) => {
             let archive_root = if args.archive_root.is_absolute() {
                 args.archive_root
@@ -2027,6 +2081,54 @@ fn default_worker_count() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn airborne_canary_requires_explicit_output_and_has_no_promotion_flag() {
+        assert!(Cli::try_parse_from(["pd-eval", "nominal-airborne-direct-canary"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "nominal-airborne-direct-canary",
+                "--output-dir",
+                "new-root"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "nominal-airborne-direct-canary",
+                "--output-dir",
+                "new-root",
+                "--promote"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn canonical_initial_canary_requires_explicit_output_and_has_no_promotion_flag() {
+        assert!(Cli::try_parse_from(["pd-eval", "canonical-initial-direct-canary"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "canonical-initial-direct-canary",
+                "--output-dir",
+                "new-root"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "canonical-initial-direct-canary",
+                "--output-dir",
+                "new-root",
+                "--promote"
+            ])
+            .is_err()
+        );
+    }
 
     #[test]
     fn nominal_direct_flight_requires_mission_pads_and_exactly_one_output_mode() {

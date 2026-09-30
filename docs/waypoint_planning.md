@@ -38,7 +38,79 @@ ones. The analytical profile is a candidate for direct-leg work; the observed
 split is a controller/profile-tracking question, not demonstrated waypoint
 demand or a production planner decision.
 
-### Latest direct-planning checkpoint (2026-09-28)
+### Revised direct and local waypoint design 2026 09 29
+
+The revised design separates nominal transfer generation from terrain handling.
+A direct proposal should be a canonical idealized ballistic transfer derived
+from the current flight state, destination, and vehicle feasibility envelope.
+Its apex and terminal entry are chosen for reaching and landing at the target,
+not raised until interior obstacles disappear. Audit that selected proposal
+against the real, unmodified terrain as a separate step. A finite generator
+`Unknown` is distinct from an actual terrain obstruction.
+
+If terrain blocks the nominal proposal, seek a bounded local clearing maneuver.
+Generate its feasible trajectory and derive the waypoint position and arrival
+velocity together. The goal is to bring the flight out of the obstructed region
+with useful progress and a finite safe continuation for replanning, not to prove
+that it can land directly afterward. The original clearance-conflict interval's
+exit is a search hint, not a mandatory terrain-feature far edge. A useful
+handoff can be above a long plateau before that interval ends, and another
+waypoint can follow.
+
+At a handoff, regenerate from the actual observed state while retaining global
+time, fuel, attitude/rate, and command cadence. Do not reset a mission, invent
+checkpoint success, execute restored evidence snapshots, or replay an old
+suffix as if it were a new plan. Existing authored-waypoint transfer guidance
+already advances through handoffs; the missing capability is dynamically
+generating and auditing the next terrain-aware leg.
+
+The first bounded foundation is the opt-in
+[airborne regeneration canary](nominal_airborne_direct_canary_protocol.md):
+regenerate a finite coast-plus-terminal family from real ascending, near-apex,
+and descending states on four accepted uncut-terrain flights; require independent
+whole-flight replay and identical nominal proposals across interior-terrain
+twins. This family tests state continuity and regeneration coverage, not the
+complete canonical ballistic generator or a local obstacle-clearing maneuver.
+The production V1 planner remains unchanged. Source-rest launch and body-aware
+terminal lessons remain applicable; the separate one-update completion-reserve
+design is parked rather than silently implemented by this pass.
+
+The [canary results](nominal_airborne_direct_canary_results.md) pass all twelve
+airborne captures and all twelve unchanged-proposal obstacle-twin checks in two
+final-source runs, with full state/contact and whole-source replay parity. The
+four source-rest baselines and the 24 earlier controls are preserved. This closes
+the bounded regeneration foundation. At that checkpoint, terrain-blind canonical
+initial selection and actual local clearing remained the next separate capabilities.
+
+### Canonical initial transfer foundation 2026 09 30
+
+The [canonical initial-transfer canary](canonical_initial_direct_canary_results.md)
+now passes all six sealed evaluator gates in two final-source runs. Eight uncut
+flat/uphill/downhill source-rest flights land safely. All four blocking and four
+nonblocking interior-terrain twins preserve the complete nominal search and
+selected commands; the fixed proposal is audited independently on actual terrain.
+The 900 m late/broad case rejects the canonical choice even though a freshly
+regenerated old terrain-aware control safely flies a higher direct arc. All twelve
+real coast captures from the new initial flights regenerate accepted continuations
+with full-state/contact and whole-source replay parity. The prior airborne canary
+and 24-control source-rest regression retain their physical evidence.
+
+This closes the declared terrain-blind initial-transfer foundation, not production
+planner wiring or local waypoint generation. The finite policy chooses the lowest
+complete-flight peak within its declared family; terrain rejection does not choose
+a higher alternative and finite exhaustion remains Unknown. Production V1,
+contact physics, existing generator semantics, and the parked completion reserve
+remain unchanged. Offline timing does not establish real-time planning safety.
+
+The next separate capability is one local clearing maneuver, with waypoint position
+and velocity derived from its feasible trajectory, useful progress, finite safe
+continuation, and replanning from the actual handoff. Plan early enough to retain
+control authority: a retained first-conflict snapshot identifies the problem but
+is not automatically a safe state from which to correct it. Do not require immediate
+direct landing or a literal far-edge handoff. Arbitrary powered handoff coverage
+and repeated waypoints remain later evidence boundaries.
+
+### Preceding direct-planning checkpoint (2026-09-28)
 
 The next [one-update completion-reserve contract](nominal_direct_terminal_completion_reserve_contract.md)
 and [implementation protocol](nominal_direct_terminal_completion_reserve_protocol.md)

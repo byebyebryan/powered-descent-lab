@@ -16,6 +16,9 @@ use pd_core::{
 };
 use serde::{Deserialize, Serialize};
 
+mod canonical_initial;
+pub use canonical_initial::*;
+
 const FIXTURE: &str =
     include_str!("../fixtures/conservative_ballistic_direct_bridge_probes_v2.json");
 const HELDOUT_INPUT_MANIFEST_V1: &str =

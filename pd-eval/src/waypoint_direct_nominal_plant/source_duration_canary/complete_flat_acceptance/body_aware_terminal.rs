@@ -13,6 +13,11 @@ use crate::{
     validate_waypoint_direct_nominal_direct_generation_request,
 };
 
+mod airborne_direct;
+pub use airborne_direct::*;
+mod canonical_initial;
+pub use canonical_initial::*;
+
 const CASE_SCHEMA: &str = "waypoint_direct_body_aware_terminal_case_v1";
 const POLICY_VERSION: &str = "body_aware_quadratic_terminal_held60_v1";
 
