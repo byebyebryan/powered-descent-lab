@@ -1253,7 +1253,7 @@ fn nonterrain_context_unchanged(baseline: &RunContext, twin: &RunContext) -> boo
         && baseline.scenario_tags == twin.scenario_tags
 }
 
-fn has_actual_terrain_conflict(audit: &AirborneDirectAuditV1) -> bool {
+pub(crate) fn has_actual_terrain_conflict(audit: &AirborneDirectAuditV1) -> bool {
     audit.clearance_scan.first_violation.is_some()
         || audit
             .first_contact
@@ -1290,7 +1290,7 @@ fn contact_has_away_geometric_contact(
                 .any(|clearance| *clearance <= 0.0))
 }
 
-fn first_conflict_evidence(
+pub(crate) fn first_conflict_evidence(
     context: &RunContext,
     updates: &[FlightProgramUpdateV1],
     audit: &AirborneDirectAuditV1,
@@ -1411,7 +1411,7 @@ fn conflict_state_from_incoming_contact(
     }
 }
 
-fn phase_at_tick(updates: &[FlightProgramUpdateV1], tick: u64) -> String {
+pub(crate) fn phase_at_tick(updates: &[FlightProgramUpdateV1], tick: u64) -> String {
     updates
         .iter()
         .take_while(|update| update.physics_step < tick)
@@ -1420,7 +1420,7 @@ fn phase_at_tick(updates: &[FlightProgramUpdateV1], tick: u64) -> String {
         .unwrap_or_else(|| "source_prefix".into())
 }
 
-fn source_pad_input(
+pub(crate) fn source_pad_input(
     context: &RunContext,
     source_pad_id: &str,
 ) -> Result<pd_plan::conservative_ballistic_bridge::PadInputV2> {
@@ -2725,7 +2725,7 @@ fn canonical_generation_policy_identity(
     })
 }
 
-fn source_replay_evidence(
+pub(crate) fn source_replay_evidence(
     context: &RunContext,
     updates: &[FlightProgramUpdateV1],
     audit: &AirborneDirectAuditV1,

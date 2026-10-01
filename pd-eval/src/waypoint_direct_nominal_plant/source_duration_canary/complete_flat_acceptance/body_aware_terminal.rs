@@ -361,7 +361,7 @@ fn paired_mean(reference: &BodyAwareTerminalReferenceV1, context: &RunContext, t
 
 /// Invert the held throttle's mean acceleration over both post-burn masses.
 /// This uses no core transition and is independently checked by physical replay.
-fn paired_throttle(
+pub(crate) fn paired_throttle(
     context: &RunContext,
     policy: &BodyAwareTerminalPolicyV1,
     mass: f64,
@@ -426,6 +426,32 @@ pub(super) fn clearance_policy(
         target_pad: bounds(&request.target_pad_id)?,
         minimum_clearance_m: request.policy.analytical_policy.minimum_clearance_m,
     })
+}
+
+/// Reuse the historical exact conservative rotated-body query. The launch
+/// exception is explicit and can never leak into the local maneuver.
+pub(crate) fn clearing_body_reserve_query(
+    context: &RunContext,
+    request: &WaypointDirectNominalDirectGenerationRequest,
+    state: &SimulationState,
+    phase: &str,
+    allow_source_exception: bool,
+) -> Result<(f64, f64)> {
+    let policy = clearance_policy(context, request)?;
+    let aabb = body_aabb(state, &context.vehicle.geometry);
+    let corridor = corridor_for_step(
+        phase,
+        state.velocity_mps,
+        aabb,
+        policy.source_pad,
+        policy.target_pad,
+    );
+    let required = if allow_source_exception && corridor == "source_pad_transition" {
+        0.0
+    } else {
+        policy.minimum_clearance_m
+    };
+    Ok((body_clearance(context, state, aabb)?, required))
 }
 
 fn audit_reference(

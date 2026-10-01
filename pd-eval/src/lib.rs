@@ -152,6 +152,12 @@ pub use nominal_airborne_direct::*;
 pub mod canonical_initial_direct;
 pub use canonical_initial_direct::*;
 
+pub mod local_clearing;
+pub use local_clearing::*;
+
+pub mod local_clearing_canary;
+pub use local_clearing_canary::*;
+
 pub mod nominal_direct_operational;
 pub use nominal_direct_operational::*;
 mod nominal_direct_operational_gate;

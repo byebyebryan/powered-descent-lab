@@ -25,7 +25,7 @@ use pd_eval::{
     run_conservative_ballistic_ridge_f5_analytical_v1,
     run_conservative_ballistic_ridge_f5_controller_v1,
     run_conservative_ballistic_ridge_heldout_analytical_v1, run_controller_shadow,
-    run_final_landing_audit, run_nominal_airborne_direct_canary,
+    run_final_landing_audit, run_local_clearing_canary, run_nominal_airborne_direct_canary,
     run_nominal_direct_contact_phase_study, run_nominal_direct_flight,
     run_nominal_direct_flight_regression, run_nominal_direct_operational_flight,
     run_nominal_direct_operational_gate, run_pack_file_cached, run_physical_executor_comparison,
@@ -169,6 +169,8 @@ enum Commands {
     NominalAirborneDirectCanary(NominalAirborneDirectCanaryArgs),
     /// Run sealed opt-in canonical source-rest, terrain-twin, discriminator, live-state, and endpoint gates.
     CanonicalInitialDirectCanary(CanonicalInitialDirectCanaryArgs),
+    /// Run the sealed, evaluator-only one-obstruction local-clearing experiment.
+    LocalClearingCanary(LocalClearingCanaryArgs),
     /// Study bounded terminal-entry height sensitivity and saved-command coverage.
     NominalDirectContactPhase(NominalDirectContactPhaseArgs),
 }
@@ -181,6 +183,12 @@ struct NominalAirborneDirectCanaryArgs {
 
 #[derive(Debug, Parser)]
 struct CanonicalInitialDirectCanaryArgs {
+    #[arg(long, value_name = "NEW_OUTPUT_DIR")]
+    output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct LocalClearingCanaryArgs {
     #[arg(long, value_name = "NEW_OUTPUT_DIR")]
     output_dir: PathBuf,
 }
@@ -1702,6 +1710,22 @@ fn main() -> Result<()> {
             if !result.passed {
                 bail!(
                     "canonical initial direct canary did not pass every declared gate; evidence retained at {}",
+                    output_dir.display()
+                );
+            }
+        }
+        Commands::LocalClearingCanary(args) => {
+            let root = repo_root();
+            let output_dir = if args.output_dir.is_absolute() {
+                args.output_dir
+            } else {
+                root.join(args.output_dir)
+            };
+            let result = run_local_clearing_canary(&root, &output_dir)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            if !result.passed {
+                bail!(
+                    "local-clearing canary did not pass every declared gate; evidence retained at {}",
                     output_dir.display()
                 );
             }

@@ -116,7 +116,11 @@ fn proposal_identity(proposal: &AirborneDirectProposalV1) -> Result<String> {
     stable_digest(&canonical)
 }
 
-fn live_rejection(context: &RunContext, live: &SimulationState, deadline: u64) -> Option<String> {
+pub(crate) fn live_rejection(
+    context: &RunContext,
+    live: &SimulationState,
+    deadline: u64,
+) -> Option<String> {
     let finite = [
         live.sim_time_s,
         live.position_m.x,
