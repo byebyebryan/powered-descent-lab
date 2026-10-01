@@ -110,6 +110,30 @@ is not automatically a safe state from which to correct it. Do not require immed
 direct landing or a literal far-edge handoff. Arbitrary powered handoff coverage
 and repeated waypoints remain later evidence boundaries.
 
+The [phase plan](local_clearing_canary_plan.md) specifies a sealed one-obstruction
+canary, bounded intervention/control-template search with trajectory-derived
+coast handoff timing, flying-state replay using existing bounded execution, and
+separate actual-handoff regeneration. An analytical review replaces the initial
+fixed short coast with a finite search window.
+
+### One local clearing maneuver 2026 09 30
+
+The [local clearing results](local_clearing_canary_results.md) pass all five sealed
+gates in two corrected final-source runs. The 168-row search selects a six-second
+upright boost from a real powered entry at 12.6 s, then a trajectory-derived idle
+handoff at 23.5 s, position (-337.771, 382.821) m and velocity (38.313, -10.903) m/s.
+Independent whole-source bounded execution and replay prove that handoff and its
+separate two-second safe continuation, with minimum local body clearance 21.313 m.
+
+The verdict is `LocalClearingThenTerrainBlocked`, not landing: the unchanged
+nominal generator produces a fresh proposal from actual H, but its fixed terrain
+audit encounters the same continuing plateau again. That unsafe suffix is tested
+only on diagnostic branches, not executed on the active flight. This closes the
+first local clearing/replanning seam without requiring immediate direct landing
+or the terrain feature's far edge. Another clearing iteration remains a separate
+design and evidence boundary. All eight canonical, twelve prior airborne and
+24 source-rest controls are preserved; production V1 and defaults stay unchanged.
+
 ### Preceding direct-planning checkpoint (2026-09-28)
 
 The next [one-update completion-reserve contract](nominal_direct_terminal_completion_reserve_contract.md)

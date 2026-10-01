@@ -1,6 +1,59 @@
 # Progress
 
+## 2026-10-01
+
+### Local clearing review and commit closure
+
+- Review finds no blocking defect in the terrain-blind nominal selection,
+  local-only ranking, actual live handoff, separate continuation certificate,
+  consumed-prefix replay proof or complete evidence comparison. The optional
+  Direct landing branch has no new physical witness in this obstruction pair.
+- Fresh validation passes 861 workspace tests with one existing ignore, strict
+  all-target workspace Clippy, formatting and whitespace checks. Read-only
+  comparison of the two accepted roots passes all complete payload checks and
+  all 457 preservation-file comparisons. All 143 bound source/input/protocol
+  files still match the measured checkout; no new flights or retuning occur.
+- Checkpoint the plan and sealed inputs, implementation and harness, then
+  results and status separately. Generated evidence remains local and ignored.
+  The verdict remains `LocalClearingThenTerrainBlocked`, not a complete planner
+  or landing proof. A capped additional correction from safe H needs a separate
+  design pass; production V1 and defaults remain unchanged. No push or deployment
+  is included.
+
 ## 2026-09-30
+
+### One obstruction local clearing foundation
+
+- The opt-in [local clearing canary](local_clearing_canary_results.md) passes all
+  five sealed gates in two corrected final-source runs. All four real entries,
+  168 physical rows and 60,480 boundary decisions are retained. Two rows qualify;
+  local-only ranking selects the six-second upright boost from tick 1512.
+- The actual handoff is at tick 2820, or 23.5 s, above the original low path at
+  (-337.771, 382.821) m with velocity (38.313, -10.903) m/s. Independent whole-source
+  bounded runs and official replay prove full state/contact/log parity at H and
+  the separate two-second certificate endpoint. Minimum local body clearance
+  is 21.313 m versus the unchanged 5 m reserve. The active branch remains at H.
+- Fresh unchanged nominal regeneration produces 17 proposals in 56 rows, then
+  the selected proposal's actual-terrain audit blocks during coast on the same
+  plateau. Verdict `LocalClearingThenTerrainBlocked` establishes one useful
+  clearing piece, not landing or a full planner. No unsafe suffix is executed
+  on the active flight, terrain-aware reranking or second waypoint is introduced.
+- Preliminary roots stop before local search because an evaluator predicate
+  confused full nominal endpoint completion with consumed-command agreement at
+  early terrain contact. The corrected prefix proof retains legacy semantics,
+  full state/contact and independent replay; no flight family, geometry, margin
+  or ranking is retuned. The preliminary evidence remains retained.
+- Both corrected roots have identity `fnv1a64:35d730ecc296b846`; all 143 bound
+  source/input/protocol files remain unchanged. Eight canonical controls, twelve
+  previous airborne continuations and 24 source-rest controls are preserved.
+  Final validation passes 861 workspace tests with one existing ignore, strict
+  all-target workspace Clippy, formatting and whitespace checks.
+- Primary owns local policy/engine, prefix correction, integration and measured
+  acceptance; Luna supplies the bounded evidence/CLI/preservation harness and
+  semantic audit. No core/contact/controller/default/reserve change, commit,
+  push or deployment occurs. Next is a separately designed, capped additional
+  clearing/replanning iteration from safe H, not reopening source launch or
+  requiring immediate landing as a local gate.
 
 ### Canonical initial direct transfer foundation
 
