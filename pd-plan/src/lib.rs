@@ -28,6 +28,9 @@ pub mod conservative_ballistic_bridge;
 #[cfg(any(test, feature = "conservative-ballistic-report"))]
 pub mod local_clearing;
 
+#[cfg(any(test, feature = "conservative-ballistic-report"))]
+pub mod waypoint_v2;
+
 pub const ALGORITHM_ID: &str = pd_core::HEIGHTFIELD_VISIBILITY_ALGORITHM_ID;
 
 /// Versioned, input-only planner candidate exposure consumed by research

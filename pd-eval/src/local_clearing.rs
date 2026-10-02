@@ -48,9 +48,10 @@ pub struct LocalClearingOrdinaryEvidenceV1 {
     pub samples: Vec<SampleRecord>,
 }
 
-struct OrdinaryLive {
-    state: SimulationState,
-    evidence: LocalClearingOrdinaryEvidenceV1,
+#[derive(Clone)]
+pub(crate) struct OrdinaryLive {
+    pub(crate) state: SimulationState,
+    pub(crate) evidence: LocalClearingOrdinaryEvidenceV1,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -194,7 +195,7 @@ fn proposal_identity(proposal: &LocalClearingProposalV1) -> Result<String> {
     nominal_direct_flight_identity(&canonical)
 }
 
-fn snapshot_finite(state: &SimulationState) -> bool {
+pub(crate) fn snapshot_finite(state: &SimulationState) -> bool {
     [
         state.sim_time_s,
         state.position_m.x,
@@ -216,7 +217,11 @@ fn snapshot_finite(state: &SimulationState) -> bool {
     .all(|x| x.is_finite())
 }
 
-fn entry_rejection(context: &RunContext, state: &SimulationState, deadline: u64) -> Option<String> {
+pub(crate) fn entry_rejection(
+    context: &RunContext,
+    state: &SimulationState,
+    deadline: u64,
+) -> Option<String> {
     // Query-only clone removes just the powered-admission restriction. Never
     // stepped or used as the incoming state for trajectory generation.
     let mut query = state.clone();
@@ -278,7 +283,7 @@ fn push_sample(
     }
 }
 
-fn new_ordinary(context: &RunContext) -> Result<OrdinaryLive> {
+pub(crate) fn new_ordinary(context: &RunContext) -> Result<OrdinaryLive> {
     let state = SimulationState::new(context)?;
     let mut evidence = LocalClearingOrdinaryEvidenceV1 {
         final_state: SimulationStateSnapshotV1::from_state(&state),
@@ -291,7 +296,7 @@ fn new_ordinary(context: &RunContext) -> Result<OrdinaryLive> {
     Ok(OrdinaryLive { state, evidence })
 }
 
-fn advance_ordinary(
+pub(crate) fn advance_ordinary(
     context: &RunContext,
     live: &mut OrdinaryLive,
     updates: &[FlightProgramUpdateV1],
@@ -557,7 +562,7 @@ fn powered_cap(
         / (context.vehicle.dry_mass_kg + context.vehicle.max_fuel_kg)
 }
 
-fn search_row(
+pub(crate) fn search_row(
     request: &WaypointDirectNominalDirectGenerationRequest,
     context: &RunContext,
     entry_id: &str,
@@ -779,7 +784,10 @@ fn search_row(
     Ok((row, selected))
 }
 
-fn local_rank(a: &LocalClearingProposalV1, b: &LocalClearingProposalV1) -> std::cmp::Ordering {
+pub(crate) fn local_rank(
+    a: &LocalClearingProposalV1,
+    b: &LocalClearingProposalV1,
+) -> std::cmp::Ordering {
     b.schedule
         .entry_physics_step
         .cmp(&a.schedule.entry_physics_step)
@@ -795,7 +803,7 @@ fn local_rank(a: &LocalClearingProposalV1, b: &LocalClearingProposalV1) -> std::
         .then(a.row_id.cmp(&b.row_id))
 }
 
-fn full_ordinary_matches(
+pub(crate) fn full_ordinary_matches(
     evidence: &LocalClearingOrdinaryEvidenceV1,
     bounded: &BoundedRunArtifactsV1,
 ) -> bool {

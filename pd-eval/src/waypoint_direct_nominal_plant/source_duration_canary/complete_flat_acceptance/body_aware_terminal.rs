@@ -17,6 +17,8 @@ mod airborne_direct;
 pub use airborne_direct::*;
 mod canonical_initial;
 pub use canonical_initial::*;
+mod nominal_characterization;
+pub use nominal_characterization::*;
 
 const CASE_SCHEMA: &str = "waypoint_direct_body_aware_terminal_case_v1";
 const POLICY_VERSION: &str = "body_aware_quadratic_terminal_held60_v1";
@@ -450,6 +452,35 @@ pub(crate) fn clearing_body_reserve_query(
         0.0
     } else {
         policy.minimum_clearance_m
+    };
+    Ok((body_clearance(context, state, aabb)?, required))
+}
+
+/// Existing nominal corridor policy, with source exemption disabled after the
+/// original launch. Unlike local clearing, terminal descent may enter its pad.
+pub(crate) fn nominal_body_reserve_query(
+    context: &RunContext,
+    request: &WaypointDirectNominalDirectGenerationRequest,
+    state: &SimulationState,
+    phase: &str,
+    allow_source_exception: bool,
+) -> Result<(f64, f64)> {
+    let mut policy = clearance_policy(context, request)?;
+    if !allow_source_exception {
+        policy.source_pad.flat = false;
+    }
+    let aabb = body_aabb(state, &context.vehicle.geometry);
+    let corridor = corridor_for_step(
+        phase,
+        state.velocity_mps,
+        aabb,
+        policy.source_pad,
+        policy.target_pad,
+    );
+    let required = if corridor == "none" {
+        policy.minimum_clearance_m
+    } else {
+        0.0
     };
     Ok((body_clearance(context, state, aabb)?, required))
 }

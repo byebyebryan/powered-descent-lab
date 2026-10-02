@@ -158,6 +158,12 @@ pub use local_clearing::*;
 pub mod local_clearing_canary;
 pub use local_clearing_canary::*;
 
+pub mod waypoint_v2;
+pub use waypoint_v2::*;
+
+pub mod waypoint_v2_output;
+pub use waypoint_v2_output::*;
+
 pub mod nominal_direct_operational;
 pub use nominal_direct_operational::*;
 mod nominal_direct_operational_gate;

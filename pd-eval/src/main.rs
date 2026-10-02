@@ -16,10 +16,10 @@ use pd_eval::{
     preflight_waypoint_direct_body_aware_terminal_development,
     preflight_waypoint_direct_body_aware_terminal_freeze,
     preflight_waypoint_direct_body_aware_terminal_fresh_gate,
-    preflight_waypoint_direct_terminal_admissibility, promote_pack_cache, refresh_report_outputs,
-    report::write_batch_report_artifacts, resolve_pack_compare_baseline, run_candidate_replay_case,
-    run_candidate_replay_development, run_canonical_initial_direct_canary,
-    run_conservative_ballistic_f6_controller_integration_v1,
+    preflight_waypoint_direct_terminal_admissibility, preflight_waypoint_v2_flight,
+    promote_pack_cache, refresh_report_outputs, report::write_batch_report_artifacts,
+    resolve_pack_compare_baseline, run_candidate_replay_case, run_candidate_replay_development,
+    run_canonical_initial_direct_canary, run_conservative_ballistic_f6_controller_integration_v1,
     run_conservative_ballistic_handoff_controller_development,
     run_conservative_ballistic_handoff_development, run_conservative_ballistic_report,
     run_conservative_ballistic_ridge_f5_analytical_v1,
@@ -44,8 +44,9 @@ use pd_eval::{
     run_waypoint_direct_source_duration_held_cadence_diagnostic,
     run_waypoint_direct_source_duration_paired_command_feasibility,
     run_waypoint_direct_terminal_admissibility, run_waypoint_direct_topology_boundary,
-    run_waypoint_direct_topology_sweep, seal_waypoint_direct_generation_code,
-    validate_waypoint_direct_complete_flat_acceptance_inputs,
+    run_waypoint_direct_topology_sweep, run_waypoint_v2_ground_diagnostic,
+    run_waypoint_v2_nominal_characterization, run_waypoint_v2_terminal_time,
+    seal_waypoint_direct_generation_code, validate_waypoint_direct_complete_flat_acceptance_inputs,
     validate_waypoint_direct_coupled_thrust_audit_inputs,
     validate_waypoint_direct_flat_candidate_closure_inputs,
     validate_waypoint_direct_launch_contact_contract_inputs,
@@ -55,8 +56,9 @@ use pd_eval::{
     validate_waypoint_direct_source_duration_canary_inputs,
     validate_waypoint_direct_source_duration_held_cadence_diagnostic_inputs,
     validate_waypoint_direct_source_duration_paired_command_feasibility_inputs,
-    waypoint_direct_known_flat_generation_request,
+    waypoint_direct_known_flat_generation_request, write_waypoint_v2_flight,
 };
+use pd_plan::waypoint_v2::{WaypointV2Policy, WaypointV2Stop};
 
 #[derive(Debug, Parser)]
 #[command(name = "pd-eval")]
@@ -163,6 +165,14 @@ enum Commands {
     NominalDirectFlightRegression(NominalDirectFlightRegressionArgs),
     /// Execute an admitted nominal program under strict saved coverage, without continuation.
     NominalDirectOperationalFlight(NominalDirectFlightArgs),
+    /// Run the opt-in repeated local-clearing waypoint V2 flight mode.
+    WaypointV2Flight(WaypointV2FlightArgs),
+    /// Characterize the bounded V2 nominal plant family against retained handoffs.
+    WaypointV2NominalCharacterization(WaypointV2NominalCharacterizationArgs),
+    /// Compare eight proven ground entries without changing nominal acceptance.
+    WaypointV2GroundDiagnostic(WaypointV2NominalCharacterizationArgs),
+    /// Study two derived terminal times without changing acquisition or runtime policy.
+    WaypointV2TerminalTime(WaypointV2NominalCharacterizationArgs),
     /// Validate 24 exposed controls and four sealed fresh operational missions.
     NominalDirectOperationalGate(NominalDirectOperationalGateArgs),
     /// Regenerate finite nominal segments from real airborne baseline states.
@@ -209,6 +219,31 @@ struct NominalDirectFlightArgs {
         required_unless_present = "preflight_only"
     )]
     output_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointV2FlightArgs {
+    #[command(flatten)]
+    flight: NominalDirectFlightArgs,
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=3), default_value_t = 1)]
+    policy_version: u8,
+}
+
+fn waypoint_v2_policy_for_version(version: u8) -> WaypointV2Policy {
+    match version {
+        1 => WaypointV2Policy::default(),
+        2 => WaypointV2Policy::revision_2(),
+        3 => WaypointV2Policy::revision_3(),
+        _ => unreachable!("clap restricts the V2 policy version"),
+    }
+}
+
+#[derive(Debug, Parser)]
+struct WaypointV2NominalCharacterizationArgs {
+    #[arg(long, value_name = "CORPUS_JSON")]
+    corpus: PathBuf,
+    #[arg(long, value_name = "NEW_OUTPUT_ROOT")]
+    output_dir: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -1649,6 +1684,110 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::WaypointV2Flight(args) => {
+            let policy_version = args.policy_version;
+            let flight_args = args.flight;
+            let scenario: pd_core::ScenarioSpec =
+                serde_json::from_slice(&std::fs::read(&flight_args.scenario)?)?;
+            let request = WaypointDirectNominalDirectGenerationRequest {
+                probe_id: scenario.id.clone(),
+                scenario,
+                source_pad_id: flight_args.source_pad_id,
+                target_pad_id: flight_args.target_pad_id,
+                policy: WaypointDirectNominalDirectGenerationPolicyV1::default(),
+            };
+            let policy = waypoint_v2_policy_for_version(policy_version);
+            if flight_args.preflight_only {
+                let preflight = preflight_waypoint_v2_flight(&request, &policy);
+                println!("{}", serde_json::to_string_pretty(&preflight)?);
+                if !preflight.supported {
+                    bail!("waypoint V2 input is unsupported or invalid");
+                }
+            } else {
+                let output = flight_args
+                    .output_dir
+                    .as_deref()
+                    .expect("clap requires output dir");
+                let result = write_waypoint_v2_flight(&request, &policy, output)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "policy_version": policy_version,
+                        "planning_stop": result.planning_stop,
+                        "reason": result.reason,
+                        "correction_count": result.correction_count,
+                        "initial_nominal_terrain_blocked": result.initial_nominal_terrain_blocked,
+                        "integrity_passed": result.integrity_passed,
+                        "physical_outcome": result.physical_outcome,
+                        "mission_outcome": result.mission_outcome,
+                        "final_source_replay_passed": result.final_source_replay_passed,
+                        "timings": result.timings,
+                        "output_dir": output,
+                    }))?
+                );
+                if matches!(
+                    result.planning_stop,
+                    WaypointV2Stop::Unsupported
+                        | WaypointV2Stop::InvalidInput
+                        | WaypointV2Stop::ImplementationError
+                ) || !result.integrity_passed
+                {
+                    bail!(
+                        "waypoint V2 stopped with a typed input or integrity failure; evidence retained at {}",
+                        output.display()
+                    );
+                }
+            }
+        }
+        Commands::WaypointV2NominalCharacterization(args) => {
+            let result = run_waypoint_v2_nominal_characterization(&args.corpus, &args.output_dir)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+            if !result.integrity_passed {
+                bail!(
+                    "nominal characterization reported an integrity error; evidence retained at {}",
+                    args.output_dir.display()
+                );
+            }
+        }
+        Commands::WaypointV2GroundDiagnostic(args) => {
+            let result = run_waypoint_v2_ground_diagnostic(&args.corpus, &args.output_dir)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "integrity_passed": result["integrity_passed"],
+                    "control_count": result["control_count"],
+                    "reference_count": result["reference_count"],
+                    "shadow_count": result["shadow_count"],
+                    "identity": result["identity"],
+                }))?
+            );
+            if result["integrity_passed"] != true {
+                bail!(
+                    "ground diagnostic integrity failure; evidence retained at {}",
+                    args.output_dir.display()
+                );
+            }
+        }
+        Commands::WaypointV2TerminalTime(args) => {
+            let result = run_waypoint_v2_terminal_time(&args.corpus, &args.output_dir)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "identity": result["identity"],
+                    "integrity_passed": result["integrity_passed"],
+                    "matched_entry_gate_passed": result["matched_entry_gate_passed"],
+                    "broad_study_executed": result["broad_study_executed"],
+                    "retained_rows": result["retained_rows"].as_array().map(Vec::len),
+                    "synthetic_rows": result["synthetic_rows"].as_array().map(Vec::len),
+                }))?
+            );
+            if result["integrity_passed"] != true {
+                bail!(
+                    "terminal-time research integrity failure; evidence retained at {}",
+                    args.output_dir.display()
+                );
+            }
+        }
         Commands::NominalDirectOperationalGate(args) => {
             if args.preflight_only {
                 let result = preflight_nominal_direct_operational_gate(&repo_root())?;
@@ -1887,6 +2026,134 @@ mod direct_generation_cli_tests {
             ]))
             .is_err()
         );
+    }
+
+    #[test]
+    fn waypoint_v2_flight_has_v2_only_version_selection_and_preflight_contract() {
+        let flight = [
+            "pd-eval",
+            "waypoint-v2-flight",
+            "--scenario",
+            "scenario.json",
+            "--source-pad-id",
+            "pad_source",
+            "--target-pad-id",
+            "pad_main",
+        ];
+        assert!(Cli::try_parse_from(flight).is_err());
+        assert!(Cli::try_parse_from(flight.into_iter().chain(["--preflight-only"])).is_ok());
+        let default = Cli::try_parse_from(flight.into_iter().chain(["--output-dir", "new"]))
+            .expect("default version with a fresh output path");
+        match default.command {
+            Commands::WaypointV2Flight(args) => assert_eq!(args.policy_version, 1),
+            _ => unreachable!("parsed V2 command"),
+        }
+        assert!(
+            Cli::try_parse_from(flight.into_iter().chain([
+                "--policy-version",
+                "2",
+                "--preflight-only",
+            ]))
+            .is_ok()
+        );
+        let version_3 = Cli::try_parse_from(flight.into_iter().chain([
+            "--policy-version",
+            "3",
+            "--preflight-only",
+        ]))
+        .expect("policy 3 is an explicit opt-in V2 version");
+        match version_3.command {
+            Commands::WaypointV2Flight(args) => {
+                assert_eq!(args.policy_version, 3);
+                assert_eq!(
+                    waypoint_v2_policy_for_version(args.policy_version).policy_id,
+                    "piecewise_local_clearing_v2_policy_3"
+                );
+            }
+            _ => unreachable!("parsed V2 command"),
+        }
+        assert!(
+            Cli::try_parse_from(flight.into_iter().chain([
+                "--policy-version",
+                "4",
+                "--preflight-only",
+            ]))
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from(flight.into_iter().chain([
+                "--preflight-only",
+                "--output-dir",
+                "new",
+            ]))
+            .is_err()
+        );
+
+        let mut nominal = flight;
+        nominal[1] = "nominal-direct-operational-flight";
+        assert!(
+            Cli::try_parse_from(nominal.into_iter().chain([
+                "--preflight-only",
+                "--policy-version",
+                "2",
+            ]))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn waypoint_v2_nominal_characterization_requires_corpus_and_new_output_root() {
+        let command = ["pd-eval", "waypoint-v2-nominal-characterization"];
+        assert!(Cli::try_parse_from(command).is_err());
+        assert!(
+            Cli::try_parse_from(command.into_iter().chain(["--corpus", "corpus.json"])).is_err()
+        );
+        assert!(Cli::try_parse_from(command.into_iter().chain(["--output-dir", "new"])).is_err());
+        assert!(
+            Cli::try_parse_from(command.into_iter().chain([
+                "--corpus",
+                "corpus.json",
+                "--output-dir",
+                "new",
+            ]))
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn waypoint_v2_ground_diagnostic_requires_corpus_and_new_output_root() {
+        let command = ["pd-eval", "waypoint-v2-ground-diagnostic"];
+        assert!(Cli::try_parse_from(command).is_err());
+        assert!(
+            Cli::try_parse_from(command.into_iter().chain(["--corpus", "corpus.json"])).is_err()
+        );
+        assert!(Cli::try_parse_from(command.into_iter().chain(["--output-dir", "new"])).is_err());
+        let cli = Cli::try_parse_from(command.into_iter().chain([
+            "--corpus",
+            "corpus.json",
+            "--output-dir",
+            "new",
+        ]))
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::WaypointV2GroundDiagnostic(_)
+        ));
+    }
+
+    #[test]
+    fn waypoint_v2_terminal_time_requires_sealed_corpus_and_new_output() {
+        assert!(Cli::try_parse_from(["pd-eval", "waypoint-v2-terminal-time"]).is_err());
+        let cli = Cli::try_parse_from([
+            "pd-eval",
+            "waypoint-v2-terminal-time",
+            "--corpus",
+            "corpus.json",
+            "--output-dir",
+            "new",
+        ])
+        .unwrap();
+        assert!(matches!(cli.command, Commands::WaypointV2TerminalTime(_)));
     }
 
     #[test]
