@@ -1,0 +1,111 @@
+{
+  "schema_id": "unified_nominal_design_analytical_handoff_screen_v1",
+  "source_root": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/",
+  "policy_fixture_path": "pd-plan/fixtures/conservative_ballistic_direct_bridge_probes_v2.json",
+  "policy_fixture_sha256": "bc2e4c3d70c1a2be7bd0c38f78640d28b9ffa43e06e5d0c2f3037a09812d56a3",
+  "input_files": [
+    {
+      "case_id": "v2_ridge_late",
+      "flight_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_ridge_late/flight.json",
+      "flight_sha256": "1be8928134e277f1fd1ac45af6d9bfc7157e33a991d6f697df128b647d5deba9",
+      "scenario_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_ridge_late/scenario.json",
+      "scenario_sha256": "da8700108ffa89e5907e0ff59e778a0cfa2e9b3fd09960c5220c0af83db29e81"
+    },
+    {
+      "case_id": "v2_plateau_late",
+      "flight_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_plateau_late/flight.json",
+      "flight_sha256": "819dd8c8344fb8937286904e484a49ed44581954756eed8006d6474d95754ba0",
+      "scenario_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_plateau_late/scenario.json",
+      "scenario_sha256": "d918664555d9ebda7e50196b276647640056c938107d22ee96ba20ed35635715"
+    },
+    {
+      "case_id": "v2_successive_rising",
+      "flight_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_successive_rising/flight.json",
+      "flight_sha256": "a91ac2aa6a8789e775070250d4a07688c6acaab5b356949516f6aa6648a9b563",
+      "scenario_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_successive_rising/scenario.json",
+      "scenario_sha256": "6be4d3517a217d7f63e3deedcad1974e3be43f68ac4fea8276270b121e04f331"
+    },
+    {
+      "case_id": "v2_successive_plateaus",
+      "flight_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_successive_plateaus/flight.json",
+      "flight_sha256": "61902b76538af680045c01a0268444efb9a1dc0face76c6bba7d8c617afb2c7b",
+      "scenario_path": "outputs/research/waypoint_v2_practical_20261001/final_policy_2_b/runs/v2_successive_plateaus/scenario.json",
+      "scenario_sha256": "6d434b4efe2b07d2a0a2179d43d765aa46cbfc8997623d5520e761cb6fb421b4"
+    }
+  ],
+  "assumptions": [
+    "constant incoming mass; point-mass horizontal stopping diagnostic, not a proposal",
+    "zero horizontal thrust while turning at configured maximum rate to minus pi over two",
+    "horizontal full braking after turn with vertical freefall; actual angular rate, changing mass, minimum throttle, terrain, body geometry, fuel and terminal landing omitted",
+    "source budget equals existing source derate 0.81 times remaining robustness factor 0.925; not a newly selected airborne acceptance policy",
+    "target-x height uses the existing semi-implicit constant-gravity algebra evaluated at continuous crossing time"
+  ],
+  "source_derate": 0.81,
+  "source_robustness_margin": 0.075,
+  "rows": [
+    {
+      "case_id": "v2_ridge_late",
+      "handoff_tick": 2426,
+      "target_distance_m": 288.85,
+      "horizontal_speed_mps": 76.949,
+      "coast_to_full_horizontal_brake_turn_s": 1,
+      "raw_instant_turn_stop_distance_m": 158.911,
+      "raw_coast_turn_then_stop_distance_m": 235.859,
+      "source_budget_coast_turn_then_stop_distance_m": 289.042,
+      "source_budget_distance_surplus_m": -0.192,
+      "unpowered_target_x_com_height_m": 289.745,
+      "unpowered_target_x_descent_angle_deg": 18.653,
+      "mass_kg": 12882.28,
+      "raw_acceleration_mps2": 18.63,
+      "source_budget_acceleration_mps2": 13.959
+    },
+    {
+      "case_id": "v2_plateau_late",
+      "handoff_tick": 2446,
+      "target_distance_m": 276.025,
+      "horizontal_speed_mps": 76.949,
+      "coast_to_full_horizontal_brake_turn_s": 1,
+      "raw_instant_turn_stop_distance_m": 158.911,
+      "raw_coast_turn_then_stop_distance_m": 235.859,
+      "source_budget_coast_turn_then_stop_distance_m": 289.042,
+      "source_budget_distance_surplus_m": -13.017,
+      "unpowered_target_x_com_height_m": 289.745,
+      "unpowered_target_x_descent_angle_deg": 18.653,
+      "mass_kg": 12882.28,
+      "raw_acceleration_mps2": 18.63,
+      "source_budget_acceleration_mps2": 13.959
+    },
+    {
+      "case_id": "v2_successive_rising",
+      "handoff_tick": 2804,
+      "target_distance_m": 288.864,
+      "horizontal_speed_mps": 64.033,
+      "coast_to_full_horizontal_brake_turn_s": 1.1,
+      "raw_instant_turn_stop_distance_m": 109.327,
+      "raw_coast_turn_then_stop_distance_m": 179.764,
+      "source_budget_coast_turn_then_stop_distance_m": 216.352,
+      "source_budget_distance_surplus_m": 72.511,
+      "unpowered_target_x_com_height_m": 330.072,
+      "unpowered_target_x_descent_angle_deg": 24.776,
+      "mass_kg": 12798.501,
+      "raw_acceleration_mps2": 18.752,
+      "source_budget_acceleration_mps2": 14.05
+    },
+    {
+      "case_id": "v2_successive_plateaus",
+      "handoff_tick": 3702,
+      "target_distance_m": 276.221,
+      "horizontal_speed_mps": 69.631,
+      "coast_to_full_horizontal_brake_turn_s": 1.317,
+      "raw_instant_turn_stop_distance_m": 127.789,
+      "raw_coast_turn_then_stop_distance_m": 219.469,
+      "source_budget_coast_turn_then_stop_distance_m": 262.236,
+      "source_budget_distance_surplus_m": 13.985,
+      "unpowered_target_x_com_height_m": 228.426,
+      "unpowered_target_x_descent_angle_deg": 31.673,
+      "mass_kg": 12651.25,
+      "raw_acceleration_mps2": 18.97,
+      "source_budget_acceleration_mps2": 14.214
+    }
+  ]
+}

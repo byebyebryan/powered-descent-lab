@@ -1,6 +1,296 @@
 # Progress
 
+## 2026-10-02
+
+### First usable opt-in V2 airborne integration accepted
+
+- Explicit policy 3 passes the frozen complete loop: 8/8 uncut clear controls
+  with zero corrections, 16/16 ordinary terrain missions and 4/4 per family.
+  The reference plateau still uses three corrections. Both corrected-source final runs
+  match all 64 per-case payloads with unchanged source/binary/runner provenance.
+- The [results](waypoint_v2_airborne_integration_results.md) show airborne-only
+  replacement, first executable terrain-blind selection and complete phase-aware
+  command audit. Canonical ground launch, policy 2 intervention/local behavior,
+  numerical family/margins and default policy 1 remain unchanged. All thirty
+  supported initial cycles match historical policy 2 exactly.
+- Final bound adapter validation matches all 39 reconstructed airborne inputs,
+  forty trials and four designated recoveries. The shared realizer preserves
+  all 55 research rows and eight controls. Final-source policy 2 preserves all
+  64 historical payloads and its old 8/8 clear, 12/16 ordinary behavior.
+- Corrected-source planning median is 0.382719/0.383171 s and nearest-rank p95 is
+  0.608003/0.614668 s. Workspace tests pass 915 with four ignored; focused,
+  archive-adapter, policy/parser, corpus/tamper, fake-suite, structure, format
+  and whitespace pass. Clippy passes with only the unchanged baseline
+  `single_element_loop` lint allowed; strict-baseline cleanliness is not claimed.
+- The [primary review](waypoint_v2_airborne_integration_acceptance.md) accepts
+  the supported checkpoint after correcting two late guard-only endpoint/status gaps.
+  Nine focused tests and a fresh 39-row adapter gate pass with unchanged programs.
+  After the original matrix allowance, the user explicitly approves three additional
+  corrected-source checks: one preservation matrix and two final repeats, with no
+  tuning or input changes. All three pass and the implementation goal is achieved.
+  Earlier roots are retained rather than relabeled. Four NoClearing
+  diagnostics and two unsupported setups remain recorded limits, not mandatory
+  next research. No broader recovery, GUI/controller/default promotion,
+  commit, push or deployment; the earlier dirty worktree is preserved.
+
+### Simplified airborne integration plan
+
+- The [next integration plan](waypoint_v2_airborne_integration_plan.md) narrows
+  the first usable pass: keep canonical uncut launch and policy 2 local clearing,
+  and replace airborne nominal generation only under a new opt-in policy 3.
+  This avoids changing launch/contact and initial entry landmarks together.
+- Read-only retained evidence shows all 39 airborne inputs fit the existing
+  supported forward/coasting scope. Thirty selected proposals use zero
+  acquisition, three natural-profile acquisition and six upward shaping;
+  removing powered acquisition would lose established coverage. First-valid
+  selection projects 40 trials rather than the research 114, without terrain
+  reranking; no runtime speedup or new flight is measured.
+- Keep the three-trial cap, tested timing/seed family, phase-specific safety and
+  existing failure types. Defer reverse/arbitrary powered starts, other setups,
+  launch unification and shape-solver expansion. A phase-aware complete command
+  program must replace the old coast-only proposal assumption at the adapter.
+- The [separate planning review](waypoint_v2_airborne_integration_review.md)
+  finds the bounded plan ready after approval: retained-input equivalence,
+  four canaries, one complete development matrix and conditional old-policy
+  preservation plus final repeats. The unchanged 13/16 ordinary floor remains;
+  no numerical revision loop or denominator cut is included.
+- Structure/corpus/tamper/fake-suite and document checks pass. All 252 current
+  terminal-time bindings and the pre-pass fingerprint for 1734 monitored files
+  verify. This is documentation-only: no new simulation, Rust/fixture/policy
+  change, goal, commit, push, deployment or fresh workspace/Clippy claim.
+
+### Terminal time constructor checkpoint accepted
+
+- The [bounded implementation results](waypoint_v2_terminal_time_results.md)
+  recover 8/8 uncut clear ground landings, up from the research family's 2/8,
+  using unchanged acquisition and 0.925 thrust budgets. Body reserve, raw safe
+  contact, original deadline and independent replay pass. The eight proven-entry
+  analytical gates pass first; no acquisition extension or shadow admission.
+- All 39 retained airborne states reconstruct exactly and retain free-space
+  witnesses. The four former NoNominal recoveries retain terrain/reserve/replay
+  success. First-valid-proposal terrain/reserve classifications are unchanged
+  row by row: historical 12/12, local 20/27 terrain and 18/27 reserve-safe.
+  Two newly admitted trials hit the old shape rule, then succeed within the
+  three-attempt cap; their unexecuted body/thrust metrics are null.
+- All 319 valid baseline screens and 664 acquisition records remain unchanged.
+  At most three duration candidates and three physical attempts per row remain.
+  Two final-source summaries/bindings match byte for byte with 252 verified
+  bindings; nondeterministic research timings are separate, not runtime latency.
+- Workspace tests pass 904 with three ignored; fifteen focused timing/CLI and
+  two diagnostic archive tests pass. Preservation, corpus/tamper, fake-suite,
+  structural/input, format and whitespace checks pass. Strict Clippy retains
+  the sole unchanged baseline `single_element_loop` lint; its narrow allowance
+  passes with all other warnings denied.
+- The [separate primary review](waypoint_v2_terminal_time_review.md) accepts
+  constructor research, not a usable planner/default. Next is a separately
+  frozen opt-in integration plan and unchanged complete 32-case repeated-handoff
+  gate. Existing policy 2 remains 12/16 ordinary versus the 13/16 floor;
+  new full-loop coverage is unmeasured. No commit, push or deployment.
+
+### Bounded terminal time construction plan
+
+- The [next research plan](waypoint_v2_terminal_time_plan.md) isolates terminal
+  timing while keeping acquisition, reference mathematics, physical realization
+  and the 0.925 budget. Retain a baseline duration that passes; after a finite
+  rejection, try at most two horizontal shape anchors, with discrete no-reversal
+  and absolute-deadline caps. No duration grid, reserve relaxation or terrain
+  ranking is introduced. Near-zero lateral speed retains the baseline only.
+- A local exact integer-tick derivation matches all sixteen retained reference
+  velocity calculations over 38320 samples, within `1.123e-13 m/s`, and explains
+  their forward-motion classifications. Thirty algebra checks establish the
+  two unrounded anchor properties. These are mathematical readiness checks,
+  not new candidate admission, flight coverage or measured planning performance.
+- Proposed execution first requires screened references at all eight proven
+  entries, then the same 47 retained and eight synthetic inputs. Target 8/8
+  clear actual-terrain/replay/reserve success while retaining 39/39 airborne
+  witnesses and the four former NoNominal terrain recoveries. At most three
+  physical witness attempts per row remain allowed; maximum references rise
+  to 156 per row only after finite baseline failures. Two final-source artifacts
+  and separate primary review precede any runtime decision.
+- This is a documentation-only plan, not implementation or a new active goal.
+  The completed diagnostic's 247 bindings still match. Source, scripts, fixtures
+  and monitored evidence preserve their hashes; structural/input and document
+  checks pass. No new flight, workspace test run, commit or runtime promotion.
+
+### Ground diagnostic complete; terminal-time construction is next
+
+- The [diagnostic results](waypoint_v2_ground_diagnostic_results.md) reproduce
+  all eight known-good uncut ground flights from fresh H0, with actual S/T,
+  retained raw contact and independent replay agreement. At those same terminal
+  entries the original durations pass, while all eight unchanged research
+  braking-time references first reject on lateral reversal. Original reference
+  paired throttle reconstructs exactly; this is not another first-step crash.
+- Three preselected shadow probes land on target plane and actual terrain with
+  phase-specific body reserve intact. Flat/uphill peak terminal throttle is
+  about 0.993, exceeding the unchanged 0.925 budget; downhill is 0.893 and passes.
+  Shadow flights do not improve the research family's accepted 2/8 ground result
+  or justify relaxing reserve. The working old ground constructor remains 8/8.
+- The [separate primary review](waypoint_v2_ground_diagnostic_review.md) accepts
+  this diagnostic, not runtime replacement. Recommend one bounded coupled-state
+  terminal-time construction next, retaining the backend and budget. Ground
+  acquisition compatibility remains unresolved; no new acquisition search,
+  local policy change, full mission matrix or implementation fix is included.
+- Both final-source summaries/bindings are byte-identical; all 247 bindings,
+  68 current fixtures, 1504 retained artifact files, 204 protected source/input
+  files and unchanged helper bodies verify. Final-source workspace tests pass
+  889 tests with three ignored. Focused/archive, corpus/tamper,
+  fake-suite, structural/input and formatting checks pass. Clippy passes with
+  only the unchanged baseline `single_element_loop` lint allowed under rustc
+  1.99.0; unmodified strict Clippy is not claimed clean. No commit, push,
+  deployment, default promotion or new accepted nominal policy.
+
+### Pre-execution simplified ground diagnostic planning
+
+- The revised [diagnostic plan](waypoint_v2_ground_diagnostic_plan.md) compares
+  eight known-good uncut controls at their actual terminal entries, using the
+  original duration and the unchanged research braking-time formula: at most
+  sixteen references. The formula is one construction heuristic, not a universal
+  safe-entry definition. Both downhill positive controls remain included.
+- If conservative screening remains a plausible blocker, permit at most three
+  preselected shadow trials: flat-845, uphill-845 and downhill-845. Retain the
+  analytical rejection and physical checks; measure actual reserve and terrain
+  outcomes separately. A shadow success does not improve nominal coverage.
+  Inspect acquisition only if still unresolved. Defer exhaustive seed-slot
+  reclassification, optional S-continuations and a new CLI/reporting framework.
+- Shared target/entry/preservation semantics may use different ground/air
+  acquisition adapters. A usable game planner does not need a universal
+  analytical feasibility envelope. The pass ends with a compact comparison,
+  one supported recommendation or unresolved result, and primary review. No
+  tuning, runtime/local/terrain change or full mission matrix is included.
+- Current research integration remains no-go and its stored goal is complete.
+  This revision changes only documents and read-only readiness checks, not
+  diagnostic flights, implementation, a new active goal, commit or deployment.
+  The earlier exact eight-command archive comparison remains evidence; current
+  preservation and structural/link/whitespace checks do not measure flight
+  acceptance or rerun workspace tests. The frozen 8/16/8 suite checker, 45 relative
+  links and whitespace pass; all 213 monitored source/input files and four bound
+  artifacts preserve their hashes.
+
 ## 2026-10-01
+
+### Unified nominal characterization and integration no-go
+
+- The bounded [research checkpoint](waypoint_v2_nominal_characterization_results.md)
+  reproduces all 27 actual local handoffs and twelve historical airborne captures
+  through their complete original prefixes, with exact snapshots. All 39 have
+  independently replayed free-space target-plane landing witnesses. The four
+  former policy-2 NoNominal handoffs also land on real terrain without measured
+  noncontact reserve violations; three preserve natural vertical motion while
+  correcting lateral timing/braking.
+- The same construction passes only 2/8 clear ground controls. All eight upright
+  preparation programs lift off and replay; six then reject analytically with
+  no physical witness attempt. This is a ground acquisition/entry-family gap,
+  not another first-step crash or evidence that uncut flat flight is impossible.
+  The working old ground constructor's retained 8/8 is not replaced.
+- First-ranked local witnesses land on terrain in 20/27 cases, but only 18/27
+  also avoid noncontact reserve violations. Terrain never changes nominal rank;
+  blocked proposals still need another local piece. These suffix experiments
+  are not a new full mission matrix, and current full-loop coverage remains
+  the retained 12/16 ordinary result below the 13/16 floor.
+- The [separate primary review](waypoint_v2_nominal_characterization_review.md)
+  completes this research checkpoint with a runtime integration no-go. Proposed
+  next work compares the new entry screen against proven ground entries, then
+  isolates screen conservatism versus acquisition/seed span before predeclaring
+  another bounded family. No runtime writer is authorized by this result.
+- Two final-source artifacts are byte-identical, integrity passes, and all
+  107 corpus source bindings verify before/after. Integrated validation passes
+  885 tests with one existing ignore, strict all-target Clippy, fmt, whitespace,
+  corpus/tamper and fake-CLI checks. All 71 fixture and 784 monitored retained
+  evidence files remain byte-identical. No commit, push, deployment, default,
+  local policy, terrain or physics/contact change occurs in this phase.
+- The previous blocked implementation goal was externally cleared before this
+  worker loop. This loop's goal is characterization plus review, allowing an
+  evidence-backed rejection; it does not complete or lower the usable-planner
+  goal or reset the old calibration budget. Luna owns the bounded corpus and
+  evaluator work; the primary owns contracts, fixes, validation and verdict.
+
+### Unified nominal design and next phase
+
+- The user clarifies that pad-rest and airborne planning should share the
+  current-state-to-target construction logic. The idealized arc is the lowest
+  adequate approach baseline, not an equality target: preserve already-safe
+  higher/steeper vertical motion and correct only violated approach/energy or
+  lateral-intercept conditions. A new future apex is not required for an already
+  acceptable descending state.
+- The [updated plan](waypoint_v2_unified_nominal_plan.md) keeps the complete
+  waypoint loop, actual-state/replay contracts and local policy. The next issue
+  is nominal construction, before local-ranking calibration. Cheap finite-burn
+  estimates include join position/velocity, gravity, turning, fuel and deadline;
+  selected executable flight still needs physical validation and terrain audit.
+- A new [analytical screen](waypoint_v2_nominal_handoff_analysis.json) uses the
+  four actual failed handoffs. Raw-thrust/coast-turn stopping distances are
+  179.8 to 235.9 m; applying the existing source derating as an illustrative
+  budget gives 216.4 to 289.0 m. The late pair have only -0.2/-13.0 m distance
+  surplus under the latter assumptions. Neither model is a proposal, a landing
+  witness or physical impossibility proof; this motivates estimator calibration.
+- The next sequence is estimator/entry characterization, separate primary
+  review, approved new nominal policy, then the same complete 32-case matrix,
+  repeats and historical preservation. Angle/entry location, coupled energy
+  bounds, estimator error margins, seed/rank details and supplied-command
+  realization must be frozen before a runtime writer. No implementation-readiness
+  claim is made for those unresolved numerical choices.
+- The [goal amendment](waypoint_v2_goal_amendment.md) retains 8/8 clear, 13/16
+  ordinary, family/discrimination/reference/integrity/performance gates. At that
+  design checkpoint the old stored goal was blocked: available tools could not
+  edit objective text or replace an unfinished goal. No false completion,
+  automatic calibration-budget
+  reset, Rust/policy/fixture/local-ranking change, commit, push or deployment.
+- Design-pass validation reproduces all four analytical rows and verifies their
+  nine input/policy hashes. All 80 relative links in the affected documents
+  resolve; whitespace checks pass. The frozen-suite checker again accepts
+  30 inputs and expects two unsupported diagnostics, without simulation.
+  The 204 monitored Rust/manifest/top-level fixture/script files and six retained
+  evidence artifacts match the pre-pass byte hashes. Prior physical matrix,
+  workspace test and preservation results are retained, not rerun in this pass.
+
+### Practical waypoint V2 loop and measured coverage
+
+- The [implementation results](waypoint_v2_practical_results.md) now cover a
+  reusable opt-in direct/audit/local-correction/replan loop, scenario CLI and
+  create-only reports. Actual state, global command clock, fuel and original
+  deadline persist; full accumulated execution/replay and separate local
+  certificates agree. Production V1 and defaults remain unchanged.
+- Both final revised runs land eight uncut clear controls directly and twelve
+  of sixteen ordinary obstacles. Family results are ridge 3/4, plateau 3/4,
+  successive 2/4 and sloped 4/4; all sixteen initial proposals are blocked.
+  The unchanged reference lands through three corrections, with its old first
+  handoff preserved. All evidence-integrity checks pass; four ordinary misses
+  remain flying with NoNominal after clearing.
+- The single [uniform entry revision](waypoint_v2_practical_policy_revision.md)
+  improves ordinary landings from 8/16 to 12/16 without changing terrain, local
+  templates/ranking, later entries, margin or budget. The 13/16 usable-planner
+  floor is still missed. No further revision or lowered bar is inferred.
+- Final repeated planning median is about 0.398 s and p95 0.680/0.670 s across
+  all 24 common attempts including misses. All 64 complete summary/flight
+  payloads repeat under named timing/path exclusions. Final workspace validation
+  passes 872 tests with one existing ignore, plus strict Clippy and formatting.
+  The sealed canary's five gates and earlier canonical/airborne/source-rest
+  preservation checks pass; its old physical experiment remains byte-identical.
+- Primary owns contracts, engine, integration, revision and measured verdict;
+  Luna owns CLI/report/suite/fake-harness checks. No commit, push, deployment or
+  default promotion. Next decision concerns excessive-demand nominal rejection
+  from locally safe but fast near-target handoffs, not source-launch physics.
+
+### Practical waypoint V2 design and readiness review
+
+- The user confirms a game-oriented first V2 on the currently supported vehicle,
+  Earth gravity and 120/60 Hz setup, with broad terrain coverage and tolerated
+  edge-case failures. The [plan](waypoint_v2_practical_plan.md) targets a complete
+  reusable direct/audit/local-correction/replan loop, not another isolated canary.
+- Proposed acceptance is eight unchanged clear controls, at least 13/16 ordinary
+  obstacle landings with a per-family floor, and eight honest diagnostic outcomes.
+  Six corrections, original deadline and local progress bound the loop. No
+  immediate landing or feature far edge is a local candidate requirement.
+- The [separate primary review](waypoint_v2_practical_plan_review.md) resolves
+  live-origin conflict querying, segment-aware launch/terminal guards, finite
+  nominal-audit rejection versus corrupted evidence, actual-state execution and
+  timing/coverage denominators. No independent-agent review is claimed.
+- All 32 planned recipes pass structural readiness; input-only preflight accepts
+  30 and correctly rejects two unsupported diagnostics, creating no simulations.
+  Five existing focused contract/CLI tests, binary build, Node syntax, formatting
+  and whitespace pass. All 143 old bound files and accepted local summary/
+  experiment bytes remain unchanged. No V2 implementation, flight measurement,
+  commit, push, deployment or production/default promotion occurs.
 
 ### Local clearing review and commit closure
 

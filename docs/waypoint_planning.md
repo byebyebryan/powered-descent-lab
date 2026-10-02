@@ -134,6 +134,156 @@ or the terrain feature's far edge. Another clearing iteration remains a separate
 design and evidence boundary. All eight canonical, twelve prior airborne and
 24 source-rest controls are preserved; production V1 and defaults stay unchanged.
 
+### Practical V2 design 2026 10 01
+
+The user clarifies that V2 should cover most ordinary game-like missions, not
+guarantee all edge cases. The [practical plan](waypoint_v2_practical_plan.md) now
+targets a reusable bounded correction/replanning loop on the current tested
+vehicle/gravity/rates. It proposes eight clear controls, sixteen ordinary terrain
+cases with a 13/16 success floor and per-family minimum, and eight diagnostics.
+Immediate landing and the feature far edge remain outside local ranking.
+
+The [design review](waypoint_v2_practical_plan_review.md) and input-only readiness
+checks pass: thirty supported scenarios plus two expected unsupported diagnostics,
+no simulations created. Live-origin conflict queries, segment-aware guards and
+honest finite failures are explicit implementation requirements. Coverage,
+complete obstacle flight and interactive cost still need measurement. This is
+implementation-ready design, not an implemented V2 or default promotion.
+
+### Practical V2 implementation 2026 10 01
+
+The subsequent [implementation results](waypoint_v2_practical_results.md) now
+prove the complete bounded loop and actual reference landing through three
+corrections. Eight clear controls land directly on uncut terrain. The single
+uniform initial-entry revision improves ordinary coverage from 8/16 to 12/16,
+with every family meeting its floor and complete source replay agreement.
+Repeated release planning median is about 0.398 s and p95 below 0.681 s.
+
+The implementation is an experimental reusable mode, not accepted usable V2:
+the declared 13/16 ordinary floor is still missed. Four ordinary cases exhaust
+the unchanged airborne nominal family after locally safe handoffs, mostly at
+the thrust-demand limit. Further entry/maneuver/ranking revisions need another
+decision; the approved one-revision budget is spent. This no longer requires
+another floor-cutaway or first-step crash study. Production V1 and legacy
+controller/default behavior remain separate and unchanged.
+
+### Unified nominal construction design 2026 10 01
+
+The current [next-phase plan](waypoint_v2_unified_nominal_plan.md) keeps the
+implemented direct/audit/local-clearing/replan loop and changes its nominal
+construction contract. Ground and airborne planning should share a current-state
+model with finite acquisition. Current position/velocity remain fixed; lateral
+reference endpoints connect current position to target, while future vertical
+shape is chosen only to obtain an admissible above-target approach and energy.
+
+The minimum-profile arc is a construction baseline, not an exact tracking
+target. Preserve an already admissible higher/steeper approach; do not lower it,
+shallow it or create a new future apex solely to match that baseline. Excessive
+energy still needs correction, and lateral retargeting changes vertical timing.
+Acquisition estimates must include future join position, gravity, turning, fuel
+and original time rather than just instantaneous velocity replacement.
+
+The [analytical handoff screen](waypoint_v2_nominal_handoff_analysis.json) shows
+why a cheap estimate is useful but not a recovery proof. Apparent stopping room
+in the four misses changes substantially when orientation delay and source
+derating are included. First characterize the estimator and landing-entry
+conditions, then review and freeze their numerical/command-realization contract
+before an explicitly approved new policy. Local ranking remains unchanged for
+that comparison; the 13/16 gate and frozen suite remain intact.
+
+The [goal amendment](waypoint_v2_goal_amendment.md) records the intended update.
+At this design checkpoint the stored old goal was blocked because the available
+tools could not edit its objective. It was externally cleared before the
+subsequent research loop; it was not falsely completed. The design pass made
+no runtime/default/physics change and did not call the 12/16 implementation usable.
+
+### Unified nominal characterization 2026 10 01
+
+The [research results](waypoint_v2_nominal_characterization_results.md) now cover
+eight fresh clear starts, all 27 actual local handoffs and twelve historical
+airborne captures, plus separately labeled synthetic conditions. All 39 airborne
+states reproduce exactly from their full original command prefixes and have
+independently replayed free-space target-plane landing witnesses. The four
+former NoNominal handoffs also land on their unchanged terrain without measured
+noncontact reserve violations; three preserve natural vertical motion.
+
+The shared research construction passes only 2/8 clear ground starts, however.
+All eight ground preparation programs lift off safely and replay; six reject
+analytical acquisition/entry screens before any physical witness attempt.
+This is not another first-step crash, and does not supersede the working old
+8/8 uncut ground constructor. Some airborne witnesses remain terrain-blocked,
+which is a demand for another local piece, not terrain-aware nominal lofting.
+
+The [separate primary review](waypoint_v2_nominal_characterization_review.md)
+concludes no-go for runtime replacement and proposes comparing the new screen
+against proven ground entries to isolate screen conservatism from acquisition
+span. Two final-source artifacts are byte-identical; integrity, workspace and
+input/evidence preservation checks pass. This closes the research checkpoint,
+not the unchanged complete-loop 13/16 usability gate. No policy/default/local
+acceptance/physics/contact change or commit is included.
+
+### Ground diagnostic 2026 10 02
+
+The [bounded diagnostic results](waypoint_v2_ground_diagnostic_results.md)
+reproduce all eight known-good uncut controls from fresh H0 and compare sixteen
+references at their actual terminal entries. Original durations pass; the
+unchanged research vertical braking-time formula produces lateral reversal in
+all eight matched comparisons. This localizes a construction restriction, not
+another source-contact crash or a requirement to cut away the floor.
+
+The three preselected shadow probes all land, but flat/uphill need approximately
+0.993 terminal throttle and fail the unchanged 0.925 budget. Their nominal
+rejection remains unchanged; the research ground family is still 2/8 versus the
+working old 8/8. The [primary review](waypoint_v2_ground_diagnostic_review.md)
+recommends bounded coupled-state terminal timing first, keeping the backend and
+margin. Whether research acquisition reaches compatible entries remains open.
+No runtime fix, new full-loop coverage or default promotion occurs here.
+
+The [terminal timing plan](waypoint_v2_terminal_time_plan.md) was subsequently
+implemented under its new opt-in research identity. The
+[results](waypoint_v2_terminal_time_results.md) recover 8/8 uncut ground landings
+while retaining all 39 airborne witnesses and four designated terrain recoveries.
+A valid baseline duration stays unchanged; at most two derived horizontal times
+follow a finite rejection, under exact discrete no-reversal and deadline caps.
+Acquisition, reference backend, ranking semantics and 0.925 budget stay unchanged.
+The [primary review](waypoint_v2_terminal_time_review.md) accepts the constructor
+checkpoint. Runtime policies/defaults remain unchanged; next is separately
+planned integration and the complete 32-case gate, not another timing search.
+
+The [simplified integration plan](waypoint_v2_airborne_integration_plan.md) narrows
+that next pass to airborne regeneration. Keep the already-working uncut launch
+and policy 2 entry/local behavior, select the first executable state-aware
+proposal within the tested three-trial cap, then audit terrain exactly once.
+Launch unification and unusual recovery modes are deferred. The
+[planning review](waypoint_v2_airborne_integration_review.md) keeps the unchanged
+mission/performance gates and finds this ready only after separate approval;
+no new runtime policy or flight result is delivered by the design pass.
+
+### Usable opt in airborne integration 2026 10 02
+
+The [implementation results](waypoint_v2_airborne_integration_results.md)
+reach the complete supported game-oriented V2 gate under explicit policy 3:
+8/8 uncut direct controls and 16/16 ordinary terrain missions, with the reference
+plateau still requiring three corrections. Both final-source matrices match
+all 64 per-case payloads and pass existing safety/replay and planning latency
+limits. All thirty supported initial cycles remain exactly policy 2's;
+canonical launch and local clearing are unchanged. Only airborne nominal
+construction and its complete phase-aware audit are replaced.
+
+The [primary review](waypoint_v2_airborne_integration_acceptance.md) accepts
+the first usable supported opt-in checkpoint. Late fail-closed guard corrections
+pass nine focused tests and fresh 39-row equivalence without numerical changes.
+After the original matrix allowance was used, the user explicitly approved one
+corrected-source policy 2 preservation matrix and two policy 3 repeats; all pass
+their respective gates. The final workspace passes 915 tests. Earlier complete
+flights remain preliminary evidence, not relabeled current-build acceptance.
+No GUI/controller/default promotion occurs.
+Policy 1 remains default and policy 2's historical payloads
+are preserved. Four difficult diagnostics retain NoClearing with honest partial
+flight evidence; other vehicle/gravity setups reject without simulation.
+Ground unification, unusual recovery and perfect diagnostic coverage are not
+prerequisites or automatic next work.
+
 ### Preceding direct-planning checkpoint (2026-09-28)
 
 The next [one-update completion-reserve contract](nominal_direct_terminal_completion_reserve_contract.md)
