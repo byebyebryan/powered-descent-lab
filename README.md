@@ -221,9 +221,15 @@ Stable HTML entrypoints also live under `outputs/reports/`, for example:
 - `outputs/reports/runs/latest/`
 - `outputs/reports/eval/latest/`
 
-The root landing page is:
+The root and report-home URLs use the same topic hierarchy:
 
 - `outputs/index.html`
+- `outputs/reports/index.html`
+
+Start with **Waypoint planning** for terrain-aware route selection, or **Flight
+and landing control** for landing, direct transfer and following authored
+waypoints. Research/history, the searchable report library and raw data are
+secondary destinations. Report type and review status are shown separately.
 
 To apply the current report templates to existing captures without running
 simulations:
@@ -232,6 +238,35 @@ simulations:
 cargo run -p pd-eval -- refresh-reports
 cargo run -p pd-eval -- refresh-reports --all
 ```
+
+To refresh navigation and maintained scorecard indexes without rewriting
+detailed report bodies, flight captures or outcome summaries:
+
+```bash
+cargo run -p pd-eval -- refresh-navigation
+```
+
+The narrower home-navigation refresh also regenerates configured topic, library,
+history and raw-data indexes, but does not regenerate maintained scorecards:
+
+```bash
+cargo run -p pd-eval -- refresh-reports --home-only
+```
+
+`fixtures/reports/report_navigation.json` describes the explicit topic map.
+The library also lists stable report entries with unknown topics as Unclassified;
+it does not recursively publish research directories.
+`fixtures/reports/navigation_preview.json` pins the under-review preview links
+relative to `outputs/reports/`. This selection does not change planner defaults
+or designate an accepted flight capture. Missing preview files are shown as
+unavailable, without substituting historical reports.
+
+The V2 navigation edition preserves the rich report plots and payloads and adds
+return/previous/next links in new copies. Only Late ridge has waypoint annotations
+at this checkpoint; the other full reports are labelled as not enhanced. Earlier
+report editions and original captures remain unchanged.
+New V2 flight captures still use the existing rich report writer. Annotated
+retained previews are explicit; future-capture annotation integration is deferred.
 
 To recompute the four V2 direct-ballistic probes, the bounded ridge canary, and
 their setup-only HTML/SVG report without running a controller or simulation:

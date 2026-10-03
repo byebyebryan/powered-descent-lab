@@ -2,6 +2,146 @@
 
 ## 2026-10-02
 
+### Report review and commit
+
+- The user gives positive feedback on the new hierarchy and requests review
+  and commit before returning to V2 planner work. The review removes a leftover
+  prototype writer switch: new V2 captures keep the existing rich report, not
+  the rejected lean view. Retained previews remain explicitly selected;
+  all-case and future-capture annotations remain deferred.
+- A new supported-capture regression checks both charts, five modes, samples
+  and rich statistics without preview annotations. Final workspace tests pass
+  **957 with seven ignored**, plus all three explicit retained-report gates.
+  Format, syntax, whitespace and narrowly allowed baseline Clippy pass.
+- Served edition/capture hashes remain intact and both homes remain identical.
+  Previous browser evidence and render receipts retain their historical scope;
+  no new matrix, planner/controller/default change, push or server restart.
+  Implementation and documentation are separate commits. See the
+  [review results](report_navigation_and_waypoint_annotations_results.md#review-before-commit).
+
+### Topic-first report hierarchy ready for user review
+
+- The server root and `/reports/` now share one home: **Waypoint planning** and
+  **Flight and landing control** are primary; history, the searchable library
+  and raw data are secondary. Topic pages distinguish V2, the maintained
+  planner baseline, controller tasks and analytical studies. Type, status and
+  availability are explicit; missing/unclassified entries remain honest.
+- The selected V2 edition has consistent home/topic/collection and previous/next
+  navigation for all thirty supported rich reports. Twenty-nine are exact
+  original HTML copies except for a navigation banner; only Late ridge has the
+  earlier H1 annotation. Original captures/reports and historical editions are
+  unchanged. The two unsupported cases still have no simulated flight link.
+- Navigation has one index owner. Both refresh orders and repeated live
+  refreshes are stable. `refresh-navigation` refreshes the hierarchy plus
+  maintained guidance indexes; `refresh-reports --home-only` refreshes configured
+  navigation without detailed bodies, captures or guidance scorecard refresh.
+- Final-source workspace tests pass **956 with seven ignored**; both local
+  rich-preview and all-thirty payload gates are explicitly run and pass. Four desktop/mobile
+  root-origin browsing routes, six rich-preview checks, 90 links and 22 browser
+  screenshots pass. Format, syntax, whitespace and narrowly allowed baseline
+  Clippy pass. See the
+  [hierarchy results](report_navigation_and_waypoint_annotations_results.md#topic-hierarchy-implementation-and-validation).
+- The existing LAN tmux server serves the hierarchy without restart. No new
+  mission, planner/controller/policy/default change, future-writer switch,
+  commit or push. Stop for user findability review; automated success is not
+  presentation acceptance. Earlier checkpoints below retain their historical
+  scope and counts.
+
+### Rich preview connected to the report entrypoints
+
+- The server root now links to **Report navigation preview**; the existing
+  report home links directly to **Waypoint planner V2 preview** and its grouped
+  mission list. The user finds the detailed page closer to the intended report,
+  but navigation and full presentation acceptance remain open.
+- An explicit under-review preview fixture preserves those links across home
+  refreshes. Missing targets are unavailable, not historical fallbacks; the old
+  lean edition remains in preview history rather than competing as current.
+- The new `refresh-reports --home-only` option changes only the two home indexes.
+  Existing captures, catalogues and detailed report bodies remain byte-identical.
+  No full-suite annotation, future-writer switch, planner change, commit or
+  server restart occurred.
+- Validation passes 47 report tests, 38 CLI tests, four native-keyboard LAN
+  entrypoint routes at desktop/mobile widths, and the six existing rich-preview
+  checks with 43 links. See the
+  [bounded follow-up results](report_navigation_and_waypoint_annotations_results.md#navigation-entrypoint-follow-up).
+
+### Rich waypoint report preview ready for user review
+
+- The [preview results](report_navigation_and_waypoint_annotations_results.md)
+  complete the approved first slice: one navigation front door, all 32 grouped
+  cases and one annotated rich Late ridge report. Twenty-nine supported cases
+  retain their original full-report destinations; two unsupported entries have
+  reasons and no report link. Published navigation remains unchanged.
+- Late ridge keeps all five spatial modes, metric charts, hover/telemetry,
+  events and detailed statistics. Exact H2426, its time guide and recorded
+  correction explanation are additive. Parsed baseline payloads match exactly
+  after removing only the optional annotation key; all 341 samples remain.
+- Final workspace tests pass 946 with six ignored; the new retained-data gate
+  is run explicitly and passes. Six final desktop/mobile browser checks and 43
+  links pass, including native hover, zoom/pan, legend and keyboard interactions.
+  Format, syntax, whitespace and narrowly allowed baseline Clippy pass.
+- All 235 monitored existing output HTML/JSON files are byte-identical,
+  including the full pinned capture and published indexes. The existing LAN
+  tmux server serves the create-only preview without restart. No new matrix,
+  planner/policy/default/future-writer change, commit or push occurred this slice.
+- Stop for user navigation and report review before all-case annotation,
+  future-writer integration, stable selection/publication or index ownership
+  repair. Automated success is not acceptance of the new presentation.
+
+### Report navigation and additive waypoint annotation design
+
+- The user clarifies that clutter concerns navigation between reports. Detailed
+  reports should retain and evolve their plots, views and inspection tools.
+  The [revised plan](report_navigation_and_waypoint_annotations_plan.md) separates
+  report organization from exact V2 annotations in the existing rich report.
+- Inspection finds competing generic and curated writers for the batch index,
+  timestamp-oriented navigation and per-render V2 home-card duplication risk.
+  The design chooses explicit current-capture selection, one V2 collection,
+  friendly grouped browsing and discoverable history without scorecard promotion.
+- First proposed slice is a navigation preview plus one rich annotated late-ridge
+  report, with a user-review stop before full-suite/future-writer integration.
+  Retain the archive validation/extraction work; retire the lean default only
+  after replacement validation, preserving its generated artifacts as history.
+- This is documentation-only planning. Existing source, fixtures, scripts and
+  monitored captures/reports remain unchanged. No Rust/HTML change, mission,
+  native/browser test rerun, goal resumption, agent, commit, push or server restart.
+
+### V2 report presentation implemented but not user accepted
+
+- The [presentation results](waypoint_v2_report_presentation_results.md) record
+  a clean actual-flight SVG view with numbered dynamic handoffs, selectable flown
+  pieces, recorded obstruction explanations and collapsed exact-state details.
+  One curated index exposes all 32 retained cases: 30 flight pages and two
+  unsupported entries without simulated paths.
+- Late ridge was browser-reviewed before suite expansion. Sixteen final
+  browser/page-width checks pass for the index and seven selected missions at
+  1280/390 px. The explicit retained gate verifies exact one/two/three-handoff
+  boundaries, uncut direct controls and honest no-departure outcomes.
+- All 127 retained files and 30 existing evaluation/guidance HTML files remain
+  byte-identical. Rendering provenance is separate from the historical flight
+  build. Final-source workspace tests pass 932/five ignored, including the final
+  unsupported summary-format guard. Adapter/archive tests pass six plus the
+  explicit retained gate. Format/whitespace and final narrowly allowed baseline
+  Clippy pass.
+- The existing LAN tmux server serves the prototype without restart. The user
+  rejects its replacement of the rich report; native/browser success is not
+  presentation acceptance. The revised design above supersedes this UI direction.
+  No new mission matrix, planner/policy/default change, commit, push or deployment.
+
+### Earlier V2 report presentation plan superseded
+
+- The [presentation plan](waypoint_v2_report_presentation_plan.md) addresses the
+  missing dynamic handoff markers and the generic telemetry layout. It proposes
+  one clean actual-flight diagram, numbered handoffs, a chronological explanation,
+  collapsed diagnostics and a curated index with all 32 cases still available.
+- Saved V2 segments and full handoff states are sufficient for the first pass.
+  Render into a new presentation root without changing retained captures or
+  rerunning missions. Defer rejected-arc reconstruction rather than drawing an
+  unverified nominal curve; report recorded obstruction reasons first.
+- Browser readability and user walkthrough-free understanding are explicit
+  acceptance gates. This is design only: no renderer/CLI/planner change, new
+  simulation, goal, agent work, commit, push or server restart.
+
 ### First usable opt-in V2 airborne integration accepted
 
 - Explicit policy 3 passes the frozen complete loop: 8/8 uncut clear controls

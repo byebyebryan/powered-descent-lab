@@ -469,13 +469,29 @@ requiring raw JSON inspection:
 - where discrete events and controller phase/status changes happened
 - how a candidate batch changed relative to a known baseline over shared runs
 
-Report information architecture is evidence-first:
+Report navigation is topic-first, with evidence boundaries visible within each
+topic. The root and `/reports/` share one home. Waypoint planning groups the
+selected opt-in V2 capture, maintained planner baseline and related analytical
+studies. Flight and landing control groups terminal landing, direct transfers
+and following authored waypoint routes. Research/history, a searchable report
+library and raw data are secondary choices. Report type and review status are
+metadata rather than peer top-level subjects.
 
-- `outputs/reports/guidance/` is the primary cross-guidance scorecard
+`fixtures/reports/report_navigation.json` is the explicit topic map; unknown
+stable report entrypoints remain visible as Unclassified. Navigation never scans
+every research directory or chooses current evidence from modification time.
+`navigation_preview.json` pins an under-review V2 presentation, not a planner
+default or accepted result. Historical flight provenance and report editions
+remain separate.
+
+Evidence presentation keeps these distinctions:
+
+- `outputs/reports/guidance/` preserves the maintained cross-guidance scorecard
 - each guidance group separates primary smoke evidence from supporting
   full-seed evidence
-- `outputs/reports/eval/` is the complete fixture-backed report inventory,
-  including diagnostics and experiments
+- `outputs/reports/library/` is the friendly report inventory, including missing
+  fixture captures and unclassified stable reports; `/reports/eval/` is its
+  compatibility entrypoint
 - `outputs/reports/setups/` contains deterministic analytical setup evidence
   that is explicitly separate from controller runs and simulation claims
 - the current conservative-ballistic setup contains the V2 direct-bridge
@@ -496,6 +512,21 @@ captured run bundles and batch summaries, regenerates static HTML in parallel,
 and reuses a recorded comparison only when that comparison directory remains
 readable. It must not execute controllers or rewrite authoritative batch
 summaries.
+
+`pd-eval refresh-navigation` regenerates navigation and maintained scorecard
+indexes only. In topic-hierarchy mode `ReportSite` is the sole owner of home,
+topic, history, library and compatibility indexes; the evaluator catalogue owns
+guidance scorecards but does not compete for the eval index. Both refresh orders
+must preserve the same navigation. `refresh-reports --home-only` regenerates
+the site navigation without scorecards or detailed report bodies.
+
+A V2 navigation edition is create-only. Non-annotated full reports are copied
+verbatim except for an ordinary HTML navigation banner; the annotated report
+uses the existing additive layer. The original report payloads, plot code,
+capture files and historical render receipts are not overwritten. Navigation
+copies do not imply more waypoint visualization or another simulation run.
+New V2 captures keep the existing rich run-report writer; retained preview
+annotation is opt-in, not a replacement of future report output.
 
 ### 5.6 Telemetry and reporting stack
 
