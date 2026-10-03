@@ -73,6 +73,8 @@ enum Commands {
     RunPack(RunPackArgs),
     Report(ReportArgs),
     RefreshReports(RefreshReportsArgs),
+    /// Refresh report navigation and maintained scorecard indexes only; no report bodies or flights.
+    RefreshNavigation,
     PromoteCache(PromoteCacheArgs),
     SourceTransitionGate(SourceTransitionGateArgs),
     RouteExecutionGate(RouteExecutionGateArgs),
@@ -167,6 +169,8 @@ enum Commands {
     NominalDirectOperationalFlight(NominalDirectFlightArgs),
     /// Run the opt-in repeated local-clearing waypoint V2 flight mode.
     WaypointV2Flight(WaypointV2FlightArgs),
+    /// Render saved waypoint V2 evidence only; no planning or simulation.
+    WaypointV2Report(WaypointV2ReportArgs),
     /// Characterize the bounded V2 nominal plant family against retained handoffs.
     WaypointV2NominalCharacterization(WaypointV2NominalCharacterizationArgs),
     /// Compare eight proven ground entries without changing nominal acceptance.
@@ -189,6 +193,23 @@ enum Commands {
 struct NominalAirborneDirectCanaryArgs {
     #[arg(long, value_name = "NEW_OUTPUT_DIR")]
     output_dir: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+struct WaypointV2ReportArgs {
+    #[arg(long, value_name = "RETAINED_SUITE_ROOT")]
+    suite_root: PathBuf,
+    #[arg(long, value_name = "NEW_OUTPUT_DIR")]
+    output_dir: PathBuf,
+    /// Optional staged single-case presentation review.
+    #[arg(long)]
+    case: Option<String>,
+    /// Navigation preview plus one annotated rich report; uses the pinned capture only.
+    #[arg(long, conflicts_with = "case")]
+    rich_preview: bool,
+    /// Create a navigation edition: same rich reports, one annotated case, site return links.
+    #[arg(long, requires = "rich_preview", conflicts_with = "case")]
+    site_navigation: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -394,6 +415,9 @@ struct ReportArgs {
 struct RefreshReportsArgs {
     #[arg(long)]
     all: bool,
+    /// Refresh home/topic/library navigation; leave report bodies and maintained scorecards alone.
+    #[arg(long, conflicts_with = "all")]
+    home_only: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -1015,8 +1039,21 @@ fn main() -> Result<()> {
         }
         Commands::Report(args) => render_report(args)?,
         Commands::RefreshReports(args) => {
-            let summary = refresh_report_outputs(args.all)?;
-            println!("{}", serde_json::to_string_pretty(&summary)?);
+            if args.home_only {
+                pd_report::site::ReportSite::new(repo_root()).refresh_home()?;
+                println!(
+                    "Refreshed report-home navigation, including topic indexes when configured; no report bodies or captures"
+                );
+            } else {
+                let summary = refresh_report_outputs(args.all)?;
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+            }
+        }
+        Commands::RefreshNavigation => {
+            pd_eval::report_catalog::write_report_catalog(&repo_root())?;
+            println!(
+                "Refreshed report navigation and maintained scorecard indexes; no report bodies or flights"
+            );
         }
         Commands::PromoteCache(args) => {
             let promoted_dir = promote_pack_cache(
@@ -1684,6 +1721,29 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::WaypointV2Report(args) => {
+            let receipt = if args.site_navigation {
+                pd_eval::waypoint_v2_report::rich_preview::render_navigation_edition(
+                    &repo_root(),
+                    &args.suite_root,
+                    &args.output_dir,
+                )?
+            } else if args.rich_preview {
+                pd_eval::waypoint_v2_report::rich_preview::render_preview(
+                    &repo_root(),
+                    &args.suite_root,
+                    &args.output_dir,
+                )?
+            } else {
+                pd_eval::waypoint_v2_report::render_retained_suite(
+                    &repo_root(),
+                    &args.suite_root,
+                    &args.output_dir,
+                    args.case.as_deref(),
+                )?
+            };
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
+        }
         Commands::WaypointV2Flight(args) => {
             let policy_version = args.policy_version;
             let flight_args = args.flight;
@@ -1972,6 +2032,109 @@ fn repo_root() -> PathBuf {
 #[cfg(test)]
 mod direct_generation_cli_tests {
     use super::*;
+
+    #[test]
+    fn home_only_refresh_is_explicit_and_cannot_expand_to_all_reports() {
+        assert!(matches!(
+            Cli::try_parse_from(["pd-eval", "refresh-navigation"])
+                .unwrap()
+                .command,
+            Commands::RefreshNavigation
+        ));
+        assert!(Cli::try_parse_from(["pd-eval", "refresh-navigation", "--all"]).is_err());
+        assert!(matches!(
+            Cli::try_parse_from(["pd-eval", "refresh-reports", "--home-only"])
+                .unwrap()
+                .command,
+            Commands::RefreshReports(RefreshReportsArgs {
+                home_only: true,
+                all: false
+            })
+        ));
+        assert!(
+            Cli::try_parse_from(["pd-eval", "refresh-reports", "--home-only", "--all"]).is_err()
+        );
+        assert!(matches!(
+            Cli::try_parse_from(["pd-eval", "refresh-reports", "--all"])
+                .unwrap()
+                .command,
+            Commands::RefreshReports(RefreshReportsArgs {
+                home_only: false,
+                all: true
+            })
+        ));
+    }
+
+    #[test]
+    fn v2_report_requires_explicit_source_and_fresh_output_not_flight_options() {
+        assert!(Cli::try_parse_from(["pd-eval", "waypoint-v2-report"]).is_err());
+        let cli = Cli::try_parse_from([
+            "pd-eval",
+            "waypoint-v2-report",
+            "--suite-root",
+            "saved",
+            "--output-dir",
+            "fresh",
+            "--case",
+            "v2_ridge_late",
+        ])
+        .unwrap();
+        assert!(matches!(cli.command, Commands::WaypointV2Report(_)));
+        let preview = [
+            "pd-eval",
+            "waypoint-v2-report",
+            "--suite-root",
+            "saved",
+            "--output-dir",
+            "fresh",
+            "--rich-preview",
+        ];
+        assert!(matches!(
+            Cli::try_parse_from(preview.into_iter().chain(["--site-navigation"]))
+                .unwrap()
+                .command,
+            Commands::WaypointV2Report(WaypointV2ReportArgs {
+                site_navigation: true,
+                rich_preview: true,
+                ..
+            })
+        ));
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-v2-report",
+                "--suite-root",
+                "saved",
+                "--output-dir",
+                "fresh",
+                "--site-navigation"
+            ])
+            .is_err()
+        );
+        assert!(matches!(
+            Cli::try_parse_from(preview).unwrap().command,
+            Commands::WaypointV2Report(WaypointV2ReportArgs {
+                rich_preview: true,
+                ..
+            })
+        ));
+        assert!(
+            Cli::try_parse_from(preview.into_iter().chain(["--case", "v2_ridge_late"])).is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "waypoint-v2-report",
+                "--suite-root",
+                "saved",
+                "--output-dir",
+                "fresh",
+                "--policy-version",
+                "3"
+            ])
+            .is_err()
+        );
+    }
 
     #[test]
     fn terminal_diagnostic_requires_preflight_or_create_only_output() {

@@ -202,10 +202,17 @@ pub fn write_report_catalog(repo_root: &Path) -> Result<()> {
         render_guidance_overview(repo_root, &catalog),
     )?;
     fs::create_dir_all(reports_root.join("eval"))?;
-    fs::write(
-        reports_root.join("eval/index.html"),
-        render_eval_index(repo_root, &catalog)?,
-    )?;
+    // In topic-hierarchy mode ReportSite is the sole navigation-index owner.
+    // This catalogue still owns maintained scorecards, never the V2 outcomes.
+    if !repo_root
+        .join("fixtures/reports/report_navigation.json")
+        .try_exists()?
+    {
+        fs::write(
+            reports_root.join("eval/index.html"),
+            render_eval_index(repo_root, &catalog)?,
+        )?;
+    }
     ReportSite::new(repo_root).refresh_home()?;
     Ok(())
 }
@@ -237,11 +244,19 @@ fn render_guidance_overview(repo_root: &Path, catalog: &GuidanceCatalog) -> Stri
             )
         })
         .collect::<String>();
+    let actions = if repo_root
+        .join("fixtures/reports/report_navigation.json")
+        .is_file()
+    {
+        r#"<a href="/reports/">Reports home</a><a href="/reports/topics/flight-control/index.html">Flight and landing control</a><a href="/reports/topics/waypoint-planning/index.html">Waypoint planning</a><a href="../eval/">Batch report library</a>"#
+    } else {
+        r#"<a href="../">reports/</a><a href="../eval/">all batch reports</a>"#
+    };
     page(
         "Guidance Overview",
         "Guidance Overview",
-        "Curated evidence for the three maintained guidance responsibilities. Core outcomes are separated from scored frontier annotations and analytic impossibilities.",
-        r#"<a href="../">reports/</a><a href="../eval/">all batch reports</a>"#,
+        "Maintained controller and planner evidence. Waypoint tracking follows authored routes; the planner baseline chooses routes. Opt-in V2 captures are separate and are not included in these totals.",
+        actions,
         &format!(r#"<section class="guidance-grid">{sections}</section>"#),
     )
 }
@@ -255,11 +270,47 @@ fn render_group_page(repo_root: &Path, group: &GuidanceGroup) -> String {
     let body = format!(
         r#"<p class="score-note">Core outcomes exclude analytic frontier and impossible cases. Frontier failures remain scored by the regression policy, but are shown separately here so stress-boundary evidence does not read as ordinary guidance failure.</p><section class="scorecard"><div class="score-head"><span>Evidence</span><span>Core outcomes</span><span>Frontier / invalid</span><span>Capture</span></div>{rows}</section>"#
     );
+    let hierarchy = repo_root
+        .join("fixtures/reports/report_navigation.json")
+        .is_file();
+    let (heading, topic, topic_label) = match group.id.as_str() {
+        "planner" => (
+            "Maintained planner baseline",
+            "waypoint-planning",
+            "Waypoint planning",
+        ),
+        "waypoint" => (
+            "Following authored waypoint routes",
+            "flight-control",
+            "Flight and landing control",
+        ),
+        "terminal" => (
+            "Terminal landing",
+            "flight-control",
+            "Flight and landing control",
+        ),
+        "transfer" => (
+            "Direct transfers",
+            "flight-control",
+            "Flight and landing control",
+        ),
+        _ => (group.title.as_str(), "", ""),
+    };
+    let actions = if hierarchy && !topic.is_empty() {
+        format!(
+            r#"<a href="/reports/">Reports home</a><a href="/reports/topics/{topic}/index.html">{topic_label}</a><a href="../../eval/">Batch report library</a>"#
+        )
+    } else if hierarchy {
+        r#"<a href="/reports/">Reports home</a><a href="../../eval/">Batch report library</a>"#
+            .into()
+    } else {
+        r#"<a href="../">guidance overview</a><a href="../../eval/">all batch reports</a>"#.into()
+    };
     page(
-        &group.title,
-        &group.title,
+        if hierarchy { heading } else { &group.title },
+        if hierarchy { heading } else { &group.title },
         &group.description,
-        r#"<a href="../">guidance overview</a><a href="../../eval/">all batch reports</a>"#,
+        &actions,
         &body,
     )
 }
@@ -1000,6 +1051,62 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["terminal", "transfer", "waypoint", "planner"]
         );
+    }
+
+    #[test]
+    fn topic_navigation_is_identical_in_both_catalogue_refresh_orders() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!(
+            "pd-nav-refresh-order-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(root.join("fixtures/reports")).unwrap();
+        fs::create_dir_all(root.join("fixtures/packs")).unwrap();
+        fs::create_dir_all(root.join("outputs/reports/eval/unknown_study")).unwrap();
+        for name in ["guidance_catalog.json", "report_navigation.json"] {
+            fs::copy(
+                repo_root().join("fixtures/reports").join(name),
+                root.join("fixtures/reports").join(name),
+            )
+            .unwrap();
+        }
+        for entry in fs::read_dir(repo_root().join("fixtures/packs")).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
+                fs::copy(
+                    entry.path(),
+                    root.join("fixtures/packs").join(entry.file_name()),
+                )
+                .unwrap();
+            }
+        }
+        let body = root.join("outputs/reports/eval/unknown_study/index.html");
+        fs::write(&body, "Immutable report body").unwrap();
+        let site = pd_report::site::ReportSite::new(&root);
+        site.refresh_indexes().unwrap();
+        super::write_report_catalog(&root).unwrap();
+        let paths = [
+            "outputs/index.html",
+            "outputs/reports/index.html",
+            "outputs/reports/library/index.html",
+            "outputs/reports/eval/index.html",
+        ];
+        let before = paths.map(|p| fs::read(root.join(p)).unwrap());
+        site.refresh_indexes().unwrap();
+        let after = paths.map(|p| fs::read(root.join(p)).unwrap());
+        assert_eq!(before, after);
+        super::write_report_catalog(&root).unwrap();
+        site.update_indexes_for_file(&body).unwrap();
+        assert_eq!(before, paths.map(|p| fs::read(root.join(p)).unwrap()));
+        assert_eq!(fs::read_to_string(&body).unwrap(), "Immutable report body");
+        let library = fs::read_to_string(root.join("outputs/reports/library/index.html")).unwrap();
+        assert!(library.contains("Unclassified"));
+        assert!(library.contains("unknown_study"));
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

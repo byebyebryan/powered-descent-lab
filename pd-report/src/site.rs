@@ -5,8 +5,25 @@ use std::{
     time::SystemTime,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
+
+use crate::report_navigation::{self, PreparedReportNavigation, PreviewTargets};
+
+/// Pins only preview navigation, not an accepted capture or planner default.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NavigationPreviewSelection {
+    schema_version: u32,
+    home_entrypoint: String,
+    collection_entrypoint: String,
+}
+
+enum NavigationPreview {
+    Absent,
+    Unavailable,
+    Available { home: String, collection: String },
+}
 
 /// Shared owner for the stable HTML report tree under `outputs/reports`.
 pub struct ReportSite {
@@ -49,6 +66,7 @@ impl ReportSite {
     }
 
     pub fn update_indexes_for_file(&self, report_file: &Path) -> Result<()> {
+        let navigation = self.prepare_navigation()?;
         let report_dir = report_file
             .parent()
             .ok_or_else(|| anyhow::anyhow!("report output has no parent directory"))?;
@@ -56,6 +74,18 @@ impl ReportSite {
 
         let resolved_report_dir = self.resolve_repo_relative(report_dir);
         if !resolved_report_dir.starts_with(&self.reports_root) {
+            return Ok(());
+        }
+        if let Some(navigation) = navigation {
+            if self.generic_scope_index_allowed(&resolved_report_dir)? {
+                if let Some(collection) = collection_dir(&resolved_report_dir, &self.reports_root) {
+                    self.write_collection_index(&collection)?;
+                }
+                if let Some(scope) = scope_dir(&resolved_report_dir, &self.reports_root) {
+                    self.write_scope_index(&scope)?;
+                }
+            }
+            self.write_navigation(&navigation)?;
             return Ok(());
         }
         if let Some(collection) = collection_dir(&resolved_report_dir, &self.reports_root) {
@@ -70,19 +100,97 @@ impl ReportSite {
     }
 
     pub fn refresh_indexes(&self) -> Result<()> {
+        let navigation = self.prepare_navigation()?;
         for scope in ["runs", "replays", "eval", "setups"] {
             let scope_dir = self.reports_root.join(scope);
-            if scope_dir.exists() {
+            if scope_dir.exists() && (navigation.is_none() || matches!(scope, "runs" | "replays")) {
                 self.write_scope_index(&scope_dir)?;
             }
+        }
+        if let Some(navigation) = navigation {
+            return self.write_navigation(&navigation);
         }
         self.write_home_index()?;
         self.write_outputs_index()
     }
 
     pub fn refresh_home(&self) -> Result<()> {
+        if let Some(navigation) = self.prepare_navigation()? {
+            return self.write_navigation(&navigation);
+        }
         self.write_home_index()?;
         self.write_outputs_index()
+    }
+
+    fn prepare_navigation(&self) -> Result<Option<PreparedReportNavigation>> {
+        let preview = match self.navigation_preview()? {
+            NavigationPreview::Available { home, collection } => PreviewTargets {
+                home: Some(home),
+                collection: Some(collection),
+            },
+            NavigationPreview::Absent | NavigationPreview::Unavailable => PreviewTargets::default(),
+        };
+        report_navigation::prepare(&self.repo_root, &self.reports_root, &preview)
+    }
+
+    fn write_navigation(&self, navigation: &PreparedReportNavigation) -> Result<()> {
+        // Validate every destination before writing any page. Fixed navigation
+        // paths must not overwrite an archive through a planted symlink.
+        for (path, _) in navigation.pages() {
+            let relative = path.strip_prefix(&self.outputs_root)?;
+            let mut current = self.outputs_root.clone();
+            for component in std::iter::once(None).chain(relative.components().map(Some)) {
+                if let Some(component) = component {
+                    current.push(component.as_os_str());
+                }
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) => ensure!(
+                        !metadata.file_type().is_symlink(),
+                        "navigation write destination contains a symlink: {}",
+                        current.display()
+                    ),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(error).context("validate navigation write destination");
+                    }
+                }
+            }
+        }
+        for (path, html) in navigation.pages() {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!(
+                        "failed to create navigation page directory {}",
+                        parent.display()
+                    )
+                })?;
+            }
+            fs::write(path, html).with_context(|| {
+                format!("failed to write report navigation page {}", path.display())
+            })?;
+        }
+        Ok(())
+    }
+
+    fn navigation_manifest_exists(&self) -> Result<bool> {
+        Ok(self
+            .repo_root
+            .join("fixtures/reports/report_navigation.json")
+            .try_exists()?)
+    }
+
+    fn generic_scope_index_allowed(&self, report_dir: &Path) -> Result<bool> {
+        if !self.navigation_manifest_exists()? {
+            return Ok(true);
+        }
+        let relative = report_dir
+            .strip_prefix(&self.reports_root)
+            .unwrap_or(report_dir);
+        Ok(relative
+            .components()
+            .next()
+            .and_then(|component| component.as_os_str().to_str())
+            .is_some_and(|scope| matches!(scope, "runs" | "replays")))
     }
 
     pub fn update_latest_link(&self, target_dir: &Path) -> Result<()> {
@@ -131,6 +239,17 @@ impl ReportSite {
             )
         })?;
         let mut cards = String::new();
+        let preview = self.navigation_preview()?;
+        match &preview {
+            NavigationPreview::Available { collection, .. } => cards.push_str(&home_card(
+                collection,
+                "Waypoint planner V2 preview",
+                "Grouped mission browsing and the full Late ridge report with waypoint annotations. Under review; other supported missions use their original full reports.",
+                "navigation preview · under review",
+            )),
+            NavigationPreview::Unavailable => cards.push_str(preview_unavailable_card()),
+            NavigationPreview::Absent => {}
+        }
         if self.reports_root.join("guidance/index.html").exists() {
             cards.push_str(&home_card(
                 "guidance/",
@@ -138,6 +257,13 @@ impl ReportSite {
                 "Curated terminal, direct-transfer, and waypoint evidence.",
                 "recommended",
             ));
+        }
+        // An explicit preview is the sole V2 reading entry here. Earlier lean
+        // editions remain reachable in its history, not competing current cards.
+        if matches!(preview, NavigationPreview::Absent)
+            && let Some(cards_html) = self.waypoint_v2_cards()?
+        {
+            cards.push_str(&cards_html);
         }
         for (scope, title, description) in [
             (
@@ -180,6 +306,116 @@ impl ReportSite {
         })
     }
 
+    fn navigation_preview(&self) -> Result<NavigationPreview> {
+        let selection_file = self
+            .repo_root
+            .join("fixtures/reports/navigation_preview.json");
+        if !selection_file.try_exists()? {
+            return Ok(NavigationPreview::Absent);
+        }
+        let selection: NavigationPreviewSelection =
+            serde_json::from_slice(&fs::read(&selection_file)?)
+                .context("parse report navigation preview selection")?;
+        ensure!(
+            selection.schema_version == 1,
+            "unsupported navigation preview schema"
+        );
+        let home = Path::new(&selection.home_entrypoint);
+        let collection = Path::new(&selection.collection_entrypoint);
+        for relative in [home, collection] {
+            ensure!(
+                relative.components().count() > 1
+                    && relative
+                        .components()
+                        .all(|c| matches!(c, Component::Normal(_)))
+                    && relative.file_name().is_some_and(|n| n == "index.html")
+                    && relative.to_str().is_some_and(|s| s.bytes().all(|b| b
+                        .is_ascii_alphanumeric()
+                        || matches!(b, b'_' | b'-' | b'.' | b'/'))),
+                "unsafe navigation preview entrypoint"
+            );
+        }
+        ensure!(
+            home != collection && collection.starts_with(home.parent().unwrap()),
+            "preview collection must belong to the selected preview home"
+        );
+        let root = match self.reports_root.canonicalize() {
+            Ok(root) => root,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(NavigationPreview::Unavailable);
+            }
+            Err(error) => return Err(error).context("resolve stable report tree"),
+        };
+        let mut resolved = Vec::new();
+        for relative in [home, collection] {
+            let path = match self.reports_root.join(relative).canonicalize() {
+                Ok(path) => path,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(NavigationPreview::Unavailable);
+                }
+                Err(error) => return Err(error).context("resolve selected report preview"),
+            };
+            ensure!(
+                path.starts_with(&root) && path.is_file(),
+                "navigation preview escapes the report tree or is not a file"
+            );
+            resolved.push(path);
+        }
+        ensure!(
+            resolved[0] != resolved[1] && resolved[1].starts_with(resolved[0].parent().unwrap()),
+            "resolved preview collection is not bound to its home"
+        );
+        Ok(NavigationPreview::Available {
+            home: selection.home_entrypoint,
+            collection: selection.collection_entrypoint,
+        })
+    }
+
+    /// Independent opt-in presentations, never entries in controller scorecards.
+    /// Only completed all-case render receipts are advertised; staged single-case
+    /// reviews and arbitrary research directories are not scanned.
+    fn waypoint_v2_cards(&self) -> Result<Option<String>> {
+        let root = self.reports_root.join("waypoint-v2");
+        if !root.is_dir() {
+            return Ok(None);
+        }
+        let mut entries = Vec::new();
+        for entry in fs::read_dir(root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() || !entry.path().join("index.html").is_file() {
+                continue;
+            }
+            let receipt_path = entry.path().join("render-provenance.json");
+            if !receipt_path.is_file() {
+                continue;
+            }
+            let receipt: serde_json::Value = serde_json::from_slice(&fs::read(receipt_path)?)?;
+            if receipt["schema_id"] != "waypoint_v2_report_render_v1"
+                || receipt.get("selected_case_id") != Some(&serde_json::Value::Null)
+            {
+                continue;
+            }
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            {
+                continue;
+            }
+            entries.push((name, receipt["case_count"].as_u64().unwrap_or(0)));
+        }
+        entries.sort();
+        let html = entries.iter().map(|(name, count)| home_card(
+            &format!("waypoint-v2/{name}/index.html"),
+            "Waypoint planner V2",
+            &format!("{count} retained cases. Actual flight stories and dynamic handoffs; opt-in evidence, separate from controller scorecards."),
+            "planner presentation",
+        )).collect::<String>();
+        Ok((!html.is_empty()).then_some(html))
+    }
+
     fn write_outputs_index(&self) -> Result<()> {
         fs::create_dir_all(&self.outputs_root).with_context(|| {
             format!(
@@ -187,15 +423,27 @@ impl ReportSite {
                 self.outputs_root.display()
             )
         })?;
-        let body = r#"<div class="card-grid">
+        let preview_card = match self.navigation_preview()? {
+            NavigationPreview::Available { home, .. } => home_card(
+                &format!("reports/{home}"),
+                "Report navigation preview",
+                "Start here to review organized report browsing and the full Late ridge report with waypoint annotations. Preview under review, not a new flight capture.",
+                "navigation preview · under review",
+            ),
+            NavigationPreview::Unavailable => preview_unavailable_card().to_owned(),
+            NavigationPreview::Absent => String::new(),
+        };
+        let body = format!(
+            r#"<div class="card-grid">{preview_card}
 <a class="card featured" href="reports/"><span class="eyebrow">recommended</span><strong>Report site</strong><span>Curated guidance evidence and stable report navigation.</span></a>
 <div class="card"><span class="eyebrow">raw</span><strong>Artifact directories</strong><span>Use raw bundles when report pages do not expose the required detail.</span><div class="links"><a href="runs/">runs/</a><a href="eval/">eval/</a><a href="replays/">replays/</a><a href="setups/">setups/</a></div></div>
-</div>"#;
+</div>"#
+        );
         let html = page(
             "Powered Descent Lab Outputs",
             "Outputs",
             "Stable reports are separated from raw simulation and evaluation artifacts.",
-            body,
+            &body,
             "",
         );
         fs::write(self.outputs_root.join("index.html"), html).with_context(|| {
@@ -207,6 +455,9 @@ impl ReportSite {
     }
 
     fn write_scope_index(&self, scope_dir: &Path) -> Result<()> {
+        if !self.generic_scope_index_allowed(scope_dir)? {
+            return Ok(());
+        }
         fs::create_dir_all(scope_dir)
             .with_context(|| format!("failed to create scope dir {}", scope_dir.display()))?;
         let entries = self.scope_entries(scope_dir)?;
@@ -239,6 +490,9 @@ impl ReportSite {
     }
 
     fn write_collection_index(&self, collection_dir: &Path) -> Result<()> {
+        if !self.generic_scope_index_allowed(collection_dir)? {
+            return Ok(());
+        }
         fs::create_dir_all(collection_dir).with_context(|| {
             format!(
                 "failed to create collection dir {}",
@@ -319,6 +573,10 @@ impl ReportSite {
         });
         Ok(entries)
     }
+}
+
+fn preview_unavailable_card() -> &'static str {
+    r#"<div class="card"><span class="eyebrow">navigation preview · under review</span><strong>Report navigation preview unavailable</strong><span>The explicitly selected preview has not been rendered here. No historical edition is substituted.</span></div>"#
 }
 
 #[derive(Deserialize)]
@@ -661,6 +919,170 @@ mod tests {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("pd-report-site-{label}-{nonce}"))
+    }
+
+    const PREVIEW_HOME: &str = "waypoint-v2/review/index.html";
+    const PREVIEW_COLLECTION: &str = "waypoint-v2/review/waypoint-v2/index.html";
+
+    fn select_preview(root: &std::path::Path, home: &str, collection: &str) {
+        let dir = root.join("fixtures/reports");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("navigation_preview.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1, "home_entrypoint": home, "collection_entrypoint": collection
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn make_preview(root: &std::path::Path) {
+        for (relative, body) in [
+            (PREVIEW_HOME, "preview home"),
+            (PREVIEW_COLLECTION, "preview collection"),
+        ] {
+            let file = root.join("outputs/reports").join(relative);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, body).unwrap();
+        }
+        select_preview(root, PREVIEW_HOME, PREVIEW_COLLECTION);
+    }
+
+    #[test]
+    fn preview_is_reachable_from_both_homes_and_survives_refresh() {
+        let root = temp_dir("preview-links");
+        make_preview(&root);
+        let old = root.join("outputs/reports/waypoint-v2/old");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(old.join("index.html"), "historical report").unwrap();
+        fs::write(old.join("render-provenance.json"), r#"{"schema_id":"waypoint_v2_report_render_v1","selected_case_id":null,"case_count":32}"#).unwrap();
+        let eval = root.join("outputs/reports/eval/index.html");
+        fs::create_dir_all(eval.parent().unwrap()).unwrap();
+        fs::write(&eval, "curated catalogue sentinel").unwrap();
+        let site = ReportSite::new(&root);
+        site.refresh_home().unwrap();
+        let outputs = fs::read_to_string(root.join("outputs/index.html")).unwrap();
+        let reports = fs::read_to_string(root.join("outputs/reports/index.html")).unwrap();
+        assert_eq!(
+            outputs
+                .matches(&format!("href=\"reports/{PREVIEW_HOME}\""))
+                .count(),
+            1
+        );
+        assert_eq!(
+            reports
+                .matches(&format!("href=\"{PREVIEW_COLLECTION}\""))
+                .count(),
+            1
+        );
+        assert!(outputs.contains("navigation preview · under review"));
+        assert!(reports.contains("navigation preview · under review"));
+        assert!(!reports.contains("waypoint-v2/old/index.html"));
+        site.refresh_home().unwrap();
+        assert_eq!(
+            outputs,
+            fs::read_to_string(root.join("outputs/index.html")).unwrap()
+        );
+        assert_eq!(
+            reports,
+            fs::read_to_string(root.join("outputs/reports/index.html")).unwrap()
+        );
+        assert_eq!(
+            fs::read_to_string(eval).unwrap(),
+            "curated catalogue sentinel"
+        );
+        assert_eq!(
+            fs::read_to_string(old.join("index.html")).unwrap(),
+            "historical report"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("outputs/reports").join(PREVIEW_HOME)).unwrap(),
+            "preview home"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn missing_selected_preview_is_unavailable_not_a_historical_fallback() {
+        let root = temp_dir("preview-missing");
+        make_preview(&root);
+        fs::remove_file(root.join("outputs/reports").join(PREVIEW_COLLECTION)).unwrap();
+        ReportSite::new(&root).refresh_home().unwrap();
+        for relative in ["outputs/index.html", "outputs/reports/index.html"] {
+            let html = fs::read_to_string(root.join(relative)).unwrap();
+            assert!(html.contains("Report navigation preview unavailable"));
+            assert!(!html.contains("href=\"waypoint-v2/review"));
+            assert!(!html.contains("href=\"reports/waypoint-v2/review"));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unsafe_or_mismatched_preview_selection_fails_before_index_writes() {
+        let root = temp_dir("preview-invalid");
+        make_preview(&root);
+        fs::write(root.join("outputs/index.html"), "root sentinel").unwrap();
+        fs::write(root.join("outputs/reports/index.html"), "reports sentinel").unwrap();
+        let site = ReportSite::new(&root);
+        for (home, collection) in [
+            ("../escape/index.html", PREVIEW_COLLECTION),
+            ("/absolute/index.html", PREVIEW_COLLECTION),
+            ("waypoint-v2/a/index.html?x=1", PREVIEW_COLLECTION),
+            ("index.html", PREVIEW_COLLECTION),
+            (PREVIEW_HOME, "other-preview/index.html"),
+            (PREVIEW_HOME, PREVIEW_HOME),
+        ] {
+            select_preview(&root, home, collection);
+            assert!(site.refresh_home().is_err(), "{home} / {collection}");
+            assert_eq!(
+                fs::read_to_string(root.join("outputs/index.html")).unwrap(),
+                "root sentinel"
+            );
+            assert_eq!(
+                fs::read_to_string(root.join("outputs/reports/index.html")).unwrap(),
+                "reports sentinel"
+            );
+        }
+        fs::write(root.join("fixtures/reports/navigation_preview.json"), r#"{"schema_version":99,"home_entrypoint":"waypoint-v2/review/index.html","collection_entrypoint":"waypoint-v2/review/waypoint-v2/index.html"}"#).unwrap();
+        assert!(site.refresh_home().is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn preview_selection_rejects_symlink_escape() {
+        let root = temp_dir("preview-symlink");
+        make_preview(&root);
+        let escaped = root.join("outside/index.html");
+        fs::create_dir_all(escaped.parent().unwrap()).unwrap();
+        fs::write(&escaped, "outside the report tree").unwrap();
+        let collection = root.join("outputs/reports").join(PREVIEW_COLLECTION);
+        fs::remove_file(&collection).unwrap();
+        std::os::unix::fs::symlink(escaped, collection).unwrap();
+        assert!(ReportSite::new(&root).refresh_home().is_err());
+        assert!(!root.join("outputs/index.html").exists());
+        assert!(!root.join("outputs/reports/index.html").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn opt_in_v2_navigation_advertises_only_complete_presentations() {
+        let root = temp_dir("v2-navigation");
+        for (name, selected) in [("complete", "null"), ("stage", "\"v2_ridge_late\"")] {
+            let dir = root.join("outputs/reports/waypoint-v2").join(name);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("index.html"), "retained presentation").unwrap();
+            fs::write(dir.join("render-provenance.json"), format!(r#"{{"schema_id":"waypoint_v2_report_render_v1","selected_case_id":{selected},"case_count":32}}"#)).unwrap();
+        }
+        let site = ReportSite::new(&root);
+        site.refresh_home().unwrap();
+        let html = fs::read_to_string(root.join("outputs/reports/index.html")).unwrap();
+        assert!(html.contains("waypoint-v2/complete/index.html"));
+        assert!(!html.contains("waypoint-v2/stage/index.html"));
+        assert!(html.contains("separate from controller scorecards"));
+        assert!(!root.join("outputs/reports/eval/index.html").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

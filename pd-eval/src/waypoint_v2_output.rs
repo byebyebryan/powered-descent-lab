@@ -172,6 +172,46 @@ mod tests {
     }
 
     #[test]
+    fn supported_capture_keeps_rich_report_without_preview_annotations() {
+        let root = fresh_test_root();
+        let (_, request) = crate::load_nominal_direct_operational_fresh_inputs(&repository_root())
+            .expect("supported fixture inputs")
+            .remove(0);
+        let result = write_waypoint_v2_flight(&request, &WaypointV2Policy::revision_3(), &root)
+            .expect("write supported capture");
+        let ordinary = result.ordinary_flight.as_ref().expect("simulated flight");
+        let html = fs::read_to_string(root.join("report.html")).expect("rich report");
+        assert!(html.contains("id=\"chart-spatial\""));
+        assert!(html.contains("id=\"chart-metrics\""));
+        for mode in ["mission", "guidance", "speed", "throttle", "vectors"] {
+            assert!(html.contains(&format!("data-mode=\"{mode}\"")));
+        }
+        let payload_start =
+            html.find("const reportData = ").expect("rich payload") + "const reportData = ".len();
+        let payload = serde_json::Deserializer::from_str(&html[payload_start..])
+            .into_iter::<serde_json::Value>()
+            .next()
+            .expect("payload present")
+            .expect("valid rich payload");
+        assert_eq!(payload["scenarioId"], request.scenario.id);
+        assert_eq!(
+            payload["samples"].as_array().unwrap().len(),
+            ordinary.samples.len()
+        );
+        for key in [
+            "events",
+            "manifest",
+            "flightStats",
+            "botStats",
+            "missionDetails",
+        ] {
+            assert!(payload.get(key).is_some(), "missing rich field: {key}");
+        }
+        assert!(payload.get("flightAnnotations").is_none());
+        fs::remove_dir_all(root).expect("remove this test's temporary output root");
+    }
+
+    #[test]
     fn unsupported_preflight_is_recorded_without_report_and_root_is_create_only() {
         let root = fresh_test_root();
         let request = crate::waypoint_direct_known_flat_generation_request(&repository_root())

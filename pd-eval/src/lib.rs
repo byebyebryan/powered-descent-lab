@@ -162,6 +162,7 @@ pub mod waypoint_v2;
 pub use waypoint_v2::*;
 
 pub mod waypoint_v2_output;
+pub mod waypoint_v2_report;
 pub use waypoint_v2_output::*;
 
 pub mod nominal_direct_operational;

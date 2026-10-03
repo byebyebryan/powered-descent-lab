@@ -22,9 +22,13 @@ pub mod conservative_ballistic_handoff_controller_development;
 pub mod conservative_ballistic_handoff_development;
 pub mod conservative_ballistic_heldout;
 pub mod controller_shadow;
+pub mod flight_annotations;
+pub mod navigation_preview;
+pub mod report_navigation;
 pub mod setup;
 pub mod site;
 pub mod waypoint_direct_characterization;
+pub mod waypoint_v2;
 
 const PLOTLY_CDN_URL: &str = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";
 
@@ -128,7 +132,53 @@ pub fn write_run_report_with_plan_context_and_compute(
     route_plan: Option<&RoutePlan>,
     planner_compute: Option<&PlannerComputeEvidence>,
 ) -> Result<()> {
-    let report_data = build_report_data(
+    let html = render_run_report_with_flight_annotations(
+        scenario,
+        controller_spec,
+        manifest,
+        events,
+        samples,
+        controller_updates,
+        performance,
+        context,
+        route_plan,
+        planner_compute,
+        None,
+    )?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create report output directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::write(path, html)
+        .with_context(|| format!("failed to write report file {}", path.display()))?;
+    Ok(())
+}
+
+/// Render the original rich run report, optionally with executed-flight annotations.
+/// Callers with create-only evidence roots own persistence; this function never writes.
+#[allow(clippy::too_many_arguments)]
+pub fn render_run_report_with_flight_annotations(
+    scenario: &ScenarioSpec,
+    controller_spec: Option<&ControllerSpec>,
+    manifest: &RunManifest,
+    events: &[EventRecord],
+    samples: &[SampleRecord],
+    controller_updates: &[ControllerUpdateRecord],
+    performance: Option<&RunPerformanceStats>,
+    context: Option<&RunReportContext>,
+    route_plan: Option<&RoutePlan>,
+    planner_compute: Option<&PlannerComputeEvidence>,
+    annotations: Option<&flight_annotations::FlightAnnotations>,
+) -> Result<String> {
+    let annotations = annotations.filter(|value| !value.is_empty());
+    if let Some(annotations) = annotations {
+        annotations.validate(manifest)?;
+    }
+    let mut report_data = build_report_data(
         scenario,
         controller_spec,
         manifest,
@@ -140,6 +190,7 @@ pub fn write_run_report_with_plan_context_and_compute(
         route_plan,
         planner_compute,
     );
+    report_data.flight_annotations = annotations.cloned();
     let display_title = friendly_report_title(scenario);
     let planner_panel = if route_plan.is_some() {
         PLANNER_PANEL_HTML
@@ -153,18 +204,24 @@ pub fn write_run_report_with_plan_context_and_compute(
         )
         .replace("__PLOTLY_HREF__", PLOTLY_CDN_URL)
         .replace("__PLANNER_PANEL__", planner_panel)
+        .replace(
+            "__FLIGHT_ANNOTATIONS_CSS__",
+            if annotations.is_some() {
+                flight_annotations::CSS
+            } else {
+                ""
+            },
+        )
+        .replace(
+            "__FLIGHT_ANNOTATIONS_BANNER__",
+            &annotations.map(|a| a.banner_html()).unwrap_or_default(),
+        )
+        .replace(
+            "__FLIGHT_ANNOTATIONS_PANEL__",
+            &annotations.map(|a| a.panel_html()).unwrap_or_default(),
+        )
         .replace("__REPORT_DATA__", &json_html(&report_data));
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "failed to create report output directory {}",
-                parent.display()
-            )
-        })?;
-    }
-    fs::write(path, html)
-        .with_context(|| format!("failed to write report file {}", path.display()))?;
-    Ok(())
+    Ok(html)
 }
 
 pub fn write_run_preview_svg(
@@ -326,6 +383,7 @@ fn build_report_data(
         display_title: friendly_report_title(scenario),
         display_subtitle: friendly_report_subtitle(scenario),
         report_context: context.cloned().unwrap_or_default(),
+        flight_annotations: None,
         route_plan: route_plan.cloned(),
         planner_compute: planner_compute.map(|timing| ReportPlannerCompute {
             wall_time_us: timing.wall_time_us,
@@ -1703,6 +1761,8 @@ struct ReportData {
     display_subtitle: String,
     report_context: RunReportContext,
     #[serde(skip_serializing_if = "Option::is_none")]
+    flight_annotations: Option<flight_annotations::FlightAnnotations>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     route_plan: Option<RoutePlan>,
     #[serde(skip_serializing_if = "Option::is_none")]
     planner_compute: Option<ReportPlannerCompute>,
@@ -2588,6 +2648,7 @@ fn report_template() -> &'static str {
       .chart { min-width: 0; }
       pre { max-width: 100%; overflow-x: auto; }
     }
+    __FLIGHT_ANNOTATIONS_CSS__
   </style>
   <script src="__PLOTLY_HREF__"></script>
 </head>
@@ -2595,6 +2656,7 @@ fn report_template() -> &'static str {
   <main>
     <header>
       <nav class="breadcrumbs" id="report-breadcrumbs" aria-label="Report navigation"></nav>
+      __FLIGHT_ANNOTATIONS_BANNER__
       <div class="hero">
         <div class="hero-main">
           <div class="eyebrow">Powered Descent Lab</div>
@@ -2683,6 +2745,7 @@ fn report_template() -> &'static str {
       </div>
 
       <div class="right-stack">
+        __FLIGHT_ANNOTATIONS_PANEL__
         <section class="panel">
           <div class="panel-head">
             <div>
@@ -2868,6 +2931,50 @@ fn report_template() -> &'static str {
     const terrain = Array.isArray(reportData.terrain) ? reportData.terrain : [];
     const keyEvents = Array.isArray(reportData.events) ? reportData.events : [];
     const markers = Array.isArray(reportData.markers) ? reportData.markers : [];
+    const flightCorrections = reportData.flightAnnotations?.corrections || [];
+    let flightHandoffsVisible = true;
+    let selectedFlightCorrection = 0;
+    let flightHandoffTraceIndex = -1;
+    let baseFlightMetricShapes = [];
+    const buildFlightGuideShapes = () => flightHandoffsVisible ? flightCorrections.map((c, index) => ({
+      type: "line", xref: "x", yref: "paper",
+      x0: c.handoff.simTimeS, x1: c.handoff.simTimeS, y0: 0, y1: 1,
+      line: { color: "#b45309", width: index === selectedFlightCorrection ? 2 : 1, dash: "dot" },
+    })) : [];
+    const buildFlightGuideLabels = () => flightHandoffsVisible ? flightCorrections.map(c => ({
+      xref: "x", yref: "paper", x: c.handoff.simTimeS, y: 1,
+      text: `H${c.number}`, showarrow: false, yanchor: "bottom",
+      font: { color: "#b45309", size: 11 },
+    })) : [];
+    const selectFlightCorrection = (index) => {
+      if (!Number.isInteger(index) || !flightCorrections[index] || index === selectedFlightCorrection) return;
+      selectedFlightCorrection = index;
+      document.querySelectorAll("[data-select-correction]").forEach(button => {
+        button.setAttribute("aria-pressed", String(Number(button.dataset.selectCorrection) === index));
+      });
+      const spatial = document.getElementById("chart-spatial");
+      if (flightHandoffTraceIndex >= 0) {
+        Plotly.restyle(spatial, { "marker.size": [flightCorrections.map((_c, i) => i === index ? 13 : 9)] }, [flightHandoffTraceIndex]);
+      }
+      Plotly.relayout("chart-metrics", {
+        shapes: [...baseFlightMetricShapes, ...buildFlightGuideShapes()],
+        annotations: buildFlightGuideLabels(),
+      });
+    };
+    const initFlightCorrections = () => {
+      if (!flightCorrections.length) return;
+      document.querySelectorAll("[data-select-correction]").forEach(button => {
+        button.addEventListener("click", () => selectFlightCorrection(Number(button.dataset.selectCorrection)));
+      });
+      document.getElementById("flight-handoffs-visible").addEventListener("change", event => {
+        flightHandoffsVisible = event.target.checked;
+        Plotly.restyle("chart-spatial", { visible: flightHandoffsVisible }, [flightHandoffTraceIndex]);
+        Plotly.relayout("chart-metrics", {
+          shapes: [...baseFlightMetricShapes, ...buildFlightGuideShapes()],
+          annotations: buildFlightGuideLabels(),
+        });
+      });
+    };
     const pad = reportData.pad || null;
     const transferRoute = reportData.missionDetails?.transferRoute || null;
     const waypoints = Array.isArray(transferRoute?.waypoints) ? transferRoute.waypoints : [];
@@ -4031,6 +4138,18 @@ fn report_template() -> &'static str {
         });
       }
       const vectorAnnotations = buildVectorAnnotations();
+      const flightHandoffTrace = flightCorrections.length ? {
+        type: "scatter", mode: "markers+text", name: "Waypoint handoffs",
+        x: flightCorrections.map(c => c.handoff.positionM.x),
+        y: flightCorrections.map(c => c.handoff.positionM.y),
+        text: flightCorrections.map(c => `H${c.number}`),
+        textposition: flightCorrections.map((_c, i) => i % 2 ? "bottom center" : "top center"),
+        customdata: flightCorrections.map(c => [c.number, c.handoff.physicsStep, c.handoff.simTimeS,
+          c.handoff.velocityMps.x, c.handoff.velocityMps.y]),
+        hovertemplate: "H%{customdata[0]} — replan from actual state<br>step=%{customdata[1]} · t=%{customdata[2]}s<br>position=(%{x}, %{y})m<br>velocity=(%{customdata[3]}, %{customdata[4]})m/s<extra></extra>",
+        marker: { symbol: "circle-open", color: "#b45309", size: flightCorrections.map((_c, i) => i === selectedFlightCorrection ? 13 : 9), line: { width: 2 } },
+        textfont: { color: "#b45309", size: 12 },
+      } : null;
       const spatialTraces = [
         terrainTrace,
         ...(padTrace ? [padTrace] : []),
@@ -4046,6 +4165,7 @@ fn report_template() -> &'static str {
         ...waypointMarkerTraces,
         eventTrace,
         hoverTrace,
+        ...(flightHandoffTrace ? [flightHandoffTrace] : []),
       ];
       const plannerStart = padTrace ? 2 : 1;
       const plannerEnd = plannerStart + plannerTraces.length;
@@ -4063,13 +4183,15 @@ fn report_template() -> &'static str {
       const waypointRouteEnd = waypointRouteStart + waypointRouteTraces.length;
       const waypointMarkerStart = waypointRouteEnd;
       const waypointMarkerEnd = waypointMarkerStart + waypointMarkerTraces.length;
-      const eventIndex = spatialTraces.length - 2;
-      const hoverIndex = spatialTraces.length - 1;
+      const eventIndex = spatialTraces.length - (flightHandoffTrace ? 3 : 2);
+      const hoverIndex = eventIndex + 1;
+      flightHandoffTraceIndex = flightHandoffTrace ? hoverIndex + 1 : -1;
       const baseVisible = new Set([0, plainIndex, eventIndex, hoverIndex]);
       if (padTrace) baseVisible.add(1);
       for (let index = plannerStart; index < plannerEnd; index += 1) baseVisible.add(index);
       const inRange = (index, start, end) => index >= start && index < end;
       const visibilityForMode = (mode) => spatialTraces.map((_trace, index) => {
+        if (index === flightHandoffTraceIndex) return flightHandoffsVisible;
         if (baseVisible.has(index)) return true;
         if (mode === "mission") {
           return index === referenceIndex || inRange(index, waypointMarkerStart, waypointMarkerEnd);
@@ -4118,6 +4240,8 @@ fn report_template() -> &'static str {
 
       spatialElement.on("plotly_hover", (eventData) => {
         const points = Array.isArray(eventData?.points) ? eventData.points : [];
+        const handoffPoint = points.find(point => point.curveNumber === flightHandoffTraceIndex);
+        if (handoffPoint) { selectFlightCorrection(handoffPoint.pointIndex); return; }
         const hoverPoint = points.find((point) => point.curveNumber === hoverIndex);
         if (!hoverPoint || !Array.isArray(hoverPoint.customdata)) return;
         updateInspect(Number(hoverPoint.customdata[0]));
@@ -4125,7 +4249,8 @@ fn report_template() -> &'static str {
     };
 
     const buildMetricsPlot = () => {
-      const guideShapes = [...buildPhaseBandShapes(), ...buildEventGuideShapes()];
+      baseFlightMetricShapes = [...buildPhaseBandShapes(), ...buildEventGuideShapes()];
+      const guideShapes = [...baseFlightMetricShapes, ...buildFlightGuideShapes()];
       Plotly.newPlot(
         "chart-metrics",
         [
@@ -4191,6 +4316,7 @@ fn report_template() -> &'static str {
           yaxis: axisStyle({ title: "Velocity (m/s)", zeroline: true }),
           yaxis2: axisStyle({ title: "Thrust (0..1)", overlaying: "y", side: "right", zeroline: true }),
           shapes: guideShapes,
+          annotations: buildFlightGuideLabels(),
         }),
         compactConfig,
       );
@@ -4255,6 +4381,7 @@ fn report_template() -> &'static str {
       renderMissionProfile();
       buildSpatialPlot();
       buildMetricsPlot();
+      initFlightCorrections();
       updateInspect(samples.length ? samples.length - 1 : 0);
     };
 
@@ -4359,6 +4486,101 @@ mod tests {
                 waypoint_authority: Vec::new(),
             },
         }
+    }
+
+    #[test]
+    fn flight_annotation_empty_path_preserves_non_v2_report_data_and_features() {
+        let scenario = fixture_scenario();
+        let manifest = fixture_manifest(&scenario);
+        let render = |annotations: Option<&flight_annotations::FlightAnnotations>| {
+            render_run_report_with_flight_annotations(
+                &scenario,
+                None,
+                &manifest,
+                &[],
+                &[],
+                &[],
+                None,
+                None,
+                None,
+                None,
+                annotations,
+            )
+            .unwrap()
+        };
+        let baseline = render(None);
+        assert_eq!(
+            baseline,
+            render(Some(&flight_annotations::FlightAnnotations::default()))
+        );
+        assert!(!baseline.contains("\"flightAnnotations\":"));
+        assert!(!baseline.contains("id=\"flight-corrections-panel\""));
+        for retained in [
+            "data-mode=\"mission\"",
+            "data-mode=\"guidance\"",
+            "data-mode=\"speed\"",
+            "data-mode=\"throttle\"",
+            "data-mode=\"vectors\"",
+            "chart-metrics",
+            "Hovered Sample",
+            "What Happened",
+            "Markers And Config",
+            "Landing Quality",
+            "Plotly.newPlot",
+        ] {
+            assert!(baseline.contains(retained), "missing {retained}");
+        }
+    }
+
+    #[test]
+    fn flight_annotation_retains_odd_exact_boundary_and_rejects_invalid_state() {
+        use flight_annotations::{ExecutedCorrection, FlightAnnotations, FlightBoundary};
+        let scenario = fixture_scenario();
+        let mut manifest = fixture_manifest(&scenario);
+        manifest.physics_steps = 24;
+        let boundary = |step| FlightBoundary {
+            physics_step: step,
+            sim_time_s: step as f64 / manifest.physics_hz as f64,
+            position_m: Vec2::new(2.0, 3.0),
+            velocity_mps: Vec2::new(1.0, -1.0),
+            attitude_rad: 0.1,
+            fuel_kg: 100.0,
+        };
+        let mut annotations = FlightAnnotations {
+            corrections: vec![ExecutedCorrection {
+                number: 1,
+                entry: boundary(0),
+                handoff: boundary(13),
+                reason: "<terrain>".into(),
+                after_handoff: "replan".into(),
+            }],
+            ..Default::default()
+        };
+        let render = |annotations: &FlightAnnotations| {
+            render_run_report_with_flight_annotations(
+                &scenario,
+                None,
+                &manifest,
+                &[],
+                &[],
+                &[],
+                None,
+                None,
+                None,
+                None,
+                Some(annotations),
+            )
+        };
+        let html = render(&annotations).unwrap();
+        assert!(html.contains("\"physicsStep\":13"));
+        assert!(html.contains("&lt;terrain&gt;"));
+        annotations.corrections[0].handoff.attitude_rad = f64::NAN;
+        assert!(render(&annotations).is_err());
+        annotations.corrections[0].handoff = boundary(13);
+        annotations.corrections[0].handoff.sim_time_s = 1.0;
+        assert!(render(&annotations).is_err());
+        annotations.corrections[0].handoff = boundary(25);
+        assert!(render(&annotations).is_err());
     }
 
     #[test]

@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "preview": {
+    "title": "Waypoint planner V2",
+    "description": "Direct flight with obstacle clearing enabled as an opt-in. This selected view is under UI review and is not a new flight capture.",
+    "report_type": "Flight report collection",
+    "status": "Opt-in · UI under review"
+  },
+  "topics": [
+    {
+      "id": "waypoint-planning",
+      "title": "Waypoint planning",
+      "description": "Choosing routes around terrain. Inspect direct flights and obstacle-clearing corrections, or compare earlier planner evidence and related studies.",
+      "entries": [
+        {
+          "id": "waypoint-v2-preview",
+          "title": "Waypoint planner V2",
+          "description": "Direct flight with obstacle clearing enabled as an opt-in. This preview is under UI review; its original reports remain intact.",
+          "report_type": "Flight report collection",
+          "status": "Opt-in · UI under review",
+          "source": { "kind": "selected_preview" }
+        },
+        {
+          "id": "planner-baseline",
+          "title": "Maintained planner baseline",
+          "description": "The maintained planner scorecard and its route-plan evidence.",
+          "report_type": "Guidance collection",
+          "status": "Maintained baseline",
+          "source": { "kind": "guidance_group", "group_id": "planner" }
+        },
+        {
+          "id": "conservative-ballistic-cb1",
+          "title": "Ballistic trajectory screening",
+          "description": "A setup-only analytical study of conservative ballistic candidate construction and screening; it contains no simulated flight outcomes.",
+          "report_type": "Analytical setup",
+          "status": "Analytical study",
+          "source": { "kind": "report_page", "path": "setups/conservative-ballistic-cb1/index.html" }
+        },
+        {
+          "id": "conservative-ballistic-direct-bridge-v2",
+          "title": "Direct-flight feasibility and ridge study",
+          "description": "Controller-neutral analytical probes of direct ballistic candidates and exact powered bridges, with one bounded one-waypoint ridge canary; no simulation.",
+          "report_type": "Analytical setup",
+          "status": "Analytical study",
+          "source": { "kind": "report_page", "path": "setups/conservative-ballistic-direct-bridge-v2/index.html" }
+        }
+      ]
+    },
+    {
+      "id": "flight-control",
+      "title": "Flight and landing control",
+      "description": "Browse controller evidence by the flight task: terminal landing, direct transfers, or following authored waypoint routes.",
+      "entries": [
+        {
+          "id": "terminal-landing",
+          "title": "Terminal landing",
+          "description": "Arrival and landing evidence across approach geometry, energy, payload, and reference-error conditions.",
+          "report_type": "Guidance collection",
+          "status": "Guidance catalog",
+          "source": { "kind": "guidance_group", "group_id": "terminal" }
+        },
+        {
+          "id": "direct-transfers",
+          "title": "Direct transfers",
+          "description": "Point-to-point transfer evidence across route angle, travel radius, and payload without intermediate waypoints.",
+          "report_type": "Guidance collection",
+          "status": "Guidance catalog",
+          "source": { "kind": "guidance_group", "group_id": "transfer" }
+        },
+        {
+          "id": "authored-waypoint-routes",
+          "title": "Following authored waypoint routes",
+          "description": "Pass-through waypoint evidence keeps route-contract and final-touchdown outcomes explicit and separate.",
+          "report_type": "Guidance collection",
+          "status": "Guidance catalog",
+          "source": { "kind": "guidance_group", "group_id": "waypoint" }
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "id": "waypoint-v2-lean-view-edition",
+      "title": "Waypoint planner V2 · lean view edition",
+      "description": "An earlier compact presentation of the same pinned V2 capture. Superseded because it removed rich report detail; retained as presentation history.",
+      "path": "waypoint-v2/presentation_20261002_v1/index.html",
+      "topic_id": "waypoint-planning",
+      "report_type": "View edition",
+      "status": "Historical presentation",
+      "capture_label": "Same pinned V2 capture"
+    },
+    {
+      "id": "waypoint-v2-original-rich-preview",
+      "title": "Waypoint planner V2 · original rich preview",
+      "description": "The original rich preview view of the same pinned V2 capture; retained here as a historical edition, not another run.",
+      "path": "waypoint-v2/rich_preview_20261002_v2/index.html",
+      "topic_id": "waypoint-planning",
+      "report_type": "View edition",
+      "status": "Historical presentation",
+      "capture_label": "Same pinned V2 capture"
+    }
+  ],
+  "raw_collections": [
+    {
+      "id": "eval-artifacts",
+      "title": "Evaluation artifacts",
+      "description": "Raw evaluation bundles and artifacts, separate from stable HTML report pages.",
+      "path": "eval"
+    },
+    {
+      "id": "setup-artifacts",
+      "title": "Setup artifacts",
+      "description": "Raw analytical setup bundles and artifacts.",
+      "path": "setups"
+    }
+  ]
+}
