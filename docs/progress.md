@@ -1,6 +1,62 @@
 # Progress
 
+## 2026-10-03
+
+### Fresh-terrain review and commit
+
+- Review finds one harness-status gap: preflight provenance drift could retain
+  a successful CLI exit. A fake regression reproduces it, then passes with the
+  fail-closed status fix. No planner/runtime or numerical behavior changes.
+- Final local harness tests pass **16/16**. A clean tracked-source snapshot
+  passes **15 with one explicit archive-backed skip**; syntax, sealed inputs,
+  whitespace and retained 36-artifact repeat comparison also pass.
+- Source, binary, fixture, monitored captures/site and the **28 primary
+  attempts** remain unchanged. Captured and reviewed runner identities stay
+  separate; no extra real preflight, mission, native matrix or site refresh.
+- Implementation/tests and results documentation are committed separately.
+  [Results and review](waypoint_v2_fresh_terrain_readiness_results.md#review-before-commit)
+  retain the bounded offline acceptance and recorded limits. No push or
+  server restart; the next decision is concrete adoption, not another general
+  solver-research loop.
+
+### Frozen policy 3 passes fresh-terrain readiness
+
+- Both fresh runs land **12/12**: three direct uncut flat/uphill/downhill
+  controls and nine terrain missions after local corrections. All nine terrain
+  inputs block the initial nominal; each ridge/plateau/compound group lands 3/3.
+  Four historical sentinels preserve exact 0/1/2/3-correction programs/outcomes.
+- Exactly **28 primary attempts** complete within the approved allowance.
+  Repeat scenario/summary/full-flight sets match under established exclusions;
+  replay, actual handoff continuity, original deadline and safety gates pass.
+  Planning medians are 0.374/0.377 s; p95/max are 0.797/0.806 s.
+- New sealed recipes and a bounded harness are the only implementation changes.
+  Its 15 fake tests pass; unchanged Rust passes the release build, 957 workspace
+  tests with seven ignored, format and narrowly allowed baseline Clippy, plus
+  three explicit retained-report gates. Primary artifact review binds all 28
+  rich reports to native data; this is not a new browser acceptance check.
+- The [results and grouped report links](waypoint_v2_fresh_terrain_readiness_results.md)
+  support bounded offline policy-3 use on the tested setup. No ordinary miss
+  needs repair in this set; stop this research loop and choose adoption work
+  separately. Defaults, old diagnostics and published report selection remain
+  unchanged. No numerical/Rust change, extra matrix, commit, push or server restart.
+
 ## 2026-10-02
+
+### Fresh terrain readiness plan for policy 3
+
+- Current-code inspection finds an existing scenario-input CLI, complete V2
+  loop, rich capture writer and typed finite stops. The next useful gap is fresh
+  ordinary coverage, not a controller extraction or emergency fallback.
+- The [proposed readiness plan](waypoint_v2_fresh_terrain_readiness_plan.md)
+  freezes policy 3 and predeclares twelve new physical terrains, four preserved
+  sentinels and one conditional repeat, at most 28 primary mission attempts.
+  Recommended gates require three direct clear landings, at least seven of nine
+  terrain landings, intact safety/replay and the existing offline timing limits.
+- CLI exit zero is not a landing proof. Finite misses remain in the denominator;
+  integrity or physical-safety failures stop the pass. Keep the old 32-case
+  suite, diagnostics, defaults and published report selection unchanged.
+- This is analysis and documentation only, awaiting plan review. No fixture,
+  runner, Rust, goal, agent, primary mission, commit, push or server change.
 
 ### Report review and commit
 

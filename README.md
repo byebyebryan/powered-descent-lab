@@ -136,8 +136,11 @@ without treating the old scenario files as fixtures to transliterate directly.
   record the first usable supported opt-in checkpoint: terrain-blind direct
   construction, local clearing and replanning from actual handoff state.
   Policy 3 passes eight uncut clear controls and sixteen ordinary terrain
-  missions. Remaining diagnostics are recorded limits; normal controller
-  integration and default promotion are separate decisions.
+  missions. The [fresh-terrain readiness pass](docs/waypoint_v2_fresh_terrain_readiness_results.md)
+  also lands three new direct clear controls and nine new obstructed missions
+  in identical repeats, supporting bounded offline use on the tested setup.
+  Remaining diagnostics are recorded limits; normal controller integration
+  and default promotion are separate decisions.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge
