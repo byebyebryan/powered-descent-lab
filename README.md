@@ -131,6 +131,13 @@ without treating the old scenario files as fixtures to transliterate directly.
   specifies a separately versioned completion reserve and explicit counterfactual
   segment/replay boundary. Four new physical inputs are input-only sealed; the
   reserve is not implemented or flown, and current execution/defaults are unchanged.
+- [Waypoint planner V2 integration](docs/waypoint_v2_airborne_integration_results.md)
+  and its [acceptance review](docs/waypoint_v2_airborne_integration_acceptance.md)
+  record the first usable supported opt-in checkpoint: terrain-blind direct
+  construction, local clearing and replanning from actual handoff state.
+  Policy 3 passes eight uncut clear controls and sixteen ordinary terrain
+  missions. Remaining diagnostics are recorded limits; normal controller
+  integration and default promotion are separate decisions.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge
@@ -172,15 +179,18 @@ and serves `outputs/` on `0.0.0.0:8000` by default. The root URL now lands on a
 generated `outputs/index.html` page, and `/reports/` remains the clean
 report-only subtree. The printed LAN URL resolves automatically when available.
 
-Use the report site in this order:
+Start at `/` or `/reports/`, then browse by subject:
 
-- `/reports/guidance/` is the primary evidence overview.
-- `/reports/guidance/terminal/`, `transfer/`, `waypoint/`, and `planner/` are
-  the responsibility-specific scorecards.
-- `/reports/eval/` is the complete fixture-backed batch index, including
-  supporting and diagnostic captures.
-- `/reports/setups/` contains controller-independent analytical mission setup
-  reports; these are not simulation results.
+- **Waypoint planning** groups the selected V2 preview, maintained planner
+  baseline and related analytical studies.
+- **Flight and landing control** groups terminal landing, direct transfers and
+  following authored waypoint routes.
+- **Research and history**, **Browse all reports** and **Raw data** are
+  secondary routes. The library exposes type, status and availability; analytical
+  setups are not simulation results.
+
+The existing `/reports/guidance/` scorecards remain available within this
+hierarchy. `/reports/eval/` is a compatibility entrypoint for the report library.
 
 The guidance catalog treats smoke matrices as the primary controller-iteration
 surface. Full-seed packs are supporting reliability evidence; focused frontier
