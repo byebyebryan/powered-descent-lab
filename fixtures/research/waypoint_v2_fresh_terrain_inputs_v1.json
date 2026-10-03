@@ -1,0 +1,205 @@
+{
+  "schema_id": "waypoint_v2_fresh_terrain_inputs_v1",
+  "schema_version": 1,
+  "status": "frozen_before_mission_attempts",
+  "source_manifests": {
+    "operational": {
+      "path": "fixtures/research/nominal_direct_operational_fresh_inputs_v1.json",
+      "sha256": "6df19fbd3ebb85d5a7f4a783398aaaa48e50c74a9de49454161b78c8e47658f8"
+    },
+    "discriminator": {
+      "path": "fixtures/research/waypoint_direct_obstacle_discrimination_fresh_inputs_v1.json",
+      "sha256": "647df7bc94d02a9b48b773c45159e0ffa15bfca232a13b4e21164e2251a8f5b4"
+    }
+  },
+  "construction": {
+    "scenario_policy": "Copy tracked vehicle, fuel, seed, clocks, horizon, pads, and mission settings; author only new geometry and unique case identity.",
+    "fresh_case_order": "three clear; three ridges; three plateaus; three compound cases",
+    "route_free": true,
+    "cutaway": false,
+    "source_shelf_width_m": 36,
+    "target_shelf_width_m": 36,
+    "source_805": {
+      "center_x_m": -805,
+      "surface_y_m": 0,
+      "shelf_x_m": [-823, -787],
+      "initial_y_offset_m": 5,
+      "outer_domain_x_m": [-965, 160]
+    },
+    "target_805": {
+      "center_x_m": 0,
+      "shelf_x_m": [-18, 18],
+      "allowed_surface_y_m": [0, 60, -60]
+    },
+    "source_900": {
+      "center_x_m": -900,
+      "surface_y_m": 0,
+      "shelf_x_m": [-918, -882],
+      "initial_y_offset_m": 5
+    },
+    "target_900": {
+      "center_x_m": 0,
+      "shelf_x_m": [-18, 18],
+      "surface_y_m": 0
+    },
+    "ridge_offsets": "0, H, 0",
+    "plateau_offsets": "0, H, H, 0"
+  },
+  "acceptance": {
+    "clear_count": 3,
+    "terrain_count": 9,
+    "required_terrain_landings": 7,
+    "required_landings_per_family": 2,
+    "required_initially_blocked_terrain": 6,
+    "median_planning_s_max": 2,
+    "nearest_rank_p95_planning_s_max": 5,
+    "performance_denominator": 12,
+    "finite_misses_remain_in_denominator": true,
+    "fresh_repeat_count": 2,
+    "mission_attempt_budget": 28
+  },
+  "expanded_scenarios_sha256": "311752c8da362c2261ce069e633041407b6b59ff88c0c32381d21bd095128c52",
+  "cases": [
+    {
+      "id": "fresh_clear_flat_805",
+      "group": "clear",
+      "family": "clear",
+      "base_case_id": "operational_flat_span_845",
+      "span_m": 805,
+      "target_delta_m": 0,
+      "features": [],
+      "recipe_sha256": "e6b5f4a02c627ac40b704d2486513df36abf63efd54c1dc208345f076f2fe649",
+      "scenario_sha256": "e2d055ca9819db05cc6b1a907c330e6002c74cd5ee6a80c17aece311f55262fc"
+    },
+    {
+      "id": "fresh_clear_uphill_805",
+      "group": "clear",
+      "family": "clear",
+      "base_case_id": "operational_uphill_span_845",
+      "span_m": 805,
+      "target_delta_m": 60,
+      "features": [],
+      "recipe_sha256": "a8b5f6a0a72bc9e2ed29f688911eb8a3dfcde4f37e3d7eee2bee69472124e070",
+      "scenario_sha256": "16b530a953b66c918f80d82fd5599e84e1c55ce18040425b85a2e40138a5a381"
+    },
+    {
+      "id": "fresh_clear_downhill_805",
+      "group": "clear",
+      "family": "clear",
+      "base_case_id": "operational_downhill_span_845",
+      "span_m": 805,
+      "target_delta_m": -60,
+      "features": [],
+      "recipe_sha256": "3010b86660e1f810ce9ff4809ecbc87e512983aef19b1c2864541f1ab36a539b",
+      "scenario_sha256": "d924fc17cbdb396e4b5958ccacea9972bfa385f70fb695250a2b21aafd2276ea"
+    },
+    {
+      "id": "fresh_ridge_early_900",
+      "group": "terrain",
+      "family": "ridge",
+      "base_case_id": "fresh_flat_control_span_900",
+      "span_m": 900,
+      "target_delta_m": 0,
+      "features": [{"fractions": [0.28, 0.38, 0.48], "height_m": 270}],
+      "recipe_sha256": "c3c1b6cd6dee9e7046446d7d7bc57e7ae82e1198b994d6b765273011f62e5207",
+      "scenario_sha256": "ebf59a0698da455bed124bf19afab9ebbf426b39e16111bfaa46844c09f18588"
+    },
+    {
+      "id": "fresh_ridge_middle_900",
+      "group": "terrain",
+      "family": "ridge",
+      "base_case_id": "fresh_flat_control_span_900",
+      "span_m": 900,
+      "target_delta_m": 0,
+      "features": [{"fractions": [0.42, 0.54, 0.66], "height_m": 300}],
+      "recipe_sha256": "e9e33424930685f94f73853deacb67d02dd3f7f62a9037fb20bbbbdb2c31411d",
+      "scenario_sha256": "48c49c145eac99b92b4f1356ef7f061f75a28c82d64d814221713fecc0a85d0f"
+    },
+    {
+      "id": "fresh_ridge_late_900",
+      "group": "terrain",
+      "family": "ridge",
+      "base_case_id": "fresh_flat_control_span_900",
+      "span_m": 900,
+      "target_delta_m": 0,
+      "features": [{"fractions": [0.58, 0.69, 0.82], "height_m": 295}],
+      "recipe_sha256": "dc94dfc836d4a958596b17f022481e132b2d738d488521f7e0c6195a7b99530e",
+      "scenario_sha256": "221dc8d121c17e9f33da618024a3748377b649fc07451fdbc16f1291c951dadc"
+    },
+    {
+      "id": "fresh_plateau_early_900",
+      "group": "terrain",
+      "family": "plateau",
+      "base_case_id": "fresh_flat_control_span_900",
+      "span_m": 900,
+      "target_delta_m": 0,
+      "features": [{"fractions": [0.28, 0.33, 0.49, 0.54], "height_m": 270}],
+      "recipe_sha256": "9ab62f36891285756cdf146726bfecfe0bf9798bffce05d507ef042a28a36868",
+      "scenario_sha256": "5f9bcae7a5f4cb7f865dfc0c99d6eebf4cc5466effabd788b8ccd363bbe35742"
+    },
+    {
+      "id": "fresh_plateau_broad_900",
+      "group": "terrain",
+      "family": "plateau",
+      "base_case_id": "fresh_flat_control_span_900",
+      "span_m": 900,
+      "target_delta_m": 0,
+      "features": [{"fractions": [0.37, 0.43, 0.69, 0.75], "height_m": 300}],
+      "recipe_sha256": "e89f3414b91b3e8e6a2e1148f4a5a1edf5652b4bfde8858e466126d2ac6cf856",
+      "scenario_sha256": "f6f92bb814d1be84a0e3966a7a9e75b8241e34ca686d7e61c5997236e0b3fdba"
+    },
+    {
+      "id": "fresh_plateau_late_900",
+      "group": "terrain",
+      "family": "plateau",
+      "base_case_id": "fresh_flat_control_span_900",
+      "span_m": 900,
+      "target_delta_m": 0,
+      "features": [{"fractions": [0.61, 0.66, 0.78, 0.83], "height_m": 295}],
+      "recipe_sha256": "3206d7c10fed1c8358ec8ebf249787625345c9e4df51b5e44cc88d34fede49be",
+      "scenario_sha256": "0ac772c591d10469612c0ac86bcb2d16690b4cad7a17061b9011abd4afb141f9"
+    },
+    {
+      "id": "fresh_compound_successive_900",
+      "group": "terrain",
+      "family": "compound",
+      "base_case_id": "fresh_flat_control_span_900",
+      "span_m": 900,
+      "target_delta_m": 0,
+      "features": [
+        {"fractions": [0.24, 0.34, 0.44], "height_m": 265},
+        {"fractions": [0.57, 0.69, 0.81], "height_m": 305}
+      ],
+      "recipe_sha256": "c649dac98edc244d969d411acba78d6c2d045e60cefa5d2234a85de35712293f",
+      "scenario_sha256": "997be4a766a03d5919a998bb146ee28b96ba4bfb3d240c34ec9ea6ad4f780ef0"
+    },
+    {
+      "id": "fresh_compound_uphill_ridge_805",
+      "group": "terrain",
+      "family": "compound",
+      "base_case_id": "operational_uphill_span_845",
+      "span_m": 805,
+      "target_delta_m": 60,
+      "features": [{"fractions": [0.39, 0.51, 0.63], "height_m": 300}],
+      "recipe_sha256": "561166b7948146d50c13f9d1af0577dab365400570d73c61a8b45a2ab794f9b4",
+      "scenario_sha256": "34b54b55ff6848ec07d33628e442e2b8f60059fff071fb4b0ed00d299a20751a"
+    },
+    {
+      "id": "fresh_compound_downhill_plateau_805",
+      "group": "terrain",
+      "family": "compound",
+      "base_case_id": "operational_downhill_span_845",
+      "span_m": 805,
+      "target_delta_m": -60,
+      "features": [{"fractions": [0.43, 0.49, 0.67, 0.73], "height_m": 300}],
+      "recipe_sha256": "c8bc4de1fb33d0232d698fb8999298ad640b7e6ce72744726e2ee472f35726b3",
+      "scenario_sha256": "91090e8b1f5105a7a1a376213ed5ee76838c5800df6db15b76eeb5598b2dfb98"
+    }
+  ],
+  "sentinels": [
+    {"id": "v2_clear_845", "physical_outcome": "landed_on_target", "mission_outcome": "success", "correction_count": 0},
+    {"id": "v2_ridge_late", "physical_outcome": "landed_on_target", "mission_outcome": "success", "correction_count": 1},
+    {"id": "v2_successive_rising", "physical_outcome": "landed_on_target", "mission_outcome": "success", "correction_count": 2},
+    {"id": "v2_plateau_reference_900", "physical_outcome": "landed_on_target", "mission_outcome": "success", "correction_count": 3}
+  ]
+}
