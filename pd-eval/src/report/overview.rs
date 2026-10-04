@@ -145,24 +145,17 @@ pub(super) fn render_overview_row(row: OverviewRow) -> String {
         efficiency_html,
         tracking_html,
     } = row;
-    format!(
-        r#"<tr class="{row_class}">
-  <td>{pack_html}</td>
-  <td>{ref_html}</td>
-  <td>{scope_html}</td>
-  <td>{result_html}</td>
-  <td>{timing_html}</td>
-  <td>{efficiency_html}</td>
-  <td>{tracking_html}</td>
-</tr>"#,
-        row_class = row_class,
-        pack_html = pack_html,
-        ref_html = ref_html,
-        scope_html = scope_html,
-        result_html = result_html,
-        timing_html = timing_html,
-        efficiency_html = efficiency_html,
-        tracking_html = tracking_html,
+    pd_report::batch::render_overview_row(
+        row_class,
+        &[
+            &pack_html,
+            &ref_html,
+            &scope_html,
+            &result_html,
+            &timing_html,
+            &efficiency_html,
+            &tracking_html,
+        ],
     )
 }
 
@@ -663,37 +656,8 @@ pub(super) fn render_context_table(
         escape_html(compare_status_note),
     );
     let needs_attention = context_requires_attention(candidate, comparison);
-
-    format!(
-        r#"<details class="header-context{attention_class}"{open_attr}>
-  <summary><h2>Context</h2><span class="status-chip {compare_status_class}">{compare_status_label}</span></summary>
-  <div class="table-wrap">
-    <table class="context-table">
-      <thead>
-        <tr>
-          <th>Report Mode</th>
-          <th>Current Source</th>
-          <th>Baseline Source</th>
-          <th>Compare Basis</th>
-          <th>Scope Resolution</th>
-          <th>Compare Status</th>
-          <th>Cache / Promotion</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>{}</td>
-          <td>{}</td>
-          <td>{}</td>
-          <td>{}</td>
-          <td>{}</td>
-          <td>{}</td>
-          <td>{}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</details>"#,
+    let headers = r#"<tr><th>Report Mode</th><th>Current Source</th><th>Baseline Source</th><th>Compare Basis</th><th>Scope Resolution</th><th>Compare Status</th><th>Cache / Promotion</th></tr>"#;
+    let cells = [
         report_mode_html,
         current_source,
         baseline_source,
@@ -702,12 +666,18 @@ pub(super) fn render_context_table(
         compare_status_html,
         render_cache_context(
             candidate.provenance.cache.as_ref(),
-            baseline.and_then(|report| report.provenance.cache.as_ref())
+            baseline.and_then(|report| report.provenance.cache.as_ref()),
         ),
-        attention_class = if needs_attention { " attention" } else { "" },
-        open_attr = if needs_attention { " open" } else { "" },
-        compare_status_class = compare_status_class,
-        compare_status_label = escape_html(compare_status_label),
+    ];
+    let cells = cells.iter().map(String::as_str).collect::<Vec<_>>();
+    let row = pd_report::batch::render_context_row(&cells);
+    let table = pd_report::batch::render_context_table(headers, &row);
+    pd_report::batch::render_context_section(
+        needs_attention,
+        needs_attention,
+        compare_status_class,
+        compare_status_label,
+        &table,
     )
 }
 
@@ -1243,32 +1213,9 @@ pub(super) fn render_overview_table(
         rows
     };
 
-    format!(
-        r#"<section class="header-overview">
-  <div class="section-head">
-    <h2>Overview</h2>
-    {view_controls}
-  </div>
-  <div class="table-wrap">
-    <table class="summary-table">
-      <thead>
-        <tr>
-          <th>Pack</th>
-          <th>Reference</th>
-          <th>Scope</th>
-          <th>Result</th>
-          <th>Timing</th>
-          <th>Efficiency</th>
-          <th>Reference / recovery</th>
-        </tr>
-      </thead>
-      <tbody>{}</tbody>
-    </table>
-  </div>
-</section>"#,
-        rows.join(""),
-        view_controls = view_controls,
-    )
+    let headers = r#"<tr><th>Pack</th><th>Reference</th><th>Scope</th><th>Result</th><th>Timing</th><th>Efficiency</th><th>Reference / recovery</th></tr>"#;
+    let table = pd_report::batch::render_overview_table(headers, &rows.join(""));
+    pd_report::batch::render_overview_section(view_controls, &table)
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1377,12 +1324,7 @@ pub(super) fn render_coverage_matrix(
         CoverageMode::Terminal => "Energy band by arrival arc",
         CoverageMode::Transfer => "Travel radius by route angle",
     };
-    format!(
-        r#"<section class="coverage-section"><div class="section-head"><div><h2>Coverage</h2><span class="section-note">{axis_note}; click a cell to inspect its review-tree branch.</span></div>{controls}</div>{pane_html}</section>"#,
-        axis_note = axis_note,
-        controls = controls,
-        pane_html = pane_html,
-    )
+    pd_report::batch::render_coverage_section(axis_note, &controls, &pane_html)
 }
 
 pub(super) fn coverage_cells(
@@ -1550,25 +1492,20 @@ pub(super) fn render_coverage_pane(
                     )
                 })
                 .collect::<String>();
-            format!(
-                "<tr><th>{}</th>{cells}</tr>",
-                escape_html(&selector_display_label(row))
-            )
+            pd_report::batch::render_coverage_row(&selector_display_label(row), &cells)
         })
         .collect::<String>();
     let corner = match mode {
         CoverageMode::Terminal => "Band / arc",
         CoverageMode::Transfer => "Radius / route",
     };
-    format!(
-        r#"<div class="coverage-pane table-wrap" data-coverage-pane data-mission="{mission}" data-condition="{condition}" data-vehicle="{vehicle}" data-profile="{profile}"><table class="coverage-table"><thead><tr><th>{corner}</th>{header}</tr></thead><tbody>{body}</tbody></table></div>"#,
-        mission = escape_html(&pane.mission),
-        condition = escape_html(&pane.condition),
-        vehicle = escape_html(&pane.vehicle),
-        profile = escape_html(&pane.profile),
-        corner = corner,
-        header = header,
-        body = body,
+    let table = pd_report::batch::render_coverage_table(corner, &header, &body);
+    pd_report::batch::render_coverage_pane(
+        &pane.mission,
+        &pane.condition,
+        &pane.vehicle,
+        &pane.profile,
+        &table,
     )
 }
 
@@ -1579,7 +1516,11 @@ pub(super) fn render_coverage_cell(
     show_compare: bool,
 ) -> String {
     let Some(current) = current else {
-        return r#"<td><div class="coverage-cell invalid-only"><strong>—</strong><span>not covered</span></div></td>"#.to_owned();
+        return pd_report::batch::render_coverage_cell(
+            "invalid-only",
+            None,
+            "<strong>—</strong><span>not covered</span>",
+        );
     };
     let class = if current.scored_failure > 0 {
         " has-failure"
@@ -1623,16 +1564,15 @@ pub(super) fn render_coverage_cell(
     .filter(|value| *value != "all")
     .collect::<Vec<_>>()
     .join("|");
-    format!(
-        r#"<td><div class="coverage-cell{class}" data-tree-tokens="{tokens}" tabindex="0"><strong>{success}/{scored} success</strong><span>{failure} fail{annotations}{delta}</span></div></td>"#,
-        class = class,
-        tokens = escape_html(&tokens),
-        success = current.scored_success,
+    let contents = format!(
+        "<strong>{}/{scored} success</strong><span>{} fail{}{}</span>",
+        current.scored_success,
+        current.scored_failure,
+        escape_html(&annotations),
+        delta,
         scored = current.scored_runs(),
-        failure = current.scored_failure,
-        annotations = escape_html(&annotations),
-        delta = delta,
-    )
+    );
+    pd_report::batch::render_coverage_cell(class.trim(), Some(&tokens), &contents)
 }
 
 pub(super) fn selector_display_label(value: &str) -> String {
@@ -1666,24 +1606,7 @@ pub(super) fn render_guidance_diagnostics(
 }
 
 pub(super) fn render_tree_controls(has_compare: bool) -> String {
-    let mut buttons = vec![
-        r#"<button type="button" data-tree-action="expand-depth">Expand</button>"#.to_owned(),
-        r#"<button type="button" data-tree-action="collapse-depth">Collapse</button>"#.to_owned(),
-        r#"<button type="button" data-tree-action="expand-seeds">Expand Seeds</button>"#.to_owned(),
-        r#"<button type="button" data-tree-action="collapse-seeds">Collapse Seeds</button>"#
-            .to_owned(),
-    ];
-    if has_compare {
-        buttons.push(
-            r#"<button type="button" class="compare-only-control" data-tree-action="toggle-baseline">Hide Baseline</button>"#
-                .to_owned(),
-        );
-        buttons.push(
-            r#"<button type="button" class="compare-only-control" data-tree-action="toggle-diff">Show Changed Only</button>"#
-                .to_owned(),
-        );
-    }
-    format!(r#"<div class="tree-controls">{}</div>"#, buttons.join(""))
+    pd_report::batch_tree::render_controls("Seeds", has_compare)
 }
 
 pub(super) fn render_view_controls(has_compare_view: bool) -> String {

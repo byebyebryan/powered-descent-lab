@@ -1,6 +1,8 @@
 use std::{
     collections::BTreeMap,
     fs,
+    fs::OpenOptions,
+    io::Write as _,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -39,6 +41,60 @@ fn temp_report_dir(label: &str) -> PathBuf {
         "pd-eval-report-{label}-{}-{nonce}",
         std::process::id()
     ))
+}
+
+#[test]
+#[ignore = "presentation-only preview writes a new one-off research artifact"]
+fn saved_legacy_batch_tree_presentation_previews() {
+    let repo = crate::repo_root();
+    let preview_dir = std::env::var_os("PDLAB_LEGACY_TREE_PREVIEW_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| temp_report_dir("saved-legacy-tree"));
+    let packs = [
+        "terminal_bot_lab_suite",
+        "transfer_route_angle_radius_suite",
+    ];
+    let rendered = packs
+        .iter()
+        .map(|pack| {
+            let source_dir = repo.join("outputs/eval").join(pack);
+            let summary = fs::read(source_dir.join("summary.json"))
+                .unwrap_or_else(|error| panic!("read saved {pack} summary: {error}"));
+            let report: BatchReport = serde_json::from_slice(&summary)
+                .unwrap_or_else(|error| panic!("parse saved {pack} summary: {error}"));
+            let html = render_batch_report(&source_dir, &report, None, None);
+            let html = html_with_base_href(&html, &format!("/eval/{pack}/"));
+            (pack, html)
+        })
+        .collect::<Vec<_>>();
+
+    fs::create_dir_all(
+        preview_dir
+            .parent()
+            .expect("preview path should have a parent"),
+    )
+    .expect("research preview parent should be creatable");
+    fs::create_dir(&preview_dir).unwrap_or_else(|error| {
+        panic!(
+            "create-only preview directory {}: {error}",
+            preview_dir.display()
+        )
+    });
+    for (pack, html) in rendered {
+        let filename = if pack.starts_with("terminal_") {
+            "terminal.html"
+        } else {
+            "transfer.html"
+        };
+        let path = preview_dir.join(filename);
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap_or_else(|error| panic!("create-only preview {}: {error}", path.display()));
+        file.write_all(html.as_bytes())
+            .unwrap_or_else(|error| panic!("write preview {}: {error}", path.display()));
+    }
 }
 
 #[test]
@@ -1117,8 +1173,8 @@ fn terminal_matrix_report_renders_arc_and_band_levels() {
         condition_pos < arc_pos && arc_pos < band_pos && band_pos < vehicle_pos,
         "terminal matrix tree should render condition -> arc -> band -> vehicle"
     );
-    assert!(html.contains(r#"case "band": return 4;"#));
-    assert!(html.contains(r#"case "vehicle": return 5;"#));
+    assert!(html.contains(r#""band":4,"condition":2,"lane":6"#));
+    assert!(html.contains(r#""defaultExpansion":6"#));
 }
 
 #[test]
@@ -1166,8 +1222,8 @@ fn transfer_matrix_report_renders_route_and_radius_levels() {
     assert!(html.contains("<h2>Coverage</h2>"));
     assert!(html.contains("Travel radius by route angle"));
     assert!(html.contains(r#"data-tree-tokens="transfer_guidance|clean|nominal|r00|nominal""#));
-    assert!(html.contains(r#"case "route": return 3;"#));
-    assert!(html.contains(r#"case "radius": return 4;"#));
+    assert!(html.contains(r#""arc":3,"arrival":1"#));
+    assert!(html.contains(r#""route":3,"vehicle":5"#));
     assert!(html.contains("transfer terminal"));
     assert!(html.contains("handoff"));
 }
@@ -1478,6 +1534,7 @@ fn terminal_matrix_report_surfaces_impossible_runs_as_warnings() {
         None,
     );
 
+    assert!(html.contains("data-batch-template=\"common-v1\""));
     assert!(html.contains("impossible"));
     assert!(html.contains("impossible vertical brake"));
     assert!(html.contains("0 fail · <span class=\"warn\">12 warning</span>"));

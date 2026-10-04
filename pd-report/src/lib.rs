@@ -15,6 +15,8 @@ use pd_core::{
 };
 use serde::Serialize;
 
+pub mod batch;
+pub mod batch_tree;
 pub mod conservative_ballistic_f5_analytical;
 pub mod conservative_ballistic_f5_controller;
 pub mod conservative_ballistic_f6_integration;
@@ -283,7 +285,7 @@ enum PreviewTrajectory<'a> {
 
 struct PreviewRenderSeries<'a> {
     scenario: &'a ScenarioSpec,
-    manifest: &'a RunManifest,
+    manifest: Option<&'a RunManifest>,
     trajectory: PreviewTrajectory<'a>,
     controller_updates: Option<&'a [ControllerUpdateRecord]>,
     route_plan: Option<&'a RoutePlan>,
@@ -318,6 +320,16 @@ impl PreviewOptions {
             show_endpoint_markers: true,
         }
     }
+
+    const fn saved_flight() -> Self {
+        Self {
+            show_context: true,
+            show_waypoints: false,
+            show_waypoint_guides: false,
+            show_reference: false,
+            show_endpoint_markers: true,
+        }
+    }
 }
 
 struct PreviewWaypoint {
@@ -339,7 +351,7 @@ pub fn build_multi_run_preview_svg(series: &[PreviewSeries<'_>]) -> String {
         .iter()
         .map(|series| PreviewRenderSeries {
             scenario: series.scenario,
-            manifest: series.manifest,
+            manifest: Some(series.manifest),
             trajectory: PreviewTrajectory::Samples(series.samples),
             controller_updates: series.controller_updates,
             route_plan: None,
@@ -353,13 +365,34 @@ pub fn build_multi_run_trajectory_preview_svg(series: &[AggregatePreviewSeries<'
         .iter()
         .map(|series| PreviewRenderSeries {
             scenario: series.scenario,
-            manifest: series.manifest,
+            manifest: Some(series.manifest),
             trajectory: PreviewTrajectory::Positions(series.trajectory_positions_m),
             controller_updates: None,
             route_plan: None,
         })
         .collect::<Vec<_>>();
     build_preview_svg(&render_series, PreviewOptions::aggregate_lane())
+}
+
+/// Render a saved flight using actual sampled positions and executed handoffs.
+///
+/// The optional manifest controls outcome markers only. When it is absent, the
+/// SVG still shows the scenario terrain and target pad without inventing a
+/// departure, trajectory, or outcome.
+pub fn build_saved_flight_preview_svg(
+    scenario: &ScenarioSpec,
+    manifest: Option<&RunManifest>,
+    samples: &[SampleRecord],
+    handoffs: &[Vec2],
+) -> String {
+    let series = [PreviewRenderSeries {
+        scenario,
+        manifest,
+        trajectory: PreviewTrajectory::Samples(samples),
+        controller_updates: None,
+        route_plan: None,
+    }];
+    build_preview_svg_with_handoffs(&series, PreviewOptions::saved_flight(), handoffs)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -553,7 +586,7 @@ fn build_run_preview_svg_with_plan(
     build_preview_svg(
         &[PreviewRenderSeries {
             scenario,
-            manifest,
+            manifest: Some(manifest),
             trajectory: PreviewTrajectory::Samples(samples),
             controller_updates: Some(controller_updates),
             route_plan,
@@ -563,6 +596,14 @@ fn build_run_preview_svg_with_plan(
 }
 
 fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions) -> String {
+    build_preview_svg_with_handoffs(series, options, &[])
+}
+
+fn build_preview_svg_with_handoffs(
+    series: &[PreviewRenderSeries<'_>],
+    options: PreviewOptions,
+    handoffs: &[Vec2],
+) -> String {
     const WIDTH_PX: f64 = 156.0;
     const HEIGHT_PX: f64 = 92.0;
     const PADDING_PX: f64 = 6.0;
@@ -715,7 +756,9 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
             (
                 trajectory,
                 reference,
-                enum_label(&series.manifest.mission_outcome),
+                series
+                    .manifest
+                    .map(|manifest| enum_label(&manifest.mission_outcome)),
             )
         })
         .collect::<Vec<_>>();
@@ -743,6 +786,25 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
             include_point(x, y);
         }
     }
+    let handoff_points = handoffs
+        .iter()
+        .enumerate()
+        .filter(|(_, handoff)| handoff.x.is_finite() && handoff.y.is_finite())
+        .map(|(index, handoff)| {
+            let flip_sign = series
+                .first()
+                .map(|series| {
+                    preview_flip_sign(
+                        series.scenario.initial_state.position_m.x - normalize_center_x,
+                    )
+                })
+                .unwrap_or(1.0);
+            let x = transform_x(handoff.x, flip_sign);
+            let y = handoff.y;
+            include_point(x, y);
+            (index + 1, handoff.x, handoff.y, x, y)
+        })
+        .collect::<Vec<_>>();
     if let Some((safe_profile, centerline)) = planner_overlays.as_ref() {
         for &(x, y) in safe_profile.iter().chain(centerline.iter()) {
             include_point(x, y);
@@ -835,10 +897,11 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
             .iter()
             .enumerate()
             .filter_map(|(index, (trajectory, _, outcome))| {
+                let outcome = outcome.as_deref()?;
                 trajectory.last().copied().map(|(x, y)| {
                     let (px, py) = project(x, y);
                     let seed_color = preview_seed_color(index, trajectories.len());
-                    match outcome.as_str() {
+                    match outcome {
                         "success" => format!(
                             r##"<circle cx="{px:.2}" cy="{py:.2}" r="{radius:.2}" fill="{fill}" stroke="#fffaf2" stroke-width="{stroke:.2}"/>"##,
                             radius = if multi_run { 2.6 } else { 3.4 },
@@ -869,6 +932,17 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
     } else {
         String::new()
     };
+    let handoff_svg = handoff_points
+        .iter()
+        .map(|(number, world_x, world_y, x, y)| {
+            let (px, py) = project(*x, *y);
+            format!(
+                r##"<g class="handoff-marker" data-handoff="{number}" data-world-x="{world_x}" data-world-y="{world_y}"><title>Executed handoff H{number}</title><circle cx="{px:.2}" cy="{py:.2}" r="3.7" fill="#fffaf2" stroke="#b95024" stroke-width="1.5"/><text x="{label_x:.2}" y="{label_y:.2}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="6.2" font-weight="700" fill="#8a3c1b">H{number}</text></g>"##,
+                label_x = px + 4.8,
+                label_y = py - 4.2,
+            )
+        })
+        .collect::<String>();
     let pad_svg = if options.show_context {
         pad.map(|(center_x_m, surface_y_m, width_m)| {
             let (x1, y1) = project(center_x_m - (0.5 * width_m), surface_y_m);
@@ -1024,7 +1098,7 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
   {route_guide_svg}
   {waypoint_svg}
   {start_markers}
-  {end_markers}
+  {end_markers}{handoff_svg}
 </svg>"##,
         border_w = WIDTH_PX - 1.0,
         border_h = HEIGHT_PX - 1.0,
@@ -1043,6 +1117,7 @@ fn build_preview_svg(series: &[PreviewRenderSeries<'_>], options: PreviewOptions
         waypoint_svg = waypoint_svg,
         start_markers = start_markers,
         end_markers = end_markers,
+        handoff_svg = handoff_svg,
     )
 }
 
@@ -4636,6 +4711,42 @@ mod tests {
         assert!(!legacy_svg.contains("planner safe profile and selected centerline"));
         fs::remove_file(report_path).expect("planner report should be removable");
         fs::remove_file(legacy_path).expect("legacy report should be removable");
+    }
+
+    #[test]
+    fn saved_flight_preview_marks_actual_handoffs_and_keeps_empty_marker_path_stable() {
+        let scenario = fixture_scenario();
+        let manifest = fixture_manifest(&scenario);
+        let ordinary_svg = build_run_preview_svg_with_plan(&scenario, &manifest, &[], &[], None);
+        let ordinary_series = [PreviewRenderSeries {
+            scenario: &scenario,
+            manifest: Some(&manifest),
+            trajectory: PreviewTrajectory::Samples(&[]),
+            controller_updates: Some(&[]),
+            route_plan: None,
+        }];
+        let empty_handoff_svg =
+            build_preview_svg_with_handoffs(&ordinary_series, PreviewOptions::full(), &[]);
+        assert_eq!(ordinary_svg, empty_handoff_svg);
+        assert!(!ordinary_svg.contains("data-handoff="));
+
+        let handoffs = [Vec2::new(142.125, 31.75), Vec2::new(-19.5, -8.25)];
+        let saved_svg = build_saved_flight_preview_svg(&scenario, Some(&manifest), &[], &handoffs);
+        assert_eq!(saved_svg.matches("class=\"handoff-marker\"").count(), 2);
+        assert!(
+            saved_svg
+                .contains("data-handoff=\"1\" data-world-x=\"142.125\" data-world-y=\"31.75\"")
+        );
+        assert!(
+            saved_svg.contains("data-handoff=\"2\" data-world-x=\"-19.5\" data-world-y=\"-8.25\"")
+        );
+        assert!(!saved_svg.contains("planner safe profile and selected centerline"));
+
+        let context_svg = build_saved_flight_preview_svg(&scenario, None, &[], &[]);
+        assert!(context_svg.contains("stroke=\"#7a5d3e\""));
+        assert!(context_svg.contains("stroke=\"#2f9e44\""));
+        assert!(!context_svg.contains("data-handoff="));
+        assert!(!context_svg.contains("stroke=\"#1d5e7a\""));
     }
 }
 

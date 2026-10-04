@@ -270,69 +270,49 @@ pub(super) fn render_mission_review_section(
     }));
     rows.push_str(&arrival_rows);
 
-    format!(
-        r#"<section class="tree-table-section">
-  <div class="table-heading">
-    <h3><code>{mission}</code></h3>
-    <div class="section-meta">{success_rate} · {failure_count} fail · {fuel_used} fuel · {mean_sim} flight · {landing_offset} off · {reference_gap} ref · {low_unsafe} low unsafe</div>
-  </div>
-  <div class="table-wrap">
-    <table class="scenario-table" data-tree-table="{table_id}">
-      <thead>
-        <tr>
-          <th>Selector</th>
-          <th>Success / Outcome</th>
-          <th>Fuel Used</th>
-          <th>Flight Time</th>
-          <th>Landing Offset</th>
-          <th>Reference deviation</th>
-          <th>Preview</th>
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </table>
-  </div>
-</section>"#,
-        mission = escape_html(mission),
-        table_id = escape_html(&group_id),
-        success_rate = aggregate
+    let heading_html = format!("<code>{}</code>", escape_html(mission));
+    let metadata_html = format!(
+        "{} · {} fail · {} fuel · {} flight · {} off · {} ref · {} low unsafe",
+        aggregate
             .as_ref()
             .map(|item| inline_rate_text(item.success_runs, item.total_runs))
             .unwrap_or_else(|| "-".to_owned()),
-        failure_count = aggregate
+        aggregate
             .as_ref()
             .map(|item| item.failure_runs)
             .unwrap_or(0),
-        fuel_used = format_metric_summary(
+        format_metric_summary(
             aggregate
                 .as_ref()
                 .and_then(|item| item.fuel_used_pct_of_max.as_ref()),
             MetricDisplayKind::Percent
         ),
-        mean_sim = format_metric_summary(
+        format_metric_summary(
             aggregate
                 .as_ref()
                 .and_then(|item| item.sim_time_stats.as_ref()),
             MetricDisplayKind::Seconds
         ),
-        landing_offset = format_metric_summary(
+        format_metric_summary(
             aggregate
                 .as_ref()
                 .and_then(|item| item.landing_offset_abs_m.as_ref()),
             MetricDisplayKind::Meters
         ),
-        reference_gap = format_metric_summary(
+        format_metric_summary(
             aggregate.as_ref().and_then(aggregate_ref_dev_metric),
             MetricDisplayKind::Meters
         ),
-        low_unsafe = format_metric_summary(
+        format_metric_summary(
             aggregate
                 .as_ref()
                 .and_then(|item| item.low_altitude_unsafe_recovery_s.as_ref()),
             MetricDisplayKind::Seconds
         ),
-        rows = rows,
-    )
+    );
+    let headers = r#"<tr><th>Selector</th><th>Success / Outcome</th><th>Fuel Used</th><th>Flight Time</th><th>Landing Offset</th><th>Reference deviation</th><th>Preview</th></tr>"#;
+    let table = pd_report::batch::render_review_tree_table(&group_id, headers, &rows);
+    pd_report::batch::render_tree_table_section(&heading_html, &metadata_html, &table)
 }
 
 pub(super) fn render_arrival_review_section(
@@ -1777,20 +1757,8 @@ pub(super) fn render_summary_row(row: SummaryRow<'_>) -> String {
         metric_style,
     );
 
-    format!(
-        r#"<tr class="{classes}" {attrs}>
-  <td class="tree-label" style="--depth:{depth}">
-    {expander}{tag_html}<span class="selector-inline">{kind}</span> <span class="selector-code">{label}</span>
-  </td>
-  <td>{outcome}</td>
-  <td>{fuel}</td>
-  <td>{flight}</td>
-  <td>{offset}</td>
-  <td>{reference}</td>
-  <td>{note}</td>
-</tr>"#,
-        classes = row_classes.join(" "),
-        attrs = attrs.join(" "),
+    let cells = format!(
+        r#"<td class="tree-label" style="--depth:{depth}">{expander}{tag_html}<span class="selector-inline">{kind}</span> <span class="selector-code">{label}</span></td><td>{outcome}</td><td>{fuel}</td><td>{flight}</td><td>{offset}</td><td>{reference}</td><td>{note}</td>"#,
         depth = depth,
         expander = expander,
         tag_html = tag_html,
@@ -1802,7 +1770,8 @@ pub(super) fn render_summary_row(row: SummaryRow<'_>) -> String {
         offset = offset_html,
         reference = ref_html,
         note = note_html,
-    )
+    );
+    pd_report::batch::render_row(Some(&row_classes.join(" ")), &attrs.join(" "), &cells)
 }
 
 pub(super) fn render_seed_run_row(
@@ -1925,21 +1894,13 @@ pub(super) fn render_seed_run_row(
         preview = render_run_preview(record, output_dir),
     );
 
-    format!(
-        r#"<tr class="{classes}" data-parent="{parent}" data-run-id="{run_id}" hidden>
-  <td class="tree-label" style="--depth:{depth}">
-    {tag_html}<span class="seed-label">{seed}</span>
-  </td>
-  <td>{outcome}</td>
-  <td>{fuel}</td>
-  <td>{sim_time}</td>
-  <td>{landing_offset}</td>
-  <td>{reference_gap}</td>
-  <td>{details}</td>
-</tr>"#,
-        classes = row_classes.join(" "),
-        parent = escape_html(parent_group_id),
-        run_id = escape_html(&record.resolved.run_id),
+    let attrs = format!(
+        r#"data-parent="{}" data-run-id="{}" hidden"#,
+        escape_html(parent_group_id),
+        escape_html(&record.resolved.run_id),
+    );
+    let cells = format!(
+        r#"<td class="tree-label" style="--depth:{depth}">{tag_html}<span class="seed-label">{seed}</span></td><td>{outcome}</td><td>{fuel}</td><td>{sim_time}</td><td>{landing_offset}</td><td>{reference_gap}</td><td>{details}</td>"#,
         depth = depth,
         tag_html = tag_html,
         seed = escape_html(&seed_label),
@@ -1949,7 +1910,8 @@ pub(super) fn render_seed_run_row(
         landing_offset = escape_html(&landing_offset),
         reference_gap = escape_html(&reference_gap),
         details = details,
-    )
+    );
+    pd_report::batch::render_row(Some(&row_classes.join(" ")), &attrs, &cells)
 }
 
 pub(super) fn waypoint_checkpoint_failure_detail(record: &crate::BatchRunRecord) -> Option<String> {
