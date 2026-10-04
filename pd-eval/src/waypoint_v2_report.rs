@@ -488,7 +488,7 @@ pub fn write_flight_page(path: &Path, data: &FlightReport) -> Result<()> {
     write_bytes_create_only(path, renderer::render_flight(data)?.as_bytes())
 }
 
-fn write_bytes_create_only(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_bytes_create_only(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)

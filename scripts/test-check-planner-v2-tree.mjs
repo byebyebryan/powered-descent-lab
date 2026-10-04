@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {expectedProjection,extractProjection,assertSummaryText} from './check-planner-v2-tree.mjs';
+const record={case_id:'v2_test',group:'clear',family:'clear',annotated_report_path:'runs/test/index.html',planning_stop:'landed',physical_outcome:'landed_on_target',planning_s:.1};
+const scenario={vehicle:{max_fuel_kg:200}};
+const flight={planning_stop:'landed',physical_outcome:'landed_on_target',mission_outcome:'success',integrity_passed:true,final_source_replay_passed:true,correction_count:0,segments:[],manifest:{physics_steps:120,sim_time_s:1,summary:{fuel_used_kg:20,landing:{touchdown_center_offset_m:-.5}}}};
+test('executed direct landing projects source metrics without new simulation',()=>{const p=expectedProjection(record,flight,scenario);assert.equal(p.landed,true);assert.equal(p.fuel_used_pct,10);assert.equal(p.flight_s,1);assert.equal(p.landing_offset_m,.5);});
+test('pre-departure stop is not a successful direct flight or zero metrics',()=>{const p=expectedProjection({...record,planning_stop:'no_clearing'},{...flight,planning_stop:'no_clearing',manifest:{...flight.manifest,physics_steps:0}},scenario);assert.equal(p.departed,false);assert.equal(p.landed,false);assert.equal(p.flight_s,null);assert.equal(p.fuel_used_pct,null);assert(p.display_outcome.includes('Not departed'));});
+test('unsupported has no simulator or replay claim',()=>{const p=expectedProjection({...record,planning_stop:'unsupported'},{...flight,planning_stop:'unsupported',manifest:null},scenario);assert.equal(p.unsupported,true);assert.equal(p.replay_passed,null);assert.equal(p.planning_s,null);});
+test('green physical tuple with failed replay is not verified landing',()=>{assert.equal(expectedProjection(record,{...flight,final_source_replay_passed:false},scenario).landed,false);});
+test('recorded steps without a verified manifest are not labelled not departed',()=>{const p=expectedProjection({...record,physical_outcome:null},{...flight,manifest:null,physical_outcome:null,mission_outcome:null,final_source_replay_passed:false,ordinary_flight:{samples:[{physics_step:120}]}},scenario);assert.equal(p.departed,true);assert.equal(p.landed,false);assert.equal(p.flight_s,null);assert(!p.display_outcome.includes('Not departed'));});
+test('handoffs use actual correction segment endpoints only',()=>{const p=expectedProjection(record,{...flight,correction_count:1,segments:[{kind:'initial_nominal',end_state:{position_m:{x:1,y:2}}},{kind:'local_correction',end_state:{position_m:{x:3,y:4}}}]},scenario);assert.deepEqual(p.handoffs,[{x:3,y:4}]);});
+test('projection extractor rejects missing or malformed JSON',()=>{assert.throws(()=>extractProjection('empty'));assert.throws(()=>extractProjection('const batchTreeData = invalid;</script>'));assert.deepEqual(extractProjection('const batchTreeData = [];</script>'),[]);});
+test('page-level totals must match sealed summary, including separate denominators',()=>{
+  const summary={integrity_passed_count:44,final_source_replay_passed_count:42,valid_landing_count:36,direct_landing_count:11,corrected_landing_count:25,non_landing_count:0,diagnostic_landing_count:2,diagnostic_non_landing_count:4,unsupported_count:2,crash_count:0};
+  const html='44/44 integrity passed · 42/42 supported source replays passed · <strong>36/36</strong> · 11 direct · 25 corrected · 0 non-landings · 2 landed · 4 supported non-landings · 2 unsupported · 0 crashes.';
+  assertSummaryText(html,summary);
+  assert.throws(()=>assertSummaryText(html.replace('36/36','38/36'),summary));
+  assert.throws(()=>assertSummaryText(html.replace('42/42','44/42'),summary));
+});

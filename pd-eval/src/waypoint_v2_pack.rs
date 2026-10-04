@@ -31,6 +31,8 @@ use crate::{
 pub const DEFAULT_PLANNER_PACK_PATH: &str = "fixtures/packs/planner_v2_lab_suite.json";
 pub const WAYPOINT_V2_BATCH_SCHEMA_ID: &str = "planner_v2_eval_batch_v1";
 
+mod tree_report;
+
 const PRACTICAL_PATH: &str = "fixtures/research/waypoint_v2_practical_suite_plan_v1.json";
 const PRACTICAL_SHA256: &str = "92869e10225a72e8716ad87c20fbc1ca3795bd692aa9e41d011cd9ae18cf438c";
 const FRESH_PATH: &str = "fixtures/research/waypoint_v2_fresh_terrain_inputs_v1.json";
@@ -1374,7 +1376,7 @@ fn append_rust_files(dir: &Path, repo: &Path, bytes: &mut Vec<u8>) -> Result<()>
     Ok(())
 }
 
-fn capture_source_state(repo: &Path) -> Result<WaypointV2SourceState> {
+pub(crate) fn capture_source_state(repo: &Path) -> Result<WaypointV2SourceState> {
     let mut tree_bytes = Vec::new();
     for crate_name in ["pd-eval", "pd-core", "pd-plan", "pd-report", "pd-control"] {
         let src = repo.join(crate_name).join("src");
@@ -1799,171 +1801,17 @@ fn escape_html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn batch_html(report: &WaypointV2BatchReport) -> String {
-    let summary = &report.summary;
-    let groups = [
-        ("Clear", summary.clear_count),
-        ("Ordinary terrain", summary.ordinary_count),
-        ("Additional terrain", summary.additional_terrain_count),
-        ("Diagnostics", summary.diagnostic_count),
-    ];
-    let group_rows = groups
-        .iter()
-        .map(|(name, count)| format!("<tr><th>{}</th><td>{}</td></tr>", name, count))
-        .collect::<String>();
-    let mut case_rows = String::new();
-    for group in [
-        WaypointV2PackGroup::Clear,
-        WaypointV2PackGroup::Ordinary,
-        WaypointV2PackGroup::AdditionalTerrain,
-        WaypointV2PackGroup::Diagnostic,
-    ] {
-        let label = group.as_str();
-        case_rows.push_str(&format!(
-            "<tr class=\"group\"><th colspan=\"8\">{}</th></tr>",
-            escape_html(label)
-        ));
-        for case in report.cases.iter().filter(|case| case.group == group) {
-            let row_href = escape_html(&case.annotated_report_path);
-            let replay = if case.status == "preflight_rejected" {
-                "N/A".into()
-            } else {
-                case.final_source_replay_passed
-                    .map_or("—".into(), |value| value.to_string())
-            };
-            case_rows.push_str(&format!(
-                "<tr><td><a href=\"{row_href}\">{}</a></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}/{}</td><td>{}</td><td>{}</td></tr>",
-                escape_html(&case.case_id), escape_html(&case.family), escape_html(&case.status),
-                escape_html(case.planning_stop.as_deref().unwrap_or("missing")),
-                case.correction_count.map_or("—".into(), |n| n.to_string()),
-                case.integrity_passed.map_or("—".into(), |v| v.to_string()),
-                replay,
-                case.planning_s.map_or("—".into(), |v| format!("{v:.3}s")),
-                escape_html(case.outcome.as_deref().unwrap_or("missing")),
-            ));
-        }
-    }
-    let stops = summary
-        .planning_stops
-        .iter()
-        .map(|(key, count)| format!("<tr><th>{}</th><td>{}</td></tr>", escape_html(key), count))
-        .collect::<String>();
-    let outcomes = summary
-        .physical_outcomes
-        .iter()
-        .map(|(key, count)| format!("<tr><th>{}</th><td>{}</td></tr>", escape_html(key), count))
-        .collect::<String>();
-    let fixture_hashes = report
-        .input_identity
-        .source_fixture_sha256
-        .iter()
-        .map(|(source, digest)| {
-            format!(
-                "<tr><th>{}</th><td><code>{}</code></td></tr>",
-                escape_html(source),
-                escape_html(digest)
-            )
-        })
-        .collect::<String>();
-    let manifest_hashes = report
-        .input_identity
-        .source_manifest_sha256
-        .iter()
-        .map(|(path, digest)| {
-            format!(
-                "<tr><th>{}</th><td><code>{}</code></td></tr>",
-                escape_html(path),
-                escape_html(digest)
-            )
-        })
-        .collect::<String>();
-    let source_after = report.provenance.source_after.as_ref().map_or_else(
-        || "not recorded".to_owned(),
-        |state| {
-            format!(
-                "commit {}; dirty {}; source tree {}; executable {}",
-                state.git_commit.as_deref().unwrap_or("unknown"),
-                state
-                    .git_dirty
-                    .map_or("unknown".into(), |value| value.to_string()),
-                state.rust_source_tree_sha256,
-                state.executable_sha256
-            )
-        },
-    );
-    format!(
-        r###"<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title>
-<style>p{{overflow-wrap:anywhere}}</style>
-<style>*{{box-sizing:border-box}}body{{font:16px/1.5 system-ui,sans-serif;margin:0 auto;padding:1rem;max-width:1200px;color:#18212b}}h1,h2{{line-height:1.2}}.rollups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:1rem}}section{{min-width:0;margin:1.2rem 0;padding:1rem;border:1px solid #ccd5df;border-radius:.6rem}}.table-wrap{{overflow-x:auto;max-width:100%}}table{{border-collapse:collapse;width:100%;min-width:0}}th,td{{text-align:left;border-bottom:1px solid #dde3e9;padding:.45rem;vertical-align:top;overflow-wrap:anywhere}}.cases{{min-width:980px}}.group th{{background:#edf2f7}}code{{overflow-wrap:anywhere}}a{{overflow-wrap:anywhere}}.notice{{background:#f3f6fa;padding:.8rem;border-left:4px solid #4876a8}}</style></head>
-<body><nav><a href="/reports/">Report home</a> · <a href="/reports/topics/waypoint-planning/index.html">Waypoint planning</a></nav>
-<h1>{}</h1><p>{}</p><p class="notice">44 cases total: 36 landing candidates and 8 diagnostics. Finite misses remain in the 36-case landing denominator; diagnostics are reported separately. A stop or process exit is not a landing claim.</p>
-<div class="rollups"><section><h2>Case groups</h2><div class="table-wrap"><table><tbody>{}</tbody></table></div></section>
-<section><h2>Verified outcomes</h2><p>Core 36-case landing set: {}/36 target landings ({} direct, {} corrected); {} simulated non-landings.</p><p>Diagnostics: {} supported target landings, {} supported non-landings, {} unsupported preflight cases; {} crashes.</p><p>Integrity passed/failed: {}/{}; source replay passed/failed: {}/{} (unsupported preflight is not applicable); {} simulated cases lack validated replay.</p></section>
-<section><h2>Planning stops</h2><div class="table-wrap"><table><tbody>{}</tbody></table></div></section>
-<section><h2>Physical outcomes</h2><div class="table-wrap"><table><tbody>{}</tbody></table></div></section></div>
-<section><h2>Cases</h2><div class="table-wrap"><table class="cases"><thead><tr><th>Case</th><th>Family</th><th>Record</th><th>Planning stop</th><th>Corrections</th><th>Integrity / replay</th><th>Planning</th><th>Outcome</th></tr></thead><tbody>{}</tbody></table></div></section>
-<section><h2>Input identity and provenance</h2><p>Policy version {}. Rust-native typed expansion digest: <code>{}</code>.</p><p>Pack snapshot: <code>{}</code>; expanded inputs: <code>{}</code>.</p><p>Before: Git commit <code>{}</code>; worktree dirty: {}. Source tree SHA-256: <code>{}</code>. Executable SHA-256: <code>{}</code>.</p><p>After: {}.</p><p>Source and input hashes unchanged during capture: {}.</p><div class="table-wrap"><table><caption>Sealed source fixtures</caption><tbody>{}</tbody></table></div><div class="table-wrap"><table><caption>Sealed base manifests</caption><tbody>{}</tbody></table></div><p>Raw input and flight JSON are linked from every detail page; rich plots remain in each simulated detail report.</p></section>
-</body></html>"###,
-        escape_html(&report.name),
-        escape_html(&report.name),
-        escape_html(&format!(
-            "Named native V2 planner batch · pack {} · status {}",
-            report.pack_id, report.status
-        )),
-        group_rows,
-        summary.valid_landing_count,
-        summary.direct_landing_count,
-        summary.corrected_landing_count,
-        summary.non_landing_count,
-        summary.diagnostic_landing_count,
-        summary.diagnostic_non_landing_count,
-        summary.unsupported_count,
-        summary.crash_count,
-        summary.integrity_passed_count,
-        summary.integrity_failed_count,
-        summary.final_source_replay_passed_count,
-        summary.final_source_replay_failed_count,
-        summary.simulation_unverified_count,
-        stops,
-        outcomes,
-        case_rows,
-        report.policy_version,
-        escape_html(&report.input_identity.rust_typed_expanded_inputs_sha256),
-        escape_html(&report.pack_snapshot_sha256),
-        escape_html(&report.expanded_inputs_snapshot_sha256),
-        escape_html(
-            report
-                .provenance
-                .source_before
-                .git_commit
-                .as_deref()
-                .unwrap_or("unknown")
-        ),
-        report
-            .provenance
-            .source_before
-            .git_dirty
-            .map_or("unknown".into(), |v| v.to_string()),
-        escape_html(&report.provenance.source_before.rust_source_tree_sha256),
-        escape_html(&report.provenance.source_before.executable_sha256),
-        escape_html(&source_after),
-        report
-            .provenance
-            .unchanged_during_capture
-            .map_or("unknown".into(), |v| v.to_string()),
-        fixture_hashes,
-        manifest_hashes,
-    )
-}
-
 fn detail_html(
     input: &WaypointV2PackInput,
     case: &WaypointV2BatchCase,
     result: &WaypointV2FlightResult,
     index: usize,
     cases: &[WaypointV2BatchCase],
+    source_base: Option<&str>,
 ) -> Result<String> {
+    let source_link = |relative: &str, local: &str| {
+        source_base.map_or_else(|| local.to_owned(), |base| format!("{base}{relative}"))
+    };
     if result.manifest.is_some() {
         let prior = index.checked_sub(1).map(|i| &cases[i]);
         let next = cases.get(index + 1);
@@ -1978,10 +1826,19 @@ fn detail_html(
                 .map(|case| link("Previous case", format!("../{}/index.html", case.case_id))),
             next: next.map(|case| link("Next case", format!("../{}/index.html", case.case_id))),
             source_links: vec![
-                link("Scenario JSON", "scenario.json".into()),
-                link("Flight JSON", "flight.json".into()),
-                link("Run summary JSON", "summary.json".into()),
-                link("Expanded batch inputs", "../../expanded-inputs.json".into()),
+                link(
+                    "Scenario JSON",
+                    source_link(&case.scenario_path, "scenario.json"),
+                ),
+                link("Flight JSON", source_link(&case.flight_path, "flight.json")),
+                link(
+                    "Run summary JSON",
+                    source_link(&case.summary_path, "summary.json"),
+                ),
+                link(
+                    "Expanded batch inputs",
+                    source_link("expanded-inputs.json", "../../expanded-inputs.json"),
+                ),
                 link(
                     "Waypoint planning topic",
                     "/reports/topics/waypoint-planning/index.html".into(),
@@ -2031,16 +1888,27 @@ fn detail_html(
             )
         })
         .unwrap_or_default();
-    Ok(format!(
-        r###"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title><style>body{{font:16px/1.5 system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem}}code,a{{overflow-wrap:anywhere}}section{{padding:1rem;border:1px solid #ccd5df;border-radius:.5rem}}nav a{{margin-right:1rem}}</style></head><body><nav><a href="../../index.html">Batch summary</a><a href="/reports/">Report home</a><a href="/reports/topics/waypoint-planning/index.html">Waypoint planning</a>{} {}</nav><h1>{}</h1><section><p>{}</p><p>Planning stop: <code>{}</code></p><p>{}</p><p>Expected preflight: <code>{}</code></p><ul><li><a href="scenario.json">Scenario JSON</a></li><li><a href="flight.json">Typed preflight result JSON</a></li><li><a href="summary.json">Run summary JSON</a></li><li><a href="../../expanded-inputs.json">Expanded inputs snapshot</a></li></ul></section></body></html>"###,
-        escape_html(&case.case_id),
-        previous,
-        next,
-        escape_html(&case.case_id),
+    let navigation = format!(
+        r#"<nav><a href="../../index.html">Batch summary</a> · <a href="/reports/">Report home</a> · <a href="/reports/topics/waypoint-planning/index.html">Waypoint planning</a> · {previous} {next}</nav>"#
+    );
+    let body = format!(
+        r###"<p>{}</p><p>Planning stop: <code>{}</code></p><p>{}</p><p>Expected preflight: <code>{}</code></p><ul><li><a href="{}">Scenario JSON</a></li><li><a href="{}">Typed preflight result JSON</a></li><li><a href="{}">Run summary JSON</a></li><li><a href="{}">Expanded inputs snapshot</a></li></ul>"###,
         escape_html(status_message),
         stop,
         reason,
-        escape_html(case.expected_preflight.as_deref().unwrap_or("none"))
+        escape_html(case.expected_preflight.as_deref().unwrap_or("none")),
+        escape_html(&source_link(&case.scenario_path, "scenario.json")),
+        escape_html(&source_link(&case.flight_path, "flight.json")),
+        escape_html(&source_link(&case.summary_path, "summary.json")),
+        escape_html(&source_link(
+            "expanded-inputs.json",
+            "../../expanded-inputs.json"
+        ))
+    );
+    Ok(pd_report::batch::render_status_page(
+        &case.case_id,
+        &navigation,
+        &body,
     ))
 }
 
@@ -2071,11 +1939,11 @@ pub fn render_waypoint_v2_batch(capture_root: &Path) -> Result<WaypointV2BatchRe
     let verified = validate_batch_capture(capture_root, &report)?;
     let mut pages = Vec::with_capacity(report.cases.len() + 2);
     for (index, ((input, result), case)) in verified.iter().zip(&report.cases).enumerate() {
-        let html = detail_html(input, case, result, index, &report.cases)?;
+        let html = detail_html(input, case, result, index, &report.cases, None)?;
         let path = safe_output_path(capture_root, &case.annotated_report_path)?;
         pages.push((path, html));
     }
-    let batch_html = batch_html(&report);
+    let batch_html = tree_report::render(&report, &verified, None)?;
     pages.push((
         safe_output_path(capture_root, "index.html")?,
         batch_html.clone(),
@@ -2086,6 +1954,117 @@ pub fn render_waypoint_v2_batch(capture_root: &Path) -> Result<WaypointV2BatchRe
         write_derived(&path, html.as_bytes())?;
     }
     Ok(report)
+}
+
+/// Validate a native capture without changing any captured or derived artifacts.
+pub fn validated_waypoint_v2_batch(capture_root: &Path) -> Result<WaypointV2BatchReport> {
+    let bytes = fs::read(safe_capture_file(capture_root, "summary.json")?)?;
+    let report: WaypointV2BatchReport = serde_json::from_slice(&bytes)?;
+    validate_batch_capture(capture_root, &report)?;
+    Ok(report)
+}
+
+/// Build the normal report-site edition entirely in memory. Raw evidence links
+/// point to the capture, while normal batch/case navigation stays in the site.
+pub fn render_waypoint_v2_site_pages(
+    capture_root: &Path,
+    source_base: &str,
+) -> Result<(WaypointV2BatchReport, Vec<(PathBuf, String)>)> {
+    ensure!(source_base.starts_with('/') && source_base.ends_with('/'));
+    ensure!(
+        source_base
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/-_.%".contains(&b)),
+        "unsafe capture URL"
+    );
+    let report: WaypointV2BatchReport =
+        serde_json::from_slice(&fs::read(safe_capture_file(capture_root, "summary.json")?)?)?;
+    let verified = validate_batch_capture(capture_root, &report)?;
+    let mut pages = Vec::with_capacity(report.case_count + 1);
+    for (index, ((input, result), case)) in verified.iter().zip(&report.cases).enumerate() {
+        pages.push((
+            PathBuf::from(&case.annotated_report_path),
+            detail_html(input, case, result, index, &report.cases, Some(source_base))?,
+        ));
+    }
+    pages.push((
+        PathBuf::from("index.html"),
+        tree_report::render_site(&report, &verified, source_base)?,
+    ));
+    Ok((report, pages))
+}
+
+/// Build only a separate tree preview, linking to unchanged captured details.
+/// No simulation, detail regeneration, current selection or site publication.
+pub fn render_waypoint_v2_batch_preview(
+    capture_root: &Path,
+    preview_root: &Path,
+) -> Result<PathBuf> {
+    let summary_path = safe_capture_file(capture_root, "summary.json")?;
+    let summary_bytes = fs::read(summary_path)?;
+    let report: WaypointV2BatchReport = serde_json::from_slice(&summary_bytes)?;
+    let verified = validate_batch_capture(capture_root, &report)?;
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("repository root")?;
+    let outputs = repo.join("outputs").canonicalize()?;
+    let source = capture_root.canonicalize()?;
+    let relative_source = source
+        .strip_prefix(&outputs)
+        .context("preview capture must be beneath served outputs")?;
+    let destination = preview_destination(&outputs, &source, preview_root)?;
+    let source_href = format!("/{}/", relative_source.to_string_lossy().replace('\\', "/"));
+    ensure!(
+        source_href
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/-_.".contains(&b)),
+        "unsafe capture URL"
+    );
+    let html = tree_report::render(&report, &verified, Some(&source_href))?;
+    let renderer_source = capture_source_state(repo)?;
+    reserve_output_root(&destination)?;
+    write_bytes_create_only(&destination.join("index.html"), html.as_bytes())?;
+    write_create_only(
+        &destination.join("preview.json"),
+        &serde_json::json!({
+            "schema_id":"planner_v2_batch_tree_preview_v1", "source_capture":source,
+            "source_summary_sha256":sha256_bytes(&summary_bytes)?, "capture_base_href":source_href,
+            "rendered_html_sha256":sha256_bytes(html.as_bytes())?, "renderer_source":renderer_source,
+            "case_count":report.case_count, "scope":"presentation only; current batch and detailed pages unchanged"
+        }),
+    )?;
+    Ok(destination.join("index.html"))
+}
+
+fn preview_destination(outputs: &Path, source: &Path, requested: &Path) -> Result<PathBuf> {
+    let destination = if requested.is_absolute() {
+        requested.to_owned()
+    } else {
+        std::env::current_dir()?.join(requested)
+    };
+    ensure!(
+        !destination
+            .components()
+            .any(|c| matches!(c, Component::ParentDir)),
+        "preview destination cannot contain parent traversal"
+    );
+    ensure!(
+        destination.starts_with(outputs.join("research"))
+            && destination != outputs.join("research")
+            && !destination.starts_with(source),
+        "preview must be a separate directory beneath outputs/research"
+    );
+    let mut cursor = PathBuf::new();
+    for component in destination.components() {
+        cursor.push(component);
+        if let Ok(metadata) = fs::symlink_metadata(&cursor) {
+            ensure!(
+                !metadata.file_type().is_symlink(),
+                "symlink in preview destination"
+            );
+        }
+    }
+    Ok(destination)
 }
 
 fn safe_output_path(root: &Path, relative: &str) -> Result<PathBuf> {
@@ -2138,6 +2117,43 @@ mod tests {
             .expect("clock")
             .as_nanos();
         std::env::temp_dir().join(format!("pd-v2-pack-{label}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn preview_destination_is_research_only_without_writes() {
+        let fixture = temp_dir("preview-guard");
+        let outputs = fixture.join("outputs");
+        let research = outputs.join("research");
+        let source = research.join("capture");
+        fs::create_dir_all(&source).expect("fixture");
+        let allowed = research.join("new-preview");
+        assert_eq!(
+            preview_destination(&outputs, &source, &allowed).unwrap(),
+            allowed
+        );
+        assert!(!allowed.exists(), "validation must not create anything");
+        for rejected in [
+            outputs.join("reports/new-preview"),
+            outputs.join("eval/new-preview"),
+            research.clone(),
+            fixture.join("outside"),
+            research.join("nested/../new-preview"),
+            source.join("new-preview"),
+        ] {
+            assert!(
+                preview_destination(&outputs, &source, &rejected).is_err(),
+                "{}",
+                rejected.display()
+            );
+            assert!(!rejected.exists() || rejected == research);
+        }
+        #[cfg(unix)]
+        {
+            let link = research.join("linked");
+            std::os::unix::fs::symlink(fixture.join("missing"), &link).expect("symlink");
+            assert!(preview_destination(&outputs, &source, &link.join("preview")).is_err());
+        }
+        fs::remove_dir_all(&fixture).expect("remove owned test fixture");
     }
 
     fn report_case(input: &WaypointV2PackInput, index: usize) -> WaypointV2BatchCase {
@@ -2261,7 +2277,8 @@ mod tests {
                     .unwrap();
             assert!(result.manifest.is_none());
             assert!(result.ordinary_flight.is_none());
-            let page = detail_html(input, &all_cases[index], &result, index, &all_cases).unwrap();
+            let page =
+                detail_html(input, &all_cases[index], &result, index, &all_cases, None).unwrap();
             assert!(page.contains("No simulator trajectory or rich flight report was created."));
             assert!(!page.contains("<svg"));
             assert!(page.contains("Previous case"));
@@ -2386,19 +2403,14 @@ mod tests {
                 unchanged_during_capture: None,
             },
         };
-        let html = batch_html(&report);
-        assert!(html.contains("Core 36-case landing set: 2/36"));
-        assert!(html.contains("Diagnostics: 0 supported target landings"));
-        assert!(html.contains("overflow-x:auto"));
-        assert!(html.contains(".cases{min-width:980px}"));
-        assert!(html.contains("p{overflow-wrap:anywhere}"));
-        assert!(!html.contains("min-width:640px"));
-        assert!(html.contains("<th>Outcome</th>"));
-        assert!(html.contains("Sealed source fixtures"));
         write_create_only(&temp.join("summary.json"), &report).unwrap();
+        assert!(validated_waypoint_v2_batch(&temp).is_err());
+        assert!(render_waypoint_v2_site_pages(&temp, "/eval/capture/").is_err());
         assert!(render_waypoint_v2_batch(&temp).is_err());
         assert!(!temp.join("index.html").exists());
         assert!(!temp.join("report.html").exists());
+        assert!(render_waypoint_v2_batch_preview(&temp, &temp.join("preview")).is_err());
+        assert!(!temp.join("preview").exists());
         fs::remove_dir_all(temp).unwrap();
     }
 }

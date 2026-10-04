@@ -197,6 +197,9 @@ detail**. The stable batch page is
 keeps the existing trajectory views, charts, sample inspection, and statistics,
 and adds exact executed waypoint handoffs and return/previous/next navigation.
 Unsupported cases have diagnostic pages, not fabricated flight plots.
+Terminal, transfer and V2 now share the same batch/detail templates; V2 adds
+executed handoffs without replacing the established plots or review tree. See
+the [common-template checkpoint](docs/planner_v2_common_report_templates_results.md).
 
 The V2 single-flight command also defaults to policy 3; explicit
 `--policy-version 1` or `2` keeps historical policy selection available. Frozen

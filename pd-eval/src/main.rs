@@ -408,8 +408,12 @@ struct ReportArgs {
     #[arg(value_name = "BATCH_DIR")]
     dir: PathBuf,
 
-    #[arg(long, value_name = "BASELINE_DIR")]
+    #[arg(long, value_name = "BASELINE_DIR", conflicts_with = "preview_dir")]
     baseline_dir: Option<PathBuf>,
+
+    /// Create a native V2 preview beneath outputs/research; do not refresh or publish saved pages.
+    #[arg(long, value_name = "NEW_DIR")]
+    preview_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -2050,14 +2054,29 @@ fn render_report(args: ReportArgs) -> Result<()> {
         if args.baseline_dir.is_some() {
             bail!("native Planner V2 reports do not support legacy controller batch baselines");
         }
-        let report = pd_eval::waypoint_v2_pack::render_waypoint_v2_batch(&args.dir)?;
+        if let Some(preview_dir) = args.preview_dir {
+            let page = pd_eval::waypoint_v2_pack::render_waypoint_v2_batch_preview(
+                &args.dir,
+                &preview_dir,
+            )?;
+            println!("{}", page.display());
+            return Ok(());
+        }
+        let report = pd_eval::waypoint_v2_pack::validated_waypoint_v2_batch(&args.dir)?;
         if pd_eval::planner_eval_site::current_planner_capture(&repo_root(), &report.pack_id)?
             .is_some_and(|current| args.dir.canonicalize().is_ok_and(|dir| dir == current))
+            && let Some(page) =
+                pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?
         {
-            pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?;
+            println!("{}", page.display());
+            return Ok(());
         }
+        pd_eval::waypoint_v2_pack::render_waypoint_v2_batch(&args.dir)?;
         println!("{}", args.dir.join("index.html").display());
         return Ok(());
+    }
+    if args.preview_dir.is_some() {
+        bail!("--preview-dir is supported only for native Planner V2 batches");
     }
     let report = load_batch_report(&args.dir)?;
     let baseline_report = args
@@ -2096,6 +2115,32 @@ fn repo_root() -> PathBuf {
 #[cfg(test)]
 mod direct_generation_cli_tests {
     use super::*;
+
+    #[test]
+    fn native_batch_preview_is_explicit_and_conflicts_with_baseline() {
+        assert!(matches!(
+            Cli::try_parse_from(["pd-eval", "report", "capture", "--preview-dir", "preview"])
+                .unwrap()
+                .command,
+            Commands::Report(ReportArgs {
+                preview_dir: Some(_),
+                baseline_dir: None,
+                ..
+            })
+        ));
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "report",
+                "capture",
+                "--preview-dir",
+                "preview",
+                "--baseline-dir",
+                "baseline"
+            ])
+            .is_err()
+        );
+    }
 
     #[test]
     fn home_only_refresh_is_explicit_and_cannot_expand_to_all_reports() {

@@ -1207,7 +1207,7 @@ pub fn refresh_report_outputs(all: bool) -> Result<ReportRefreshSummary> {
                 summary.skipped_uncaptured_packs += 1;
                 continue;
             };
-            let refreshed = waypoint_v2_pack::render_waypoint_v2_batch(&capture)?;
+            let refreshed = waypoint_v2_pack::validated_waypoint_v2_batch(&capture)?;
             planner_eval_site::publish_planner_batch(&root, &capture)?;
             summary.refreshed_batches += 1;
             let saved = serde_json::to_value(&refreshed)?;

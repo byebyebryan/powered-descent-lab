@@ -844,7 +844,7 @@ async function crawlReportSite(batchRoot, batch, rootUrl) {
   };
 }
 
-function cdpClient(ws) {
+export function cdpClient(ws) {
   let sequence = 0;
   const pending = new Map();
   const errors = [];
@@ -890,7 +890,7 @@ function cdpClient(ws) {
   return {send, evaluate, errors, optional};
 }
 
-async function waitForBrowserPage(client, url, rich = false) {
+export async function waitForBrowserPage(client, url, rich = false) {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     const ready = await client.evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete'${rich ? ' && typeof Plotly !== "undefined" && Boolean(document.getElementById("chart-spatial")?._fullLayout) && Boolean(document.getElementById("chart-metrics")?._fullLayout)' : ''}`);
     if (ready) {
@@ -902,7 +902,7 @@ async function waitForBrowserPage(client, url, rich = false) {
   fail(`Browser page did not become ready: ${url}`);
 }
 
-async function captureScreenshot(client, outputDir, name) {
+export async function captureScreenshot(client, outputDir, name) {
   const {cssContentSize} = await client.send('Page.getLayoutMetrics');
   const {data} = await client.send('Page.captureScreenshot', {
     format: 'png',
@@ -914,7 +914,7 @@ async function captureScreenshot(client, outputDir, name) {
   return {file: name, sha256: sha256(readFileSync(path)), bytes: statSync(path).size};
 }
 
-async function checkFlightInteractions(client, record, label) {
+export async function checkFlightInteractions(client, record, label) {
   const info = await client.evaluate(`(()=>({
     corrections: reportData.flightAnnotations?.corrections || [],
     modes: [...document.querySelectorAll('[data-mode]')].map(button => button.dataset.mode),

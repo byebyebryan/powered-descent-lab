@@ -10,7 +10,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::waypoint_v2_pack::{is_waypoint_v2_pack, render_waypoint_v2_batch};
+use crate::waypoint_v2_pack::{
+    is_waypoint_v2_pack, render_waypoint_v2_site_pages, validated_waypoint_v2_batch,
+};
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -89,7 +91,7 @@ pub fn current_planner_capture(repo_root: &Path, pack_id: &str) -> Result<Option
 /// not publish itself over the registered planner's current site view.
 pub fn publish_planner_batch(repo_root: &Path, capture_root: &Path) -> Result<Option<PathBuf>> {
     let capture = capture_root.canonicalize()?;
-    let report = render_waypoint_v2_batch(&capture)?;
+    let report = validated_waypoint_v2_batch(&capture)?;
     // Explicit historical policy captures remain available offline; they must
     // not replace the current policy-3 planner evaluation entrypoint.
     if report.policy_version != 3 {
@@ -148,12 +150,42 @@ pub fn publish_planner_batch(repo_root: &Path, capture_root: &Path) -> Result<Op
             .collect::<Vec<_>>()
             .join("/")
     );
-    let html = fs::read_to_string(capture.join("index.html"))?;
+    let (_, mut pages) = render_waypoint_v2_site_pages(&capture, &href)?;
+    let batch_html = pages
+        .iter()
+        .find(|(p, _)| p == Path::new("index.html"))
+        .context("missing batch page")?
+        .1
+        .clone();
+    pages.push((PathBuf::from("report.html"), batch_html));
+    let page_hashes = pages
+        .iter()
+        .map(|(path, html)| {
+            Ok((
+                path.to_string_lossy().to_string(),
+                crate::waypoint_direct_body_aware_terminal::sha256_bytes(html.as_bytes())?,
+            ))
+        })
+        .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+    let receipt = serde_json::json!({
+        "schema_id":"planner_v2_common_report_site_v1", "source_capture":capture,
+        "source_summary_sha256":crate::waypoint_direct_body_aware_terminal::sha256_bytes(&fs::read(capture.join("summary.json"))?)?,
+        "source_base_href":href,"case_count":report.case_count,"page_sha256":page_hashes,
+        "renderer_source":crate::waypoint_v2_pack::capture_source_state(repo_root)?
+    });
+    // Receipt precedes the index too; navigation is published last.
+    let batch_alias = pages.pop().context("batch alias")?;
+    let batch_index = pages.pop().context("batch index")?;
     ensure!(
-        html.contains("<head>"),
-        "planner batch report has no document head"
+        batch_alias.0 == Path::new("report.html") && batch_index.0 == Path::new("index.html"),
+        "unexpected report publication order"
     );
-    let site_html = html.replacen("<head>", &format!("<head>\n<base href=\"{href}\">"), 1);
+    pages.push((
+        PathBuf::from("render.json"),
+        serde_json::to_string_pretty(&receipt)?,
+    ));
+    pages.push(batch_alias);
+    pages.push(batch_index);
     let site_dir = outputs.join("reports/eval").join(&report.pack_id);
     // Never follow a generated-site or selection directory symlink into raw
     // captures, historical evidence, or another filesystem location.
@@ -175,6 +207,11 @@ pub fn publish_planner_batch(repo_root: &Path, capture_root: &Path) -> Result<Op
             Err(error) => return Err(error.into()),
         }
     }
+    // Validate every page target before the first write. Report-site navigation
+    // has its own URLs; captured pages and evidence are never rewritten here.
+    for (relative, _) in &pages {
+        validate_page_target(&site_dir, relative)?;
+    }
     fs::create_dir_all(&site_dir)?;
     let selected = CurrentPlannerBatch {
         schema_id: CURRENT_SCHEMA.into(),
@@ -183,13 +220,54 @@ pub fn publish_planner_batch(repo_root: &Path, capture_root: &Path) -> Result<Op
     };
     let selection_dir = outputs.join("eval").join(&report.pack_id);
     fs::create_dir_all(&selection_dir)?;
-    atomic_derived_write(&site_dir.join("index.html"), site_html.as_bytes())?;
-    atomic_derived_write(
-        &selection_dir.join("current.json"),
-        &serde_json::to_vec_pretty(&selected)?,
-    )?;
+    // Detail pages precede the batch entrypoint so it never advertises missing
+    // new pages. All rendering and path validation are already complete.
+    for (relative, html) in pages {
+        let path = site_dir.join(relative);
+        fs::create_dir_all(path.parent().context("page parent")?)?;
+        atomic_derived_write(&path, html.as_bytes())?;
+    }
+    let selection_path = selection_dir.join("current.json");
+    let selection_bytes = serde_json::to_vec_pretty(&selected)?;
+    if fs::read(&selection_path).ok().as_deref() != Some(&selection_bytes) {
+        atomic_derived_write(&selection_path, &selection_bytes)?;
+    }
     crate::report_catalog::write_report_catalog(repo_root)?;
     Ok(Some(site_dir.join("index.html")))
+}
+
+fn validate_page_target(root: &Path, relative: &Path) -> Result<()> {
+    ensure!(
+        relative
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+            && !relative.as_os_str().is_empty(),
+        "unsafe report page path"
+    );
+    let path = root.join(relative);
+    let mut cursor = PathBuf::new();
+    for component in path.components() {
+        cursor.push(component);
+        match fs::symlink_metadata(&cursor) {
+            Ok(metadata) => {
+                ensure!(
+                    !metadata.file_type().is_symlink(),
+                    "symlink in report page target"
+                );
+                ensure!(
+                    if cursor == path {
+                        metadata.is_file()
+                    } else {
+                        metadata.is_dir()
+                    },
+                    "unsafe report page target"
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 fn url_component(value: &str) -> String {
@@ -268,6 +346,32 @@ mod tests {
                 fs::read_to_string(&sentinel).unwrap(),
                 "existing report home"
             );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn publication_page_targets_reject_traversal_symlinks_and_directories_without_writes() {
+        let root = std::env::temp_dir().join(format!(
+            "pd-site-target-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        assert!(validate_page_target(&root, Path::new("runs/case/index.html")).is_ok());
+        assert!(!root.join("runs").exists());
+        for bad in ["", "../capture/index.html", "/tmp/report.html"] {
+            assert!(validate_page_target(&root, Path::new(bad)).is_err());
+        }
+        fs::create_dir_all(root.join("directory.html")).unwrap();
+        assert!(validate_page_target(&root, Path::new("directory.html")).is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.join("missing"), root.join("linked")).unwrap();
+            assert!(validate_page_target(&root, Path::new("linked/index.html")).is_err());
         }
         fs::remove_dir_all(root).unwrap();
     }

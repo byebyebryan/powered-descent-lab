@@ -87,16 +87,36 @@ pub fn write_waypoint_v2_flight(
     let output_started = Instant::now();
     write_create_only(&output_dir.join("scenario.json"), &request.scenario)?;
     write_create_only(&output_dir.join("flight.json"), &result)?;
-    if let (Some(manifest), Some(ordinary)) = (&result.manifest, &result.ordinary_flight) {
-        pd_report::write_run_report(
-            &output_dir.join("report.html"),
+    if result.manifest.is_some() && result.ordinary_flight.is_some() {
+        let navigation = pd_report::flight_annotations::AnnotationNavigation {
+            source_links: vec![
+                pd_report::flight_annotations::NavigationLink {
+                    label: "Scenario JSON".into(),
+                    href: "scenario.json".into(),
+                },
+                pd_report::flight_annotations::NavigationLink {
+                    label: "Flight JSON".into(),
+                    href: "flight.json".into(),
+                },
+                pd_report::flight_annotations::NavigationLink {
+                    label: "Run summary JSON".into(),
+                    href: "summary.json".into(),
+                },
+            ],
+            ..Default::default()
+        };
+        let html = crate::waypoint_v2_report::render_rich_flight(
             &request.scenario,
-            None,
-            manifest,
-            &ordinary.events,
-            &ordinary.samples,
-            &[],
-            None,
+            &result,
+            navigation,
+            format!(
+                "Native V2 flight · {} · executed handoffs",
+                policy.policy_id
+            ),
+        )?;
+        crate::waypoint_v2_report::write_bytes_create_only(
+            &output_dir.join("report.html"),
+            html.as_bytes(),
         )?;
     }
     let output_s = output_started.elapsed().as_secs_f64();
@@ -172,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn supported_capture_keeps_rich_report_without_preview_annotations() {
+    fn supported_capture_uses_shared_rich_report_with_flight_annotations() {
         let root = fresh_test_root();
         let (_, request) = crate::load_nominal_direct_operational_fresh_inputs(&repository_root())
             .expect("supported fixture inputs")
@@ -207,7 +227,17 @@ mod tests {
         ] {
             assert!(payload.get(key).is_some(), "missing rich field: {key}");
         }
-        assert!(payload.get("flightAnnotations").is_none());
+        assert_eq!(
+            payload["flightAnnotations"]["corrections"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            payload["flightAnnotations"]["navigation"]["sourceLinks"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
         fs::remove_dir_all(root).expect("remove this test's temporary output root");
     }
 
