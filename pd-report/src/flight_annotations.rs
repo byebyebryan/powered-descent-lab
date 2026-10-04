@@ -125,14 +125,32 @@ impl FlightAnnotations {
             ));
         }
         format!(
-            "<div class=\"flight-annotation-banner\"><p>{}</p><nav aria-label=\"Preview report navigation\">{links}</nav></div>",
+            "<div class=\"flight-annotation-banner\"><p>{}</p><nav aria-label=\"Flight report navigation\">{links}</nav></div>",
             super::escape_html(&self.caption)
         )
     }
 
     pub(crate) fn panel_html(&self) -> String {
+        let links = self
+            .navigation
+            .source_links
+            .iter()
+            .map(|link| {
+                format!(
+                    "<li><a href=\"{}\">{}</a></li>",
+                    super::escape_html(&link.href),
+                    super::escape_html(&link.label)
+                )
+            })
+            .collect::<String>();
         if self.corrections.is_empty() {
-            return String::new();
+            return if links.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<details class=\"panel\" id=\"flight-inputs-panel\"><summary>Inputs and report provenance</summary><ul>{links}</ul></details>"
+                )
+            };
         }
         let mut rows = String::new();
         for (i, c) in self.corrections.iter().enumerate() {
@@ -146,18 +164,6 @@ impl FlightAnnotations {
                 c.entry.physics_step, c.entry.sim_time_s
             ));
         }
-        let links = self
-            .navigation
-            .source_links
-            .iter()
-            .map(|link| {
-                format!(
-                    "<li><a href=\"{}\">{}</a></li>",
-                    super::escape_html(&link.href),
-                    super::escape_html(&link.label)
-                )
-            })
-            .collect::<String>();
         format!(
             "<section class=\"panel\" id=\"flight-corrections-panel\"><div class=\"panel-head\"><div><div class=\"eyebrow\">Planner</div><h2>Waypoint corrections</h2></div></div><p>Waypoint handoff: replan from actual state.</p><p class=\"flight-reference-note\">H marks executed handoffs. Existing reference overlays are unchanged, not a reconstruction of the rejected proposal.</p><label class=\"flight-overlay-toggle\"><input type=\"checkbox\" id=\"flight-handoffs-visible\" checked> Show handoffs on both plots</label>{rows}<details><summary>Original capture and rendering provenance</summary><ul>{links}</ul></details></section>"
         )
@@ -220,6 +226,22 @@ mod tests {
         assert!(html.contains("&lt;home&gt;"));
         assert!(html.contains("&amp;y=2"));
         assert!(annotations.panel_html().is_empty());
+    }
+
+    #[test]
+    fn zero_correction_reports_keep_sources_without_fabricating_handoff_controls() {
+        let mut annotations = FlightAnnotations::default();
+        annotations.navigation.source_links = vec![NavigationLink {
+            label: "Scenario & inputs".into(),
+            href: "scenario.json".into(),
+        }];
+        let html = annotations.panel_html();
+        assert!(html.contains("Inputs and report provenance"));
+        assert!(html.contains("href=\"scenario.json\""));
+        assert!(html.contains("Scenario &amp; inputs"));
+        assert!(!html.contains("Waypoint corrections"));
+        assert!(!html.contains("flight-handoffs-visible"));
+        assert!(!html.contains("data-select-correction"));
     }
 
     #[test]
