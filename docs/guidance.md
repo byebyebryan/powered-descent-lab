@@ -174,60 +174,31 @@ flight policy, or acceptance thresholds in response to results. Local
 checkpoint commits are authorized; pushes, server restarts, runtime-default
 changes, new mission corpora, and planner tuning are not part of this pass.
 
-## Optional V2 Runtime Consumer: Next-Phase Design
+## Optional V2 session and CLI integration
 
-This is a design-only follow-up, not an implemented adapter or a requirement
-for usable offline lab evaluation. A concrete runtime consumer should be named
-before implementation; the ordinary `pd-cli run` and controller defaults stay
-unchanged in the reliability pass.
+The [session integration pass](waypoint_v2_session_integration_results.md)
+implements `pd-eval::WaypointV2Session` and a default-off `pd-cli` feature
+`planner-v2`. Native extraction passed the complete 44-case acceptance gate
+and exact physical/rich-report parity against the accepted baseline. The CLI
+adapter is not yet accepted: its measured matrix passed eight direct cases,
+then rejected the first corrected case because a progress guard confused piece
+origin with correction entry E. No later matrix, complete CLI replay or new
+publication ran. A focused repair and replacement validation require approval.
 
-The existing seam is `pd-eval::FlightLoop` in `waypoint_v2.rs`. It owns one
-`OrdinaryLive` state, one absolute deadline, the consumed command ledger, and
-the correction count. Queries clone that live state; executing to a handoff
-advances the original state. The controller trait, by contrast, returns a
-`ControllerFrame` and has no typed planning-stop result. A snapshot's
-`to_simulation_state` is query-only and explicitly must not be stepped. Fixed
-flight-program playback is not a dynamic replanning interface.
+The session owns one full live plant, original deadline and command ledger.
+One advance includes nominal approach to E and correction to actual H; the
+next call starts at that retained H. Queries and continuation certificates
+remain private clones. Correction counts advance only after the existing
+proofs pass. Finalization performs final source replay and can override an
+earlier landed progress result. Snapshots remain query-only, and no commands
+can be issued after a terminal stop.
 
-The smallest staged path is:
-
-1. Extract an internal V2 session/iteration seam while keeping the existing
-   evaluator driver and all numerical selection, query, admission, contact,
-   certificate, and replay checks intact. Prove command/state parity before
-   changing crate placement or adding a consumer. Do not assume every replay
-   is removable post-processing: witnesses and prefix proofs also participate
-   in admission.
-2. Define a segment-or-stop contract bound to the original run context, actual
-   full live state, incoming contact, global command clock, original deadline,
-   consumed prefix, source-phase ownership, and completed correction count.
-   A segment carries globally scheduled commands through its planned handoff;
-   the next planning call receives the actual state after execution. There is
-   no simulator restart, fuel refill, fresh deadline, or reconstructed live
-   state. Keep predictions distinct from executed handoffs.
-3. Add an optional V2-specific driver only after that seam passes parity. It
-   must stop advancing on a typed finite stop and retain partial evidence,
-   rather than issue idle commands until timeout. `NoClearing` means the local
-   search found no admitted proposal; `CorrectionLimit` means the next nominal
-   remains blocked after the correction allowance was reached. A final direct
-   attempt remains permitted after the last allowed correction. Ordinary
-   controller APIs need not be generalized for this
-   first optional consumer.
-
-Keep the evaluator's final source replay, batch policy, and reporting outside
-the consumer. Decide shared module/crate placement only if a second consumer
-actually needs it. Do not introduce a `pd-control` dependency on `pd-eval`, or
-put simulation/report orchestration into the neutral `pd-plan` crate.
-
-The future implementation gate should cover direct and repeated-correction
-flights, finite pre-departure stops, correction-limit/deadline boundaries,
-unsupported preflight, and no commands after stop. Verify actual E/H state,
-monotonic clock, held command, incoming contact, fuel continuity, unchanged
-ordinary CLI defaults, and parity with the existing evaluator's frozen inputs.
-New measured captures need their own approved allowance. Retain the current
-vehicle/Earth/120-60 Hz domain and local-clear-then-replan behavior; neither a
-landing suffix nor feature-far-edge clearance becomes a new requirement.
-Hard real-time or asynchronous planning is a separate measured design question,
-not a claim derived from the offline planning timings.
+The optional dependency is an explicit lab adapter, not an evaluator-free game
+library or a new `ControllerSpec`. Ordinary `pd-cli run`, controller defaults
+and default-off dependencies remain unchanged. A matching saved-prefix replay
+does not imply landing. The supported vehicle/Earth/120-60 Hz setup, terrain-blind
+nominal choice and local-clear-then-replan logic are unchanged; hard real-time,
+asynchronous planning and generic game integration remain separate decisions.
 
 ## Maintained Gates
 
