@@ -167,7 +167,7 @@ enum Commands {
     NominalDirectFlightRegression(NominalDirectFlightRegressionArgs),
     /// Execute an admitted nominal program under strict saved coverage, without continuation.
     NominalDirectOperationalFlight(NominalDirectFlightArgs),
-    /// Run the opt-in repeated local-clearing waypoint V2 flight mode.
+    /// Run the current repeated local-clearing waypoint V2 planner (policy 3 by default).
     WaypointV2Flight(WaypointV2FlightArgs),
     /// Render saved waypoint V2 evidence only; no planning or simulation.
     WaypointV2Report(WaypointV2ReportArgs),
@@ -246,7 +246,7 @@ struct NominalDirectFlightArgs {
 struct WaypointV2FlightArgs {
     #[command(flatten)]
     flight: NominalDirectFlightArgs,
-    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=3), default_value_t = 1)]
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=3), default_value_t = 3)]
     policy_version: u8,
 }
 
@@ -2535,6 +2535,49 @@ fn default_worker_count() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn current_v2_flight_defaults_to_policy_three_and_keeps_explicit_history() {
+        let common = [
+            "pd-eval",
+            "waypoint-v2-flight",
+            "--scenario",
+            "scenario.json",
+            "--source-pad-id",
+            "source",
+            "--target-pad-id",
+            "target",
+            "--preflight-only",
+        ];
+        let Commands::WaypointV2Flight(default) = Cli::try_parse_from(common).unwrap().command
+        else {
+            panic!("wrong command");
+        };
+        assert_eq!(default.policy_version, 3);
+        for version in ["1", "2", "3"] {
+            let mut args = common.to_vec();
+            args.extend(["--policy-version", version]);
+            let Commands::WaypointV2Flight(parsed) = Cli::try_parse_from(args).unwrap().command
+            else {
+                panic!("wrong command");
+            };
+            assert_eq!(parsed.policy_version.to_string(), version);
+            assert_eq!(
+                pd_eval::waypoint_v2_report::policy_version(&waypoint_v2_policy_for_version(
+                    parsed.policy_version
+                ))
+                .unwrap()
+                .to_string(),
+                version
+            );
+        }
+        // Frozen policy constructors retain their historical identity; only
+        // user-facing selection changes, not numerical or recorded policies.
+        assert_eq!(
+            pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::default()).unwrap(),
+            1
+        );
+    }
 
     #[test]
     fn airborne_canary_requires_explicit_output_and_has_no_promotion_flag() {

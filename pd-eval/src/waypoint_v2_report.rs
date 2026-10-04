@@ -28,6 +28,80 @@ pub const PINNED_CAPTURE: &str =
 
 pub mod rich_preview;
 
+/// Add executed handoffs to the existing rich report without replacing its
+/// telemetry, reference overlays, plots, or statistics. The projection validates
+/// that the annotations agree with the recorded flight and its exact clocks.
+pub fn render_rich_flight(
+    scenario: &ScenarioSpec,
+    result: &WaypointV2FlightResult,
+    navigation: pd_report::flight_annotations::AnnotationNavigation,
+    caption: String,
+) -> Result<String> {
+    let projected = project_flight(scenario, result)?;
+    let mut annotations = executed_annotations(result, &projected)?;
+    annotations.navigation = navigation;
+    annotations.caption = caption;
+    let ordinary = result.ordinary_flight.as_ref().context("missing flight")?;
+    let manifest = result.manifest.as_ref().context("missing manifest")?;
+    pd_report::render_run_report_with_flight_annotations(
+        scenario,
+        None,
+        manifest,
+        &ordinary.events,
+        &ordinary.samples,
+        &[],
+        None,
+        None,
+        None,
+        None,
+        Some(&annotations),
+    )
+}
+
+pub(super) fn executed_annotations(
+    result: &WaypointV2FlightResult,
+    projected: &FlightReport,
+) -> Result<pd_report::flight_annotations::FlightAnnotations> {
+    use pd_report::flight_annotations::{ExecutedCorrection, FlightAnnotations, FlightBoundary};
+    ensure!(
+        result.segments.len() == projected.segments.len(),
+        "annotation segment mismatch"
+    );
+    let boundary = |state: &SimulationStateSnapshotV1| FlightBoundary {
+        physics_step: state.physics_step,
+        sim_time_s: state.sim_time_s,
+        position_m: state.position_m,
+        velocity_mps: state.velocity_mps,
+        attitude_rad: state.attitude_rad,
+        fuel_kg: state.fuel_kg,
+    };
+    let corrections = result
+        .segments
+        .iter()
+        .zip(&projected.segments)
+        .filter_map(|(segment, display)| {
+            display
+                .correction
+                .as_ref()
+                .map(|correction| ExecutedCorrection {
+                    number: correction.number,
+                    entry: boundary(&segment.entry_state),
+                    handoff: boundary(&segment.end_state),
+                    reason: correction.reason.clone(),
+                    after_handoff: correction.after_handoff.clone(),
+                })
+        })
+        .collect::<Vec<_>>();
+    ensure!(
+        corrections.len() == result.correction_count as usize,
+        "annotation correction mismatch"
+    );
+    Ok(FlightAnnotations {
+        corrections,
+        ..Default::default()
+    })
+}
+
 pub fn policy_version(policy: &WaypointV2Policy) -> Result<u32> {
     if policy == &WaypointV2Policy::default() {
         Ok(1)
@@ -992,6 +1066,65 @@ mod tests {
             &json!({"time": 34}),
             &json!({"time": 34, "missing": null})
         ));
+    }
+
+    #[test]
+    fn rich_batch_report_retains_original_payload_beyond_annotations() {
+        let (scenario, result) = synthetic(true);
+        let ordinary = result.ordinary_flight.as_ref().unwrap();
+        let manifest = result.manifest.as_ref().unwrap();
+        let original = pd_report::render_run_report_with_flight_annotations(
+            &scenario,
+            None,
+            manifest,
+            &ordinary.events,
+            &ordinary.samples,
+            &[],
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let annotated = render_rich_flight(
+            &scenario,
+            &result,
+            pd_report::flight_annotations::AnnotationNavigation {
+                collection: Some(pd_report::flight_annotations::NavigationLink {
+                    label: "Planner V2 batch".into(),
+                    href: "../../index.html".into(),
+                }),
+                ..Default::default()
+            },
+            "Synthetic batch report test, not flight acceptance".into(),
+        )
+        .unwrap();
+        let payload = |html: &str| {
+            let start = html.find("const reportData = ").unwrap() + "const reportData = ".len();
+            serde_json::Deserializer::from_str(&html[start..])
+                .into_iter::<Value>()
+                .next()
+                .unwrap()
+                .unwrap()
+        };
+        let mut enriched = payload(&annotated);
+        assert!(
+            enriched
+                .as_object_mut()
+                .unwrap()
+                .remove("flightAnnotations")
+                .is_some()
+        );
+        assert!(same_json(&payload(&original), &enriched));
+        assert!(annotated.contains("Planner V2 batch"));
+        assert!(
+            annotated.contains("id=\"chart-spatial\"")
+                && annotated.contains("id=\"chart-metrics\"")
+        );
+        let mut bad = result.clone();
+        bad.correction_count = 1;
+        assert!(render_rich_flight(&scenario, &bad, Default::default(), String::new()).is_err());
     }
 
     #[test]

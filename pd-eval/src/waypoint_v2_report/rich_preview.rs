@@ -3,9 +3,7 @@
 
 use super::*;
 use pd_report::{
-    flight_annotations::{
-        AnnotationNavigation, ExecutedCorrection, FlightAnnotations, FlightBoundary, NavigationLink,
-    },
+    flight_annotations::{AnnotationNavigation, NavigationLink},
     navigation_preview::{PreviewNavigation, render_preview_home, render_preview_suite},
 };
 
@@ -52,52 +50,6 @@ fn check_payload_preserved(original: &str, annotated: &str) -> Result<()> {
         anyhow::bail!("rich report payload changed beyond annotations: {changed:?}");
     }
     Ok(())
-}
-
-fn boundary(state: &SimulationStateSnapshotV1) -> FlightBoundary {
-    FlightBoundary {
-        physics_step: state.physics_step,
-        sim_time_s: state.sim_time_s,
-        position_m: state.position_m,
-        velocity_mps: state.velocity_mps,
-        attitude_rad: state.attitude_rad,
-        fuel_kg: state.fuel_kg,
-    }
-}
-
-fn annotations(
-    result: &WaypointV2FlightResult,
-    projected: &FlightReport,
-) -> Result<FlightAnnotations> {
-    ensure!(
-        result.segments.len() == projected.segments.len(),
-        "annotation segment mismatch"
-    );
-    let corrections = result
-        .segments
-        .iter()
-        .zip(&projected.segments)
-        .filter_map(|(segment, display)| {
-            display
-                .correction
-                .as_ref()
-                .map(|correction| ExecutedCorrection {
-                    number: correction.number,
-                    entry: boundary(&segment.entry_state),
-                    handoff: boundary(&segment.end_state),
-                    reason: correction.reason.clone(),
-                    after_handoff: correction.after_handoff.clone(),
-                })
-        })
-        .collect::<Vec<_>>();
-    ensure!(
-        corrections.len() == result.correction_count as usize,
-        "annotation correction mismatch"
-    );
-    Ok(FlightAnnotations {
-        corrections,
-        ..Default::default()
-    })
 }
 
 fn optional_destination(repo: &Path, relative: &str) -> Option<String> {
@@ -194,7 +146,7 @@ fn prepare_edition(
             let original_href = served_href(repo, &inside_file(root, &original_relative)?)
                 .context("original report href")?;
             if case.case_id == ANNOTATED_CASE {
-                let mut annotation = annotations(&result, &projected)?;
+                let mut annotation = executed_annotations(&result, &projected)?;
                 ensure!(
                     annotation.corrections.len() == 1,
                     "Ridge late is not the one-correction preview case"
