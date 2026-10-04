@@ -209,6 +209,9 @@ This default covers planner evaluation/reporting on the supported vehicle,
 Earth gravity, and 120/60 Hz setup. It does not change ordinary `pd-cli run` or
 terminal/transfer controller defaults. See the
 [activation contract](docs/waypoint_v2_eval_activation_plan.md).
+The [activation results](docs/waypoint_v2_eval_activation_results.md) record the
+new 44-case capture, exact evidence comparisons, navigation/browser checks, and
+remaining runtime-integration boundary.
 
 ## Report Serving
 
