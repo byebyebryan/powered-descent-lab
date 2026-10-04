@@ -94,7 +94,8 @@ The lab models a 2D side-view flight problem:
 - gravity
 - static terrain
 - landing targets
-- optional static obstacles
+- separate static-obstacle entities as a future world-model extension; current
+  V2 obstruction cases use terrain relief
 - vehicle and mission constraints
 
 ### Vehicle
@@ -117,7 +118,11 @@ A mission describes what the controller is trying to do:
 - evaluation goal
 - success and failure conditions
 - optional non-landing termination checkpoint
-- optional run-time disturbances
+- run-time disturbances as a future mission-model capability
+
+The current native V2 evaluation pack supplies static scenarios and terrain;
+it adds neither a separate obstacle-entity API nor a runtime-disturbance
+payload.
 
 For v1, a mission should have exactly one primary goal.
 
@@ -181,6 +186,14 @@ Waypoint planning is the upstream problem: choose terrain-valid waypoint
 positions and arrival envelopes that make each next leg feasible. The
 implemented bounded v1 planner runs once over static heightfield terrain and is
 specified in [Waypoint Planning V1](waypoint_planning.md).
+
+The accepted native V2 evaluator workflow is separate from that V1 setup-time
+planner. It constructs a terrain-blind nominal transfer, audits the fixed
+program against actual heightfield terrain, applies local correction where
+possible, and replans from the actual handoff state. This offline loop may hand
+off at useful safe progress before a feature's far edge; it does not require a
+landing suffix. It is evaluator-owned, not a `pd-control` update-loop
+capability. See the [current V2 evaluation status](waypoint_planning.md#current-v2-evaluation-status-2026-10-03).
 
 Waypoint guidance assumes the waypoint list is already planned, follows the
 currently active route leg, and enters a bounded handoff window at the waypoint
@@ -286,6 +299,9 @@ but the controller should not branch on those labels.
 Optional obstacle layers can be added later for structures or hazards without
 discarding the heightfield as the canonical ground model.
 
+Current V2 terrain obstructions are represented by heightfield relief; the
+workflow does not define a separate obstacle-entity API.
+
 `pd-lab` should not start with:
 
 - SDF as the source of truth
@@ -308,7 +324,8 @@ Responsibilities:
 
 - world and vehicle state
 - deterministic stepping
-- terrain and obstacle queries, including exact conservative corridor clearance
+- heightfield terrain and terrain-derived clearance queries, including exact
+  conservative corridor clearance
 - neutral serialized route-planning contracts and shared route validation
 - mission setup
 - observation generation
@@ -367,7 +384,9 @@ Responsibilities:
 `pd-plan` depends only on neutral contracts and terrain queries in `pd-core`. It
 must not depend on `pd-control`, select controller IDs, execute simulations, or
 own evaluator/report policy. The initial algorithm and bounded policy are
-defined in [Waypoint Planning V1](waypoint_planning.md).
+defined in [Waypoint Planning V1](waypoint_planning.md). The public
+`pd_plan::plan` path remains V1; the accepted policy-3 V2 flight loop is
+orchestrated by `pd-eval` and does not change that route-construction API.
 
 ### 5.4 `pd-cli`
 
@@ -402,6 +421,11 @@ Responsibilities:
 The eval layer should orchestrate runs around the same core and controller
 contracts used by `pd-cli`.
 
+The current `planner_v2_lab_suite` is a separate native evaluator path with
+policy 3 selected by the default `run-pack` workflow. It records its own V2
+batch schema and complete flight evidence; it does not create a V2 controller
+variant or change ordinary `pd-cli run` behavior.
+
 Its implementation is split by responsibility rather than pack family:
 
 - `model.rs` owns persisted batch, cache, comparison, and review DTOs
@@ -434,13 +458,15 @@ The current split is:
 
 - `pd-report` owns reusable single-run static report and trajectory rendering,
   plus dedicated setup-only analytical planning reports
+- `pd-report::batch` owns the shared full batch shell, sections, review-tree
+  rows, and interactions used by controller batches and native V2
 - `pd-report::site` owns stable report paths, latest links, and shared site
   index generation
 - `pd-cli` invokes that path for targeted one-run inspection
-- `pd-eval` owns aggregate batch pages, review trees, comparisons, and report
-  indexes over the same captured artifacts; it also orchestrates deterministic
-  setup reports from feature-gated planner projections without invoking a
-  controller or simulator
+- `pd-eval` owns domain aggregation, batch adapters and publication over the
+  same captured artifacts; it supplies native V2 data to the shared batch
+  renderer and also orchestrates deterministic setup reports from feature-gated
+  planner projections without invoking a controller or simulator
 - `fixtures/reports/guidance_catalog.json` declares the curated terminal,
   direct-transfer, and waypoint evidence scorecards without making generated
   outputs source-controlled truth
@@ -471,18 +497,19 @@ requiring raw JSON inspection:
 
 Report navigation is topic-first, with evidence boundaries visible within each
 topic. The root and `/reports/` share one home. Waypoint planning groups the
-selected opt-in V2 capture, maintained planner baseline and related analytical
-studies. Flight and landing control groups terminal landing, direct transfers
-and following authored waypoint routes. Research/history, a searchable report
-library and raw data are secondary choices. Report type and review status are
-metadata rather than peer top-level subjects.
+active policy-3 V2 evaluation batch, the legacy V1 planner baseline and related
+analytical studies. Flight and landing control groups terminal landing, direct
+transfers and following authored waypoint routes. Research/history, a
+searchable report library and raw data are secondary choices. Report type and
+review status are metadata rather than peer top-level subjects.
 
 `fixtures/reports/report_navigation.json` is the explicit topic map; unknown
 stable report entrypoints remain visible as Unclassified. Navigation never scans
 every research directory or chooses current evidence from modification time.
-`navigation_preview.json` pins an under-review V2 presentation, not a planner
-default or accepted result. Historical flight provenance and report editions
-remain separate.
+The active V2 entry resolves the selected native batch capture; the older
+`navigation_preview.json` fixture pins a historical presentation edition and
+does not select current evidence. Historical flight provenance and report
+editions remain separate.
 
 Evidence presentation keeps these distinctions:
 
@@ -520,13 +547,15 @@ guidance scorecards but does not compete for the eval index. Both refresh orders
 must preserve the same navigation. `refresh-reports --home-only` regenerates
 the site navigation without scorecards or detailed report bodies.
 
-A V2 navigation edition is create-only. Non-annotated full reports are copied
-verbatim except for an ordinary HTML navigation banner; the annotated report
-uses the existing additive layer. The original report payloads, plot code,
-capture files and historical render receipts are not overwritten. Navigation
-copies do not imply more waypoint visualization or another simulation run.
-New V2 captures keep the existing rich run-report writer; retained preview
-annotation is opt-in, not a replacement of future report output.
+The active V2 batch is published at
+`/reports/eval/planner_v2_lab_suite/`; `current.json` selects its create-only
+capture under `outputs/eval/planner_v2_lab_suite/`. Its batch page uses the
+shared full batch template, and supported details retain the rich flight
+renderer with additive executed-handoff annotations. Unsupported cases use a
+status page without invented flight plots. Report regeneration is
+presentation-only: it preserves raw capture evidence and records the selected
+summary, renderer, and page hashes. Older preview editions remain historical
+and do not replace the active batch.
 
 ### 5.6 Telemetry and reporting stack
 

@@ -2,8 +2,9 @@
 
 This document is the stable boundary between terminal guidance, direct
 transfer, waypoint guidance, and waypoint planning. It describes ownership and
-compatibility rather than controller tuning. The planner's detailed contract
-and evidence model live in [Waypoint Planning V1](waypoint_planning.md).
+compatibility rather than controller tuning. The V1 planner contract and
+current V2 evaluator boundary are summarized in
+[Waypoint Planning](waypoint_planning.md).
 
 ## Ownership
 
@@ -34,7 +35,18 @@ a promise that guidance will complete the mission. Existing handoff, ordered
 sequence, terminal-recoverability, terrain-clearance, and landing evidence
 remain the authority for flown behavior.
 
+The V1 descriptions above cover `pd_plan::plan` and the controller guidance
+path. The accepted native V2 workflow is separate: `pd-eval` constructs a
+terrain-blind nominal flight, audits the fixed program against actual terrain,
+applies local correction, and replans from the actual handoff state. This
+evaluator-owned outer loop is not a `pd-control` controller or a per-tick
+runtime planner. Its policy-3 batch and report contract are recorded in the
+[activation results](waypoint_v2_eval_activation_results.md).
+
 ## Lifecycle Contract
+
+The following lifecycle describes `pd-control` guidance over the resolved or
+authored route; it is not the V2 evaluator's multi-segment flight loop.
 
 - terminal guidance starts only after terminal spatial ownership and entry
   policy pass
@@ -50,8 +62,11 @@ remain the authority for flown behavior.
 
 ## Compatibility Surface
 
-The following are persisted or consumed across crates and must remain stable
-during behavior-preserving refactors:
+The following controller and guidance contracts are persisted or consumed
+across crates and must remain stable during behavior-preserving refactors. The
+native V2 evaluator keeps a separate batch schema rather than converting its
+records to the controller `BatchReport`; see the
+[V2 activation results](waypoint_v2_eval_activation_results.md).
 
 - `ControllerSpec` JSON shape and built-in controller aliases
 - canonical controller IDs
@@ -93,25 +108,38 @@ The current `pd-control` layout follows those ownership boundaries:
 - `transfer/tests.rs` owns the transfer and waypoint controller tests without
   changing their access to module-private fixtures
 
-The evaluator follows the same separation. Persisted batch/report DTOs live in
+The controller evaluator follows the same separation. Persisted batch/report DTOs live in
 `pd-eval/src/model.rs`; pack validation and expansion live in `resolution.rs`;
 execution, artifact/cache support, comparison, and review derivation live in
 their named modules. The batch report shell delegates overview, diagnostics,
 review-tree, and comparison rendering to `pd-eval/src/report/` modules. Public
 crate exports and persisted schema paths remain unchanged.
 
-The planner boundary now places neutral route-planning contracts and clearance
-queries in `pd-core`, with the deterministic algorithm in `pd-plan`, which
-depends only on `pd-core`. `pd-eval` calls it during scenario resolution,
-persists algorithm/policy/plan identity, and passes only the resulting
+The V1 planner boundary places neutral route-planning contracts and clearance
+queries in `pd-core`, with the deterministic `pd_plan::plan` algorithm
+depending only on `pd-core`. `pd-eval` calls that planner during V1 scenario
+resolution, persists algorithm/policy/plan identity, and passes the resulting
 `TransferRouteSpec` to guidance. `pd-control` is not a planner dependency, and
 planner policy does not read controller configuration defaults.
+
+The native V2 evaluator uses a separate policy-3 flight loop and native batch
+schema; it does not change `pd_plan::plan`, the ordinary `pd-cli run`
+controller path, or add a V2 controller. The common batch shell and rich detail
+renderer are shared through `pd-report`; V2-specific aggregation and handoff
+annotations remain in its evaluator/report adapter. See the
+[common-template results](planner_v2_common_report_templates_results.md).
 
 This split is internal. Public controller exports still resolve through
 `pd-control`, and persisted controller, phase, telemetry, and artifact contracts
 remain unchanged.
 
 ## Maintained Gates
+
+The counts below are retained outcomes for the maintained controller/guidance
+corpora, with freshness and source scope defined by their capture records; they
+are not a recapture at current HEAD and do not represent the separate native V2
+44-case batch. See the [V2 activation results](waypoint_v2_eval_activation_results.md)
+for that active evaluator baseline.
 
 The guidance regression set is:
 

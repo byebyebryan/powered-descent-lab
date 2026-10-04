@@ -1,5 +1,33 @@
 # Waypoint Planning V1
 
+## Current V2 Evaluation Status (2026-10-03)
+
+The active native planner workflow is the evaluator-owned
+`planner_v2_lab_suite`: `pd-eval run-pack` without an explicit pack selects
+policy 3, and `pd-eval waypoint-v2-flight` also defaults to policy 3. This is
+offline evaluation on the tested vehicle, Earth-gravity, 120 Hz physics / 60 Hz
+command setup; it is not a 60 Hz game-loop guarantee. It does not change
+`pd_plan::plan` (V1), `WaypointV2Policy::default()` (policy 1), the ordinary
+`pd-cli run` controller default, or add a V2 controller to `pd-control`.
+
+The accepted 44-case capture has 36/36 core target landings (11 direct and 25
+corrected). Eight diagnostics remain separate: two landings, four zero-command,
+zero-step `NoClearing` stops before departure, and two unsupported inputs. All
+44 inputs passed integrity; all 42 supported results passed final-source replay.
+The [activation results](waypoint_v2_eval_activation_results.md) own its exact
+denominators and provenance. Its active batch and mission details are available
+at `/reports/eval/planner_v2_lab_suite/` and use the
+[shared report templates](planner_v2_common_report_templates_results.md).
+
+V2 constructs a terrain-blind nominal transfer, audits that fixed program
+against actual terrain, applies local correction where possible, then replans
+from the actual handoff state. A useful safe handoff need not reach a literal
+feature far edge or include a landing suffix. The next bounded step is to
+specify and review a reusable regression-acceptance check for this evaluator
+workflow; that check is not implemented here. The roadmap's D1, W1-W4, and F6
+research entries are separate retained or blocked lanes, not prerequisites for
+this accepted V2 path.
+
 ## Implementation Status
 
 Implementation phases 1-5 are complete. `pd-core` owns the serialized planning

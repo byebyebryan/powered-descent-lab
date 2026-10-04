@@ -19,6 +19,39 @@ Success means:
 
 ## 1.1 Current status
 
+### Active planner evaluation and reporting
+
+The accepted native V2 evaluation workflow is `planner_v2_lab_suite`: omitting
+the pack from `pd-eval run-pack` selects policy 3, and
+`pd-eval waypoint-v2-flight` also defaults to policy 3. This offline workflow
+covers the supported vehicle, Earth gravity, and 120 Hz physics / 60 Hz command
+setup; it is not a game-loop timing guarantee. It does not change the Rust
+`WaypointV2Policy::default()` (policy 1), `pd_plan::plan` (V1), or the
+ordinary `pd-cli run --controller baseline` default.
+
+The accepted 44-case capture has 36/36 core target landings (11 direct, 25
+corrected) and eight separate diagnostics (two landed, four zero-command and
+zero-step `NoClearing` stops before departure, and two unsupported). All 44
+passed integrity; all 42 supported results passed final-source replay. Its
+canonical batch and rich mission details use the shared report templates at
+`/reports/eval/planner_v2_lab_suite/`. See the
+[activation results](waypoint_v2_eval_activation_results.md) and
+[common-template results](planner_v2_common_report_templates_results.md) for
+the exact scope and evidence.
+
+The next bounded step is to specify and review a reusable regression-acceptance
+check for this evaluator workflow. The check is not implemented; its scope and
+gates remain for review. It should distinguish a completed capture from an
+accepted result, retain failed evidence and reports, and keep ordinary and
+diagnostic expectations separate. This status does not select new thresholds,
+a new evaluation run, or controller/runtime changes.
+
+The phase and research notes below retain their original evidence scope. Their
+date-local “next” steps and stop rules are not an ordered prerequisite list for
+the accepted V2 evaluator workflow.
+
+### Retained phase and research checkpoint detail
+
 Current implementation status:
 
 - Phase 0 is complete.
@@ -205,8 +238,9 @@ Current implementation status:
     PASS: `056` demonstrates the scoped capability while `072` remains
     analytically stopped and unrun by the controller. This does not satisfy
     the full-pass condition for an automatic production-integration design
-    review. Production wiring, runtime replanning, broader waypoint counts or
-    topologies, D2-D5, and tuning remain deferred. F6 then closed the retained
+    review. In that separate conservative-ballistic research lane, production
+    wiring, runtime replanning, broader waypoint counts or topologies, D2-D5,
+    and tuning remain deferred. F6 then closed the retained
     `ridge_progress_056_probe` as a scoped opt-in **PASS**: its identity-bound
     analytical decision injected one derived-mesa waypoint into the unchanged
     real controller, which captured once and target-landed.
@@ -755,6 +789,21 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
+Specify and review a reusable regression-acceptance check for the accepted
+policy-3 V2 evaluator workflow. It is not implemented, and this roadmap does
+not choose its future thresholds or call for another evaluation run. The
+[activation result](waypoint_v2_eval_activation_results.md) and
+[shared-report result](planner_v2_common_report_templates_results.md) define
+the current capture and report boundary.
+
+### Retained V1 and research-track checkpoint history
+
+The notes below preserve earlier V1, source-departure, bounded-witness, and
+conservative-ballistic checkpoints. Their local “current” and “next” wording
+refers to the checkpoint date; their stop rules apply only to the named
+research lane. D1, W1-W4, and F6 are retained or stopped research, not scheduled
+prerequisites for the accepted V2 evaluator workflow.
+
 [Waypoint Planning V1](waypoint_planning.md) is closed above the reconciled
 guidance stack. Implementation phases 1-5 now provide the contracts, exact
 geometry, bounded planner, evaluator/cache integration, focused corpus,
@@ -1042,6 +1091,10 @@ deterministic; the latter is tracked at
 The corresponding report is under
 `outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/`, and an
 explicit before/after test preserves the ordinary planner result.
+
+The deferrals and later-arrival proposal below apply only to this historical
+conservative-ballistic/F6 research lane; they do not constrain the separate
+accepted native V2 evaluator loop described above.
 
 The next product decision is therefore not more F6 implementation or a new
 neighborhood checkpoint. F6 stops at the demonstrated single-mission
