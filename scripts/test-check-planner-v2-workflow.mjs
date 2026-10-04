@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {extractAcceptance, safeFile, comparableCompactSummary, compareCaptures, verifySavedExecution, verifyVisibleRow} from './check-planner-v2-workflow.mjs';
+import {extractAcceptance, safeFile, comparableCompactSummary, compareCaptures, verifySavedExecution, verifyVisibleRow, indexMissionRows} from './check-planner-v2-workflow.mjs';
 import {validateBrowserEndpoints, resolveReportPath} from './check-planner-v2-browser.mjs';
 
 test('browser checks require local debugging and the declared LAN report host', () => {
@@ -57,6 +57,21 @@ test('visible report metrics and outcome must agree with raw projected evidence'
   for (const [before, after] of [['Landed on target', 'Stopped'], ['51.3%', '51.4%'],
     ['20.00s', '20.01s'], ['0.002m', '0.003m'], ['0.001s', '0.002s']]) {
     assert.throws(() => verifyVisibleRow(row.replace(before, after), expected));
+  }
+});
+
+test('grouped report rows bind by case identity without requiring input order', () => {
+  const row = (id, contents = id) => `<tr data-case-id="${id}"><td>${contents}</td></tr>`;
+  const ids = ['clear-old', 'terrain-old', 'diagnostic', 'clear-fresh', 'terrain-fresh'];
+  const grouped = ['clear-old', 'clear-fresh', 'terrain-old', 'terrain-fresh', 'diagnostic'];
+  const page = grouped.map(id => row(id)).join('');
+  const rows = indexMissionRows(page, ids);
+  assert.equal(rows.size, ids.length);
+  assert.equal(rows.get('diagnostic'), '<td>diagnostic</td>');
+  assert.deepEqual(ids, ['clear-old', 'terrain-old', 'diagnostic', 'clear-fresh', 'terrain-fresh']);
+  for (const bad of [page + row('clear-old'), page.replace(row('diagnostic'), ''),
+    page.replace('data-case-id="diagnostic"', 'data-case-id="foreign"')]) {
+    assert.throws(() => indexMissionRows(bad, ids), /identities/);
   }
 });
 

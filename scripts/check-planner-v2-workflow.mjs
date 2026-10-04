@@ -87,6 +87,15 @@ export function verifyVisibleRow(rowHtml, expected) {
   assert(cells[1].includes('planning ' + metric(expected.planning_s, 's', 3)), `${expected.case_id}: visible planning time`);
 }
 
+export function indexMissionRows(html, expectedIds) {
+  const rows = [...html.matchAll(/<tr\b[^>]*data-case-id="([^"]+)"[^>]*>(.*?)<\/tr>/gs)];
+  // The visible tree groups inputs by report category; source/previous/next
+  // order is still checked separately. Bind every visible row by identity.
+  assert.deepEqual(rows.map(m => m[1]).sort(), [...expectedIds].sort(),
+    'visible mission identities differ from the captured case set');
+  return new Map(rows.map(m => [m[1], m[2]]));
+}
+
 function readBatch(root) {
   const batch = json(safeFile(root, 'summary.json'));
   assert.equal(batch.schema_id, 'planner_v2_eval_batch_v1');
@@ -118,17 +127,17 @@ export function checkPublishedSite(capture, site, acceptance) {
   const projection = batch.cases.map(c => expectedProjection(c,
     json(safeFile(capture, c.flight_path)), json(safeFile(capture, c.scenario_path))));
   assert.deepEqual(extractProjection(html), projection, 'tree projection differs from raw flights');
-  const rows = [...html.matchAll(/<tr\b[^>]*data-case-id="([^"]+)"[^>]*>(.*?)<\/tr>/gs)];
-  assert.deepEqual(rows.map(m => m[1]), batch.cases.map(c => c.case_id));
+  const rows = indexMissionRows(html, batch.cases.map(c => c.case_id));
   let handoffs = 0;
   let rich = 0;
   for (const [index, c] of batch.cases.entries()) {
     const flight = json(safeFile(capture, c.flight_path));
     const detail = readFileSync(safeFile(site, c.annotated_report_path), 'utf8');
     const expected = projection[index];
-    verifyVisibleRow(rows[index][2], expected);
-    assert(rows[index][2].includes(`href="${c.annotated_report_path}"`));
-    const markers = [...rows[index][2].matchAll(/<[^>]*data-handoff="([^"]+)"[^>]*>/g)].map(m => {
+    const visibleRow = rows.get(c.case_id);
+    verifyVisibleRow(visibleRow, expected);
+    assert(visibleRow.includes(`href="${c.annotated_report_path}"`));
+    const markers = [...visibleRow.matchAll(/<[^>]*data-handoff="([^"]+)"[^>]*>/g)].map(m => {
       const attrs = Object.fromEntries([...m[0].matchAll(/([\w-]+)="([^"]*)"/g)].map(a => [a[1], a[2]]));
       return {number: Number(attrs['data-handoff']), x: Number(attrs['data-world-x']), y: Number(attrs['data-world-y'])};
     });
