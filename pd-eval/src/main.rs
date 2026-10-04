@@ -74,6 +74,8 @@ enum Commands {
     RunPack(RunPackArgs),
     /// Check a saved native Planner V2 capture without rerunning it.
     CheckPlannerV2(PlannerV2CheckArgs),
+    /// Publish an accepted saved native Planner V2 capture; runs no missions.
+    PublishPlannerV2(PlannerV2CheckArgs),
     Report(ReportArgs),
     RefreshReports(RefreshReportsArgs),
     /// Refresh report navigation and maintained scorecard indexes only; no report bodies or flights.
@@ -403,6 +405,10 @@ struct RunPackArgs {
 
     #[arg(long)]
     enforce_regression_policy: bool,
+
+    /// Retain a native Planner V2 capture without changing the current report.
+    #[arg(long)]
+    no_publish: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -1038,8 +1044,12 @@ fn main() -> Result<()> {
                 let acceptance =
                     pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&capture_dir)?;
                 eprintln!("Planner acceptance: {}", acceptance.status.label());
-                let published =
-                    pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &capture_dir)?;
+                let published = if args.no_publish {
+                    eprintln!("Publication deferred; the current accepted report is unchanged.");
+                    None
+                } else {
+                    pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &capture_dir)?
+                };
                 println!("{}", serde_json::to_string_pretty(&report.summary)?);
                 eprintln!(
                     "Planner batch: {}",
@@ -1050,6 +1060,7 @@ fn main() -> Result<()> {
                 enforce_native_planner_acceptance(&acceptance, args.enforce_regression_policy)?;
                 return Ok(());
             }
+            validate_controller_pack_options(&args)?;
             let default_output_dir = args
                 .output_dir
                 .clone()
@@ -1094,6 +1105,23 @@ fn main() -> Result<()> {
                 pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&args.dir)?;
             println!("{}", serde_json::to_string_pretty(&acceptance)?);
             enforce_native_planner_acceptance(&acceptance, true)?;
+        }
+        Commands::PublishPlannerV2(args) => {
+            let acceptance =
+                pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&args.dir)?;
+            enforce_native_planner_acceptance(&acceptance, true)?;
+            let published = require_native_planner_publication(
+                pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "schema_id": "planner_v2_saved_publication_v1",
+                    "published": true,
+                    "report_path": published,
+                    "acceptance": acceptance,
+                }))?
+            );
         }
         Commands::Report(args) => render_report(args)?,
         Commands::RefreshReports(args) => {
@@ -2122,6 +2150,23 @@ fn validate_native_planner_options(args: &RunPackArgs) -> Result<()> {
     Ok(())
 }
 
+fn validate_controller_pack_options(args: &RunPackArgs) -> Result<()> {
+    if args.no_publish {
+        bail!(
+            "--no-publish is supported only for native Planner V2 packs; no controller runs were started"
+        );
+    }
+    Ok(())
+}
+
+fn require_native_planner_publication(published: Option<PathBuf>) -> Result<PathBuf> {
+    published.ok_or_else(|| {
+        anyhow::anyhow!(
+            "saved Planner V2 publication was refused; the capture must be accepted and registered beneath repository outputs"
+        )
+    })
+}
+
 fn enforce_native_planner_acceptance(
     acceptance: &pd_eval::waypoint_v2_acceptance::WaypointV2AcceptanceV1,
     enforce: bool,
@@ -2768,6 +2813,47 @@ mod tests {
             panic!("wrong command");
         };
         assert_eq!(args.dir, PathBuf::from("capture"));
+    }
+
+    #[test]
+    fn native_capture_can_defer_publication_but_controller_packs_cannot() {
+        let Commands::RunPack(default) = Cli::try_parse_from(["pd-eval", "run-pack"])
+            .unwrap()
+            .command
+        else {
+            panic!("wrong command");
+        };
+        assert!(!default.no_publish);
+        assert!(validate_controller_pack_options(&default).is_ok());
+        let Commands::RunPack(deferred) =
+            Cli::try_parse_from(["pd-eval", "run-pack", "--no-publish"])
+                .unwrap()
+                .command
+        else {
+            panic!("wrong command");
+        };
+        assert!(deferred.no_publish);
+        assert!(validate_native_planner_options(&deferred).is_ok());
+        assert!(validate_controller_pack_options(&deferred).is_err());
+    }
+
+    #[test]
+    fn saved_publication_requires_an_explicit_capture_and_a_published_result() {
+        assert!(Cli::try_parse_from(["pd-eval", "publish-planner-v2"]).is_err());
+        let Commands::PublishPlannerV2(args) =
+            Cli::try_parse_from(["pd-eval", "publish-planner-v2", "--dir", "capture"])
+                .unwrap()
+                .command
+        else {
+            panic!("wrong command");
+        };
+        assert_eq!(args.dir, PathBuf::from("capture"));
+        assert!(require_native_planner_publication(None).is_err());
+        let report = PathBuf::from("outputs/reports/eval/planner_v2_lab_suite/index.html");
+        assert_eq!(
+            require_native_planner_publication(Some(report.clone())).unwrap(),
+            report
+        );
     }
 
     #[test]
