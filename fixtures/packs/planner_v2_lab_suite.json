@@ -1,0 +1,21 @@
+{
+  "schema_id": "planner_v2_eval_pack_v1",
+  "id": "planner_v2_lab_suite",
+  "name": "Waypoint V2 planner lab suite",
+  "description": "44 route-free policy V2 planner evaluation cases for the current supported vehicle and Earth gravity setup.",
+  "policy_version": 3,
+  "sources": [
+    {
+      "source_id": "practical_suite",
+      "kind": "waypoint_v2_practical_suite_plan_v1",
+      "path": "fixtures/research/waypoint_v2_practical_suite_plan_v1.json",
+      "sha256": "92869e10225a72e8716ad87c20fbc1ca3795bd692aa9e41d011cd9ae18cf438c"
+    },
+    {
+      "source_id": "fresh_terrain_inputs",
+      "kind": "waypoint_v2_fresh_terrain_inputs_v1",
+      "path": "fixtures/research/waypoint_v2_fresh_terrain_inputs_v1.json",
+      "sha256": "554b406f62387e9598d89e53a26ed705b2fce5380b4e7a216f92f3003950cd9c"
+    }
+  ]
+}

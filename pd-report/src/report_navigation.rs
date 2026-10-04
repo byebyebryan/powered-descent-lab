@@ -11,6 +11,30 @@ use crate::escape_html;
 
 const NAVIGATION_FIXTURE: &str = "fixtures/reports/report_navigation.json";
 
+/// Native evaluator packs selected by topic navigation, distinct from legacy
+/// controller scorecards. Used by report-only refresh to include the active
+/// planner without pretending that its records are controller batch records.
+pub fn configured_batch_pack_ids(repo_root: &Path) -> Result<Vec<String>> {
+    let path = repo_root.join(NAVIGATION_FIXTURE);
+    if !path.try_exists()? {
+        return Ok(Vec::new());
+    }
+    let manifest: NavigationFixture = serde_json::from_slice(&fs::read(path)?)?;
+    validate_manifest(&manifest)?;
+    Ok(manifest
+        .topics
+        .iter()
+        .flat_map(|topic| &topic.entries)
+        .filter_map(|entry| {
+            if let TopicSource::BatchPack { pack_id } = &entry.source {
+                Some(pack_id.clone())
+            } else {
+                None
+            }
+        })
+        .collect())
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct PreviewTargets {
     pub home: Option<String>,
@@ -71,6 +95,7 @@ struct TopicEntry {
 enum TopicSource {
     SelectedPreview,
     GuidanceGroup { group_id: String },
+    BatchPack { pack_id: String },
     ReportPage { path: String },
 }
 
@@ -161,6 +186,11 @@ pub(crate) fn prepare(
 
     let guidance = load_guidance(&repo_root.join("fixtures/reports/guidance_catalog.json"))?;
     let packs = load_packs(&repo_root.join("fixtures/packs"))?;
+    for entry in manifest.topics.iter().flat_map(|topic| &topic.entries) {
+        if let TopicSource::BatchPack { pack_id } = &entry.source {
+            ensure!(packs.contains_key(pack_id), "unknown batch pack {pack_id}");
+        }
+    }
     let preview = resolve_preview(reports_root, preview)?;
     let topic_labels = manifest
         .topics
@@ -168,7 +198,7 @@ pub(crate) fn prepare(
         .map(|topic| (topic.id.as_str(), topic.title.as_str()))
         .collect::<BTreeMap<_, _>>();
 
-    let home = render_home(&manifest, &preview);
+    let home = render_home(&manifest, &preview, reports_root)?;
     let mut pages = vec![
         (reports_root.join("index.html"), home.clone()),
         (repo_root.join("outputs/index.html"), home),
@@ -219,6 +249,7 @@ fn validate_manifest(manifest: &NavigationFixture) -> Result<()> {
     let mut group_ids = BTreeSet::new();
     let mut preview_count = 0;
     for topic in &manifest.topics {
+        let mut batch_count = 0;
         validate_id(&topic.id)?;
         validate_text(&topic.title)?;
         validate_text(&topic.description)?;
@@ -247,9 +278,17 @@ fn validate_manifest(manifest: &NavigationFixture) -> Result<()> {
                         "guidance group mapped more than once: {group_id}"
                     );
                 }
+                TopicSource::BatchPack { pack_id } => {
+                    validate_id(pack_id)?;
+                    batch_count += 1;
+                }
                 TopicSource::ReportPage { path } => validate_report_path(path)?,
             }
         }
+        ensure!(
+            batch_count <= 1,
+            "a subject has more than one current batch pack"
+        );
     }
     ensure!(
         topic_ids == BTreeSet::from(["waypoint-planning", "flight-control"]),
@@ -277,6 +316,10 @@ fn validate_manifest(manifest: &NavigationFixture) -> Result<()> {
                 TopicSource::ReportPage { .. } => ensure!(
                     topic.id == "waypoint-planning",
                     "explicit analytical report pages belong under Waypoint planning"
+                ),
+                TopicSource::BatchPack { .. } => ensure!(
+                    topic.id == "waypoint-planning",
+                    "the current planner batch belongs under Waypoint planning"
                 ),
             }
         }
@@ -432,12 +475,24 @@ fn resolve_preview(root: &Path, preview: &PreviewTargets) -> Result<PreviewTarge
     }
 }
 
-fn render_home(manifest: &NavigationFixture, preview: &PreviewTargets) -> String {
+fn render_home(
+    manifest: &NavigationFixture,
+    preview: &PreviewTargets,
+    reports_root: &Path,
+) -> Result<String> {
     let subjects = manifest
         .topics
         .iter()
-        .map(|topic| {
-            let shortcut = if topic.id == "waypoint-planning" {
+        .map(|topic| -> Result<String> {
+            let batch_pack = topic.entries.iter().find_map(|entry| {
+                if let TopicSource::BatchPack { pack_id } = &entry.source { Some(pack_id) } else { None }
+            });
+            let shortcut = if let Some(pack_id) = batch_pack {
+                match active_href(reports_root, Some(&format!("eval/{pack_id}/index.html")))? {
+                    Some(href) => format!(r#"<a class="shortcut" href="{href}">Open current planner V2 batch</a>"#),
+                    None => "<p class=\"shortcut\">Current planner V2 batch not captured yet</p>".into(),
+                }
+            } else if topic.id == "waypoint-planning" {
                 preview.collection.as_deref().map(|path| format!(
                     r#"<a class="shortcut" href="{}">Open current V2 preview</a>"#,
                     report_href(path),
@@ -445,20 +500,20 @@ fn render_home(manifest: &NavigationFixture, preview: &PreviewTargets) -> String
             } else {
                 String::new()
             };
-            format!(
+            Ok(format!(
                 r#"<article class="subject"><a href="/reports/topics/{}/index.html"><span class="eyebrow">Choose by subject</span><h2>{}</h2><p>{}</p><span class="action">Browse this subject</span></a>{shortcut}</article>"#,
                 escape_html(&topic.id), escape_html(&topic.title), escape_html(&topic.description),
-            )
+            ))
         })
-        .collect::<String>();
-    page(
+        .collect::<Result<Vec<_>>>()?.join("");
+    Ok(page(
         "Reports",
         "Reports",
         "Start with the flight question you have. Report type and status describe the evidence inside each subject.",
         &format!(
             r#"<section><h2>Browse by subject</h2><div class="subject-grid">{subjects}</div></section><section class="secondary"><h2>Other ways to browse</h2><div class="secondary-links"><a href="/reports/history/index.html">Research and history</a><a href="/reports/library/index.html">Browse all reports</a><a href="/reports/data/index.html">Raw data</a></div></section>"#
         ),
-    )
+    ))
 }
 
 fn render_topic(
@@ -483,6 +538,9 @@ fn render_topic(
                     .map(|_| format!("/reports/guidance/{group_id}/"))
             }
             TopicSource::ReportPage { path } => active_href(reports_root, Some(path))?,
+            TopicSource::BatchPack { pack_id } => {
+                active_href(reports_root, Some(&format!("eval/{pack_id}/index.html")))?
+            }
         };
         rows.push_str(&entry_row(
             &entry.title,
@@ -565,10 +623,16 @@ fn build_rows(
         let relative = format!("eval/{id}/index.html");
         let href = active_href(reports_root, Some(&relative))?;
         let guidance_row = group_by_pack.get(id.as_str());
-        let topic =
-            guidance_row.and_then(|(group, _)| group_topics.get(group.id.as_str()).copied());
-        let title = guidance_row
-            .map(|(_, report)| report.label.clone())
+        let current_batch = manifest.topics.iter().find_map(|topic| {
+            topic.entries.iter().find(|entry| matches!(&entry.source, TopicSource::BatchPack { pack_id } if pack_id == id))
+                .map(|entry| (topic, entry))
+        });
+        let topic = current_batch.map(|(topic, _)| topic).or_else(|| {
+            guidance_row.and_then(|(group, _)| group_topics.get(group.id.as_str()).copied())
+        });
+        let title = current_batch
+            .map(|(_, entry)| entry.title.clone())
+            .or_else(|| guidance_row.map(|(_, report)| report.label.clone()))
             .unwrap_or_else(|| pack.name.clone());
         let description = if !pack.description.is_empty() {
             pack.description.clone()
@@ -583,8 +647,13 @@ fn build_rows(
         let topic_label = topic
             .map(|topic| topic.title.as_str())
             .unwrap_or("Unclassified");
-        let status = guidance_row
-            .map(|(_, report)| format!("Guidance catalog · {} · {}", report.role, report.evidence))
+        let status = current_batch
+            .map(|(_, entry)| entry.status.clone())
+            .or_else(|| {
+                guidance_row.map(|(_, report)| {
+                    format!("Guidance catalog · {} · {}", report.role, report.evidence)
+                })
+            })
             .unwrap_or_else(|| "Unclassified".to_owned());
         rows.push(Row {
             id: id.clone(),
@@ -1182,6 +1251,7 @@ mod tests {
         )
         .unwrap();
         fs::write(root.join("fixtures/packs/terminal_bot_lab_suite.json"), r#"{"id":"terminal_bot_lab_suite","name":"Terminal test","description":"<script>unsafe & text</script>"}"#).unwrap();
+        fs::write(root.join("fixtures/packs/planner_v2_lab_suite.json"), r#"{"id":"planner_v2_lab_suite","name":"Planner V2 lab suite","description":"Current V2 evaluation"}"#).unwrap();
         fs::write(
             root.join("outputs/reports/eval/unknown_study/index.html"),
             "immutable report body",
@@ -1245,7 +1315,7 @@ mod tests {
                     bad["topics"][0]["entries"][2]["source"]["path"] = "../escape/index.html".into()
                 }
                 2 => bad["topics"][1]["id"] = "other-topic".into(),
-                3 => bad["topics"][0]["entries"][1]["id"] = "waypoint-v2-preview".into(),
+                3 => bad["topics"][0]["entries"][1]["id"] = "planner-v2-current".into(),
                 _ => bad["unknown_setting"] = true.into(),
             }
             fs::write(
@@ -1263,6 +1333,38 @@ mod tests {
                 "reports sentinel"
             );
         }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn current_planner_batch_is_reachable_and_classified_without_promoting_old_preview() {
+        let root = fixture_root();
+        ReportSite::new(&root).refresh_home().unwrap();
+        let missing = fs::read_to_string(root.join("outputs/index.html")).unwrap();
+        assert!(missing.contains("Current planner V2 batch not captured yet"));
+        assert!(!missing.contains("Open current V2 preview"));
+        let batch_dir = root.join("outputs/reports/eval/planner_v2_lab_suite");
+        fs::create_dir_all(&batch_dir).unwrap();
+        fs::write(batch_dir.join("index.html"), "current batch sentinel").unwrap();
+        ReportSite::new(&root).refresh_home().unwrap();
+        let home = fs::read_to_string(root.join("outputs/index.html")).unwrap();
+        assert!(home.contains("Open current planner V2 batch"));
+        assert!(home.contains("href=\"/reports/eval/planner_v2_lab_suite/index.html\""));
+        let topic =
+            fs::read_to_string(root.join("outputs/reports/topics/waypoint-planning/index.html"))
+                .unwrap();
+        assert!(topic.contains("href=\"/reports/eval/planner_v2_lab_suite/index.html\""));
+        assert!(
+            topic.contains("Legacy V1 planner baseline")
+                && topic.contains("Historical presentation")
+        );
+        let library = fs::read_to_string(root.join("outputs/reports/library/index.html")).unwrap();
+        assert!(library.contains("Active · default planner evaluation"));
+        assert!(library.contains("Planner V2 · current evaluation batch"));
+        assert_eq!(
+            fs::read_to_string(batch_dir.join("index.html")).unwrap(),
+            "current batch sentinel"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

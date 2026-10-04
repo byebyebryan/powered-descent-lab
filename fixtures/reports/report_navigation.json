@@ -2,30 +2,38 @@
   "schema_version": 1,
   "preview": {
     "title": "Waypoint planner V2",
-    "description": "Direct flight with obstacle clearing enabled as an opt-in. This selected view is under UI review and is not a new flight capture.",
+    "description": "Historical rich preview of the original accepted V2 capture. Use the current planner V2 batch for the active evaluation workflow.",
     "report_type": "Flight report collection",
-    "status": "Opt-in · UI under review"
+    "status": "Historical presentation"
   },
   "topics": [
     {
       "id": "waypoint-planning",
       "title": "Waypoint planning",
-      "description": "Choosing routes around terrain. Inspect direct flights and obstacle-clearing corrections, or compare earlier planner evidence and related studies.",
+      "description": "Start with the current Planner V2 batch: direct landings and terrain-clearing waypoint flights. Earlier V1 planner evidence and research are labeled separately.",
       "entries": [
+        {
+          "id": "planner-v2-current",
+          "title": "Planner V2 · current evaluation batch",
+          "description": "The default planner evaluation pack: 32 practical cases and 12 additional terrain cases, grouped results, and detailed flight reports with executed waypoint handoffs.",
+          "report_type": "Batch report",
+          "status": "Active · default planner evaluation",
+          "source": { "kind": "batch_pack", "pack_id": "planner_v2_lab_suite" }
+        },
         {
           "id": "waypoint-v2-preview",
           "title": "Waypoint planner V2",
-          "description": "Direct flight with obstacle clearing enabled as an opt-in. This preview is under UI review; its original reports remain intact.",
+          "description": "Historical presentation of the original accepted 32-case V2 capture; not the current evaluation batch. Original reports remain intact.",
           "report_type": "Flight report collection",
-          "status": "Opt-in · UI under review",
+          "status": "Historical presentation",
           "source": { "kind": "selected_preview" }
         },
         {
           "id": "planner-baseline",
-          "title": "Maintained planner baseline",
-          "description": "The maintained planner scorecard and its route-plan evidence.",
+          "title": "Legacy V1 planner baseline",
+          "description": "The earlier V1 route-plan scorecard. Retained for regression and history; not the active V2 planner evaluation.",
           "report_type": "Guidance collection",
-          "status": "Maintained baseline",
+          "status": "Legacy V1 evidence",
           "source": { "kind": "guidance_group", "group_id": "planner" }
         },
         {

@@ -139,8 +139,9 @@ without treating the old scenario files as fixtures to transliterate directly.
   missions. The [fresh-terrain readiness pass](docs/waypoint_v2_fresh_terrain_readiness_results.md)
   also lands three new direct clear controls and nine new obstructed missions
   in identical repeats, supporting bounded offline use on the tested setup.
-  Remaining diagnostics are recorded limits; normal controller integration
-  and default promotion are separate decisions.
+  Remaining diagnostics are recorded limits. V2 policy 3 is now the default
+  planner **evaluation** workflow described below; ordinary `pd-cli` controller
+  integration remains separate.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge
@@ -169,6 +170,46 @@ without treating the old scenario files as fixtures to transliterate directly.
 - [Early Design Scratchpad](docs/early_design.md) is retained exploratory
   history and may contain superseded directions.
 
+## Planner Evaluation (V2 Default)
+
+Run the current planner lab suite with the normal batch entrypoint:
+
+```bash
+cargo run --release -p pd-eval -- run-pack --workers 4
+```
+
+Omitting the pack selects
+[`planner_v2_lab_suite`](fixtures/packs/planner_v2_lab_suite.json). It evaluates
+the unchanged 32 practical cases and 12 additional terrain cases using V2
+policy 3. Explicit controller packs, such as `terminal_bot_lab_suite`, keep their
+existing evaluation and cache/comparison workflow.
+
+Planner batches use fresh, create-only captures beneath
+`outputs/eval/planner_v2_lab_suite/`. Each capture contains grouped batch results,
+full flight/summary/scenario evidence, original rich reports, and annotated rich
+mission detail pages. Clear/direct landings, terrain/waypoint landings, finite
+planning stops, and unsupported diagnostics are shown separately. The eight
+diagnostics are not added to the ordinary landing-success denominator.
+
+Start at the report home, then **Waypoint planning -> Current V2 batch -> Mission
+detail**. The stable batch page is
+`/reports/eval/planner_v2_lab_suite/index.html`. Every simulated mission detail
+keeps the existing trajectory views, charts, sample inspection, and statistics,
+and adds exact executed waypoint handoffs and return/previous/next navigation.
+Unsupported cases have diagnostic pages, not fabricated flight plots.
+
+The V2 single-flight command also defaults to policy 3; explicit
+`--policy-version 1` or `2` keeps historical policy selection available. Frozen
+research fixtures/scripts retain their original identities and protocols.
+Native V2 batches have their own truthful schema, not forged V1/controller
+records. They do not yet use controller cache/Git-ref baseline comparisons;
+unsupported comparison/regression flags fail before flight execution.
+
+This default covers planner evaluation/reporting on the supported vehicle,
+Earth gravity, and 120/60 Hz setup. It does not change ordinary `pd-cli run` or
+terminal/transfer controller defaults. See the
+[activation contract](docs/waypoint_v2_eval_activation_plan.md).
+
 ## Report Serving
 
 Generated reports live under `outputs/` and can be served locally with:
@@ -184,8 +225,8 @@ report-only subtree. The printed LAN URL resolves automatically when available.
 
 Start at `/` or `/reports/`, then browse by subject:
 
-- **Waypoint planning** groups the selected V2 preview, maintained planner
-  baseline and related analytical studies.
+- **Waypoint planning** starts with the current V2 batch, followed by historical
+  V2 previews, the legacy V1 planner baseline, and related analytical studies.
 - **Flight and landing control** groups terminal landing, direct transfers and
   following authored waypoint routes.
 - **Research and history**, **Browse all reports** and **Raw data** are
@@ -229,6 +270,7 @@ Stable HTML entrypoints also live under `outputs/reports/`, for example:
 - `outputs/reports/guidance/waypoint/index.html`
 - `outputs/reports/guidance/planner/index.html`
 - `outputs/reports/eval/index.html`
+- `outputs/reports/eval/planner_v2_lab_suite/index.html`
 - `outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/index.html`
 - `outputs/reports/setups/conservative-ballistic-direct-bridge-v2/index.html`
 - `outputs/reports/runs/latest/`
@@ -269,17 +311,19 @@ cargo run -p pd-eval -- refresh-reports --home-only
 `fixtures/reports/report_navigation.json` describes the explicit topic map.
 The library also lists stable report entries with unknown topics as Unclassified;
 it does not recursively publish research directories.
-`fixtures/reports/navigation_preview.json` pins the under-review preview links
+`fixtures/reports/navigation_preview.json` pins the historical preview links
 relative to `outputs/reports/`. This selection does not change planner defaults
 or designate an accepted flight capture. Missing preview files are shown as
 unavailable, without substituting historical reports.
 
-The V2 navigation edition preserves the rich report plots and payloads and adds
-return/previous/next links in new copies. Only Late ridge has waypoint annotations
-at this checkpoint; the other full reports are labelled as not enhanced. Earlier
+The historical V2 navigation edition preserves rich report plots and payloads and
+adds return/previous/next links in new copies. Only Late ridge has waypoint
+annotations in that edition; the other full reports are labelled as not enhanced. Earlier
 report editions and original captures remain unchanged.
-New V2 flight captures still use the existing rich report writer. Annotated
-retained previews are explicit; future-capture annotation integration is deferred.
+New V2 batch mission details use the existing rich report with executed handoff
+annotations for every simulated case. The older selected preview below remains
+presentation history; it is not the current evaluation batch. Retained preview
+editions and their original source evidence remain unchanged.
 
 To recompute the four V2 direct-ballistic probes, the bounded ridge canary, and
 their setup-only HTML/SVG report without running a controller or simulation:
@@ -426,7 +470,7 @@ cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_smoke.json --workers 8
 ```
 
-Run the focused planner-generated landing and route-contract packs:
+Run the legacy V1 planner-generated landing and route-contract packs explicitly:
 
 ```bash
 cargo run -p pd-eval -- run-pack fixtures/packs/planner_generated_route_smoke.json --workers 8

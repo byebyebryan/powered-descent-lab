@@ -164,6 +164,8 @@ pub use waypoint_v2::*;
 pub mod waypoint_v2_output;
 pub mod waypoint_v2_report;
 pub use waypoint_v2_output::*;
+pub mod planner_eval_site;
+pub mod waypoint_v2_pack;
 
 pub mod nominal_direct_operational;
 pub use nominal_direct_operational::*;
@@ -1199,6 +1201,24 @@ pub fn refresh_report_outputs(all: bool) -> Result<ReportRefreshSummary> {
 
     for pack_id in pack_ids {
         let output_dir = root.join("outputs/eval").join(&pack_id);
+        let pack_path = root.join("fixtures/packs").join(format!("{pack_id}.json"));
+        if pack_path.is_file() && waypoint_v2_pack::is_waypoint_v2_pack(&pack_path)? {
+            let Some(capture) = planner_eval_site::current_planner_capture(&root, &pack_id)? else {
+                summary.skipped_uncaptured_packs += 1;
+                continue;
+            };
+            let refreshed = waypoint_v2_pack::render_waypoint_v2_batch(&capture)?;
+            planner_eval_site::publish_planner_batch(&root, &capture)?;
+            summary.refreshed_batches += 1;
+            let saved = serde_json::to_value(&refreshed)?;
+            summary.refreshed_runs += saved["cases"].as_array().map_or(0, |cases| {
+                cases
+                    .iter()
+                    .filter(|case| !case["physical_outcome"].is_null())
+                    .count()
+            });
+            continue;
+        }
         if !output_dir.join("summary.json").is_file() {
             summary.skipped_uncaptured_packs += 1;
             continue;

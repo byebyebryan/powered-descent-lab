@@ -39,11 +39,11 @@
     },
     {
       "id": "planner",
-      "title": "Planner-generated routes",
-      "description": "Deterministic terrain-aware route plans with persisted provenance, geometry, and contract evidence.",
+      "title": "Legacy V1 planner-generated routes",
+      "description": "Earlier V1 deterministic terrain-aware route plans with persisted provenance, geometry, and contract evidence. The active V2 batch is linked from Waypoint planning.",
       "reports": [
-        {"pack_id": "planner_generated_route_smoke", "label": "Generated routes · landing", "role": "primary", "evidence": "landing"},
-        {"pack_id": "planner_generated_route_contract_smoke", "label": "Generated routes · contract", "role": "primary", "evidence": "contract"}
+        {"pack_id": "planner_generated_route_smoke", "label": "V1 generated routes · landing", "role": "primary", "evidence": "landing"},
+        {"pack_id": "planner_generated_route_contract_smoke", "label": "V1 generated routes · contract", "role": "primary", "evidence": "contract"}
       ]
     }
   ]

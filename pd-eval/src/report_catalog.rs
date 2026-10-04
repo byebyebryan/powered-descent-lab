@@ -174,6 +174,9 @@ pub fn refresh_pack_ids(repo_root: &Path, all: bool) -> Result<Vec<String>> {
         for group in load_guidance_catalog(repo_root)?.groups {
             pack_ids.extend(group.reports.into_iter().map(|report| report.pack_id));
         }
+        pack_ids.extend(pd_report::report_navigation::configured_batch_pack_ids(
+            repo_root,
+        )?);
     }
     Ok(pack_ids.into_iter().collect())
 }
@@ -255,7 +258,7 @@ fn render_guidance_overview(repo_root: &Path, catalog: &GuidanceCatalog) -> Stri
     page(
         "Guidance Overview",
         "Guidance Overview",
-        "Maintained controller and planner evidence. Waypoint tracking follows authored routes; the planner baseline chooses routes. Opt-in V2 captures are separate and are not included in these totals.",
+        "Maintained controller and legacy V1 planner scorecards. Waypoint tracking follows authored routes; the legacy planner chooses routes. The current native V2 planner batch is reached through Waypoint planning and is not included in these controller totals.",
         actions,
         &format!(r#"<section class="guidance-grid">{sections}</section>"#),
     )
@@ -275,7 +278,7 @@ fn render_group_page(repo_root: &Path, group: &GuidanceGroup) -> String {
         .is_file();
     let (heading, topic, topic_label) = match group.id.as_str() {
         "planner" => (
-            "Maintained planner baseline",
+            "Legacy V1 planner baseline",
             "waypoint-planning",
             "Waypoint planning",
         ),

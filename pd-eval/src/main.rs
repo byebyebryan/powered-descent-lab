@@ -70,6 +70,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Run an evaluation pack; defaults to the current Planner V2 lab suite.
     RunPack(RunPackArgs),
     Report(ReportArgs),
     RefreshReports(RefreshReportsArgs),
@@ -378,7 +379,7 @@ struct WaypointDirectBodyAwareTerminalFreshGateArgs {
 #[derive(Debug, Parser)]
 struct RunPackArgs {
     #[arg(value_name = "PACK_JSON")]
-    pack: PathBuf,
+    pack: Option<PathBuf>,
 
     #[arg(long, value_name = "OUTPUT_DIR")]
     output_dir: Option<PathBuf>,
@@ -998,14 +999,49 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::RunPack(args) => {
+            let pack = args.pack.clone().unwrap_or_else(|| {
+                repo_root().join(pd_eval::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH)
+            });
+            if pd_eval::waypoint_v2_pack::is_waypoint_v2_pack(&pack)? {
+                validate_native_planner_options(&args)?;
+                let value: serde_json::Value = serde_json::from_slice(&std::fs::read(&pack)?)?;
+                let pack_id = value["id"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("planner pack has no identity"))?;
+                let capture_dir = match args.output_dir {
+                    Some(dir) => dir,
+                    None => pd_eval::planner_eval_site::default_planner_capture_dir(
+                        &repo_root(),
+                        pack_id,
+                    )?,
+                };
+                eprintln!(
+                    "Planner V2 runs use fresh captures; Git-ref cache/baseline comparison is not applied."
+                );
+                let report = pd_eval::waypoint_v2_pack::run_waypoint_v2_pack(
+                    &pack,
+                    &capture_dir,
+                    args.workers.unwrap_or_else(default_worker_count),
+                )?;
+                let published =
+                    pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &capture_dir)?;
+                println!("{}", serde_json::to_string_pretty(&report.summary)?);
+                eprintln!(
+                    "Planner batch: {}",
+                    published
+                        .unwrap_or_else(|| capture_dir.join("index.html"))
+                        .display()
+                );
+                return Ok(());
+            }
             let default_output_dir = args
                 .output_dir
                 .clone()
-                .unwrap_or_else(|| default_eval_output_dir(&args.pack));
+                .unwrap_or_else(|| default_eval_output_dir(&pack));
             let requested_workers = args.workers.unwrap_or_else(default_worker_count);
             if args.enforce_regression_policy
                 && resolve_pack_compare_baseline(
-                    &args.pack,
+                    &pack,
                     Some(args.compare_ref.as_str()),
                     args.baseline_dir.as_deref(),
                     MissingComparePolicy::Error,
@@ -1015,7 +1051,7 @@ fn main() -> Result<()> {
                 bail!("--enforce-regression-policy requires a resolved compare baseline");
             }
             let outcome = run_pack_file_cached(
-                &args.pack,
+                &pack,
                 Some(default_output_dir.as_path()),
                 requested_workers,
                 Some(args.compare_ref.as_str()),
@@ -2008,6 +2044,21 @@ fn main() -> Result<()> {
 }
 
 fn render_report(args: ReportArgs) -> Result<()> {
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(args.dir.join("summary.json"))?)?;
+    if saved["schema_id"] == pd_eval::waypoint_v2_pack::WAYPOINT_V2_BATCH_SCHEMA_ID {
+        if args.baseline_dir.is_some() {
+            bail!("native Planner V2 reports do not support legacy controller batch baselines");
+        }
+        let report = pd_eval::waypoint_v2_pack::render_waypoint_v2_batch(&args.dir)?;
+        if pd_eval::planner_eval_site::current_planner_capture(&repo_root(), &report.pack_id)?
+            .is_some_and(|current| args.dir.canonicalize().is_ok_and(|dir| dir == current))
+        {
+            pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?;
+        }
+        println!("{}", args.dir.join("index.html").display());
+        return Ok(());
+    }
     let report = load_batch_report(&args.dir)?;
     let baseline_report = args
         .baseline_dir
@@ -2019,6 +2070,19 @@ fn render_report(args: ReportArgs) -> Result<()> {
         &report,
         args.baseline_dir.as_deref().zip(baseline_report.as_ref()),
     )?;
+    Ok(())
+}
+
+fn validate_native_planner_options(args: &RunPackArgs) -> Result<()> {
+    if args.baseline_dir.is_some()
+        || args.enforce_regression_policy
+        || !matches!(args.compare_ref.as_str(), "auto" | "none")
+        || (args.compare_ref == "auto" && args.missing_compare == MissingComparePolicyArg::Error)
+    {
+        bail!(
+            "native Planner V2 packs use fresh captures and do not support controller cache/Git-ref baseline comparisons or --enforce-regression-policy; omit comparison options or use --compare-ref none"
+        );
+    }
     Ok(())
 }
 
@@ -2208,7 +2272,7 @@ mod direct_generation_cli_tests {
         let default = Cli::try_parse_from(flight.into_iter().chain(["--output-dir", "new"]))
             .expect("default version with a fresh output path");
         match default.command {
-            Commands::WaypointV2Flight(args) => assert_eq!(args.policy_version, 1),
+            Commands::WaypointV2Flight(args) => assert_eq!(args.policy_version, 3),
             _ => unreachable!("parsed V2 command"),
         }
         assert!(
@@ -2535,6 +2599,62 @@ fn default_worker_count() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_pack_defaults_to_current_planner_and_keeps_explicit_controller_packs() {
+        let Commands::RunPack(default) = Cli::try_parse_from(["pd-eval", "run-pack"])
+            .unwrap()
+            .command
+        else {
+            panic!("wrong command");
+        };
+        assert!(default.pack.is_none());
+        assert!(validate_native_planner_options(&default).is_ok());
+        let Commands::RunPack(explicit) = Cli::try_parse_from([
+            "pd-eval",
+            "run-pack",
+            "fixtures/packs/terminal_bot_lab_suite.json",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("wrong command");
+        };
+        assert_eq!(
+            explicit.pack.as_deref(),
+            Some(std::path::Path::new(
+                "fixtures/packs/terminal_bot_lab_suite.json"
+            ))
+        );
+        for flags in [
+            vec!["--baseline-dir", "old"],
+            vec!["--enforce-regression-policy"],
+            vec!["--compare-ref", "HEAD^"],
+            vec!["--missing-compare", "error"],
+        ] {
+            let mut command = vec!["pd-eval", "run-pack"];
+            command.extend(flags);
+            let Commands::RunPack(parsed) = Cli::try_parse_from(command).unwrap().command else {
+                panic!("wrong command");
+            };
+            assert!(validate_native_planner_options(&parsed).is_err());
+        }
+        let Commands::RunPack(no_compare) = Cli::try_parse_from([
+            "pd-eval",
+            "run-pack",
+            "--compare-ref",
+            "none",
+            "--missing-compare",
+            "error",
+            "--no-reuse",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("wrong command");
+        };
+        assert!(validate_native_planner_options(&no_compare).is_ok());
+    }
 
     #[test]
     fn current_v2_flight_defaults_to_policy_three_and_keeps_explicit_history() {
