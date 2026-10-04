@@ -135,10 +135,11 @@ remain unchanged.
 
 ## Native V2 Acceptance Contract (2026-10-03)
 
-The approved reliability pass adds a versioned, evaluator-owned acceptance
-check for the frozen `planner_v2_lab_suite`; implementation and final-source
-validation are in progress. This is not a controller comparison policy or a
-new terrain experiment. The contract is settled before the measured runs:
+The completed reliability pass adds a versioned, evaluator-owned acceptance
+check for the frozen `planner_v2_lab_suite`. Two final-source batches passed;
+the [reliability results](planner_v2_reliability_results.md) record provenance,
+repeat and report validation. This is not a controller comparison policy or a
+new terrain experiment. The following contract was settled before measured runs:
 
 - Bind the complete 44-case input identity to expansion of the tracked pack,
   not merely to mutually consistent hashes supplied by a capture. Require

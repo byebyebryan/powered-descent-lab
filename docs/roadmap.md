@@ -37,14 +37,18 @@ canonical batch and rich mission details use the shared report templates at
 `/reports/eval/planner_v2_lab_suite/`. See the
 [activation results](waypoint_v2_eval_activation_results.md) and
 [common-template results](planner_v2_common_report_templates_results.md) for
-the exact scope and evidence.
+the earlier capture and report checkpoints. Two final-source
+[reliability captures](planner_v2_reliability_results.md) reproduced the same
+outcomes and now supply current evidence. A reusable acceptance gate binds the
+frozen inputs, requires all 36 ordinary landings and integrity/replay evidence,
+and keeps diagnostic expectations separate. Failed captures retain their rich
+reports but cannot replace the accepted current site. The checked native batch
+workflow returns failure for an acceptance miss.
 
-The next bounded step is to specify and review a reusable regression-acceptance
-check for this evaluator workflow. The check is not implemented; its scope and
-gates remain for review. It should distinguish a completed capture from an
-accepted result, retain failed evidence and reports, and keep ordinary and
-diagnostic expectations separate. This status does not select new thresholds,
-a new evaluation run, or controller/runtime changes.
+The next integration step is a reviewed, design-only optional runtime consumer,
+starting with an internal session seam and command/state parity. Runtime
+implementation, latency work, new captures and default promotion are separate
+future scopes, not remaining work in this completed reliability pass.
 
 The phase and research notes below retain their original evidence scope. Their
 date-local “next” steps and stop rules are not an ordered prerequisite list for
@@ -789,12 +793,14 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Specify and review a reusable regression-acceptance check for the accepted
-policy-3 V2 evaluator workflow. It is not implemented, and this roadmap does
-not choose its future thresholds or call for another evaluation run. The
-[activation result](waypoint_v2_eval_activation_results.md) and
-[shared-report result](planner_v2_common_report_templates_results.md) define
-the current capture and report boundary.
+Use the completed policy-3 V2 lab and its reusable acceptance gate rather than
+reopening nominal fitting. For a normal runtime consumer, begin with the
+reviewed internal session/iteration design and prove command/state parity
+before adding an optional driver. The
+[reliability result](planner_v2_reliability_results.md) defines current evidence
+and limits; the [runtime design](guidance.md#optional-v2-runtime-consumer-next-phase-design)
+defines the staged follow-up. No runtime implementation, new measured allowance
+or default promotion is selected by this roadmap update.
 
 ### Retained V1 and research-track checkpoint history
 

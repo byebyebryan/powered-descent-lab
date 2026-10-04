@@ -193,7 +193,7 @@ program against actual heightfield terrain, applies local correction where
 possible, and replans from the actual handoff state. This offline loop may hand
 off at useful safe progress before a feature's far edge; it does not require a
 landing suffix. It is evaluator-owned, not a `pd-control` update-loop
-capability. See the [current V2 evaluation status](waypoint_planning.md#current-v2-evaluation-status-2026-10-03).
+capability. See the [current V2 evaluation status](waypoint_planning.md#current-v2-evaluation-status-2026-10-04).
 
 Waypoint guidance assumes the waypoint list is already planned, follows the
 currently active route leg, and enters a bounded handoff window at the waypoint
@@ -552,8 +552,12 @@ The active V2 batch is published at
 capture under `outputs/eval/planner_v2_lab_suite/`. Its batch page uses the
 shared full batch template, and supported details retain the rich flight
 renderer with additive executed-handoff annotations. Unsupported cases use a
-status page without invented flight plots. Report regeneration is
-presentation-only: it preserves raw capture evidence and records the selected
+status page without invented flight plots. The evaluator-owned native
+acceptance gate binds the complete frozen pack, requires ordinary target
+landings and verified evidence, and keeps diagnostic expectations separate.
+Failed captures retain their evidence and reports but cannot replace the
+accepted current site; the checked CLI reports a failure outcome. Report
+regeneration is presentation-only: it preserves raw capture evidence and records the selected
 summary, renderer, and page hashes. Older preview editions remain historical
 and do not replace the active batch.
 

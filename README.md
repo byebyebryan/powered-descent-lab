@@ -216,6 +216,10 @@ replay evidence; they do not perform a fresh physical replay. See the
 [acceptance contract](docs/guidance.md#native-v2-acceptance-contract-2026-10-03)
 for the exact gates and evidence boundaries.
 
+The [reliability results](docs/planner_v2_reliability_results.md) record two
+same-source accepted captures, report validation and the remaining runtime
+integration boundary.
+
 Start at the report home, then **Waypoint planning -> Current V2 batch -> Mission
 detail**. The stable batch page is
 `/reports/eval/planner_v2_lab_suite/index.html`. Every simulated mission detail
@@ -239,9 +243,10 @@ This default covers planner evaluation/reporting on the supported vehicle,
 Earth gravity, and 120/60 Hz setup. It does not change ordinary `pd-cli run` or
 terminal/transfer controller defaults. See the
 [activation contract](docs/waypoint_v2_eval_activation_plan.md).
-The [activation results](docs/waypoint_v2_eval_activation_results.md) record the
-new 44-case capture, exact evidence comparisons, navigation/browser checks, and
-remaining runtime-integration boundary.
+The [earlier activation results](docs/waypoint_v2_eval_activation_results.md)
+retain the 2026-10-03 capture, evidence comparisons, navigation/browser checks
+and runtime-integration boundary at that checkpoint. The reliability results
+linked above supply the current captures and validation.
 
 ## Report Serving
 
