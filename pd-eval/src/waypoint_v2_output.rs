@@ -1,8 +1,8 @@
 //! Create-only artifacts for the opt-in V2 flight mode.
 
-use std::{path::Path, time::Instant};
+use std::{fs, path::Path, time::Instant};
 
-use anyhow::Result;
+use anyhow::{Context, Result, ensure};
 use pd_plan::waypoint_v2::WaypointV2Policy;
 use serde::Serialize;
 
@@ -81,13 +81,49 @@ pub fn write_waypoint_v2_flight(
     output_dir: &Path,
 ) -> Result<WaypointV2FlightResult> {
     let total_started = Instant::now();
-    reserve_output_root(output_dir)?;
+    reserve_waypoint_v2_flight_output(output_dir)?;
     let result = run_waypoint_v2_flight(request, policy)?;
+
+    write_waypoint_v2_flight_result(request, &result, output_dir, total_started)?;
+    Ok(result)
+}
+
+/// Reserve a fresh output root before executing any live piece.
+pub fn reserve_waypoint_v2_flight_output(output_dir: &Path) -> Result<()> {
+    reserve_output_root(output_dir)
+}
+
+/// Rich reports require coherent executed-segment annotations. An
+/// integrity-failed implementation error may retain a source-replayed manifest
+/// alongside deliberately incomplete ledgers, so preserve its raw and compact
+/// evidence without projecting a misleading rich plot.
+pub(crate) fn waypoint_v2_rich_report_eligible(result: &WaypointV2FlightResult) -> bool {
+    result.manifest.is_some()
+        && result.ordinary_flight.is_some()
+        && !(result.planning_stop == pd_plan::waypoint_v2::WaypointV2Stop::ImplementationError
+            && !result.integrity_passed)
+}
+
+/// Write an already completed (or preflight-only) result exactly once.
+/// Callers that drive a [`crate::WaypointV2Session`] directly use this entry
+/// point so recording artifacts never re-executes the flight.
+pub fn write_waypoint_v2_flight_result(
+    request: &WaypointDirectNominalDirectGenerationRequest,
+    result: &WaypointV2FlightResult,
+    output_dir: &Path,
+    total_started: Instant,
+) -> Result<()> {
+    let metadata = fs::symlink_metadata(output_dir)
+        .with_context(|| format!("inspect reserved output root {}", output_dir.display()))?;
+    ensure!(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        "reserved output root must be a real directory"
+    );
 
     let output_started = Instant::now();
     write_create_only(&output_dir.join("scenario.json"), &request.scenario)?;
     write_create_only(&output_dir.join("flight.json"), &result)?;
-    if result.manifest.is_some() && result.ordinary_flight.is_some() {
+    if waypoint_v2_rich_report_eligible(result) {
         let navigation = pd_report::flight_annotations::AnnotationNavigation {
             source_links: vec![
                 pd_report::flight_annotations::NavigationLink {
@@ -107,11 +143,11 @@ pub fn write_waypoint_v2_flight(
         };
         let html = crate::waypoint_v2_report::render_rich_flight(
             &request.scenario,
-            &result,
+            result,
             navigation,
             format!(
                 "Native V2 flight · {} · executed handoffs",
-                policy.policy_id
+                result.policy.policy_id
             ),
         )?;
         crate::waypoint_v2_report::write_bytes_create_only(
@@ -158,7 +194,7 @@ pub fn write_waypoint_v2_flight(
         timings: OutputTimings { output_s, total_s },
     };
     write_create_only(&output_dir.join("summary.json"), &summary)?;
-    Ok(result)
+    Ok(())
 }
 
 #[cfg(test)]

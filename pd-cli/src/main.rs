@@ -16,6 +16,9 @@ use pd_core::{
 use pd_report::{site::ReportSite, write_run_preview_svg, write_run_report};
 use serde::{Serialize, de::DeserializeOwned};
 
+#[cfg(feature = "planner-v2")]
+mod planner_v2;
+
 #[derive(Debug, Parser)]
 #[command(name = "pd-cli")]
 #[command(about = "Powered descent lab command-line entry point")]
@@ -29,6 +32,10 @@ enum Commands {
     Run(RunArgs),
     Replay(ReplayArgs),
     Report(ReportArgs),
+    #[cfg(feature = "planner-v2")]
+    WaypointV2Flight(planner_v2::WaypointV2FlightArgs),
+    #[cfg(feature = "planner-v2")]
+    WaypointV2Replay(planner_v2::WaypointV2ReplayArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -80,6 +87,10 @@ fn main() -> Result<()> {
         Commands::Run(args) => run(args),
         Commands::Replay(args) => replay(args),
         Commands::Report(args) => render_report(args),
+        #[cfg(feature = "planner-v2")]
+        Commands::WaypointV2Flight(args) => planner_v2::flight(args),
+        #[cfg(feature = "planner-v2")]
+        Commands::WaypointV2Replay(args) => planner_v2::replay(args),
     }
 }
 
