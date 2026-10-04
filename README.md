@@ -175,7 +175,7 @@ without treating the old scenario files as fixtures to transliterate directly.
 Run the current planner lab suite with the normal batch entrypoint:
 
 ```bash
-cargo run --release -p pd-eval -- run-pack --workers 4
+cargo run --release -p pd-eval -- run-pack --workers 4 --enforce-regression-policy
 ```
 
 Omitting the pack selects
@@ -191,6 +191,31 @@ mission detail pages. Clear/direct landings, terrain/waypoint landings, finite
 planning stops, and unsupported diagnostics are shown separately. The eight
 diagnostics are not added to the ordinary landing-success denominator.
 
+The checked command distinguishes a completed capture from an accepted batch.
+It requires all 36 ordinary target landings, direct clear controls, corrected
+blocked-terrain cases, and integrity/source-replay evidence, while permitting
+honest finite diagnostic stops. Failure returns a nonzero exit status after
+retaining the capture and its rich reports. A failed batch cannot replace the
+current accepted report. Omitting `--enforce-regression-policy` keeps
+collection-only exit semantics, but still prints the verdict and cannot publish
+a failed batch as current.
+
+Check a saved capture without running missions or changing reports:
+
+```bash
+cargo run --release -p pd-eval -- check-planner-v2 --dir CAPTURE_DIRECTORY
+node scripts/check-planner-v2-workflow.mjs
+```
+
+Replace `CAPTURE_DIRECTORY` with an existing capture directory. The second
+command resolves the selected capture automatically, checks it with the
+compiled release evaluator, and verifies the common batch/detail pages against
+their raw evidence and render receipt. Use `--compare-dir OTHER_CAPTURE` to
+also compare a same-source repeat. These read-only checks validate recorded
+replay evidence; they do not perform a fresh physical replay. See the
+[acceptance contract](docs/guidance.md#native-v2-acceptance-contract-2026-10-03)
+for the exact gates and evidence boundaries.
+
 Start at the report home, then **Waypoint planning -> Current V2 batch -> Mission
 detail**. The stable batch page is
 `/reports/eval/planner_v2_lab_suite/index.html`. Every simulated mission detail
@@ -205,8 +230,10 @@ The V2 single-flight command also defaults to policy 3; explicit
 `--policy-version 1` or `2` keeps historical policy selection available. Frozen
 research fixtures/scripts retain their original identities and protocols.
 Native V2 batches have their own truthful schema, not forged V1/controller
-records. They do not yet use controller cache/Git-ref baseline comparisons;
-unsupported comparison/regression flags fail before flight execution.
+records. They do not use controller cache/Git-ref baseline comparisons;
+unsupported comparison flags fail before flight execution. For native V2,
+`--enforce-regression-policy` applies the frozen pack's acceptance contract,
+not a legacy controller baseline comparison.
 
 This default covers planner evaluation/reporting on the supported vehicle,
 Earth gravity, and 120/60 Hz setup. It does not change ordinary `pd-cli run` or

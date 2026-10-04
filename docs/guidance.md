@@ -133,6 +133,101 @@ This split is internal. Public controller exports still resolve through
 `pd-control`, and persisted controller, phase, telemetry, and artifact contracts
 remain unchanged.
 
+## Native V2 Acceptance Contract (2026-10-03)
+
+The approved reliability pass adds a versioned, evaluator-owned acceptance
+check for the frozen `planner_v2_lab_suite`; implementation and final-source
+validation are in progress. This is not a controller comparison policy or a
+new terrain experiment. The contract is settled before the measured runs:
+
+- Bind the complete 44-case input identity to expansion of the tracked pack,
+  not merely to mutually consistent hashes supplied by a capture. Require
+  policy 3, completed capture status, and unchanged source/input provenance
+  during capture. An older capture need not match today's Git commit.
+- Require all 36 ordinary cases to have target touchdown, mission success,
+  landed planning stop, integrity, and source-replay evidence. The 11 clear
+  controls must be terrain-unblocked and use zero corrections. The 25 terrain
+  cases must have a blocked initial nominal and at least one correction.
+- Keep the eight diagnostics separate. The six supported diagnostics may land
+  or end at an honest finite planning stop, but may not crash, land off-target,
+  time out in the core, or hide an implementation/unverified-execution failure.
+  The two expected unsupported inputs must remain preflight-only, with no
+  invented physical outcome, mission outcome, or replay claim. Previously
+  difficult diagnostics are allowed to improve.
+- Require integrity for all 44 cases and recorded source replay for all 42
+  supported cases. Do not fix the total number of handoffs or impose a new
+  machine-dependent timing threshold.
+- Saved-capture checking is read-only artifact/identity/outcome validation. It
+  checks recorded replay evidence; it does not run a fresh physical replay or
+  establish arbitrary-terrain or real-time acceptance.
+- A failed capture keeps its evidence and rich report, but cannot replace the
+  current accepted site. The checked batch workflow returns failure after
+  recording the result; collection-only operation distinguishes completion
+  from acceptance explicitly.
+
+The final validation allowance is one fresh 44-case batch and, only after it
+passes, one repeat: at most 88 measured case attempts. Unit tests and read-only
+artifact comparisons are separate checks, not additional measured batches.
+Freeze source before these captures; retain every miss, and do not alter cases,
+flight policy, or acceptance thresholds in response to results. Local
+checkpoint commits are authorized; pushes, server restarts, runtime-default
+changes, new mission corpora, and planner tuning are not part of this pass.
+
+## Optional V2 Runtime Consumer: Next-Phase Design
+
+This is a design-only follow-up, not an implemented adapter or a requirement
+for usable offline lab evaluation. A concrete runtime consumer should be named
+before implementation; the ordinary `pd-cli run` and controller defaults stay
+unchanged in the reliability pass.
+
+The existing seam is `pd-eval::FlightLoop` in `waypoint_v2.rs`. It owns one
+`OrdinaryLive` state, one absolute deadline, the consumed command ledger, and
+the correction count. Queries clone that live state; executing to a handoff
+advances the original state. The controller trait, by contrast, returns a
+`ControllerFrame` and has no typed planning-stop result. A snapshot's
+`to_simulation_state` is query-only and explicitly must not be stepped. Fixed
+flight-program playback is not a dynamic replanning interface.
+
+The smallest staged path is:
+
+1. Extract an internal V2 session/iteration seam while keeping the existing
+   evaluator driver and all numerical selection, query, admission, contact,
+   certificate, and replay checks intact. Prove command/state parity before
+   changing crate placement or adding a consumer. Do not assume every replay
+   is removable post-processing: witnesses and prefix proofs also participate
+   in admission.
+2. Define a segment-or-stop contract bound to the original run context, actual
+   full live state, incoming contact, global command clock, original deadline,
+   consumed prefix, source-phase ownership, and completed correction count.
+   A segment carries globally scheduled commands through its planned handoff;
+   the next planning call receives the actual state after execution. There is
+   no simulator restart, fuel refill, fresh deadline, or reconstructed live
+   state. Keep predictions distinct from executed handoffs.
+3. Add an optional V2-specific driver only after that seam passes parity. It
+   must stop advancing on a typed finite stop and retain partial evidence,
+   rather than issue idle commands until timeout. `NoClearing` means the local
+   search found no admitted proposal; `CorrectionLimit` means the next nominal
+   remains blocked after the correction allowance was reached. A final direct
+   attempt remains permitted after the last allowed correction. Ordinary
+   controller APIs need not be generalized for this
+   first optional consumer.
+
+Keep the evaluator's final source replay, batch policy, and reporting outside
+the consumer. Decide shared module/crate placement only if a second consumer
+actually needs it. Do not introduce a `pd-control` dependency on `pd-eval`, or
+put simulation/report orchestration into the neutral `pd-plan` crate.
+
+The future implementation gate should cover direct and repeated-correction
+flights, finite pre-departure stops, correction-limit/deadline boundaries,
+unsupported preflight, and no commands after stop. Verify actual E/H state,
+monotonic clock, held command, incoming contact, fuel continuity, unchanged
+ordinary CLI defaults, and parity with the existing evaluator's frozen inputs.
+New measured captures need their own approved allowance. Retain the current
+vehicle/Earth/120-60 Hz domain and local-clear-then-replan behavior; neither a
+landing suffix nor feature-far-edge clearance becomes a new requirement.
+Hard real-time or asynchronous planning is a separate measured design question,
+not a claim derived from the offline planning timings.
+
 ## Maintained Gates
 
 The counts below are retained outcomes for the maintained controller/guidance
