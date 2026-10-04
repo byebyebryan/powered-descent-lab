@@ -701,14 +701,24 @@ function localHttpUrl(value, label) {
   return url;
 }
 
-async function fetchPage(url, origin, label) {
+export function verifyHttpContent(contentType, body, label, kind = 'html') {
+  if (kind === 'json') {
+    check(/application\/json/i.test(contentType), `${label}: expected JSON, got ${contentType || 'no content type'}`);
+    JSON.parse(body);
+  } else {
+    check(/text\/html|application\/xhtml\+xml/i.test(contentType), `${label}: expected HTML, got ${contentType || 'no content type'}`);
+  }
+}
+
+async function fetchPage(url, origin, label, kind = 'html') {
   const parsed = new URL(url);
   check(parsed.origin === origin, `${label}: link escapes the requested local report server (${parsed.href})`);
   const response = await fetch(parsed, {redirect: 'follow', signal: AbortSignal.timeout(20000)});
   check(response.ok, `${label}: HTTP ${response.status} ${response.statusText} at ${response.url}`);
   const contentType = response.headers.get('content-type') ?? '';
-  check(/text\/html|application\/xhtml\+xml/i.test(contentType), `${label}: expected HTML at ${response.url}, got ${contentType || 'no content type'}`);
-  return {url: response.url, html: await response.text(), status: response.status};
+  const body = await response.text();
+  verifyHttpContent(contentType, body, label, kind);
+  return {url: response.url, html: body, status: response.status};
 }
 
 function findBatchCaseAnchor(anchors, expectedUrl, id) {
@@ -811,7 +821,10 @@ async function crawlReportSite(batchRoot, batch, rootUrl) {
   }
 
   const uniqueSources = [...new Map(sourceLinks.map(link => [link.url, link])).values()];
-  for (const source of uniqueSources) await fetchPage(source.url, origin, `${source.case_id} source link ${source.label || source.url}`);
+  for (const source of uniqueSources) {
+    const kind = new URL(source.url).pathname.endsWith('.json') ? 'json' : 'html';
+    await fetchPage(source.url, origin, `${source.case_id} source link ${source.label || source.url}`, kind);
+  }
   return {
     origin,
     root_url: rootPage.url,

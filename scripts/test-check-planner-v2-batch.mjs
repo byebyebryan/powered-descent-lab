@@ -7,7 +7,15 @@ import {
   parseAnchors,
   verifyCorrectionAnnotations,
   verifyOrdinaryExecution,
+  verifyHttpContent,
 } from './check-planner-v2-batch.mjs';
+
+test('HTTP crawl distinguishes report HTML from source JSON and rejects malformed evidence', () => {
+  verifyHttpContent('text/html', '<h1>Report</h1>', 'report');
+  verifyHttpContent('application/json', '{"id":"case"}', 'source', 'json');
+  assert.throws(() => verifyHttpContent('text/html', '{}', 'wrong source', 'json'), /expected JSON/);
+  assert.throws(() => verifyHttpContent('application/json', 'not json', 'corrupt source', 'json'), SyntaxError);
+});
 
 test('zero-command NoClearing keeps its initial sample and is not a flown landing', () => {
   const stopped = {
