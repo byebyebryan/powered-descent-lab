@@ -1838,7 +1838,8 @@ fn batch_html(report: &WaypointV2BatchReport) -> String {
                 case.correction_count.map_or("—".into(), |n| n.to_string()),
                 case.integrity_passed.map_or("—".into(), |v| v.to_string()),
                 replay,
-                case.planning_s.map_or("—".into(), |v| format!("{v:.3}s")), row_href,
+                case.planning_s.map_or("—".into(), |v| format!("{v:.3}s")),
+                escape_html(case.outcome.as_deref().unwrap_or("missing")),
             ));
         }
     }
@@ -1893,14 +1894,14 @@ fn batch_html(report: &WaypointV2BatchReport) -> String {
     format!(
         r###"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title>
-<style>body{{font:16px/1.5 system-ui,sans-serif;margin:0 auto;padding:1rem;max-width:1200px;color:#18212b}}h1,h2{{line-height:1.2}}.rollups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:1rem}}section{{margin:1.2rem 0;padding:1rem;border:1px solid #ccd5df;border-radius:.6rem}}.table-wrap{{overflow-x:auto;max-width:100%}}table{{border-collapse:collapse;width:100%;min-width:640px}}th,td{{text-align:left;border-bottom:1px solid #dde3e9;padding:.45rem;vertical-align:top;overflow-wrap:anywhere}}.cases{{min-width:980px}}.group th{{background:#edf2f7}}code{{overflow-wrap:anywhere}}a{{overflow-wrap:anywhere}}.notice{{background:#f3f6fa;padding:.8rem;border-left:4px solid #4876a8}}</style></head>
+<style>*{{box-sizing:border-box}}body{{font:16px/1.5 system-ui,sans-serif;margin:0 auto;padding:1rem;max-width:1200px;color:#18212b}}h1,h2{{line-height:1.2}}.rollups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:1rem}}section{{min-width:0;margin:1.2rem 0;padding:1rem;border:1px solid #ccd5df;border-radius:.6rem}}.table-wrap{{overflow-x:auto;max-width:100%}}table{{border-collapse:collapse;width:100%;min-width:0}}th,td{{text-align:left;border-bottom:1px solid #dde3e9;padding:.45rem;vertical-align:top;overflow-wrap:anywhere}}.cases{{min-width:980px}}.group th{{background:#edf2f7}}code{{overflow-wrap:anywhere}}a{{overflow-wrap:anywhere}}.notice{{background:#f3f6fa;padding:.8rem;border-left:4px solid #4876a8}}</style></head>
 <body><nav><a href="/reports/">Report home</a> · <a href="/reports/topics/waypoint-planning/index.html">Waypoint planning</a></nav>
 <h1>{}</h1><p>{}</p><p class="notice">44 cases total: 36 landing candidates and 8 diagnostics. Finite misses remain in the 36-case landing denominator; diagnostics are reported separately. A stop or process exit is not a landing claim.</p>
 <div class="rollups"><section><h2>Case groups</h2><div class="table-wrap"><table><tbody>{}</tbody></table></div></section>
 <section><h2>Verified outcomes</h2><p>Core 36-case landing set: {}/36 target landings ({} direct, {} corrected); {} simulated non-landings.</p><p>Diagnostics: {} supported target landings, {} supported non-landings, {} unsupported preflight cases; {} crashes.</p><p>Integrity passed/failed: {}/{}; source replay passed/failed: {}/{} (unsupported preflight is not applicable); {} simulated cases lack validated replay.</p></section>
 <section><h2>Planning stops</h2><div class="table-wrap"><table><tbody>{}</tbody></table></div></section>
 <section><h2>Physical outcomes</h2><div class="table-wrap"><table><tbody>{}</tbody></table></div></section></div>
-<section><h2>Cases</h2><div class="table-wrap"><table class="cases"><thead><tr><th>Case</th><th>Family</th><th>Record</th><th>Planning stop</th><th>Corrections</th><th>Integrity / replay</th><th>Planning</th><th>Detail</th></tr></thead><tbody>{}</tbody></table></div></section>
+<section><h2>Cases</h2><div class="table-wrap"><table class="cases"><thead><tr><th>Case</th><th>Family</th><th>Record</th><th>Planning stop</th><th>Corrections</th><th>Integrity / replay</th><th>Planning</th><th>Outcome</th></tr></thead><tbody>{}</tbody></table></div></section>
 <section><h2>Input identity and provenance</h2><p>Policy version {}. Rust-native typed expansion digest: <code>{}</code>.</p><p>Pack snapshot: <code>{}</code>; expanded inputs: <code>{}</code>.</p><p>Before: Git commit <code>{}</code>; worktree dirty: {}. Source tree SHA-256: <code>{}</code>. Executable SHA-256: <code>{}</code>.</p><p>After: {}.</p><p>Source and input hashes unchanged during capture: {}.</p><div class="table-wrap"><table><caption>Sealed source fixtures</caption><tbody>{}</tbody></table></div><div class="table-wrap"><table><caption>Sealed base manifests</caption><tbody>{}</tbody></table></div><p>Raw input and flight JSON are linked from every detail page; rich plots remain in each simulated detail report.</p></section>
 </body></html>"###,
         escape_html(&report.name),
@@ -2388,6 +2389,9 @@ mod tests {
         assert!(html.contains("Core 36-case landing set: 2/36"));
         assert!(html.contains("Diagnostics: 0 supported target landings"));
         assert!(html.contains("overflow-x:auto"));
+        assert!(html.contains(".cases{min-width:980px}"));
+        assert!(!html.contains("min-width:640px"));
+        assert!(html.contains("<th>Outcome</th>"));
         assert!(html.contains("Sealed source fixtures"));
         write_create_only(&temp.join("summary.json"), &report).unwrap();
         assert!(render_waypoint_v2_batch(&temp).is_err());

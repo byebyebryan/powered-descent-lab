@@ -8,7 +8,13 @@ import {
   verifyCorrectionAnnotations,
   verifyOrdinaryExecution,
   verifyHttpContent,
+  isEvidenceAnchor,
 } from './check-planner-v2-batch.mjs';
+
+test('unsupported detail source links are found by their JSON path despite human labels', () => {
+  const {anchors} = parseAnchors('<a href="scenario.json">Scenario JSON</a><a href="flight.json">Typed preflight result JSON</a><a href="../next/index.html">Next case</a>', 'http://127.0.0.1:8000/runs/unsupported/index.html');
+  assert.deepEqual(anchors.map(isEvidenceAnchor), [true, true, false]);
+});
 
 test('HTTP crawl distinguishes report HTML from source JSON and rejects malformed evidence', () => {
   verifyHttpContent('text/html', '<h1>Report</h1>', 'report');

@@ -726,6 +726,11 @@ function findBatchCaseAnchor(anchors, expectedUrl, id) {
   return anchors.find(anchor => new URL(anchor.url).pathname === target.pathname);
 }
 
+export function isEvidenceAnchor(anchor) {
+  return new URL(anchor.url).pathname.endsWith('.json')
+    || /source|original|scenario\.json|flight\.json|summary\.json|input/i.test(anchor.text);
+}
+
 async function crawlReportSite(batchRoot, batch, rootUrl) {
   const root = localHttpUrl(rootUrl, '--root-url');
   const origin = root.origin;
@@ -811,7 +816,7 @@ async function crawlReportSite(batchRoot, batch, rootUrl) {
       }
     }
     for (const anchor of parsed.anchors) {
-      if (/source|original|scenario\.json|flight\.json|summary\.json|input/i.test(anchor.text)) {
+      if (isEvidenceAnchor(anchor)) {
         const url = new URL(anchor.url);
         check(url.origin === origin, `${id}: source evidence link escapes local report server`);
         sourceLinks.push({case_id: id, label: anchor.text, url: url.href});
