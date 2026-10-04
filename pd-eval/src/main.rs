@@ -72,6 +72,8 @@ struct Cli {
 enum Commands {
     /// Run an evaluation pack; defaults to the current Planner V2 lab suite.
     RunPack(RunPackArgs),
+    /// Check a saved native Planner V2 capture without rerunning it.
+    CheckPlannerV2(PlannerV2CheckArgs),
     Report(ReportArgs),
     RefreshReports(RefreshReportsArgs),
     /// Refresh report navigation and maintained scorecard indexes only; no report bodies or flights.
@@ -401,6 +403,12 @@ struct RunPackArgs {
 
     #[arg(long)]
     enforce_regression_policy: bool,
+}
+
+#[derive(Debug, Parser)]
+struct PlannerV2CheckArgs {
+    #[arg(long, value_name = "CAPTURE_DIR")]
+    dir: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -1027,6 +1035,9 @@ fn main() -> Result<()> {
                     &capture_dir,
                     args.workers.unwrap_or_else(default_worker_count),
                 )?;
+                let acceptance =
+                    pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&capture_dir)?;
+                eprintln!("Planner acceptance: {}", acceptance.status.label());
                 let published =
                     pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &capture_dir)?;
                 println!("{}", serde_json::to_string_pretty(&report.summary)?);
@@ -1036,6 +1047,7 @@ fn main() -> Result<()> {
                         .unwrap_or_else(|| capture_dir.join("index.html"))
                         .display()
                 );
+                enforce_native_planner_acceptance(&acceptance, args.enforce_regression_policy)?;
                 return Ok(());
             }
             let default_output_dir = args
@@ -1076,6 +1088,12 @@ fn main() -> Result<()> {
                 eprintln!("regression policy: {}", comparison.policy.summary);
             }
             println!("{}", serde_json::to_string_pretty(&outcome.report.summary)?);
+        }
+        Commands::CheckPlannerV2(args) => {
+            let acceptance =
+                pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&args.dir)?;
+            println!("{}", serde_json::to_string_pretty(&acceptance)?);
+            enforce_native_planner_acceptance(&acceptance, true)?;
         }
         Commands::Report(args) => render_report(args)?,
         Commands::RefreshReports(args) => {
@@ -2094,15 +2112,45 @@ fn render_report(args: ReportArgs) -> Result<()> {
 
 fn validate_native_planner_options(args: &RunPackArgs) -> Result<()> {
     if args.baseline_dir.is_some()
-        || args.enforce_regression_policy
         || !matches!(args.compare_ref.as_str(), "auto" | "none")
         || (args.compare_ref == "auto" && args.missing_compare == MissingComparePolicyArg::Error)
     {
         bail!(
-            "native Planner V2 packs use fresh captures and do not support controller cache/Git-ref baseline comparisons or --enforce-regression-policy; omit comparison options or use --compare-ref none"
+            "native Planner V2 packs use fresh captures and do not support controller cache/baseline comparisons; omit baseline-dir and explicit Git refs, and use --compare-ref none when missing-compare is error"
         );
     }
     Ok(())
+}
+
+fn enforce_native_planner_acceptance(
+    acceptance: &pd_eval::waypoint_v2_acceptance::WaypointV2AcceptanceV1,
+    enforce: bool,
+) -> Result<()> {
+    if !enforce || acceptance.passed {
+        return Ok(());
+    }
+    let reasons = acceptance
+        .issues
+        .iter()
+        .take(3)
+        .map(|issue| {
+            issue.case_id.as_ref().map_or_else(
+                || issue.message.clone(),
+                |case_id| format!("{case_id}: {}", issue.message),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    bail!(
+        "Planner V2 acceptance {} with {} issue(s){}",
+        acceptance.status.label(),
+        acceptance.issues.len(),
+        if reasons.is_empty() {
+            String::new()
+        } else {
+            format!(": {reasons}")
+        }
+    )
 }
 
 fn repo_root() -> PathBuf {
@@ -2673,7 +2721,6 @@ mod tests {
         );
         for flags in [
             vec!["--baseline-dir", "old"],
-            vec!["--enforce-regression-policy"],
             vec!["--compare-ref", "HEAD^"],
             vec!["--missing-compare", "error"],
         ] {
@@ -2684,6 +2731,15 @@ mod tests {
             };
             assert!(validate_native_planner_options(&parsed).is_err());
         }
+        let Commands::RunPack(checked) =
+            Cli::try_parse_from(["pd-eval", "run-pack", "--enforce-regression-policy"])
+                .unwrap()
+                .command
+        else {
+            panic!("wrong command");
+        };
+        assert!(checked.enforce_regression_policy);
+        assert!(validate_native_planner_options(&checked).is_ok());
         let Commands::RunPack(no_compare) = Cli::try_parse_from([
             "pd-eval",
             "run-pack",
@@ -2699,6 +2755,47 @@ mod tests {
             panic!("wrong command");
         };
         assert!(validate_native_planner_options(&no_compare).is_ok());
+    }
+
+    #[test]
+    fn check_planner_v2_requires_an_explicit_capture_directory() {
+        assert!(Cli::try_parse_from(["pd-eval", "check-planner-v2"]).is_err());
+        let Commands::CheckPlannerV2(args) =
+            Cli::try_parse_from(["pd-eval", "check-planner-v2", "--dir", "capture"])
+                .unwrap()
+                .command
+        else {
+            panic!("wrong command");
+        };
+        assert_eq!(args.dir, PathBuf::from("capture"));
+    }
+
+    #[test]
+    fn native_planner_acceptance_enforcement_is_opt_in_for_outcomes() {
+        use pd_eval::waypoint_v2_acceptance::{
+            WaypointV2AcceptanceIssue, WaypointV2AcceptanceStatus, WaypointV2AcceptanceTotals,
+            WaypointV2AcceptanceV1,
+        };
+
+        let failed = WaypointV2AcceptanceV1 {
+            schema_id: "planner_v2_acceptance_v1".into(),
+            status: WaypointV2AcceptanceStatus::Failed,
+            passed: false,
+            issues: vec![WaypointV2AcceptanceIssue {
+                case_id: Some("case-x".into()),
+                code: "synthetic_failure".into(),
+                message: "synthetic outcome failure".into(),
+            }],
+            totals: WaypointV2AcceptanceTotals::default(),
+        };
+        assert!(enforce_native_planner_acceptance(&failed, false).is_ok());
+        assert!(enforce_native_planner_acceptance(&failed, true).is_err());
+
+        let mut passed = failed;
+        passed.status = WaypointV2AcceptanceStatus::Passed;
+        passed.passed = true;
+        passed.issues.clear();
+        assert!(enforce_native_planner_acceptance(&passed, true).is_ok());
     }
 
     #[test]

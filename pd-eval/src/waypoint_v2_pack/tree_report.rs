@@ -296,6 +296,7 @@ fn render_with_links(
         report.cases.len() == verified.len(),
         "missing verified tree records"
     );
+    let acceptance = crate::waypoint_v2_acceptance::assess_waypoint_v2_acceptance(report)?;
     let rows = report
         .cases
         .iter()
@@ -362,14 +363,16 @@ fn render_with_links(
         .iter()
         .filter(|r| r.group == "diagnostic")
         .collect::<Vec<_>>();
+    let core_class = acceptance.status.css_class();
     let mut overview_rows = String::new();
     for (name, cases, result) in [
         (
             "Core evaluation",
             &core,
             format!(
-                "<div class=\"overview-main good\">{}/36 target landings</div><div class=\"overview-sub\">{} direct · {} corrected · {} non-landings</div>",
+                "<div class=\"overview-main {core_class}\">{}/36 target landings · {}</div><div class=\"overview-sub\">{} direct · {} corrected · {} non-landings</div>",
                 s.valid_landing_count,
+                acceptance.status.label(),
                 s.direct_landing_count,
                 s.corrected_landing_count,
                 s.non_landing_count
@@ -520,15 +523,62 @@ fn render_with_links(
         ("Waypoint meaning", "H markers are actual executed correction-segment endpoints, where planning restarted; they are not authored waypoint targets.".to_owned()),
         ("Reference / recovery", "Unavailable where no measured controller reference metric was recorded; no synthetic reference or recovery success is inferred.".to_owned()),
     ] { context_rows.push_str(&batch::render_context_row(&[label, &value])); }
+    context_rows.push_str(&batch::render_context_row(&[
+        "Acceptance verdict",
+        &format!(
+            "<strong id=\"planner-v2-acceptance-status\" class=\"{}\">{}</strong> · schema <code>{}</code>",
+            acceptance.status.css_class(),
+            acceptance.status.label(),
+            escape_html(&acceptance.schema_id)
+        ),
+    ]));
+    if acceptance.issues.is_empty() {
+        context_rows.push_str(&batch::render_context_row(&[
+            "Acceptance issues",
+            "None; all declared gates passed.",
+        ]));
+    } else {
+        context_rows.push_str(&batch::render_context_row(&[
+            "Acceptance issues",
+            "Resolve these capture or case findings before publication.",
+        ]));
+        for issue in &acceptance.issues {
+            let case_link = issue.case_id.as_ref().and_then(|case_id| {
+                report
+                    .cases
+                    .iter()
+                    .find(|case| &case.case_id == case_id)
+                    .map(|case| {
+                        let href = preview_base.map_or_else(
+                            || case.annotated_report_path.clone(),
+                            |base| format!("{base}{}", case.annotated_report_path),
+                        );
+                        format!(
+                            "<a href=\"{}\">{}</a>",
+                            escape_html(&href),
+                            escape_html(case_id)
+                        )
+                    })
+            });
+            let case_cell = case_link.unwrap_or_else(|| "Batch".into());
+            let detail = format!(
+                "<code>{}</code>: {}",
+                escape_html(&issue.code),
+                escape_html(&issue.message)
+            );
+            context_rows.push_str(&batch::render_context_row(&[&case_cell, &detail]));
+        }
+    }
     let context_table = batch::render_context_table(
-        "<tr><th>Context</th><th>Recorded evidence</th></tr>",
+        "<tr><th>Context / case</th><th>Recorded evidence / finding</th></tr>",
         &context_rows,
     );
+    let attention = !acceptance.passed;
     let context = batch::render_context_section(
-        false,
-        false,
-        "good",
-        "Saved native evaluation",
+        attention,
+        attention,
+        acceptance.status.css_class(),
+        &format!("Planner V2 acceptance · {}", acceptance.status.label()),
         &context_table,
     );
     let headers = "<tr><th>Selector</th><th>Success / Outcome</th><th>Fuel Used</th><th>Flight Time</th><th>Landing Offset</th><th>Reference deviation</th><th>Preview</th><th data-optional=\"handoffs\">Executed handoffs</th></tr>";
@@ -536,9 +586,10 @@ fn render_with_links(
     let tree_section = batch::render_tree_table_section(
         &format!("<code>{}</code>", escape_html(&report.pack_id)),
         &format!(
-            "{}/36 core target landings · 8 separate diagnostics · {} executed handoffs",
+            "{}/36 core target landings · 8 separate diagnostics · {} executed handoffs · acceptance {}",
             s.valid_landing_count,
-            rows.iter().map(|row| row.correction_count).sum::<u32>()
+            rows.iter().map(|row| row.correction_count).sum::<u32>(),
+            acceptance.status.label()
         ),
         &table,
     );
@@ -587,8 +638,12 @@ fn render_with_links(
         .replace('<', "\\u003c")
         .replace('>', "\\u003e")
         .replace('&', "\\u0026");
+    let acceptance_data = serde_json::to_string(&acceptance)?
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026");
     let appendix = format!(
-        "<details class=\"header-context\" id=\"provenance\"><summary>Input identity and provenance</summary><p>Typed expansion digest: <code>{}</code></p><p>Pack snapshot: <code>{}</code> · Expanded inputs: <code>{}</code></p><pre>{provenance}</pre><div class=\"table-wrap\">{source_table}</div></details><script>const batchTreeData = {data};</script>",
+        "<details class=\"header-context\" id=\"provenance\"><summary>Input identity and provenance</summary><p>Typed expansion digest: <code>{}</code></p><p>Pack snapshot: <code>{}</code> · Expanded inputs: <code>{}</code></p><pre>{provenance}</pre><div class=\"table-wrap\">{source_table}</div></details><script id=\"planner-v2-acceptance\" type=\"application/json\">{acceptance_data}</script><script>const batchTreeData = {data};</script>",
         escape_html(&report.input_identity.rust_typed_expanded_inputs_sha256),
         escape_html(&report.pack_snapshot_sha256),
         escape_html(&report.expanded_inputs_snapshot_sha256)

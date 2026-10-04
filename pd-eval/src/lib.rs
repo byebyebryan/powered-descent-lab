@@ -165,6 +165,7 @@ pub mod waypoint_v2_output;
 pub mod waypoint_v2_report;
 pub use waypoint_v2_output::*;
 pub mod planner_eval_site;
+pub mod waypoint_v2_acceptance;
 pub mod waypoint_v2_pack;
 
 pub mod nominal_direct_operational;
@@ -1208,7 +1209,12 @@ pub fn refresh_report_outputs(all: bool) -> Result<ReportRefreshSummary> {
                 continue;
             };
             let refreshed = waypoint_v2_pack::validated_waypoint_v2_batch(&capture)?;
-            planner_eval_site::publish_planner_batch(&root, &capture)?;
+            if planner_eval_site::publish_planner_batch(&root, &capture)?.is_none() {
+                bail!(
+                    "planner acceptance/publication refused selected capture {}",
+                    capture.display()
+                );
+            }
             summary.refreshed_batches += 1;
             let saved = serde_json::to_value(&refreshed)?;
             summary.refreshed_runs += saved["cases"].as_array().map_or(0, |cases| {

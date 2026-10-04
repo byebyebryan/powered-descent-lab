@@ -10,6 +10,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use crate::waypoint_v2_acceptance::assess_waypoint_v2_acceptance;
 use crate::waypoint_v2_pack::{
     is_waypoint_v2_pack, render_waypoint_v2_site_pages, validated_waypoint_v2_batch,
 };
@@ -92,6 +93,12 @@ pub fn current_planner_capture(repo_root: &Path, pack_id: &str) -> Result<Option
 pub fn publish_planner_batch(repo_root: &Path, capture_root: &Path) -> Result<Option<PathBuf>> {
     let capture = capture_root.canonicalize()?;
     let report = validated_waypoint_v2_batch(&capture)?;
+    let acceptance = assess_waypoint_v2_acceptance(&report)?;
+    // Outcome failures are retained as captures and local reports, but cannot
+    // update any derived page, current selection, or report-catalog entry.
+    if !acceptance.passed {
+        return Ok(None);
+    }
     // Explicit historical policy captures remain available offline; they must
     // not replace the current policy-3 planner evaluation entrypoint.
     if report.policy_version != 3 {

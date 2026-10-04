@@ -257,7 +257,7 @@ pub struct WaypointV2BatchSummary {
     pub mission_outcomes: BTreeMap<String, usize>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WaypointV2PackInputIdentity {
     pub pack_file_sha256: String,
     pub source_fixture_sha256: BTreeMap<String, String>,
@@ -1119,6 +1119,16 @@ fn load_and_expand(pack_path: &Path) -> Result<ExpandedPack> {
     })
 }
 
+/// Frozen typed input identity for the tracked default pack. Acceptance uses
+/// this read-only expansion to bind saved cases to the registered recipe and
+/// fixtures; it deliberately does not compare the capture's Git HEAD to the
+/// current checkout.
+pub(crate) fn check_default_planner_v2_binding()
+-> Result<(Vec<WaypointV2PackInput>, WaypointV2PackInputIdentity)> {
+    let expanded = load_and_expand(Path::new(DEFAULT_PLANNER_PACK_PATH))?;
+    Ok((expanded.inputs, expanded.input_identity))
+}
+
 fn request_for(input: &WaypointV2PackInput) -> WaypointDirectNominalDirectGenerationRequest {
     WaypointDirectNominalDirectGenerationRequest {
         probe_id: input.scenario.id.clone(),
@@ -1263,7 +1273,7 @@ fn run_one_case(
     })
 }
 
-fn summarize(cases: &[WaypointV2BatchCase]) -> Result<WaypointV2BatchSummary> {
+pub(crate) fn summarize(cases: &[WaypointV2BatchCase]) -> Result<WaypointV2BatchSummary> {
     let mut summary = WaypointV2BatchSummary::default();
     for case in cases {
         match case.group {
@@ -1638,6 +1648,91 @@ fn case_result_matches(case: &WaypointV2BatchCase, result: &WaypointV2FlightResu
     Ok(())
 }
 
+fn validate_full_evidence_consistency(
+    input: &WaypointV2PackInput,
+    result: &WaypointV2FlightResult,
+    compact: &Value,
+) -> Result<()> {
+    let manifest = result
+        .manifest
+        .as_ref()
+        .context("simulated V2 result is missing its manifest")?;
+    let ordinary = result
+        .ordinary_flight
+        .as_ref()
+        .context("simulated V2 result is missing ordinary flight evidence")?;
+    let final_state = &ordinary.final_state;
+    let scenario_id = input.scenario.id.as_str();
+
+    ensure!(
+        manifest.scenario_id == scenario_id
+            && manifest.physics_hz == input.scenario.sim.physics_hz
+            && manifest.controller_hz == input.scenario.sim.controller_hz,
+        "full-flight manifest scenario or clock differs from captured input for {scenario_id}"
+    );
+    ensure!(
+        result.physical_outcome.as_ref() == Some(&manifest.physical_outcome)
+            && result.mission_outcome.as_ref() == Some(&manifest.mission_outcome),
+        "V2 result physical or mission outcome differs from manifest for {scenario_id}"
+    );
+    ensure!(
+        manifest.physics_steps == final_state.physics_step
+            && manifest.sim_time_s == final_state.sim_time_s
+            && manifest.end_reason == final_state.end_reason
+            && manifest.physical_outcome == final_state.physical_outcome
+            && manifest.mission_outcome == final_state.mission_outcome,
+        "manifest endpoint differs from ordinary final state for {scenario_id}"
+    );
+    ensure!(
+        manifest.controller_updates == ordinary.actions.len() as u64,
+        "manifest controller update count differs from saved action count for {scenario_id}"
+    );
+    if ordinary.actions.is_empty() {
+        ensure!(
+            manifest.physics_steps == 0
+                && manifest.controller_updates == 0
+                && manifest.sim_time_s == 0.0
+                && ordinary.samples.len() == 1
+                && ordinary.samples[0].physics_step == 0
+                && ordinary.samples[0].sim_time_s == 0.0,
+            "zero-command full-flight evidence must retain only the initial zero-step sample for {scenario_id}"
+        );
+    }
+    ensure!(
+        manifest.summary.fuel_remaining_kg == final_state.fuel_kg
+            && manifest.summary.min_touchdown_clearance_m == final_state.min_touchdown_clearance_m
+            && manifest.summary.min_hull_clearance_m == final_state.min_hull_clearance_m,
+        "manifest fuel or clearance summary differs from ordinary final state for {scenario_id}"
+    );
+
+    let saved_run = &compact["run_summary"];
+    ensure!(
+        saved_run.is_object(),
+        "simulated V2 result is missing compact run summary for {scenario_id}"
+    );
+    ensure!(
+        saved_run["endpoint"]["physics_step"] == manifest.physics_steps
+            && saved_run["endpoint"]["sim_time_s"] == manifest.sim_time_s
+            && saved_run["endpoint"]["physical_outcome"]
+                == serde_json::to_value(&manifest.physical_outcome)?
+            && saved_run["endpoint"]["mission_outcome"]
+                == serde_json::to_value(&manifest.mission_outcome)?
+            && saved_run["endpoint"]["end_reason"] == serde_json::to_value(&manifest.end_reason)?,
+        "compact endpoint differs from full-flight manifest for {scenario_id}"
+    );
+    ensure!(
+        saved_run["fuel"]["remaining_kg"] == manifest.summary.fuel_remaining_kg
+            && saved_run["fuel"]["used_kg"] == manifest.summary.fuel_used_kg
+            && saved_run["minimum_clearance"]["touchdown_m"]
+                == manifest.summary.min_touchdown_clearance_m
+            && saved_run["minimum_clearance"]["hull_m"] == manifest.summary.min_hull_clearance_m
+            && saved_run["minimum_clearance"]["landing"]
+                == serde_json::to_value(&manifest.summary.landing)?,
+        "compact fuel or minimum-clearance values differ from full-flight manifest for {scenario_id}"
+    );
+    Ok(())
+}
+
 fn validate_batch_capture(
     root: &Path,
     report: &WaypointV2BatchReport,
@@ -1763,6 +1858,13 @@ fn validate_batch_capture(
         );
         ensure!(compact["policy"] == serde_json::to_value(&result.policy)?);
         ensure!(compact["result"]["timings"] == serde_json::to_value(&result.timings)?);
+        if result.manifest.is_none() {
+            ensure!(
+                compact["run_summary"].is_null(),
+                "compact run summary claims simulator evidence without a manifest for {}",
+                case.case_id
+            );
+        }
         if let Some(raw_report) = &case.rich_report_path {
             ensure!(raw_report == &format!("runs/{}/report.html", case.case_id));
             let bytes = fs::read(safe_capture_file(root, raw_report)?)?;
@@ -1772,6 +1874,7 @@ fn validate_batch_capture(
                 case.case_id
             );
             ensure!(result.manifest.is_some() && result.ordinary_flight.is_some());
+            validate_full_evidence_consistency(&input, &result, &compact)?;
         } else if case.status == "simulation_unverified" {
             ensure!(result.manifest.is_none() && result.ordinary_flight.is_some());
         } else {
@@ -2222,6 +2325,207 @@ mod tests {
             artifact_sha256: BTreeMap::new(),
             error: None,
         }
+    }
+
+    fn full_evidence_fixture() -> (
+        WaypointV2PackInput,
+        WaypointV2FlightResult,
+        serde_json::Value,
+    ) {
+        let input = load_and_expand(Path::new(DEFAULT_PLANNER_PACK_PATH))
+            .unwrap()
+            .inputs
+            .remove(0);
+        let final_state = pd_core::SimulationStateSnapshotV1 {
+            sim_time_s: 0.1,
+            physics_step: 12,
+            position_m: Vec2::default(),
+            velocity_mps: Vec2::default(),
+            attitude_rad: 0.0,
+            angular_rate_radps: 0.0,
+            fuel_kg: 99.0,
+            held_command: pd_core::Command::idle(),
+            physical_outcome: pd_core::PhysicalOutcome::LandedOnTarget,
+            mission_outcome: pd_core::MissionOutcome::Success,
+            end_reason: pd_core::EndReason::TouchdownOnTarget,
+            min_touchdown_clearance_m: 0.1,
+            min_hull_clearance_m: 0.2,
+            max_speed_mps: 0.0,
+            max_abs_attitude_rad: 0.0,
+            max_abs_angular_rate_radps: 0.0,
+            waypoint_sequence_passed: 0,
+            waypoint_sequence_first_failure_index: None,
+            waypoint_handoff_window_index: None,
+        };
+        let summary = pd_core::RunSummary {
+            fuel_remaining_kg: 99.0,
+            fuel_used_kg: 1.0,
+            min_touchdown_clearance_m: 0.1,
+            min_hull_clearance_m: 0.2,
+            landing: Some(pd_core::LandingRunSummary::default()),
+            ..pd_core::RunSummary::default()
+        };
+        let manifest = pd_core::RunManifest {
+            schema_version: 1,
+            scenario_id: input.scenario.id.clone(),
+            scenario_name: input.scenario.name.clone(),
+            scenario_seed: 0,
+            scenario_tags: input.scenario.tags.clone(),
+            controller_id: "synthetic-test-controller".into(),
+            physics_hz: input.scenario.sim.physics_hz,
+            controller_hz: input.scenario.sim.controller_hz,
+            sim_time_s: 0.1,
+            physics_steps: 12,
+            controller_updates: 1,
+            physical_outcome: pd_core::PhysicalOutcome::LandedOnTarget,
+            mission_outcome: pd_core::MissionOutcome::Success,
+            end_reason: pd_core::EndReason::TouchdownOnTarget,
+            summary,
+        };
+        let ordinary = crate::LocalClearingOrdinaryEvidenceV1 {
+            final_state: final_state.clone(),
+            incoming_contact: None,
+            actions: vec![pd_core::ActionLogEntry {
+                sim_time_s: 0.0,
+                physics_step: 0,
+                controller_update_index: 1,
+                command: pd_core::Command::idle(),
+            }],
+            events: Vec::new(),
+            samples: Vec::new(),
+        };
+        let result = WaypointV2FlightResult {
+            policy: WaypointV2Policy::revision_3(),
+            input_identity: "synthetic-consistency-test".into(),
+            planning_stop: WaypointV2Stop::Landed,
+            reason: None,
+            correction_count: 0,
+            initial_nominal_terrain_blocked: false,
+            integrity_passed: true,
+            physical_outcome: Some(pd_core::PhysicalOutcome::LandedOnTarget),
+            mission_outcome: Some(pd_core::MissionOutcome::Success),
+            absolute_deadline_physics_step: None,
+            cycles: Vec::new(),
+            segments: Vec::new(),
+            ordinary_flight: Some(ordinary),
+            final_source_replay_passed: true,
+            manifest: Some(manifest.clone()),
+            failed_local_row: None,
+            timings: crate::WaypointV2Timings::default(),
+        };
+        let compact = serde_json::json!({
+            "run_summary": {
+                "minimum_clearance": {
+                    "touchdown_m": manifest.summary.min_touchdown_clearance_m,
+                    "hull_m": manifest.summary.min_hull_clearance_m,
+                    "landing": manifest.summary.landing,
+                },
+                "fuel": {
+                    "remaining_kg": manifest.summary.fuel_remaining_kg,
+                    "used_kg": manifest.summary.fuel_used_kg,
+                },
+                "endpoint": {
+                    "physics_step": manifest.physics_steps,
+                    "sim_time_s": manifest.sim_time_s,
+                    "physical_outcome": manifest.physical_outcome,
+                    "mission_outcome": manifest.mission_outcome,
+                    "end_reason": manifest.end_reason,
+                }
+            }
+        });
+        (input, result, compact)
+    }
+
+    #[test]
+    fn full_flight_manifest_and_compact_endpoint_are_cross_bound() {
+        let (input, result, compact) = full_evidence_fixture();
+        validate_full_evidence_consistency(&input, &result, &compact).unwrap();
+
+        let mut wrong_compact_clock = compact.clone();
+        wrong_compact_clock["run_summary"]["endpoint"]["physics_step"] = serde_json::json!(13);
+        assert!(validate_full_evidence_consistency(&input, &result, &wrong_compact_clock).is_err());
+
+        let mut wrong_action_count = result.clone();
+        wrong_action_count
+            .manifest
+            .as_mut()
+            .unwrap()
+            .controller_updates += 1;
+        assert!(validate_full_evidence_consistency(&input, &wrong_action_count, &compact).is_err());
+
+        let mut wrong_final_outcome = result;
+        wrong_final_outcome
+            .ordinary_flight
+            .as_mut()
+            .unwrap()
+            .final_state
+            .physical_outcome = pd_core::PhysicalOutcome::Flying;
+        assert!(
+            validate_full_evidence_consistency(&input, &wrong_final_outcome, &compact).is_err()
+        );
+    }
+
+    #[test]
+    fn zero_command_flight_requires_zero_clock_and_only_initial_sample() {
+        let (input, mut result, mut compact) = full_evidence_fixture();
+        let ordinary = result.ordinary_flight.as_mut().unwrap();
+        ordinary.actions.clear();
+        ordinary.samples = vec![pd_core::SampleRecord {
+            sim_time_s: 0.0,
+            physics_step: 0,
+            observation: pd_core::Observation {
+                sim_time_s: 0.0,
+                physics_step: 0,
+                position_m: Vec2::default(),
+                velocity_mps: Vec2::default(),
+                attitude_rad: 0.0,
+                angular_rate_radps: 0.0,
+                mass_kg: 100.0,
+                fuel_kg: 99.0,
+                gravity_mps2: 1.62,
+                target_dx_m: 0.0,
+                height_above_target_m: 0.0,
+                target_surface_y_m: 0.0,
+                target_pad_half_width_m: 2.0,
+                touchdown_clearance_m: 0.0,
+                min_hull_clearance_m: 0.0,
+            },
+            held_command: pd_core::Command::idle(),
+        }];
+        ordinary.final_state.physics_step = 0;
+        ordinary.final_state.sim_time_s = 0.0;
+        let manifest = result.manifest.as_mut().unwrap();
+        manifest.physics_steps = 0;
+        manifest.controller_updates = 0;
+        manifest.sim_time_s = 0.0;
+        compact["run_summary"]["endpoint"]["physics_step"] = serde_json::json!(0);
+        compact["run_summary"]["endpoint"]["sim_time_s"] = serde_json::json!(0.0);
+        validate_full_evidence_consistency(&input, &result, &compact).unwrap();
+
+        let mut nonzero_clock = result.clone();
+        nonzero_clock
+            .ordinary_flight
+            .as_mut()
+            .unwrap()
+            .final_state
+            .physics_step = 1;
+        nonzero_clock.manifest.as_mut().unwrap().physics_steps = 1;
+        let mut nonzero_compact = compact.clone();
+        nonzero_compact["run_summary"]["endpoint"]["physics_step"] = serde_json::json!(1);
+        assert!(
+            validate_full_evidence_consistency(&input, &nonzero_clock, &nonzero_compact).is_err()
+        );
+
+        let mut missing_initial_sample = result;
+        missing_initial_sample
+            .ordinary_flight
+            .as_mut()
+            .unwrap()
+            .samples
+            .clear();
+        assert!(
+            validate_full_evidence_consistency(&input, &missing_initial_sample, &compact).is_err()
+        );
     }
 
     #[test]
