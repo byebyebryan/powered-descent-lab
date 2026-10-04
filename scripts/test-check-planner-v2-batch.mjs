@@ -6,7 +6,19 @@ import {
   extractReportData,
   parseAnchors,
   verifyCorrectionAnnotations,
+  verifyOrdinaryExecution,
 } from './check-planner-v2-batch.mjs';
+
+test('zero-command NoClearing keeps its initial sample and is not a flown landing', () => {
+  const stopped = {
+    planning_stop: 'no_clearing', physical_outcome: 'flying', mission_outcome: 'in_progress',
+    manifest: {physics_steps: 0, controller_updates: 0, sim_time_s: 0},
+    ordinary_flight: {actions: [], samples: [{physics_step: 0}]},
+  };
+  verifyOrdinaryExecution(stopped, 'finite stop');
+  assert.throws(() => verifyOrdinaryExecution({...stopped, planning_stop: 'landed'}, 'fake landing'), /not a landing/);
+  assert.throws(() => verifyOrdinaryExecution({...stopped, manifest: {...stopped.manifest, physics_steps: 2}}, 'fake steps'), /nonzero execution coverage/);
+});
 
 test('typed comparison ignores object key order but preserves exact numbers and array order', () => {
   assertTypedEqual({b: [1, 2], a: 3}, {a: 3, b: [1, 2]}, 'same typed values');

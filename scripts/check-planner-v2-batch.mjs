@@ -494,6 +494,20 @@ function validateUnsupportedFlight(flight, id) {
   check(flight.final_source_replay_passed === false, `${id}: unsupported result claims a source replay`);
 }
 
+export function verifyOrdinaryExecution(flight, id) {
+  const ordinary = flight.ordinary_flight;
+  check(Array.isArray(ordinary?.actions), `${id}: simulated result has no raw action array`);
+  check(Array.isArray(ordinary?.samples) && ordinary.samples.length > 0, `${id}: simulated result has no raw samples`);
+  if (ordinary.actions.length === 0) {
+    check(flight.planning_stop === 'no_clearing' && flight.physical_outcome === 'flying'
+      && flight.mission_outcome === 'in_progress', `${id}: empty commands are not a landing`);
+    check(flight.manifest.physics_steps === 0 && flight.manifest.controller_updates === 0
+      && flight.manifest.sim_time_s === 0, `${id}: empty commands have nonzero execution coverage`);
+    check(ordinary.samples.length === 1 && ordinary.samples[0].physics_step === 0,
+      `${id}: zero-command stop must retain only its initial sample`);
+  }
+}
+
 function validateDiagnosticPage(html, id, record) {
   const lower = html.toLowerCase();
   check(html.includes(id), `${id}: diagnostic page omits stable case ID`);
@@ -534,8 +548,7 @@ function validateBatchRecord(record, expected, root, accepted, artifactInventory
   compareCaseResult(flight, expectedResult, id, 'raw flight.json');
   if (supported) {
     check(flight.manifest && flight.ordinary_flight, `${id}: supported flight has no manifest or ordinary flight`);
-    check(Array.isArray(flight.ordinary_flight.actions) && flight.ordinary_flight.actions.length > 0, `${id}: simulated flight has no raw actions`);
-    check(Array.isArray(flight.ordinary_flight.samples) && flight.ordinary_flight.samples.length > 0, `${id}: simulated flight has no raw samples`);
+    verifyOrdinaryExecution(flight, id);
     const archiveFlight = readJson(accepted.flight_path);
     const exclusions = comparableFlight(flight, archiveFlight, `${id} complete flight.json vs accepted archive`);
     artifactInventory[id] = {scenario_sha256: sha256(readFileSync(scenarioPath)), flight_sha256: sha256(readFileSync(rawFlightPath)), archive_flight_sha256: sha256(readFileSync(accepted.flight_path)), flight_exclusions: exclusions};
