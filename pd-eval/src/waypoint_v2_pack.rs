@@ -1894,6 +1894,7 @@ fn batch_html(report: &WaypointV2BatchReport) -> String {
     format!(
         r###"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title>
+<style>p{{overflow-wrap:anywhere}}</style>
 <style>*{{box-sizing:border-box}}body{{font:16px/1.5 system-ui,sans-serif;margin:0 auto;padding:1rem;max-width:1200px;color:#18212b}}h1,h2{{line-height:1.2}}.rollups{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:1rem}}section{{min-width:0;margin:1.2rem 0;padding:1rem;border:1px solid #ccd5df;border-radius:.6rem}}.table-wrap{{overflow-x:auto;max-width:100%}}table{{border-collapse:collapse;width:100%;min-width:0}}th,td{{text-align:left;border-bottom:1px solid #dde3e9;padding:.45rem;vertical-align:top;overflow-wrap:anywhere}}.cases{{min-width:980px}}.group th{{background:#edf2f7}}code{{overflow-wrap:anywhere}}a{{overflow-wrap:anywhere}}.notice{{background:#f3f6fa;padding:.8rem;border-left:4px solid #4876a8}}</style></head>
 <body><nav><a href="/reports/">Report home</a> · <a href="/reports/topics/waypoint-planning/index.html">Waypoint planning</a></nav>
 <h1>{}</h1><p>{}</p><p class="notice">44 cases total: 36 landing candidates and 8 diagnostics. Finite misses remain in the 36-case landing denominator; diagnostics are reported separately. A stop or process exit is not a landing claim.</p>
@@ -2390,6 +2391,7 @@ mod tests {
         assert!(html.contains("Diagnostics: 0 supported target landings"));
         assert!(html.contains("overflow-x:auto"));
         assert!(html.contains(".cases{min-width:980px}"));
+        assert!(html.contains("p{overflow-wrap:anywhere}"));
         assert!(!html.contains("min-width:640px"));
         assert!(html.contains("<th>Outcome</th>"));
         assert!(html.contains("Sealed source fixtures"));
