@@ -113,11 +113,12 @@ pub(super) fn flight(args: WaypointV2FlightArgs) -> Result<()> {
     loop {
         let step_started = Instant::now();
         let progress = session.advance_piece()?;
+        let terminal = matches!(progress, WaypointV2SessionProgress::Terminal { .. });
         entries.push(WaypointV2CliProgressEntryV1 {
             elapsed_s: step_started.elapsed().as_secs_f64(),
-            progress: progress.clone(),
+            progress,
         });
-        if matches!(progress, WaypointV2SessionProgress::Terminal { .. }) {
+        if terminal {
             break;
         }
     }
@@ -256,7 +257,7 @@ mod tests {
 
     #[test]
     fn strict_success_gate_requires_all_flight_claims() {
-        let mut result = WaypointV2FlightResult {
+        let result = WaypointV2FlightResult {
             policy: WaypointV2Policy::revision_3(),
             input_identity: String::new(),
             planning_stop: WaypointV2Stop::Landed,
@@ -276,11 +277,20 @@ mod tests {
             timings: Default::default(),
         };
         assert!(flight_succeeded(&result));
-        result.integrity_passed = false;
-        assert!(!flight_succeeded(&result));
-        result.integrity_passed = true;
-        result.physical_outcome = Some(PhysicalOutcome::LandedOffTarget);
-        assert!(!flight_succeeded(&result));
+        let mutations: [fn(&mut WaypointV2FlightResult); 7] = [
+            |r| r.planning_stop = WaypointV2Stop::NoClearing,
+            |r| r.physical_outcome = Some(PhysicalOutcome::LandedOffTarget),
+            |r| r.physical_outcome = None,
+            |r| r.mission_outcome = Some(MissionOutcome::InProgress),
+            |r| r.mission_outcome = None,
+            |r| r.integrity_passed = false,
+            |r| r.final_source_replay_passed = false,
+        ];
+        for mutate in mutations {
+            let mut incomplete = result.clone();
+            mutate(&mut incomplete);
+            assert!(!flight_succeeded(&incomplete));
+        }
     }
 
     #[test]
