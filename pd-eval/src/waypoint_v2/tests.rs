@@ -67,6 +67,129 @@ fn request() -> WaypointDirectNominalDirectGenerationRequest {
 }
 
 #[test]
+fn nominal_attempt_accounting_shares_status_and_rejection_counts() {
+    let request = request();
+    let context = RunContext::from_scenario(&request.scenario).unwrap();
+    let state = new_ordinary(&context).unwrap().evidence.final_state;
+    let mut cycle = WaypointV2Cycle {
+        cycle_index: 0,
+        current_state: state,
+        nominal_search_identity: String::new(),
+        nominal_proposal_identity: None,
+        nominal_peak_com_height_m: None,
+        nominal_attempt_status_counts: BTreeMap::new(),
+        nominal_rejection_reason_counts: BTreeMap::new(),
+        nominal_updates: Vec::new(),
+        audit: None,
+        fixed_consumed_prefix_proven: false,
+        decision: WaypointV2CycleDecision::NoNominal,
+        conflict_state: None,
+        conflict_incoming_contact: None,
+        local_search: None,
+    };
+
+    record_nominal_attempt(&mut cycle, "rejected", Some("no executable witness"));
+    record_nominal_attempt(&mut cycle, "rejected", Some("no executable witness"));
+    record_nominal_attempt(&mut cycle, "selected", None);
+    record_nominal_rejection_reason(&mut cycle, "seed had no entry screen");
+
+    assert_eq!(cycle.nominal_attempt_status_counts["rejected"], 2);
+    assert_eq!(cycle.nominal_attempt_status_counts["selected"], 1);
+    assert_eq!(
+        cycle.nominal_rejection_reason_counts["no executable witness"],
+        2
+    );
+    assert_eq!(
+        cycle.nominal_rejection_reason_counts["seed had no entry screen"],
+        1
+    );
+}
+
+#[test]
+fn nominal_audit_error_retains_the_pre_audit_pending_cycle() {
+    let request = request();
+    let mut session = WaypointV2Session::start(request, WaypointV2Policy::revision_3()).unwrap();
+    // Nominal generation reads the original request. Make only the session's
+    // audit context invalid so generation succeeds and audit fails after a
+    // proposal has been selected.
+    session
+        .flight
+        .as_mut()
+        .expect("supported session")
+        .context
+        .sim
+        .controller_hz = 119;
+
+    let progress = session.advance_piece().unwrap();
+    assert!(matches!(
+        progress,
+        WaypointV2SessionProgress::Terminal {
+            planning_stop: WaypointV2Stop::ImplementationError,
+            ..
+        }
+    ));
+    let result = session.result();
+    assert_eq!(result.cycles.len(), 1);
+    let retained = &result.cycles[0];
+    assert_eq!(retained.decision, WaypointV2CycleDecision::NoNominal);
+    assert!(retained.nominal_search_identity.is_empty());
+    assert!(retained.nominal_attempt_status_counts.is_empty());
+    assert!(retained.nominal_rejection_reason_counts.is_empty());
+    assert!(retained.nominal_proposal_identity.is_none());
+    assert!(retained.nominal_updates.is_empty());
+    assert!(retained.audit.is_none());
+    assert!(!retained.fixed_consumed_prefix_proven);
+}
+
+#[test]
+fn correction_certificate_replay_failure_does_not_commit_proof_flags() {
+    let request = request();
+    let mut session =
+        WaypointV2Session::start(request.clone(), WaypointV2Policy::default()).unwrap();
+    assert!(matches!(
+        session.advance_piece().unwrap(),
+        WaypointV2SessionProgress::Terminal {
+            planning_stop: WaypointV2Stop::Landed,
+            ..
+        }
+    ));
+    let flight = session.flight.as_mut().expect("supported session");
+    let mut certificate = flight.live.clone();
+    certificate.evidence.final_state.physics_step += 1;
+    let mut local = WaypointV2LocalSearch {
+        entries: Vec::new(),
+        row_count: 0,
+        boundary_count: 0,
+        accepted_row_count: 0,
+        row_status_counts: BTreeMap::new(),
+        row_stop_reason_counts: BTreeMap::new(),
+        boundary_status_counts: BTreeMap::new(),
+        selected: None,
+        certificate_state: Some(certificate.evidence.final_state.clone()),
+        handoff_source_replay_passed: false,
+        certificate_source_replay_passed: false,
+    };
+
+    let error = flight
+        .prove_correction_sources(&request, &certificate, &[], &mut local)
+        .expect_err("the corrupted private certificate must fail its source proof");
+    assert!(
+        error
+            .to_string()
+            .contains("live state and accumulated evidence endpoint differ"),
+        "{error:#}"
+    );
+    assert!(local.certificate_state.is_some());
+    assert!(!local.handoff_source_replay_passed);
+    assert!(!local.certificate_source_replay_passed);
+    assert_eq!(flight.result.correction_count, 0);
+    assert_eq!(
+        flight.result.cycles.last().unwrap().decision,
+        WaypointV2CycleDecision::Direct
+    );
+}
+
+#[test]
 fn terminal_before_next_cycle_does_not_reuse_previous_handoff_cycle_index() {
     let request = request();
     let context = RunContext::from_scenario(&request.scenario).unwrap();

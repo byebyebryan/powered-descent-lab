@@ -155,6 +155,53 @@ enum PieceAdvance {
     },
 }
 
+enum NominalBuild {
+    Ready {
+        source_handoff: Option<u64>,
+        audit: Box<AirborneDirectAuditV1>,
+    },
+    Unsupported(String),
+    NoNominal,
+}
+
+struct SelectedClearing {
+    local: WaypointV2LocalSearch,
+    entry: OrdinaryLive,
+}
+
+struct FixedPrefixProof {
+    diagnostic: OrdinaryLive,
+    terrain_blocked: bool,
+}
+
+fn record_nominal_rejection_reason(cycle: &mut WaypointV2Cycle, reason: &str) {
+    *cycle
+        .nominal_rejection_reason_counts
+        .entry(reason.to_owned())
+        .or_default() += 1;
+}
+
+fn record_nominal_attempt(cycle: &mut WaypointV2Cycle, status: &str, reason: Option<&str>) {
+    if let Some(reason) = reason {
+        record_nominal_rejection_reason(cycle, reason);
+    }
+    *cycle
+        .nominal_attempt_status_counts
+        .entry(status.to_owned())
+        .or_default() += 1;
+}
+
+fn retain_selected_nominal(
+    cycle: &mut WaypointV2Cycle,
+    identity: String,
+    peak_com_height_m: f64,
+    updates: Vec<pd_core::FlightProgramUpdateV1>,
+) {
+    cycle.nominal_proposal_identity = Some(identity);
+    cycle.nominal_peak_com_height_m = Some(peak_com_height_m);
+    cycle.nominal_updates = updates;
+}
+
 fn terminal_piece_index(cycles: &[WaypointV2Cycle], entry_physics_step: u64) -> Option<usize> {
     cycles
         .last()
@@ -208,131 +255,187 @@ impl FlightLoop {
             local_search: None,
         };
         self.pending_cycle = Some(cycle.clone());
-        let source_handoff;
-        let audit;
-        if initial {
-            let search = evaluate_canonical_initial_direct(request)?;
-            for attempt in &search.attempts {
-                if let Some(reason) = &attempt.reason {
-                    *cycle
-                        .nominal_rejection_reason_counts
-                        .entry(reason.clone())
-                        .or_default() += 1;
-                }
-                *cycle
-                    .nominal_attempt_status_counts
-                    .entry(attempt.status.clone())
-                    .or_default() += 1;
-            }
-            cycle.nominal_search_identity = search.identity;
-            let Some(proposal) = search.selected else {
-                self.result.timings.planning_s += planning_start.elapsed().as_secs_f64();
-                self.result.cycles.push(cycle);
-                return Ok(self.terminal_piece(WaypointV2Stop::NoNominal, piece_entry_physics_step));
-            };
-            if proposal.absolute_deadline_physics_step != self.deadline {
-                bail!("initial deadline binding differs");
-            }
-            source_handoff = Some(proposal.source_handoff_physics_step);
-            audit = audit_canonical_initial_direct(
-                &self.context,
-                &source_pad_input(&self.context, &request.source_pad_id)?,
-                &proposal,
-                5.0,
-            )?;
-            cycle.nominal_proposal_identity = Some(proposal.identity);
-            cycle.nominal_peak_com_height_m = Some(proposal.peak_com_height_m);
-            cycle.nominal_updates = proposal.updates;
-        } else if self.result.policy == WaypointV2Policy::revision_3() {
-            let search = evaluate_airborne_acquisition_direct(
-                &self.context,
-                &self.live.state,
-                self.deadline,
-            )?;
-            for seed in &search.seeds {
-                if seed.selected_entry_index.is_none()
-                    && let Some(reason) = &seed.reason
-                {
-                    *cycle
-                        .nominal_rejection_reason_counts
-                        .entry(reason.clone())
-                        .or_default() += 1;
-                }
-            }
-            for attempt in &search.attempts {
-                if let Some(reason) = &attempt.reason {
-                    *cycle
-                        .nominal_rejection_reason_counts
-                        .entry(reason.clone())
-                        .or_default() += 1;
-                }
-                *cycle
-                    .nominal_attempt_status_counts
-                    .entry(attempt.status.clone())
-                    .or_default() += 1;
-            }
-            cycle.nominal_search_identity = search.identity;
-            if search.unsupported_reason.is_some() {
+        let nominal = match self.build_nominal_program(request, &mut cycle, initial)? {
+            NominalBuild::Ready {
+                source_handoff,
+                audit,
+            } => (source_handoff, audit),
+            NominalBuild::Unsupported(reason) => {
                 cycle.decision = WaypointV2CycleDecision::Unsupported;
-                self.result.reason = search.unsupported_reason;
+                self.result.reason = Some(reason);
                 self.result.timings.planning_s += planning_start.elapsed().as_secs_f64();
                 self.result.cycles.push(cycle);
                 return Ok(
                     self.terminal_piece(WaypointV2Stop::Unsupported, piece_entry_physics_step)
                 );
             }
-            let Some(proposal) = search.selected else {
+            NominalBuild::NoNominal => {
                 self.result.timings.planning_s += planning_start.elapsed().as_secs_f64();
                 self.result.cycles.push(cycle);
                 return Ok(self.terminal_piece(WaypointV2Stop::NoNominal, piece_entry_physics_step));
-            };
-            source_handoff = None;
-            audit = audit_airborne_acquisition_proposal(
-                &self.context,
-                &self.live.state,
-                &proposal,
-                5.0,
-            )?;
-            cycle.nominal_proposal_identity = Some(proposal.identity);
-            cycle.nominal_peak_com_height_m = Some(proposal.peak_com_height_m);
-            cycle.nominal_updates = proposal.updates;
-        } else {
-            let search =
-                evaluate_airborne_nominal_direct(&self.context, &self.live.state, self.deadline)?;
-            for attempt in &search.attempts {
-                if let Some(reason) = &attempt.reason {
-                    *cycle
-                        .nominal_rejection_reason_counts
-                        .entry(reason.clone())
-                        .or_default() += 1;
-                }
-                *cycle
-                    .nominal_attempt_status_counts
-                    .entry(attempt.status.clone())
-                    .or_default() += 1;
             }
-            cycle.nominal_search_identity = search.identity;
-            if search.unsupported_reason.is_some() {
-                cycle.decision = WaypointV2CycleDecision::Unsupported;
-                self.result.reason = search.unsupported_reason;
-                self.result.timings.planning_s += planning_start.elapsed().as_secs_f64();
+        };
+        let (source_handoff, audit) = nominal;
+        let fixed = self.prove_fixed_consumed_prefix(
+            request,
+            &mut cycle,
+            kind,
+            initial,
+            &audit,
+            planning_start,
+        )?;
+        if !fixed.terrain_blocked {
+            if !audit.passed {
                 self.result.cycles.push(cycle);
                 return Ok(
-                    self.terminal_piece(WaypointV2Stop::Unsupported, piece_entry_physics_step)
+                    self.terminal_piece(WaypointV2Stop::NominalRejected, piece_entry_physics_step)
                 );
             }
-            let Some(proposal) = search.selected else {
-                self.result.timings.planning_s += planning_start.elapsed().as_secs_f64();
-                self.result.cycles.push(cycle);
-                return Ok(self.terminal_piece(WaypointV2Stop::NoNominal, piece_entry_physics_step));
-            };
-            source_handoff = None;
-            audit =
-                audit_airborne_direct_proposal(&self.context, &self.live.state, &proposal, 5.0)?;
-            cycle.nominal_proposal_identity = Some(proposal.identity);
-            cycle.nominal_peak_com_height_m = Some(proposal.peak_com_height_m);
-            cycle.nominal_updates = proposal.updates;
+            return self.execute_direct_piece(
+                cycle,
+                kind,
+                &fixed.diagnostic,
+                piece_entry_physics_step,
+            );
         }
+        if !self.result.policy.can_correct(self.result.correction_count) {
+            cycle.decision = WaypointV2CycleDecision::CorrectionLimit;
+            self.result.cycles.push(cycle);
+            return Ok(
+                self.terminal_piece(WaypointV2Stop::CorrectionLimit, piece_entry_physics_step)
+            );
+        }
+        let Some(selected) =
+            self.search_local_clearing(request, &mut cycle, &audit, source_handoff, initial)?
+        else {
+            return Ok(self.terminal_piece(WaypointV2Stop::NoClearing, piece_entry_physics_step));
+        };
+        self.execute_correction(request, cycle, kind, selected, piece_entry_physics_step)
+    }
+
+    fn build_nominal_program(
+        &self,
+        request: &WaypointDirectNominalDirectGenerationRequest,
+        cycle: &mut WaypointV2Cycle,
+        initial: bool,
+    ) -> Result<NominalBuild> {
+        if initial {
+            self.build_initial_nominal(request, cycle)
+        } else if self.result.policy == WaypointV2Policy::revision_3() {
+            self.build_acquisition_nominal(cycle)
+        } else {
+            self.build_historical_airborne_nominal(cycle)
+        }
+    }
+
+    fn build_initial_nominal(
+        &self,
+        request: &WaypointDirectNominalDirectGenerationRequest,
+        cycle: &mut WaypointV2Cycle,
+    ) -> Result<NominalBuild> {
+        let search = evaluate_canonical_initial_direct(request)?;
+        for attempt in &search.attempts {
+            record_nominal_attempt(cycle, &attempt.status, attempt.reason.as_deref());
+        }
+        cycle.nominal_search_identity = search.identity;
+        let Some(proposal) = search.selected else {
+            return Ok(NominalBuild::NoNominal);
+        };
+        if proposal.absolute_deadline_physics_step != self.deadline {
+            bail!("initial deadline binding differs");
+        }
+        let source_handoff = proposal.source_handoff_physics_step;
+        let audit = audit_canonical_initial_direct(
+            &self.context,
+            &source_pad_input(&self.context, &request.source_pad_id)?,
+            &proposal,
+            5.0,
+        )?;
+        retain_selected_nominal(
+            cycle,
+            proposal.identity,
+            proposal.peak_com_height_m,
+            proposal.updates,
+        );
+        Ok(NominalBuild::Ready {
+            source_handoff: Some(source_handoff),
+            audit: Box::new(audit),
+        })
+    }
+
+    fn build_acquisition_nominal(&self, cycle: &mut WaypointV2Cycle) -> Result<NominalBuild> {
+        let search =
+            evaluate_airborne_acquisition_direct(&self.context, &self.live.state, self.deadline)?;
+        for seed in &search.seeds {
+            if seed.selected_entry_index.is_none()
+                && let Some(reason) = &seed.reason
+            {
+                record_nominal_rejection_reason(cycle, reason);
+            }
+        }
+        for attempt in &search.attempts {
+            record_nominal_attempt(cycle, &attempt.status, attempt.reason.as_deref());
+        }
+        cycle.nominal_search_identity = search.identity;
+        if let Some(reason) = search.unsupported_reason {
+            return Ok(NominalBuild::Unsupported(reason));
+        }
+        let Some(proposal) = search.selected else {
+            return Ok(NominalBuild::NoNominal);
+        };
+        let audit =
+            audit_airborne_acquisition_proposal(&self.context, &self.live.state, &proposal, 5.0)?;
+        retain_selected_nominal(
+            cycle,
+            proposal.identity,
+            proposal.peak_com_height_m,
+            proposal.updates,
+        );
+        Ok(NominalBuild::Ready {
+            source_handoff: None,
+            audit: Box::new(audit),
+        })
+    }
+
+    fn build_historical_airborne_nominal(
+        &self,
+        cycle: &mut WaypointV2Cycle,
+    ) -> Result<NominalBuild> {
+        let search =
+            evaluate_airborne_nominal_direct(&self.context, &self.live.state, self.deadline)?;
+        for attempt in &search.attempts {
+            record_nominal_attempt(cycle, &attempt.status, attempt.reason.as_deref());
+        }
+        cycle.nominal_search_identity = search.identity;
+        if let Some(reason) = search.unsupported_reason {
+            return Ok(NominalBuild::Unsupported(reason));
+        }
+        let Some(proposal) = search.selected else {
+            return Ok(NominalBuild::NoNominal);
+        };
+        let audit =
+            audit_airborne_direct_proposal(&self.context, &self.live.state, &proposal, 5.0)?;
+        retain_selected_nominal(
+            cycle,
+            proposal.identity,
+            proposal.peak_com_height_m,
+            proposal.updates,
+        );
+        Ok(NominalBuild::Ready {
+            source_handoff: None,
+            audit: Box::new(audit),
+        })
+    }
+
+    fn prove_fixed_consumed_prefix(
+        &mut self,
+        request: &WaypointDirectNominalDirectGenerationRequest,
+        cycle: &mut WaypointV2Cycle,
+        kind: WaypointV2SegmentKind,
+        initial: bool,
+        audit: &AirborneDirectAuditV1,
+        planning_start: Instant,
+    ) -> Result<FixedPrefixProof> {
         cycle.audit = Some(audit.clone());
         self.pending_cycle = Some(cycle.clone());
         let diagnostic = query_to(
@@ -367,7 +470,7 @@ impl FlightLoop {
         )?;
         self.result.timings.replay_s += replay_start.elapsed().as_secs_f64();
         cycle.fixed_consumed_prefix_proven = true;
-        let blocked = fixed_outcome(&audit, true)?;
+        let blocked = fixed_outcome(audit, true)?;
         if initial {
             self.result.initial_nominal_terrain_blocked = blocked;
         }
@@ -377,46 +480,54 @@ impl FlightLoop {
             WaypointV2CycleDecision::NominalRejected
         };
         self.pending_cycle = Some(cycle.clone());
-        if !blocked {
-            if !audit.passed {
-                self.result.cycles.push(cycle);
-                return Ok(
-                    self.terminal_piece(WaypointV2Stop::NominalRejected, piece_entry_physics_step)
-                );
-            }
-            let start = Instant::now();
-            let updates = consumed(&cycle.nominal_updates, audit.final_state.physics_step);
-            advance_ordinary(
-                &self.context,
-                &mut self.live,
-                &updates,
-                audit.final_state.physics_step,
-            )?;
-            if self.live.evidence != diagnostic.evidence {
-                bail!("active Direct does not match audited actual flight");
-            }
-            append_segment(
-                &mut self.result.segments,
-                kind,
-                cycle.nominal_proposal_identity.as_deref().unwrap(),
-                &cycle.current_state,
-                &self.live,
-                updates,
-            )?;
-            self.result.timings.execution_s += start.elapsed().as_secs_f64();
-            cycle.decision = WaypointV2CycleDecision::Direct;
-            self.result.cycles.push(cycle);
-            return Ok(self.terminal_piece(WaypointV2Stop::Landed, piece_entry_physics_step));
+        Ok(FixedPrefixProof {
+            diagnostic,
+            terrain_blocked: blocked,
+        })
+    }
+
+    fn execute_direct_piece(
+        &mut self,
+        mut cycle: WaypointV2Cycle,
+        kind: WaypointV2SegmentKind,
+        diagnostic: &OrdinaryLive,
+        piece_entry_physics_step: u64,
+    ) -> Result<PieceAdvance> {
+        let start = Instant::now();
+        let updates = consumed(&cycle.nominal_updates, diagnostic.state.physics_step);
+        advance_ordinary(
+            &self.context,
+            &mut self.live,
+            &updates,
+            diagnostic.state.physics_step,
+        )?;
+        if self.live.evidence != diagnostic.evidence {
+            bail!("active Direct does not match audited actual flight");
         }
-        if !self.result.policy.can_correct(self.result.correction_count) {
-            cycle.decision = WaypointV2CycleDecision::CorrectionLimit;
-            self.result.cycles.push(cycle);
-            return Ok(
-                self.terminal_piece(WaypointV2Stop::CorrectionLimit, piece_entry_physics_step)
-            );
-        }
+        append_segment(
+            &mut self.result.segments,
+            kind,
+            cycle.nominal_proposal_identity.as_deref().unwrap(),
+            &cycle.current_state,
+            &self.live,
+            updates,
+        )?;
+        self.result.timings.execution_s += start.elapsed().as_secs_f64();
+        cycle.decision = WaypointV2CycleDecision::Direct;
+        self.result.cycles.push(cycle);
+        Ok(self.terminal_piece(WaypointV2Stop::Landed, piece_entry_physics_step))
+    }
+
+    fn search_local_clearing(
+        &mut self,
+        request: &WaypointDirectNominalDirectGenerationRequest,
+        cycle: &mut WaypointV2Cycle,
+        audit: &AirborneDirectAuditV1,
+        source_handoff: Option<u64>,
+        initial: bool,
+    ) -> Result<Option<SelectedClearing>> {
         let planning_start = Instant::now();
-        let f = conflict_tick(&audit)?;
+        let f = conflict_tick(audit)?;
         let conflict = query_to(&self.context, &self.live, &cycle.nominal_updates, f)?;
         let conflict_state = conflict
             .evidence
@@ -444,8 +555,10 @@ impl FlightLoop {
         cycle.conflict_state = Some(conflict_state.clone());
         cycle.conflict_incoming_contact = conflict.evidence.incoming_contact.clone();
         self.pending_cycle = Some(cycle.clone());
-        let entries = if let Some(s) = source_handoff {
-            self.result.policy.initial_intervention_boundaries(s)
+        let entries = if let Some(source_handoff) = source_handoff {
+            self.result
+                .policy
+                .initial_intervention_boundaries(source_handoff)
         } else {
             later_intervention_boundaries(self.live.state.physics_step, f)
         }
@@ -554,25 +667,36 @@ impl FlightLoop {
             // The old search tests progress before certificate safety, so
             // insufficient_progress alone cannot prove a safe no-progress
             // family. Keep the finite exhaustion typed NoClearing.
-            let stop = WaypointV2Stop::NoClearing;
             self.result.reason = Some(
                 "finite local clearing grid exhausted; boundary rejection counts retained".into(),
             );
-            cycle.decision = if stop == WaypointV2Stop::NoProgress {
-                WaypointV2CycleDecision::NoProgress
-            } else {
-                WaypointV2CycleDecision::NoClearing
-            };
+            cycle.decision = WaypointV2CycleDecision::NoClearing;
             cycle.local_search = Some(local);
-            self.result.cycles.push(cycle);
+            self.result.cycles.push(cycle.clone());
             self.result.timings.planning_s += planning_start.elapsed().as_secs_f64();
-            return Ok(self.terminal_piece(stop, piece_entry_physics_step));
+            return Ok(None);
         };
         let entry = selected_entry.context("selected row lacks genuine live query entry")?;
         cycle.local_search = Some(local.clone());
         self.pending_cycle = Some(cycle.clone());
         validate_local_clearing_proposal(request, &entry.state, proposal)?;
         self.result.timings.planning_s += planning_start.elapsed().as_secs_f64();
+        Ok(Some(SelectedClearing { local, entry }))
+    }
+
+    fn execute_correction(
+        &mut self,
+        request: &WaypointDirectNominalDirectGenerationRequest,
+        mut cycle: WaypointV2Cycle,
+        kind: WaypointV2SegmentKind,
+        selected: SelectedClearing,
+        piece_entry_physics_step: u64,
+    ) -> Result<PieceAdvance> {
+        let SelectedClearing { mut local, entry } = selected;
+        let proposal = local
+            .selected
+            .as_ref()
+            .context("selected clearing row lost its proposal")?;
         let execute_start = Instant::now();
         let prefix = consumed(&cycle.nominal_updates, proposal.schedule.entry_physics_step);
         advance_ordinary(
@@ -643,6 +767,26 @@ impl FlightLoop {
         local.certificate_state = Some(certificate.evidence.final_state.clone());
         self.result.timings.execution_s += execute_start.elapsed().as_secs_f64();
         let replay_start = Instant::now();
+        self.prove_correction_sources(request, &certificate, &certificate_segments, &mut local)?;
+        self.result.timings.replay_s += replay_start.elapsed().as_secs_f64();
+        cycle.decision = WaypointV2CycleDecision::LocalCleared;
+        cycle.local_search = Some(local);
+        self.result.cycles.push(cycle);
+        self.result.correction_count += 1;
+        Ok(PieceAdvance::Handoff {
+            piece_index: self.result.cycles.len() - 1,
+            entry_physics_step: piece_entry_physics_step,
+            handoff_physics_step: self.live.state.physics_step,
+        })
+    }
+
+    fn prove_correction_sources(
+        &self,
+        request: &WaypointDirectNominalDirectGenerationRequest,
+        certificate: &OrdinaryLive,
+        certificate_segments: &[WaypointV2Segment],
+        local: &mut WaypointV2LocalSearch,
+    ) -> Result<()> {
         prove_accumulated(
             request,
             &self.context,
@@ -654,23 +798,14 @@ impl FlightLoop {
         prove_accumulated(
             request,
             &self.context,
-            &certificate,
-            &certificate_segments,
+            certificate,
+            certificate_segments,
             false,
             self.deadline,
         )?;
         local.handoff_source_replay_passed = true;
         local.certificate_source_replay_passed = true;
-        self.result.timings.replay_s += replay_start.elapsed().as_secs_f64();
-        cycle.decision = WaypointV2CycleDecision::LocalCleared;
-        cycle.local_search = Some(local);
-        self.result.cycles.push(cycle);
-        self.result.correction_count += 1;
-        Ok(PieceAdvance::Handoff {
-            piece_index: self.result.cycles.len() - 1,
-            entry_physics_step: piece_entry_physics_step,
-            handoff_physics_step: self.live.state.physics_step,
-        })
+        Ok(())
     }
 
     fn terminal_piece(&self, stop: WaypointV2Stop, entry_physics_step: u64) -> PieceAdvance {
