@@ -16,6 +16,11 @@ use pd_core::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Shared exact discrete ballistic and powered-bridge math used by current
+/// nominal waypoint execution. This is independent of historical research
+/// fixtures and report projection.
+pub mod ballistic;
+
 /// Versioned V2 ballistic-first analytical direct certificate. This remains
 /// isolated from production planner behavior and the historical V1 model.
 #[cfg(any(test, feature = "conservative-ballistic-report"))]
