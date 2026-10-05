@@ -142,11 +142,13 @@ without treating the old scenario files as fixtures to transliterate directly.
   Remaining diagnostics are recorded limits. V2 policy 3 is now the default
   planner **evaluation** workflow described below; ordinary `pd-cli` controller
   integration remains separate.
-- [Planner V2 session and CLI integration](docs/waypoint_v2_session_integration_results.md)
-  preserves the accepted native 44-case behavior through an owned piecewise
-  session. Its default-off CLI adapter is implemented but not yet accepted:
-  the measured CLI matrix stopped at its first corrected case on a progress
-  boundary-validation bug. The current report and ordinary defaults are unchanged.
+- [Planner V2 session and CLI integration](docs/waypoint_v2_session_repair_results.md)
+  now passes native, real CLI and CLI-repeat validation through an owned
+  piecewise session, with exact preserved flight behavior and 42 saved-source
+  CLI replays. The repaired progress boundary distinguishes piece origin,
+  correction entry E and actual handoff H. The accepted native capture is
+  published through the common report; the CLI feature remains default-off
+  and ordinary controller defaults are unchanged.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge

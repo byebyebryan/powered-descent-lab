@@ -176,14 +176,16 @@ changes, new mission corpora, and planner tuning are not part of this pass.
 
 ## Optional V2 session and CLI integration
 
-The [session integration pass](waypoint_v2_session_integration_results.md)
-implements `pd-eval::WaypointV2Session` and a default-off `pd-cli` feature
-`planner-v2`. Native extraction passed the complete 44-case acceptance gate
-and exact physical/rich-report parity against the accepted baseline. The CLI
-adapter is not yet accepted: its measured matrix passed eight direct cases,
-then rejected the first corrected case because a progress guard confused piece
-origin with correction entry E. No later matrix, complete CLI replay or new
-publication ran. A focused repair and replacement validation require approval.
+The [accepted session and CLI replacement](waypoint_v2_session_repair_results.md)
+provides `pd-eval::WaypointV2Session` and a default-off `pd-cli` feature
+`planner-v2`. Native, real CLI and CLI-repeat matrices each pass the 44-case
+gate, with exact retained-baseline, evaluator/CLI and repeat flight/report
+parity. All 42 supported saved flights also replay through the real CLI.
+The corrected progress validator distinguishes piece origin, intervention E
+and actual H, and requires the selected proposal binding. The new accepted
+native capture is published through the existing common report workflow.
+The [stopped first pass](waypoint_v2_session_integration_results.md) remains
+historical evidence rather than being retroactively accepted.
 
 The session owns one full live plant, original deadline and command ledger.
 One advance includes nominal approach to E and correction to actual H; the
