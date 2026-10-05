@@ -688,3 +688,161 @@ fn reference_plateau_composes_actual_handoffs_without_reset() {
         result.planning_stop, result.correction_count, result.timings
     );
 }
+
+#[test]
+fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap();
+    let input = crate::waypoint_v2_pack::load_waypoint_v2_pack_case_input(
+        &repo.join(crate::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH),
+        "v2_plateau_reference_900",
+    )
+    .unwrap();
+    let request = WaypointDirectNominalDirectGenerationRequest {
+        probe_id: input.scenario.id.clone(),
+        scenario: input.scenario,
+        source_pad_id: input.source_pad_id,
+        target_pad_id: input.target_pad_id,
+        policy: crate::WaypointDirectNominalDirectGenerationPolicyV1::default(),
+    };
+    let policy = WaypointV2Policy::revision_3();
+    let context = RunContext::from_scenario(&request.scenario).unwrap();
+    let deadline = pd_plan::waypoint_v2::original_deadline(
+        context.sim.max_time_s,
+        request.policy.analytical_policy.mission_budget_s(),
+    )
+    .unwrap();
+    let mut session = WaypointV2Session::start(request.clone(), policy.clone()).unwrap();
+    let mut previous_handoff = new_ordinary(&context).unwrap().evidence.final_state;
+    let mut previous_certificate = None;
+    let mut handoff_count = 0usize;
+    let mut saw_piece_origin_differ_from_entry = false;
+
+    loop {
+        match session.advance_piece().unwrap() {
+            WaypointV2SessionProgress::Handoff {
+                piece_index,
+                correction_count,
+                entry_physics_step,
+                handoff_physics_step,
+            } => {
+                assert_eq!(piece_index, handoff_count);
+                assert_eq!(correction_count as usize, handoff_count + 1);
+                assert_eq!(entry_physics_step, previous_handoff.physics_step);
+                let result = session.result();
+                let cycle = result.cycles.get(piece_index).unwrap();
+                assert_eq!(cycle.cycle_index, piece_index);
+                assert_eq!(cycle.current_state, previous_handoff);
+                if let Some(certificate) = &previous_certificate {
+                    assert_ne!(
+                        cycle.current_state, *certificate,
+                        "the next cycle starts from actual H, not the private certificate"
+                    );
+                }
+                let local = cycle.local_search.as_ref().unwrap();
+                let selected = local.selected.as_ref().unwrap();
+                assert_eq!(
+                    selected.schedule.entry_physics_step,
+                    selected.entry_state.physics_step
+                );
+                assert_eq!(selected.schedule.handoff_physics_step, handoff_physics_step);
+                assert_eq!(selected.handoff_state.physics_step, handoff_physics_step);
+                assert!(selected.schedule.entry_physics_step < handoff_physics_step);
+                assert!(selected.schedule.continuation_end_physics_step <= deadline);
+                assert_eq!(result.absolute_deadline_physics_step, Some(deadline));
+                assert_eq!(
+                    cycle.current_state.sim_time_s,
+                    cycle.current_state.physics_step as f64 / f64::from(context.sim.physics_hz)
+                );
+                assert_eq!(
+                    selected.handoff_state.sim_time_s,
+                    handoff_physics_step as f64 / f64::from(context.sim.physics_hz)
+                );
+                assert!(selected.handoff_state.fuel_kg <= cycle.current_state.fuel_kg);
+                assert!(selected.handoff_state.fuel_kg >= 0.0);
+                saw_piece_origin_differ_from_entry |=
+                    cycle.current_state.physics_step != selected.schedule.entry_physics_step;
+
+                let certificate = local.certificate_state.as_ref().unwrap();
+                assert_eq!(certificate, &selected.continuation_end_state);
+                assert!(certificate.physics_step > handoff_physics_step);
+                assert_ne!(certificate, &selected.handoff_state);
+                assert!(local.handoff_source_replay_passed);
+                assert!(local.certificate_source_replay_passed);
+
+                let correction_segment = result
+                    .segments
+                    .iter()
+                    .rev()
+                    .find(|segment| segment.kind == WaypointV2SegmentKind::LocalCorrection)
+                    .unwrap();
+                assert_eq!(
+                    correction_segment.start_physics_step,
+                    selected.schedule.entry_physics_step
+                );
+                assert_eq!(correction_segment.end_physics_step, handoff_physics_step);
+                assert_eq!(correction_segment.entry_state, selected.entry_state);
+                assert_eq!(correction_segment.end_state, selected.handoff_state);
+                assert_eq!(
+                    correction_segment.updates.len() as u64,
+                    pd_plan::waypoint_v2::command_count(
+                        correction_segment.start_physics_step,
+                        correction_segment.end_physics_step
+                    )
+                    .unwrap()
+                );
+                assert_eq!(
+                    result.segments.last().unwrap().end_state,
+                    selected.handoff_state
+                );
+                assert_ne!(result.segments.last().unwrap().end_state, *certificate);
+                assert!(result.segments.iter().all(|segment| {
+                    segment.end_physics_step <= deadline
+                        && segment.entry_state.physics_step == segment.start_physics_step
+                        && segment.end_state.physics_step == segment.end_physics_step
+                        && segment.entry_state.sim_time_s
+                            == segment.start_physics_step as f64 / f64::from(context.sim.physics_hz)
+                        && segment.end_state.sim_time_s
+                            == segment.end_physics_step as f64 / f64::from(context.sim.physics_hz)
+                }));
+                assert!(
+                    result
+                        .segments
+                        .windows(2)
+                        .all(|segments| { segments[0].end_state == segments[1].entry_state })
+                );
+
+                previous_handoff = selected.handoff_state.clone();
+                previous_certificate = Some(certificate.clone());
+                handoff_count += 1;
+            }
+            WaypointV2SessionProgress::Terminal {
+                planning_stop: WaypointV2Stop::Landed,
+                ..
+            } => break,
+            progress => panic!("unexpected policy-3 progress: {progress:?}"),
+        }
+    }
+
+    let result = session.finish().unwrap();
+    assert_eq!(result.policy, policy);
+    assert!(handoff_count >= 2, "expected multiple actual H handoffs");
+    assert!(
+        saw_piece_origin_differ_from_entry,
+        "piece origin was conflated with E"
+    );
+    assert_eq!(result.correction_count as usize, handoff_count);
+    assert_eq!(result.absolute_deadline_physics_step, Some(deadline));
+    assert_eq!(result.planning_stop, WaypointV2Stop::Landed);
+    assert_eq!(
+        result.physical_outcome,
+        Some(pd_core::PhysicalOutcome::LandedOnTarget)
+    );
+    assert_eq!(
+        result.mission_outcome,
+        Some(pd_core::MissionOutcome::Success)
+    );
+    assert!(result.integrity_passed);
+    assert!(result.final_source_replay_passed);
+}
