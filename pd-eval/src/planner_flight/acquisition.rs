@@ -1048,7 +1048,7 @@ struct NeutralReplay {
 }
 
 /// Shared command realization has no ordinary terrain audit or corpus inputs.
-/// The research wrapper attaches its unchanged reporting after this seam.
+/// The maintained acquisition runtime audits the realized commands separately.
 struct FreeSpaceWitness {
     witness: NominalWitnessEvidenceV1,
     end_state: AirborneFlightStateV1,

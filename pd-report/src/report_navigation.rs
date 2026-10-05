@@ -297,7 +297,7 @@ fn validate_manifest(manifest: &NavigationFixture) -> Result<()> {
     ensure!(preview_count == 1, "expected one selected V2 preview entry");
     ensure!(
         group_ids == BTreeSet::from(["planner", "terminal", "transfer", "waypoint"]),
-        "report navigation must map all four maintained guidance responsibilities"
+        "report navigation must map all four guidance collections, including archived V1 evidence"
     );
 
     for topic in &manifest.topics {
@@ -1290,6 +1290,9 @@ mod tests {
             fs::read_to_string(root.join("outputs/reports/topics/waypoint-planning/index.html"))
                 .unwrap();
         assert!(planning.contains("Waypoint planner V2") && planning.contains("unavailable"));
+        assert!(planning.contains("Archived V1 · execution retired"));
+        assert!(planning.contains("Saved reports remain readable"));
+        assert!(!planning.contains("Retained for regression"));
         assert!(!planning.contains("Open preview landing page"));
         assert_eq!(
             fs::read_to_string(root.join("outputs/reports/eval/unknown_study/index.html")).unwrap(),

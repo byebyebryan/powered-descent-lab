@@ -40,7 +40,7 @@
     {
       "id": "planner",
       "title": "Legacy V1 planner-generated routes",
-      "description": "Earlier V1 deterministic terrain-aware route plans with persisted provenance, geometry, and contract evidence. The active V2 batch is linked from Waypoint planning.",
+      "description": "Archived V1 terrain-aware route plans with persisted provenance, geometry, and contract evidence. Execution is retired; saved reports remain readable. The active V2 batch is linked from Waypoint planning.",
       "reports": [
         {"pack_id": "planner_generated_route_smoke", "label": "V1 generated routes · landing", "role": "primary", "evidence": "landing"},
         {"pack_id": "planner_generated_route_contract_smoke", "label": "V1 generated routes · contract", "role": "primary", "evidence": "contract"}

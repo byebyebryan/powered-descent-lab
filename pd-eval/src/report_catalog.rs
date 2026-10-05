@@ -206,7 +206,8 @@ pub fn write_report_catalog(repo_root: &Path) -> Result<()> {
     )?;
     fs::create_dir_all(reports_root.join("eval"))?;
     // In topic-hierarchy mode ReportSite is the sole navigation-index owner.
-    // This catalogue still owns maintained scorecards, never the V2 outcomes.
+    // This catalogue owns controller scorecards and archived V1 evidence,
+    // never the current V2 outcomes.
     if !repo_root
         .join("fixtures/reports/report_navigation.json")
         .try_exists()?
@@ -258,7 +259,7 @@ fn render_guidance_overview(repo_root: &Path, catalog: &GuidanceCatalog) -> Stri
     page(
         "Guidance Overview",
         "Guidance Overview",
-        "Maintained controller and legacy V1 planner scorecards. Waypoint tracking follows authored routes; the legacy planner chooses routes. The current native V2 planner batch is reached through Waypoint planning and is not included in these controller totals.",
+        "Maintained controller scorecards and archived V1 planner evidence. Waypoint tracking follows authored routes; V1 planner execution is retired. The current native V2 planner batch is reached through Waypoint planning and is not included in these controller totals.",
         actions,
         &format!(r#"<section class="guidance-grid">{sections}</section>"#),
     )
@@ -510,7 +511,7 @@ fn render_eval_index(repo_root: &Path, catalog: &GuidanceCatalog) -> Result<Stri
                 } else if supporting_ids.contains(pack.id.as_str()) {
                     "supporting"
                 } else {
-                    "maintained"
+                    "fixture"
                 };
                 let href = if captured {
                     format!(r#"href="{}/""#, escape_html(&pack.id))
@@ -554,7 +555,7 @@ fn render_eval_index(repo_root: &Path, catalog: &GuidanceCatalog) -> Result<Stri
     Ok(page(
         "Batch Reports",
         "Batch Reports",
-        "Maintained evaluation packs grouped by guidance responsibility. Missing captures remain visible so corpus coverage is explicit.",
+        "Captured evaluation packs, including archived diagnostics, grouped by guidance responsibility. A saved report does not imply that its execution path is maintained. Missing captures remain visible.",
         r#"<a href="../">reports/</a><a href="../guidance/">guidance overview</a>"#,
         &body,
     ))
@@ -1054,6 +1055,25 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["terminal", "transfer", "waypoint", "planner"]
         );
+    }
+
+    #[test]
+    fn guidance_and_fallback_catalogue_do_not_advertise_retired_execution() {
+        let root = repo_root();
+        let catalog = load_guidance_catalog(&root).unwrap();
+        let archived = catalog
+            .groups
+            .iter()
+            .find(|group| group.id == "planner")
+            .unwrap();
+        assert!(archived.description.contains("Execution is retired"));
+        let overview = super::render_guidance_overview(&root, &catalog);
+        assert!(overview.contains("archived V1 planner evidence"));
+        assert!(overview.contains("V1 planner execution is retired"));
+        assert!(!overview.contains("the legacy planner chooses routes"));
+        let fallback = super::render_eval_index(&root, &catalog).unwrap();
+        assert!(fallback.contains("A saved report does not imply"));
+        assert!(!fallback.contains("Maintained evaluation packs"));
     }
 
     #[test]

@@ -98,7 +98,7 @@ The current `pd-control` layout follows those ownership boundaries:
   products and does not recompute control decisions
 - `transfer/waypoint.rs` owns pure waypoint geometry, capture prediction, and
   handoff kinematics
-- `transfer/scoring.rs` owns the maintained endpoint scoring; frozen
+- `transfer/mod.rs` also owns the maintained endpoint scoring; frozen
   pathwise/recoverability scorers and their comparison frontdoors are retired
 - `transfer/tests.rs` owns the transfer and waypoint controller tests without
   changing their access to module-private fixtures

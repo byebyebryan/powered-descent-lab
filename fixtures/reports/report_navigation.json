@@ -31,9 +31,9 @@
         {
           "id": "planner-baseline",
           "title": "Legacy V1 planner baseline",
-          "description": "The earlier V1 route-plan scorecard. Retained for regression and history; not the active V2 planner evaluation.",
+          "description": "The earlier V1 route-plan scorecard. Saved reports remain readable; its planner execution is retired. Not the active V2 planner evaluation.",
           "report_type": "Guidance collection",
-          "status": "Legacy V1 evidence",
+          "status": "Archived V1 · execution retired",
           "source": { "kind": "guidance_group", "group_id": "planner" }
         },
         {

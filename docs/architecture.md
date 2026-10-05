@@ -229,8 +229,8 @@ registry and legacy controllers in `controllers.rs`, shared state-target math in
 `guidance.rs`, terminal guidance under `terminal/`, and transfer guidance under
 `transfer/`. Pure waypoint geometry and contract prediction live in
 `transfer/waypoint.rs`; transfer and waypoint metric/marker emission lives in
-`transfer/telemetry.rs`; maintained endpoint scoring lives in
-`transfer/scoring.rs`. Rejected boost scorers are retired; old false-default
+`transfer/telemetry.rs`; maintained endpoint scoring remains in
+`transfer/mod.rs`. Rejected boost scorers are retired; old false-default
 configuration fields remain readable, while enabling them fails explicitly.
 Terminal and transfer tests live in sibling test
 modules instead of production files. These are internal module boundaries, not

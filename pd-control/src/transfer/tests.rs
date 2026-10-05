@@ -8,6 +8,37 @@ use pd_core::{
 };
 use std::collections::BTreeMap;
 
+#[test]
+fn current_transfer_ownership_guides_reference_existing_modules() {
+    let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for (name, guide) in [
+        (
+            "architecture",
+            include_str!("../../../docs/architecture.md"),
+        ),
+        ("guidance", include_str!("../../../docs/guidance.md")),
+        (
+            "transfer suite",
+            include_str!("../../../docs/transfer_suite.md"),
+        ),
+    ] {
+        let paths = guide
+            .split('`')
+            .filter(|value| value.starts_with("transfer/") && value.ends_with(".rs"))
+            .collect::<Vec<_>>();
+        assert!(
+            !paths.is_empty(),
+            "{name} must document transfer module ownership"
+        );
+        for path in paths {
+            assert!(
+                source_root.join(path).is_file(),
+                "{name} names missing module {path}"
+            );
+        }
+    }
+}
+
 fn transfer_observation(
     target_dx_m: f64,
     height_above_target_m: f64,

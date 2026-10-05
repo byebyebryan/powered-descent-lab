@@ -810,8 +810,8 @@ The direct-transfer and waypoint update loop remains in
 `transfer/state.rs`; shared ballistic and command-conversion helpers live in
 `transfer/math.rs`; and pure waypoint geometry and capture prediction live in
 `transfer/waypoint.rs`. Metric and marker assembly lives in
-`transfer/telemetry.rs`, maintained endpoint scoring lives in
-`transfer/scoring.rs`, and controller tests live in `transfer/tests.rs`.
+`transfer/telemetry.rs`, maintained endpoint scoring remains in
+`transfer/mod.rs`, and controller tests live in `transfer/tests.rs`.
 Rejected pathwise/recoverability scorers and their comparison commands are
 retired. Historical configuration flags remain readable but enabling either
 fails before execution. Normal controller IDs, configuration JSON, telemetry
