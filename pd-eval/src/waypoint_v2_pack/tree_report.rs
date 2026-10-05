@@ -1,7 +1,14 @@
 //! A presentation adapter over verified native records, not a controller batch.
-use super::*;
-use crate::waypoint_v2::WaypointV2SegmentKind;
-use pd_core::{MissionOutcome, PhysicalOutcome};
+use std::collections::BTreeSet;
+
+use anyhow::{Result, ensure};
+use pd_core::{MissionOutcome, PhysicalOutcome, Vec2};
+use pd_plan::waypoint_v2::WaypointV2Stop;
+use serde::Serialize;
+
+use super::presentation::escape_html;
+use super::{WaypointV2BatchCase, WaypointV2BatchReport, WaypointV2PackInput};
+use crate::{WaypointV2FlightResult, waypoint_v2::WaypointV2SegmentKind};
 
 #[derive(Debug, Serialize)]
 struct TreeCase {
