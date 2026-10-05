@@ -52,11 +52,12 @@ workflow returns failure for an acceptance miss.
 The owned synchronous session and `pd-cli` adapter behind the default-off
 `planner-v2` Cargo feature are implemented and accepted, not a pending design.
 They do not provide an externally driven per-tick controller or arbitrary
-snapshot restart. The immediate priority is behavior-preserving review,
-reconciliation and cleanup
-before expanding terrain coverage. Seeded procedural terrain evaluation and a
-concrete game-host integration are separate possible follow-ups, not prerequisites
-for using the current lab planner and not selected by this reconciliation.
+snapshot restart. Behavior-preserving review, reconciliation and the
+[core cleanup checkpoint](waypoint_v2_core_cleanup_results.md) are now complete;
+they do not themselves expand terrain coverage.
+Seeded procedural terrain evaluation and a concrete game-host integration are
+separate possible follow-ups, not prerequisites for using the current lab
+planner and not selected by this reconciliation.
 
 The phase and research notes below retain their original evidence scope. Their
 date-local “next” steps and stop rules are not an ordered prerequisite list for
@@ -801,16 +802,18 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Consolidate the accepted policy-3 V2 lab without reopening nominal fitting or
-retuning terrain cases. Keep persisted contracts, current reports, input fixtures
-and historical evidence intact; make planning, live execution/replay, session
-lifecycle and adapter responsibilities explicit. Use the frozen 44-case inputs
-and exact numerical parity to check structural changes.
+The accepted policy-3 V2 core is consolidated without reopening nominal fitting
+or retuning terrain cases. Persisted records and replay safety have separate
+ownership, and the flight loop delegates to named planning and execution phases.
+The [core cleanup results](waypoint_v2_core_cleanup_results.md) record exact
+44-case numerical parity, the final workspace gate and unchanged saved evidence.
+The larger pack/report module split remains a separate optional organization
+pass, not a flight defect or prerequisite.
 
 The [current guidance boundary](guidance.md#current-v2-design-and-support) and
 [session/CLI replacement result](waypoint_v2_session_repair_results.md) define
-where we are. Once cleanup is reviewed, choose a bounded procedural-terrain
-evaluation or a concrete host-consumer requirement. Do not automatically add a
+where we are. Choose a bounded procedural-terrain evaluation or a concrete
+host-consumer requirement as the next substantive pass. Do not automatically add a
 new solver, extract a standalone crate, expand vehicles/gravities or promote
 controller defaults. No new terrain experiment or publication is selected here.
 

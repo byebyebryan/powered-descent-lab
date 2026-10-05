@@ -164,8 +164,9 @@ defaults remain unchanged.
 V2 implementation ownership is:
 
 - `pd-plan/src/waypoint_v2.rs`: versioned finite policy, correction bounds and clocks.
-- `pd-eval/src/waypoint_v2.rs`: input preflight, nominal/audit/local-clearing loop
-  and the owned session lifecycle.
+- `pd-eval/src/waypoint_v2.rs`: input preflight, the owned session lifecycle and
+  named phases for nominal generation/audit, fixed-prefix proof, direct
+  execution, local clearing search and actual E-to-H/certificate execution.
 - `pd-eval/src/waypoint_v2/model.rs`: persisted flight records and additive
   session progress, re-exported through the unchanged public paths.
 - `pd-eval/src/waypoint_v2/execution.rs`: forward queries, exclusive segment
@@ -218,15 +219,18 @@ this check. Do not remove historical policy APIs or evidence scripts merely
 because the current evaluation default is policy 3. A standalone planner crate,
 solver rewrite and report redesign require a concrete separate need.
 
-The 2026-10-05 structural cleanup passed exact numerical parity for all 44
-inputs, the full feature-enabled workspace tests, final CLI checks, 62 JavaScript
-tests, formatting and strict Clippy with the existing `single_element_loop`
-exception. The retained-capture parity test is intentionally opt-in because it
-depends on locally saved evidence rather than a tracked CI fixture. A final
-saved-site check using the rebuilt evaluator verified 42 rich payloads,
-36 actual handoffs and 46 receipt-bound pages. The
-selected capture, published batch and retained validation artifacts remain
-unchanged; this is local regression evidence, not a new accepted source freeze.
+The records/replay-safety separation and subsequent
+[core loop cleanup](waypoint_v2_core_cleanup_results.md) passed exact numerical
+parity for all 44 inputs. The latest final gate passed 1,019 workspace tests
+(ten intentionally ignored), final CLI checks, 62 JavaScript tests, formatting
+and strict Clippy with the existing `single_element_loop` exception. The
+retained-capture test is intentionally opt-in because it depends on locally
+saved evidence rather than a tracked CI fixture; it was run separately and
+passed. The rebuilt evaluator's saved-site check verified 42 rich payloads,
+36 actual handoffs and 46 receipt-bound pages. All 26 recorded fixture/evidence/
+report scopes retained their path/content hashes. The selected capture and
+published site are unchanged; this is local regression evidence, not a new
+accepted source freeze or expanded terrain-coverage claim.
 
 ## Native V2 Acceptance Contract (2026-10-03)
 
