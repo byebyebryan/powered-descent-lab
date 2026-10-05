@@ -411,6 +411,22 @@ fn build_report_data(
     let report_samples = build_report_samples(samples, controller_updates);
     let report_markers = build_report_markers(&report_samples, controller_updates);
     let report_events = build_report_events(&report_samples, events);
+    let event_counts = summarize_counts(
+        report_events
+            .iter()
+            .map(|event| event.kind.clone())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    let marker_counts = summarize_counts(
+        report_markers
+            .iter()
+            .map(|marker| marker.label.clone())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    let phase_summary = summarize_phases(&report_samples);
+    let flight_stats = build_flight_stats(&report_samples, manifest);
 
     ReportData {
         display_title: friendly_report_title(scenario),
@@ -453,27 +469,15 @@ fn build_report_data(
                 surface_y_m: pad.surface_y_m,
                 width_m: pad.width_m,
             }),
-        samples: report_samples.clone(),
-        events: report_events.clone(),
-        markers: report_markers.clone(),
-        event_counts: summarize_counts(
-            report_events
-                .iter()
-                .map(|event| event.kind.clone())
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ),
-        marker_counts: summarize_counts(
-            report_markers
-                .iter()
-                .map(|marker| marker.label.clone())
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ),
-        phase_summary: summarize_phases(&report_samples),
+        samples: report_samples,
+        events: report_events,
+        markers: report_markers,
+        event_counts,
+        marker_counts,
+        phase_summary,
         landing_quality: build_landing_quality(manifest),
         checkpoint_quality: build_checkpoint_quality(manifest),
-        flight_stats: build_flight_stats(&report_samples, manifest),
+        flight_stats,
         bot_stats: build_bot_stats(manifest, controller_updates),
         mission_details: build_mission_details(scenario),
     }
