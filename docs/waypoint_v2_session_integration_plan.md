@@ -182,6 +182,32 @@ not additional planning/selection attempts. Unit and lifecycle tests are
 separate bounded verification, not extra measured matrix captures. Deliberate
 tamper tests should reject before unnecessary physical execution where possible.
 
+### Approved replacement after the stopped CLI matrix
+
+The first source freeze `2282890` used 53 case attempts: 44 native and nine CLI.
+Native acceptance and exact baseline parity passed. The CLI matrix completed
+eight direct cases, then stopped at `v2_ridge_early` on a progress validator
+that confused piece origin with correction entry E. No repeat, measured saved
+CLI replay or publication ran. That source and evidence remain historical;
+the [stopped result](waypoint_v2_session_integration_results.md) is not replaced
+or retroactively accepted.
+
+The user subsequently approved the focused repair and resumed this goal.
+The replacement allowance is three new conditional 44-case matrices (132 new
+case attempts) and 42 saved-source CLI replays from a new clean source freeze.
+If all matrices run, cumulative case attempts across both freezes are 185.
+This is a replacement allowance, not permission to continue the failed matrix
+or spend its unused cases on ad hoc captures. Every existing entry, parity,
+stop and publication gate still applies.
+
+The repair separates piece origin, selected correction entry E and actual H
+in progress validation, adds corrected-flight CLI regression coverage, retains
+raw evidence on output-metadata failure, and records invocation exit metadata
+before parsing stdout. Trajectory selection, policy, inputs and physics remain
+unchanged. The primary owns integration and acceptance; Luna owns the bounded
+Rust repair. Use new evidence roots dated `20261005` in UTC; preserve the first
+native capture and the complete stopped validation tree as protected scopes.
+
 Each complete matrix must meet the existing native acceptance expectations:
 36/36 mandatory landings, 11 zero-correction clear controls, 25 initially
 blocked corrected landings, integrity for all 44 and source replay for all 42
