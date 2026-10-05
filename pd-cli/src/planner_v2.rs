@@ -7,8 +7,8 @@ use pd_eval::{
     WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointV2CliProgressEntryV1, WaypointV2CliProgressV1, WaypointV2FlightResult,
     WaypointV2Policy, WaypointV2Session, WaypointV2SessionProgress, WaypointV2Stop,
-    nominal_direct_flight::nominal_direct_flight_identity, preflight_waypoint_v2_flight,
-    replay_waypoint_v2_cli_bundle, reserve_waypoint_v2_flight_output, write_waypoint_v2_cli_bundle,
+    nominal_direct_flight_identity, preflight_waypoint_v2_flight, replay_waypoint_v2_cli_bundle,
+    reserve_waypoint_v2_flight_output, write_waypoint_v2_cli_bundle,
 };
 use serde::Serialize;
 

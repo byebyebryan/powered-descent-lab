@@ -14,6 +14,7 @@ mod provenance;
 mod tree_report;
 
 pub use execution::run_waypoint_v2_pack;
+#[cfg(test)]
 pub(crate) use execution::summarize;
 pub(crate) use input::check_default_planner_v2_binding;
 pub use input::{is_waypoint_v2_pack, load_waypoint_v2_pack_case_input};

@@ -17,19 +17,9 @@ use serde::Serialize;
 
 pub mod batch;
 pub mod batch_tree;
-pub mod conservative_ballistic_f5_analytical;
-pub mod conservative_ballistic_f5_controller;
-pub mod conservative_ballistic_f6_integration;
-pub mod conservative_ballistic_handoff_controller_development;
-pub mod conservative_ballistic_handoff_development;
-pub mod conservative_ballistic_heldout;
-pub mod controller_shadow;
 pub mod flight_annotations;
-pub mod navigation_preview;
 pub mod report_navigation;
-pub mod setup;
 pub mod site;
-pub mod waypoint_direct_characterization;
 pub mod waypoint_v2;
 
 const PLOTLY_CDN_URL: &str = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js";

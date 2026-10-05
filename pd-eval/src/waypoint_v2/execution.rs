@@ -13,10 +13,10 @@ use pd_plan::waypoint_v2::{command_count, original_deadline};
 use super::{WaypointV2FlightResult, WaypointV2Segment, WaypointV2SegmentKind};
 use crate::{
     LocalClearingOrdinaryEvidenceV1, WaypointDirectNominalDirectGenerationRequest,
-    canonical_initial_direct::phase_at_tick,
     clearing_body_reserve_query,
     local_clearing::{OrdinaryLive, advance_ordinary, full_ordinary_matches, snapshot_finite},
     nominal_body_reserve_query, nominal_direct_flight_identity,
+    planner_flight::terrain::phase_at_tick,
 };
 
 const CONTROLLER: &str = "waypoint_v2_supplied_commands";

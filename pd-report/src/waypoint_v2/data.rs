@@ -62,26 +62,3 @@ pub struct FlightReport {
     pub diagnostics: Vec<(String, String)>,
     pub source_links: Vec<ReportLink>,
 }
-
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct CaseCard {
-    pub case_id: String,
-    pub title: String,
-    pub group: String,
-    pub outcome: String,
-    pub correction_count: u32,
-    /// Unsupported preflight results deliberately have no flight report.
-    pub href: Option<String>,
-    pub inspect: Option<String>,
-    pub reason: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct SuiteReport {
-    pub title: String,
-    pub capture_label: String,
-    pub policy_version: u32,
-    pub cases: Vec<CaseCard>,
-    pub diagnostics: Vec<(String, String)>,
-    pub source_links: Vec<ReportLink>,
-}

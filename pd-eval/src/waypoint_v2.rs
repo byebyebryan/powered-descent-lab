@@ -17,15 +17,14 @@ pub use pd_plan::waypoint_v2::{WaypointV2Policy, WaypointV2Stop};
 use crate::{
     AirborneDirectAuditV1, BodyAwareTerminalPolicyV1, NominalDirectFlightDecisionV1,
     WaypointDirectNominalDirectGenerationRequest, audit_airborne_acquisition_proposal,
-    audit_canonical_initial_direct,
-    canonical_initial_direct::{has_actual_terrain_conflict, source_pad_input},
-    clearing_body_reserve_query, evaluate_airborne_acquisition_direct,
-    evaluate_canonical_initial_direct,
+    audit_canonical_initial_direct, clearing_body_reserve_query,
+    evaluate_airborne_acquisition_direct, evaluate_canonical_initial_direct,
     local_clearing::{
         OrdinaryLive, advance_ordinary, entry_rejection, local_rank, new_ordinary, search_row,
     },
-    nominal_body_reserve_query, nominal_direct_flight_identity, preflight_nominal_direct_flight,
-    validate_local_clearing_proposal,
+    nominal_body_reserve_query, nominal_direct_flight_identity,
+    planner_flight::terrain::{has_actual_terrain_conflict, source_pad_input},
+    preflight_nominal_direct_flight, validate_local_clearing_proposal,
 };
 
 mod execution;

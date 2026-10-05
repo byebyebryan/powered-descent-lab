@@ -204,20 +204,13 @@ pub fn write_waypoint_v2_flight_result(
 mod tests {
     use std::{
         fs,
-        path::{Path, PathBuf},
+        path::PathBuf,
         time::{SystemTime, UNIX_EPOCH},
     };
 
     use pd_plan::waypoint_v2::WaypointV2Policy;
 
     use super::write_waypoint_v2_flight;
-
-    fn repository_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("pd-eval lives below workspace root")
-            .to_path_buf()
-    }
 
     fn fresh_test_root() -> PathBuf {
         let nonce = SystemTime::now()
@@ -233,9 +226,7 @@ mod tests {
     #[test]
     fn supported_capture_uses_shared_rich_report_with_flight_annotations() {
         let root = fresh_test_root();
-        let (_, request) = crate::load_nominal_direct_operational_fresh_inputs(&repository_root())
-            .expect("supported fixture inputs")
-            .remove(0);
+        let request = crate::test_inputs::planner_request("v2_clear_845");
         let result = write_waypoint_v2_flight(&request, &WaypointV2Policy::revision_3(), &root)
             .expect("write supported capture");
         let ordinary = result.ordinary_flight.as_ref().expect("simulated flight");

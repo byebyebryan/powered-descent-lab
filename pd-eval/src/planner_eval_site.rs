@@ -170,13 +170,13 @@ pub fn publish_planner_batch(repo_root: &Path, capture_root: &Path) -> Result<Op
         .map(|(path, html)| {
             Ok((
                 path.to_string_lossy().to_string(),
-                crate::waypoint_direct_body_aware_terminal::sha256_bytes(html.as_bytes())?,
+                crate::evidence_io::sha256_bytes(html.as_bytes())?,
             ))
         })
         .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
     let receipt = serde_json::json!({
         "schema_id":"planner_v2_common_report_site_v1", "source_capture":capture,
-        "source_summary_sha256":crate::waypoint_direct_body_aware_terminal::sha256_bytes(&fs::read(capture.join("summary.json"))?)?,
+        "source_summary_sha256":crate::evidence_io::sha256_bytes(&fs::read(capture.join("summary.json"))?)?,
         "source_base_href":href,"case_count":report.case_count,"page_sha256":page_hashes,
         "renderer_source":crate::waypoint_v2_pack::capture_source_state(repo_root)?
     });

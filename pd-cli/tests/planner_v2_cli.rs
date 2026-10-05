@@ -14,8 +14,7 @@ use pd_eval::{
     LocalClearingOrdinaryEvidenceV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointV2CliProgressEntryV1, WaypointV2CliProgressV1, WaypointV2Cycle,
     WaypointV2CycleDecision, WaypointV2FlightResult, WaypointV2Policy, WaypointV2SessionProgress,
-    WaypointV2Stop, load_nominal_direct_operational_fresh_inputs,
-    nominal_direct_flight::nominal_direct_flight_identity, reserve_waypoint_v2_flight_output,
+    WaypointV2Stop, nominal_direct_flight_identity, reserve_waypoint_v2_flight_output,
     write_waypoint_v2_cli_bundle,
 };
 use serde_json::Value;
@@ -52,11 +51,7 @@ impl Drop for TestRoot {
 }
 
 fn supported_request() -> WaypointDirectNominalDirectGenerationRequest {
-    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    load_nominal_direct_operational_fresh_inputs(repository)
-        .expect("tracked, sealed operational request")
-        .remove(0)
-        .1
+    tracked_pack_request("v2_clear_685")
 }
 
 fn tracked_pack_request(case_id: &str) -> WaypointDirectNominalDirectGenerationRequest {

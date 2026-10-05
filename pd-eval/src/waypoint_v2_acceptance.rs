@@ -446,7 +446,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        waypoint_direct_body_aware_terminal::sha256_bytes,
+        evidence_io::sha256_bytes,
         waypoint_v2_pack::{
             DEFAULT_PLANNER_PACK_PATH, WAYPOINT_V2_BATCH_SCHEMA_ID, WaypointV2BatchCase,
             WaypointV2BatchProvenance, WaypointV2PackGroup, WaypointV2SourceState,

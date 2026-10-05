@@ -1,34 +1,17 @@
 //! Presentation-only projection and create-only rendering of retained V2 evidence.
 //! This module never generates commands, advances a simulator or chooses a route.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fs,
-    path::{Component, Path, PathBuf},
-};
-
 use anyhow::{Context, Result, ensure};
 use pd_core::{
     EvaluationGoal, MissionOutcome, PhysicalOutcome, ScenarioSpec, SimulationStateSnapshotV1, Vec2,
 };
 use pd_plan::waypoint_v2::{WaypointV2Policy, WaypointV2Stop};
-use pd_report::waypoint_v2::{self as renderer, data::*};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use pd_report::waypoint_v2::data::*;
 
 use crate::{
     WaypointV2FlightResult,
-    evidence_io::{
-        reserve_output_root, sha256_bytes, write_bytes_create_only_with_context,
-        write_json_create_only,
-    },
     waypoint_v2::{WaypointV2CycleDecision, WaypointV2SegmentKind},
 };
-
-pub const PINNED_CAPTURE: &str =
-    "outputs/research/waypoint_v2_airborne_integration_20261002/final_hardened_policy_3_a";
-
-pub mod rich_preview;
 
 /// Add executed handoffs to the existing rich report without replacing its
 /// telemetry, reference overlays, plots, or statistics. The projection validates
@@ -480,439 +463,6 @@ pub fn project_flight(
     })
 }
 
-pub fn write_flight_page(path: &Path, data: &FlightReport) -> Result<()> {
-    write_bytes_create_only_with_context(
-        path,
-        renderer::render_flight(data)?.as_bytes(),
-        "create-only report",
-    )
-}
-
-#[derive(Deserialize)]
-struct SavedSuite {
-    schema_id: String,
-    status: String,
-    policy_version: u32,
-    case_count: usize,
-    cases: Vec<SavedCase>,
-    provenance: Value,
-}
-
-#[derive(Deserialize)]
-struct SavedCase {
-    case_id: String,
-    group: String,
-    summary_path: String,
-    flight_path: String,
-    result: Value,
-    run_summary: Value,
-}
-
-#[derive(Serialize)]
-pub struct RenderReceipt {
-    pub schema_id: &'static str,
-    pub renderer_version: &'static str,
-    pub source_root: PathBuf,
-    pub output_root: PathBuf,
-    pub selected_case_id: Option<String>,
-    pub case_count: usize,
-    pub flight_page_count: usize,
-    pub input_sha256: BTreeMap<String, String>,
-    pub output_sha256: BTreeMap<String, String>,
-    pub historical_flight_provenance: Value,
-    pub renderer_source_sha256: BTreeMap<String, String>,
-    /// The actual rendering process, separate from the historical flight binary.
-    pub rendering_process_sha256: String,
-}
-
-fn inside_file(root: &Path, relative: &str) -> Result<PathBuf> {
-    let path = Path::new(relative);
-    ensure!(
-        !path.is_absolute() && path.components().all(|c| matches!(c, Component::Normal(_))),
-        "unsafe archive path {relative}"
-    );
-    let resolved = root
-        .join(path)
-        .canonicalize()
-        .with_context(|| format!("missing source file {relative}"))?;
-    ensure!(
-        resolved.starts_with(root) && resolved.is_file(),
-        "archive path escapes source root: {relative}"
-    );
-    Ok(resolved)
-}
-
-fn read_hashed(
-    root: &Path,
-    relative: &str,
-    hashes: &mut BTreeMap<String, String>,
-) -> Result<Vec<u8>> {
-    let bytes = fs::read(inside_file(root, relative)?)?;
-    hashes.insert(relative.into(), sha256_bytes(&bytes)?);
-    Ok(bytes)
-}
-
-fn agree_fields(expected: &Value, actual: &Value, keys: &[&str]) -> Result<()> {
-    for key in keys {
-        ensure!(
-            expected.get(*key).is_some()
-                && actual.get(*key).is_some()
-                && same_json(&expected[*key], &actual[*key]),
-            "retained evidence disagreement or missing field: {key}"
-        );
-    }
-    Ok(())
-}
-
-/// The JS suite aggregator spells integral floats as `0`/`34`, while the Rust
-/// capture spells them `0.0`/`34.0`. This is exact numeric comparison, not a
-/// tolerance, rounding or permission to alter evidence.
-fn same_json(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Number(a), Value::Number(b)) => {
-            if a == b {
-                return true;
-            }
-            if let (Some(a), Some(b)) = (a.as_u64(), b.as_u64()) {
-                return a == b;
-            }
-            if let (Some(a), Some(b)) = (a.as_i64(), b.as_i64()) {
-                return a == b;
-            }
-            // Do not collapse large distinct integer identities through f64.
-            let small = |n: &serde_json::Number| {
-                n.as_i64().is_none_or(|i| i.unsigned_abs() <= (1_u64 << 53))
-                    && n.as_u64().is_none_or(|i| i <= (1_u64 << 53))
-            };
-            small(a) && small(b) && a.as_f64() == b.as_f64()
-        }
-        (Value::Array(a), Value::Array(b)) => {
-            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same_json(a, b))
-        }
-        (Value::Object(a), Value::Object(b)) => {
-            a.len() == b.len()
-                && a.iter()
-                    .all(|(key, a)| b.get(key).is_some_and(|b| same_json(a, b)))
-        }
-        _ => a == b,
-    }
-}
-
-const RESULT_KEYS: &[&str] = &[
-    "planning_stop",
-    "correction_count",
-    "initial_nominal_terrain_blocked",
-    "integrity_passed",
-    "physical_outcome",
-    "mission_outcome",
-    "final_source_replay_passed",
-    "timings",
-];
-
-fn check_summary(summary: &Value, flight: &Value, case: &SavedCase) -> Result<()> {
-    ensure!(
-        summary["schema_id"] == "waypoint_v2_flight_summary_v1",
-        "unsupported summary schema"
-    );
-    agree_fields(summary, flight, &["input_identity", "policy"])?;
-    agree_fields(&summary["result"], flight, RESULT_KEYS)?;
-    agree_fields(&summary["result"], flight, &["reason"])?;
-    agree_fields(&case.result, flight, RESULT_KEYS)?;
-    // The suite runner wraps an unsupported preflight in three null fields;
-    // its capture stores run_summary: null. Accept only that exact shape, and
-    // only with no manifest or simulated flight. This creates no flight data.
-    let suite_run_matches = same_json(&case.run_summary, &summary["run_summary"])
-        || (summary["run_summary"].is_null()
-            && flight["manifest"].is_null()
-            && flight["ordinary_flight"].is_null()
-            && same_json(
-                &case.run_summary,
-                &json!({"minimum_clearance": null, "fuel": null, "endpoint": null}),
-            ));
-    ensure!(suite_run_matches, "suite/summary endpoint disagreement");
-    if !flight["manifest"].is_null() {
-        agree_fields(
-            &summary["run_summary"]["endpoint"],
-            &json!({
-                "physics_step": flight["manifest"]["physics_steps"], "sim_time_s": flight["manifest"]["sim_time_s"],
-                "physical_outcome": flight["manifest"]["physical_outcome"], "mission_outcome": flight["manifest"]["mission_outcome"], "end_reason": flight["manifest"]["end_reason"]
-            }),
-            &[
-                "physics_step",
-                "sim_time_s",
-                "physical_outcome",
-                "mission_outcome",
-                "end_reason",
-            ],
-        )?;
-    } else {
-        ensure!(
-            summary["run_summary"].is_null(),
-            "non-simulated result has run summary"
-        );
-    }
-    Ok(())
-}
-
-fn featured(id: &str) -> Option<&'static str> {
-    match id {
-        "v2_clear_845" => Some(
-            "Start here: direct landing over an uncut floor. Compare uphill and downhill controls below.",
-        ),
-        "v2_ridge_late" => {
-            Some("One correction: find H1, why it was needed, then the replanned landing.")
-        }
-        "v2_successive_rising" => {
-            Some("Two handoffs: see the planner handle another obstruction after replanning.")
-        }
-        "v2_plateau_reference_900" => {
-            Some("Three corrections: follow H1 → H2 → H3 before landing.")
-        }
-        "v2_diag_near_target" => {
-            Some("A limitation, not a crash: no maneuver found and no departure.")
-        }
-        _ => None,
-    }
-}
-
-// Absolute HTTP paths only for inputs within the served outputs root. Paths
-// elsewhere are still valid offline inputs but deliberately have no web links.
-fn served_href(repo_root: &Path, path: &Path) -> Option<String> {
-    let outputs = repo_root.join("outputs").canonicalize().ok()?;
-    let relative = path.strip_prefix(outputs).ok()?.to_str()?;
-    Some(format!(
-        "/{}",
-        relative
-            .split('/')
-            .map(url_component)
-            .collect::<Vec<_>>()
-            .join("/")
-    ))
-}
-
-fn url_component(s: &str) -> String {
-    s.bytes()
-        .map(|b| {
-            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
-                (b as char).to_string()
-            } else {
-                format!("%{b:02X}")
-            }
-        })
-        .collect()
-}
-
-/// Read all declared evidence before creating output. `case_id` is for the
-/// staged single-page review; the full suite uses `None`. No source is written.
-pub fn render_retained_suite(
-    repo_root: &Path,
-    suite_root: &Path,
-    output_dir: &Path,
-    case_id: Option<&str>,
-) -> Result<RenderReceipt> {
-    let root = suite_root
-        .canonicalize()
-        .context("resolve retained suite root")?;
-    let mut inputs = BTreeMap::new();
-    let suite: SavedSuite =
-        serde_json::from_slice(&read_hashed(&root, "suite-summary.json", &mut inputs)?)?;
-    ensure!(
-        suite.schema_id == "waypoint_v2_practical_suite_run_v1" && suite.status == "completed",
-        "unsupported or incomplete retained suite"
-    );
-    ensure!(
-        suite.case_count == suite.cases.len() && suite.case_count > 0,
-        "declared case count mismatch"
-    );
-    ensure!(
-        case_id.is_none_or(|id| suite.cases.iter().any(|c| c.case_id == id)),
-        "selected case is not declared"
-    );
-    let mut ids = BTreeSet::new();
-    for case in &suite.cases {
-        ensure!(
-            !case.case_id.is_empty()
-                && case
-                    .case_id
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-                && ids.insert(&case.case_id),
-            "unsafe or duplicate case id"
-        );
-        ensure!(
-            matches!(case.group.as_str(), "clear" | "ordinary" | "diagnostic"),
-            "unknown case group"
-        );
-        ensure!(
-            case.summary_path == format!("runs/{}/summary.json", case.case_id)
-                && case.flight_path == format!("runs/{}/flight.json", case.case_id),
-            "case paths do not match declared identity"
-        );
-    }
-    let capture_label = root
-        .file_name()
-        .context("source root name")?
-        .to_string_lossy()
-        .to_string();
-    let mut cards = Vec::new();
-    let mut pages = Vec::new();
-    for case in suite
-        .cases
-        .iter()
-        .filter(|c| case_id.is_none_or(|id| c.case_id == id))
-    {
-        let scenario_path = format!("runs/{}/scenario.json", case.case_id);
-        let scenario: ScenarioSpec =
-            serde_json::from_slice(&read_hashed(&root, &scenario_path, &mut inputs)?)?;
-        let flight_bytes = read_hashed(&root, &case.flight_path, &mut inputs)?;
-        let flight_json: Value = serde_json::from_slice(&flight_bytes)?;
-        let summary: Value =
-            serde_json::from_slice(&read_hashed(&root, &case.summary_path, &mut inputs)?)?;
-        check_summary(&summary, &flight_json, case)
-            .with_context(|| format!("case {}", case.case_id))?;
-        let result: WaypointV2FlightResult = serde_json::from_slice(&flight_bytes)?;
-        ensure!(
-            scenario.id == case.case_id && policy_version(&result.policy)? == suite.policy_version,
-            "case scenario/policy disagreement"
-        );
-        let old_report = format!("runs/{}/report.html", case.case_id);
-        let mut source_links = Vec::new();
-        for (label, relative) in [
-            ("Original scenario JSON", &scenario_path),
-            ("Original flight JSON", &case.flight_path),
-            ("Original summary JSON", &case.summary_path),
-        ] {
-            if let Some(href) = served_href(repo_root, &inside_file(&root, relative)?) {
-                source_links.push(ReportLink {
-                    label: label.into(),
-                    href,
-                });
-            }
-        }
-        let href = if result.ordinary_flight.is_some() {
-            read_hashed(&root, &old_report, &mut inputs)?;
-            if let Some(href) = served_href(repo_root, &inside_file(&root, &old_report)?) {
-                source_links.push(ReportLink {
-                    label: "Original generic report".into(),
-                    href,
-                });
-            }
-            let mut display = project_flight(&scenario, &result)
-                .with_context(|| format!("case {}", case.case_id))?;
-            display.index_href = Some("../../index.html".into());
-            display.capture_label = capture_label.clone();
-            display.source_links = source_links;
-            display.source_links.push(ReportLink {
-                label: "Rendering provenance (not the flight build)".into(),
-                href: "../../render-provenance.json".into(),
-            });
-            let relative = format!("cases/{}/index.html", case.case_id);
-            pages.push((relative.clone(), renderer::render_flight(&display)?));
-            Some(relative)
-        } else {
-            ensure!(
-                result.manifest.is_none()
-                    && result.segments.is_empty()
-                    && result.cycles.is_empty()
-                    && result.correction_count == 0
-                    && result.physical_outcome.is_none()
-                    && result.mission_outcome.is_none(),
-                "non-simulated case has flight evidence"
-            );
-            ensure!(
-                !root.join(&old_report).exists(),
-                "non-simulated case has a fabricated run report"
-            );
-            None
-        };
-        cards.push(CaseCard {
-            case_id: case.case_id.clone(),
-            title: friendly_title(&case.case_id),
-            group: case.group.clone(),
-            outcome: outcome(&result),
-            correction_count: result.correction_count,
-            href,
-            inspect: featured(&case.case_id).map(str::to_owned),
-            reason: result.reason.clone(),
-        });
-    }
-    // Fixed featured order, independent of archive or filesystem order.
-    let featured_ids = [
-        "v2_clear_845",
-        "v2_ridge_late",
-        "v2_successive_rising",
-        "v2_plateau_reference_900",
-        "v2_diag_near_target",
-    ];
-    cards.sort_by_key(|c| {
-        featured_ids
-            .iter()
-            .position(|id| *id == c.case_id)
-            .unwrap_or(featured_ids.len())
-    });
-    let mut suite_links: Vec<_> =
-        served_href(repo_root, &inside_file(&root, "suite-summary.json")?)
-            .map(|href| ReportLink {
-                label: "Original suite summary".into(),
-                href,
-            })
-            .into_iter()
-            .collect();
-    suite_links.push(ReportLink {
-        label: "Rendering provenance (not the flight build)".into(),
-        href: "render-provenance.json".into(),
-    });
-    let index = SuiteReport { title: "Waypoint planner V2 — flight stories".into(), capture_label, policy_version: suite.policy_version, cases: cards, diagnostics: vec![("Scope".into(), "Current vehicle, Earth gravity, 120/60 Hz; opt-in planner. Diagnostics are limits, not ordinary coverage.".into()), ("Source capture".into(), root.display().to_string()), ("Renderer".into(), renderer::RENDERER_VERSION.into())], source_links: suite_links };
-    let index_html = renderer::render_suite(&index)?;
-    let mut renderer_hashes = BTreeMap::new();
-    for relative in [
-        "pd-report/src/waypoint_v2.rs",
-        "pd-report/src/waypoint_v2/data.rs",
-        "pd-eval/src/waypoint_v2_report.rs",
-    ] {
-        renderer_hashes.insert(
-            relative.into(),
-            sha256_bytes(&fs::read(repo_root.join(relative))?)?,
-        );
-    }
-    reserve_output_root(output_dir)?;
-    let mut outputs = BTreeMap::new();
-    for (relative, html) in &pages {
-        let path = output_dir.join(relative);
-        fs::create_dir_all(path.parent().context("page parent")?)?;
-        write_bytes_create_only_with_context(&path, html.as_bytes(), "create-only report")?;
-        outputs.insert(relative.clone(), sha256_bytes(html.as_bytes())?);
-    }
-    write_bytes_create_only_with_context(
-        &output_dir.join("index.html"),
-        index_html.as_bytes(),
-        "create-only report",
-    )?;
-    outputs.insert("index.html".into(), sha256_bytes(index_html.as_bytes())?);
-    let receipt = RenderReceipt {
-        schema_id: "waypoint_v2_report_render_v1",
-        renderer_version: renderer::RENDERER_VERSION,
-        source_root: root,
-        output_root: output_dir.to_path_buf(),
-        selected_case_id: case_id.map(str::to_owned),
-        case_count: index.cases.len(),
-        flight_page_count: pages.len(),
-        input_sha256: inputs,
-        output_sha256: outputs,
-        historical_flight_provenance: suite.provenance,
-        renderer_source_sha256: renderer_hashes,
-        rendering_process_sha256: sha256_bytes(&fs::read(std::env::current_exe()?)?)?,
-    };
-    write_json_create_only(&output_dir.join("render-provenance.json"), &receipt)?;
-    if case_id.is_none()
-        && let Ok(presentation_root) = repo_root.join("outputs/reports/waypoint-v2").canonicalize()
-        && output_dir.canonicalize()?.parent() == Some(presentation_root.as_path())
-    {
-        pd_report::site::ReportSite::new(repo_root).refresh_home()?;
-    }
-    Ok(receipt)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -921,22 +471,17 @@ mod tests {
         waypoint_v2::{WaypointV2Segment, WaypointV2Timings},
     };
     use pd_core::{EndReason, RunContext, RunManifest, RunSummary, SampleRecord, SimulationState};
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use serde_json::Value;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
     fn repo() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .to_path_buf()
-    }
-
-    fn temp_root() -> PathBuf {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        std::env::temp_dir().join(format!(
-            "pd-v2-presentation-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ))
     }
 
     /// Synthetic evidence, not a physical flight. No commands are simulated.
@@ -1041,23 +586,6 @@ mod tests {
     }
 
     #[test]
-    fn archive_numeric_spelling_is_not_evidence_disagreement() {
-        assert!(same_json(
-            &json!({"time": 34, "speed": 0}),
-            &json!({"time": 34.0, "speed": 0.0})
-        ));
-        assert!(!same_json(&json!(34.0), &json!(34.00000000000001)));
-        assert!(!same_json(
-            &json!(9007199254740993_u64),
-            &json!(9007199254740992.0)
-        ));
-        assert!(!same_json(
-            &json!({"time": 34}),
-            &json!({"time": 34, "missing": null})
-        ));
-    }
-
-    #[test]
     fn rich_batch_report_retains_original_payload_beyond_annotations() {
         let (scenario, result) = synthetic(true);
         let ordinary = result.ordinary_flight.as_ref().unwrap();
@@ -1105,7 +633,7 @@ mod tests {
                 .remove("flightAnnotations")
                 .is_some()
         );
-        assert!(same_json(&payload(&original), &enriched));
+        assert_eq!(payload(&original), enriched);
         assert!(annotated.contains("Planner V2 batch"));
         assert!(
             annotated.contains("id=\"chart-spatial\"")
@@ -1145,121 +673,6 @@ mod tests {
         assert!(project_flight(&scenario, &bad).is_err());
     }
 
-    fn write_synthetic_suite(root: &Path, unsupported: bool) {
-        let (scenario, mut result) = synthetic(false);
-        if unsupported {
-            result.planning_stop = WaypointV2Stop::Unsupported;
-            result.ordinary_flight = None;
-            result.manifest = None;
-            result.physical_outcome = None;
-            result.mission_outcome = None;
-        }
-        let case_root = root.join("runs/v2_clear_synthetic");
-        fs::create_dir_all(&case_root).unwrap();
-        let f = serde_json::to_value(&result).unwrap();
-        let compact: Value = RESULT_KEYS
-            .iter()
-            .chain(["reason"].iter())
-            .map(|key| ((*key).to_string(), f[*key].clone()))
-            .collect();
-        let run_summary = if unsupported {
-            Value::Null
-        } else {
-            json!({"endpoint": {"physics_step": 0, "sim_time_s": 0.0, "physical_outcome": "flying", "mission_outcome": "in_progress", "end_reason": "running"}})
-        };
-        let suite_run_summary = if unsupported {
-            json!({"minimum_clearance":null,"fuel":null,"endpoint":null})
-        } else {
-            run_summary.clone()
-        };
-        let summary = json!({"schema_id": "waypoint_v2_flight_summary_v1", "input_identity": result.input_identity, "policy": result.policy, "result": compact, "run_summary": run_summary});
-        let suite = json!({"schema_id": "waypoint_v2_practical_suite_run_v1", "status": "completed", "policy_version": 3, "case_count": 1, "provenance": {"synthetic": true}, "cases": [{"case_id": scenario.id, "group": if unsupported {"diagnostic"} else {"clear"}, "summary_path": "runs/v2_clear_synthetic/summary.json", "flight_path": "runs/v2_clear_synthetic/flight.json", "result": compact, "run_summary": suite_run_summary}]});
-        write_json_create_only(&case_root.join("scenario.json"), &scenario).unwrap();
-        write_json_create_only(&case_root.join("flight.json"), &result).unwrap();
-        write_json_create_only(&case_root.join("summary.json"), &summary).unwrap();
-        if !unsupported {
-            write_bytes_create_only_with_context(
-                &case_root.join("report.html"),
-                b"original synthetic generic report",
-                "create-only report",
-            )
-            .unwrap();
-        }
-        write_json_create_only(&root.join("suite-summary.json"), &suite).unwrap();
-    }
-
-    #[test]
-    fn archive_is_report_only_create_only_and_source_bytes_unchanged() {
-        let root = temp_root();
-        write_synthetic_suite(&root, false);
-        let output = root.join("new-display");
-        let source_before = fs::read(root.join("runs/v2_clear_synthetic/report.html")).unwrap();
-        let receipt = render_retained_suite(&repo(), &root, &output, None).unwrap();
-        assert_eq!((receipt.case_count, receipt.flight_page_count), (1, 1));
-        assert_eq!(receipt.input_sha256.len(), 5);
-        assert!(
-            receipt.historical_flight_provenance["synthetic"]
-                .as_bool()
-                .unwrap()
-        );
-        assert!(output.join("cases/v2_clear_synthetic/index.html").is_file());
-        assert!(render_retained_suite(&repo(), &root, &output, None).is_err());
-        assert_eq!(
-            fs::read(root.join("runs/v2_clear_synthetic/report.html")).unwrap(),
-            source_before
-        );
-        let mut hashes = BTreeMap::new();
-        assert!(
-            read_hashed(
-                &root.canonicalize().unwrap(),
-                "../outside.json",
-                &mut hashes
-            )
-            .is_err()
-        );
-        assert!(read_hashed(&root.canonicalize().unwrap(), "missing.json", &mut hashes).is_err());
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn unsupported_summary_null_wrapper_has_no_fabricated_flight() {
-        let root = temp_root();
-        write_synthetic_suite(&root, true);
-        let output = root.join("unsupported-display");
-        let receipt = render_retained_suite(&repo(), &root, &output, None).unwrap();
-        assert_eq!((receipt.case_count, receipt.flight_page_count), (1, 0));
-        assert_eq!(receipt.input_sha256.len(), 4);
-        assert!(!output.join("cases").exists());
-        assert!(
-            fs::read_to_string(output.join("index.html"))
-                .unwrap()
-                .contains("Not simulated")
-        );
-        let suite_path = root.join("suite-summary.json");
-        let mut suite: Value = serde_json::from_slice(&fs::read(&suite_path).unwrap()).unwrap();
-        suite["cases"][0]["run_summary"]["endpoint"] = json!({"physics_step": 10});
-        fs::write(suite_path, serde_json::to_vec(&suite).unwrap()).unwrap();
-        let rejected = root.join("corrupt-unsupported-display");
-        assert!(render_retained_suite(&repo(), &root, &rejected, None).is_err());
-        assert!(!rejected.exists());
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn archive_rejects_summary_tampering_before_reserving_output() {
-        let root = temp_root();
-        write_synthetic_suite(&root, false);
-        let summary_path = root.join("runs/v2_clear_synthetic/summary.json");
-        let mut summary: Value = serde_json::from_slice(&fs::read(&summary_path).unwrap()).unwrap();
-        summary["result"]["correction_count"] = json!(1);
-        // This test intentionally corrupts its own temporary fixture only.
-        fs::write(&summary_path, serde_json::to_vec(&summary).unwrap()).unwrap();
-        let output = root.join("rejected-display");
-        assert!(render_retained_suite(&repo(), &root, &output, None).is_err());
-        assert!(!output.exists());
-        fs::remove_dir_all(root).unwrap();
-    }
-
     #[test]
     #[ignore = "requires pinned retained local V2 capture; presentation only, no mission execution"]
     fn retained_presentation_gate_checks_exact_handoffs_and_shared_projection() {
@@ -1272,7 +685,7 @@ mod tests {
             ("v2_plateau_reference_900", vec![2820, 3136, 3226]),
             ("v2_diag_near_target", vec![]),
         ] {
-            let run = repo().join(PINNED_CAPTURE).join("runs").join(id);
+            let run = repo().join("outputs/research/waypoint_v2_airborne_integration_20261002/final_hardened_policy_3_a").join("runs").join(id);
             let scenario: ScenarioSpec =
                 serde_json::from_slice(&fs::read(run.join("scenario.json")).unwrap()).unwrap();
             let result: WaypointV2FlightResult =
@@ -1347,13 +760,12 @@ mod tests {
                 assert!(!display.landed);
                 assert!(display.segments.is_empty());
             }
-            let path = temp_root();
-            write_flight_page(&path, &display).unwrap();
-            assert_eq!(
-                fs::read_to_string(&path).unwrap(),
-                renderer::render_flight(&display).unwrap()
-            );
-            fs::remove_file(path).unwrap();
+            if result.ordinary_flight.is_some() {
+                let rich =
+                    render_rich_flight(&scenario, &result, Default::default(), String::new())
+                        .unwrap();
+                assert!(rich.contains("const reportData = "));
+            }
         }
     }
 }

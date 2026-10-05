@@ -15,7 +15,7 @@ use crate::{
     WaypointDirectNominalDirectGenerationRequest, WaypointV2FlightResult, WaypointV2Policy,
     WaypointV2SessionProgress,
     evidence_io::{sha256_bytes, write_json_create_only},
-    nominal_direct_flight::nominal_direct_flight_identity,
+    nominal_direct_flight_identity,
     waypoint_v2::{preflight_waypoint_v2_flight, replay_saved_waypoint_v2_evidence},
     waypoint_v2_output::{waypoint_v2_rich_report_eligible, write_waypoint_v2_flight_result},
 };

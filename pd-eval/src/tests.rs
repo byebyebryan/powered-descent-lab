@@ -103,178 +103,39 @@ fn maintained_clean_terminal_packs_expand_only_the_current_controller_lane() {
 }
 
 #[test]
-fn planner_generated_fixture_packs_resolve_expected_counts_and_provenance() {
+fn retired_research_pack_descriptors_are_rejected_before_resolution() {
     let packs_dir = fixtures_root().join("packs");
-    let smoke = load_pack(&packs_dir.join("planner_generated_route_smoke.json")).unwrap();
-    let contract =
-        load_pack(&packs_dir.join("planner_generated_route_contract_smoke.json")).unwrap();
-    let smoke_runs = resolve_pack_runs(&smoke, &packs_dir).unwrap();
-    let contract_runs = resolve_pack_runs(&contract, &packs_dir).unwrap();
-    assert_eq!(smoke_runs.len(), 54);
-    assert_eq!(contract_runs.len(), 36);
-    assert!(smoke_runs.iter().all(|run| matches!(
-        &run.scenario.mission.goal,
-        EvaluationGoal::LandingOnPad { .. }
-    )));
-    for run in &contract_runs {
-        assert_eq!(run.scenario.sim.max_time_s, 130.0);
-        if run.descriptor.entry_id.contains("single") {
-            assert!(matches!(
-                &run.scenario.mission.goal,
-                EvaluationGoal::WaypointHandoff { .. }
-            ));
-        } else if run.descriptor.entry_id.contains("double") {
-            assert!(matches!(
-                &run.scenario.mission.goal,
-                EvaluationGoal::WaypointSequence { .. }
-            ));
-        } else {
-            panic!(
-                "unexpected planner contract entry {}",
-                run.descriptor.entry_id
-            );
-        }
+    for filename in [
+        "planner_generated_route_smoke.json",
+        "planner_generated_route_contract_smoke.json",
+        "transfer_route_angle_pathwise_compare.json",
+        "transfer_route_angle_recoverability_compare.json",
+        "transfer_bot_lab_pathwise_compare.json",
+        "transfer_bot_lab_recoverability_compare.json",
+    ] {
+        let error = load_pack(&packs_dir.join(filename))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("retired"), "{filename}: {error}");
     }
-    assert!(
-        smoke_runs
-            .iter()
-            .filter(|run| run
-                .descriptor
-                .route_plan
-                .as_ref()
-                .unwrap()
-                .waypoints()
-                .is_empty())
-            .all(|run| run.scenario.sim.max_time_s == 90.0)
-    );
-    assert!(
-        smoke_runs
-            .iter()
-            .filter(|run| !run
-                .descriptor
-                .route_plan
-                .as_ref()
-                .unwrap()
-                .waypoints()
-                .is_empty())
-            .all(|run| run.scenario.sim.max_time_s == 130.0)
-    );
-    for run in smoke_runs.iter().chain(contract_runs.iter()) {
-        assert_eq!(
-            run.descriptor.source_kind,
-            ResolvedRunSourceKind::PlannerMatrix
-        );
-        let plan = run
-            .descriptor
-            .route_plan
-            .as_ref()
-            .expect("planner run should persist complete route plan");
-        let provenance = run
-            .descriptor
-            .route_provenance
-            .as_ref()
-            .expect("planner run should persist route provenance");
-        let compute = run
-            .descriptor
-            .planner_compute
-            .as_ref()
-            .expect("planner run should persist compute evidence");
-        assert!(compute.wall_time_us <= 60_000_000);
-        assert_eq!(provenance.plan_digest, plan.plan_digest);
-        assert_eq!(
-            run.descriptor.physical_case_id.as_deref(),
-            Some(provenance.physical_case_id.as_str())
-        );
-        assert_eq!(
-            run.scenario.mission.transfer_route.as_ref(),
-            Some(&plan.route)
-        );
-    }
-    let smoke_again = resolve_pack_runs(&smoke, &packs_dir).unwrap();
-    assert_eq!(
-        smoke_runs
-            .iter()
-            .map(|run| run.descriptor.run_id.clone())
-            .collect::<Vec<_>>(),
-        smoke_again
-            .iter()
-            .map(|run| run.descriptor.run_id.clone())
-            .collect::<Vec<_>>()
-    );
-    assert_eq!(
-        smoke_runs
-            .iter()
-            .map(|run| run
-                .descriptor
-                .route_plan
-                .as_ref()
-                .unwrap()
-                .plan_digest
-                .clone())
-            .collect::<Vec<_>>(),
-        smoke_again
-            .iter()
-            .map(|run| run
-                .descriptor
-                .route_plan
-                .as_ref()
-                .unwrap()
-                .plan_digest
-                .clone())
-            .collect::<Vec<_>>()
-    );
-    let identity = batch_identity_for_pack(&smoke, &smoke_runs).unwrap();
-    let mut retimed = smoke_runs.clone();
-    for run in &mut retimed {
-        if let Some(compute) = run.descriptor.planner_compute.as_mut() {
-            compute.wall_time_us = compute.wall_time_us.saturating_add(1_000_000);
-        }
-    }
-    assert_eq!(
-        identity.resolved_run_digest,
-        batch_identity_for_pack(&smoke, &retimed)
-            .unwrap()
-            .resolved_run_digest
-    );
 }
 
 #[test]
-fn source_transition_diagnostic_inputs_resolve_exactly_24_input_only_runs() {
-    let pack_path = fixtures_root()
-        .join("evidence")
-        .join("source_transition_d0a_diagnostic_inputs.json");
-    let pack = load_source_transition_diagnostic_input_pack(&pack_path).unwrap();
-    let manifest = load_source_transition_development_manifest(
-        &fixtures_root()
-            .join("manifests")
-            .join("source_transition_d0a_development.json"),
-    )
-    .unwrap();
-    let expected_ids = manifest
-        .diagnostic_cases
-        .iter()
-        .flat_map(SourceTransitionDevelopmentCase::resolved_case_keys)
-        .collect::<Vec<_>>();
-    let actual_ids = pack
-        .cases
-        .iter()
-        .map(|case| case.run_id.clone())
-        .collect::<Vec<_>>();
-    assert_eq!(pack.cases.len(), 24);
-    assert_eq!(actual_ids, expected_ids);
-    let serialized = serde_json::to_string(&pack).unwrap();
-    for forbidden in [
-        "outcome",
-        "result",
-        "class",
-        "summary",
-        "trajectory_evaluator",
-    ] {
-        assert!(
-            !serialized.contains(forbidden),
-            "diagnostic input pack contains forbidden field/content {forbidden:?}"
-        );
-    }
+fn retired_planner_matrices_and_controller_aliases_are_rejected_for_custom_ids() {
+    let packs_dir = fixtures_root().join("packs");
+    let raw = fs::read_to_string(packs_dir.join("planner_generated_route_smoke.json")).unwrap();
+    let mut planner: ScenarioPackSpec = serde_json::from_str(&raw).unwrap();
+    planner.id = "renamed_generated_route_pack".to_owned();
+    let error = validate_pack(&planner).unwrap_err().to_string();
+    assert!(error.contains("generated V1 route execution"), "{error}");
+
+    let raw =
+        fs::read_to_string(packs_dir.join("transfer_route_angle_pathwise_compare.json")).unwrap();
+    let mut transfer: ScenarioPackSpec = serde_json::from_str(&raw).unwrap();
+    transfer.id = "renamed_pathwise_comparison".to_owned();
+    let error = validate_pack(&transfer).unwrap_err().to_string();
+    assert!(error.contains("retired transfer controller"), "{error}");
+    assert!(error.contains("transfer_pdg_pathwise"), "{error}");
 }
 
 #[test]

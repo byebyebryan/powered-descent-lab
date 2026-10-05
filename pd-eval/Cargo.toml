@@ -8,7 +8,7 @@ anyhow.workspace = true
 clap.workspace = true
 pd-control = { path = "../pd-control" }
 pd-core = { path = "../pd-core" }
-pd-plan = { path = "../pd-plan", features = ["conservative-ballistic-report"] }
+pd-plan = { path = "../pd-plan" }
 pd-report = { path = "../pd-report" }
 rayon.workspace = true
 serde.workspace = true

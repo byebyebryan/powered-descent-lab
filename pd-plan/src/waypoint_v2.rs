@@ -58,7 +58,7 @@ impl WaypointV2Policy {
         } else if self == &Self::revision_3() {
             Ok(3)
         } else {
-            return Err("unsupported V2 policy; revisions must be explicitly versioned".into());
+            Err("unsupported V2 policy; revisions must be explicitly versioned".into())
         }
     }
 

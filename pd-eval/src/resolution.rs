@@ -1,8 +1,43 @@
 use super::*;
 
+const RETIRED_PACK_IDS: &[&str] = &[
+    "planner_generated_route_smoke",
+    "planner_generated_route_contract_smoke",
+    "transfer_route_angle_pathwise_compare",
+    "transfer_route_angle_recoverability_compare",
+    "transfer_bot_lab_pathwise_compare",
+    "transfer_bot_lab_recoverability_compare",
+];
+
+const RETIRED_TRANSFER_CONTROLLER_IDS: &[&str] =
+    &["transfer_pdg_pathwise", "transfer_pdg_recoverability"];
+
 pub(super) fn validate_pack(pack: &ScenarioPackSpec) -> Result<()> {
     if pack.id.trim().is_empty() {
         bail!("pack id must not be empty");
+    }
+    if RETIRED_PACK_IDS.contains(&pack.id.as_str()) {
+        bail!(
+            "pack '{}' is retired and retained only as archival metadata; it cannot be executed",
+            pack.id
+        );
+    }
+    for entry in &pack.entries {
+        if matches!(entry, ScenarioPackEntry::PlannerMatrix(_)) {
+            bail!(
+                "pack '{}' contains retired planner_matrix entry '{}'; generated V1 route execution is no longer supported",
+                pack.id,
+                entry.id()
+            );
+        }
+        if let Some(controller) = retired_controller_for_entry(entry) {
+            bail!(
+                "pack '{}' entry '{}' uses retired transfer controller '{}'; archived comparison packs cannot be executed",
+                pack.id,
+                entry.id(),
+                controller
+            );
+        }
     }
     if pack.name.trim().is_empty() {
         bail!("pack name must not be empty");
@@ -37,133 +72,42 @@ pub(super) fn validate_pack(pack: &ScenarioPackSpec) -> Result<()> {
             ScenarioPackEntry::Family(entry) => validate_family_entry(entry)?,
             ScenarioPackEntry::TerminalMatrix(entry) => validate_terminal_matrix_entry(entry)?,
             ScenarioPackEntry::TransferMatrix(entry) => validate_transfer_matrix_entry(entry)?,
-            ScenarioPackEntry::PlannerMatrix(entry) => validate_planner_matrix_entry(entry)?,
+            ScenarioPackEntry::PlannerMatrix(entry) => bail!(
+                "planner matrix entry '{}' is retired; generated V1 route execution is no longer supported",
+                entry.id
+            ),
         }
     }
 
     Ok(())
 }
 
-pub(super) fn validate_planner_matrix_entry(entry: &PlannerMatrixEntry) -> Result<()> {
-    if entry.planner_matrix != "heightfield_waypoint_v1" {
-        bail!(
-            "planner matrix entry '{}' uses unsupported planner_matrix '{}'",
-            entry.id,
-            entry.planner_matrix
-        );
-    }
-    if entry.base_scenario.trim().is_empty() {
-        bail!(
-            "planner matrix entry '{}' must define a non-empty base_scenario",
-            entry.id
-        );
-    }
-    if entry.vehicle_variant.trim().is_empty() {
-        bail!(
-            "planner matrix entry '{}' must define a non-empty vehicle_variant",
-            entry.id
-        );
-    }
-    if entry.expectation_tier.trim().is_empty() {
-        bail!(
-            "planner matrix entry '{}' must define a non-empty expectation_tier",
-            entry.id
-        );
-    }
-    entry
-        .policy
-        .validate()
-        .map_err(|message| anyhow!("planner matrix entry '{}' policy: {message}", entry.id))?;
-    let family_spec = transfer_route_family_spec("signed_route_arc_transfer_v1")?;
-    let selected_angles = selected_planner_route_angle_specs(entry, family_spec)?;
-    if selected_angles.is_empty() {
-        bail!(
-            "planner matrix entry '{}' must select at least one route angle",
-            entry.id
-        );
-    }
-    if entry.lanes.is_empty() {
-        bail!(
-            "planner matrix entry '{}' must define at least one lane",
-            entry.id
-        );
-    }
-    let mut seen_lane_ids = BTreeSet::new();
-    for lane in &entry.lanes {
-        if lane.id.trim().is_empty() {
-            bail!(
-                "planner matrix entry '{}' has a lane with an empty id",
-                entry.id
-            );
+fn retired_controller_for_entry(entry: &ScenarioPackEntry) -> Option<&str> {
+    let is_retired =
+        |controller: &str| RETIRED_TRANSFER_CONTROLLER_IDS.contains(&controller.trim());
+    match entry {
+        ScenarioPackEntry::Scenario(entry) => {
+            is_retired(&entry.controller).then_some(&entry.controller)
         }
-        if lane.controller.trim().is_empty() {
-            bail!(
-                "planner matrix entry '{}' lane '{}' must define a controller",
-                entry.id,
-                lane.id
-            );
+        ScenarioPackEntry::Family(entry) => {
+            is_retired(&entry.controller).then_some(&entry.controller)
         }
-        if !seen_lane_ids.insert(lane.id.clone()) {
-            bail!(
-                "planner matrix entry '{}' has duplicate lane id '{}'",
-                entry.id,
-                lane.id
-            );
-        }
+        ScenarioPackEntry::TerminalMatrix(entry) => entry
+            .lanes
+            .iter()
+            .find(|lane| is_retired(&lane.controller))
+            .map(|lane| lane.controller.as_str()),
+        ScenarioPackEntry::TransferMatrix(entry) => entry
+            .lanes
+            .iter()
+            .find(|lane| is_retired(&lane.controller))
+            .map(|lane| lane.controller.as_str()),
+        ScenarioPackEntry::PlannerMatrix(entry) => entry
+            .lanes
+            .iter()
+            .find(|lane| is_retired(&lane.controller))
+            .map(|lane| lane.controller.as_str()),
     }
-    let expected_count = usize::from(entry.expected_waypoint_count);
-    match entry.expected_topology {
-        RouteTopology::Direct if expected_count != 0 => bail!(
-            "planner matrix entry '{}' direct topology requires expected_waypoint_count=0",
-            entry.id
-        ),
-        RouteTopology::Waypoint if !(1..=2).contains(&expected_count) => bail!(
-            "planner matrix entry '{}' waypoint topology requires 1 or 2 waypoints",
-            entry.id
-        ),
-        _ => {}
-    }
-    if entry.evaluation_goal == TransferMatrixEvaluationGoal::WaypointHandoff && expected_count != 1
-    {
-        bail!(
-            "planner matrix entry '{}' waypoint_handoff requires one expected waypoint",
-            entry.id
-        );
-    }
-    if entry.evaluation_goal == TransferMatrixEvaluationGoal::WaypointSequence
-        && expected_count != 2
-    {
-        bail!(
-            "planner matrix entry '{}' waypoint_sequence requires two expected waypoints",
-            entry.id
-        );
-    }
-    let mut seen_adjustment_ids = BTreeSet::new();
-    for adjustment in &entry.adjustments {
-        validate_numeric_adjustment(
-            &entry.id,
-            "planner matrix",
-            adjustment,
-            &mut seen_adjustment_ids,
-        )?;
-    }
-    for tag in &entry.tags {
-        if tag.trim().is_empty() {
-            bail!(
-                "planner matrix entry '{}' tags must not contain empty values",
-                entry.id
-            );
-        }
-    }
-    for (key, value) in &entry.metadata {
-        if key.trim().is_empty() || value.trim().is_empty() {
-            bail!(
-                "planner matrix entry '{}' metadata keys and values must not be empty",
-                entry.id
-            );
-        }
-    }
-    Ok(())
 }
 
 pub(super) fn validate_family_entry(entry: &ScenarioFamilyEntry) -> Result<()> {
@@ -680,9 +624,10 @@ pub(super) fn resolve_pack_runs(
             ScenarioPackEntry::TransferMatrix(entry) => {
                 resolved.extend(resolve_transfer_matrix_runs(entry, base_dir)?)
             }
-            ScenarioPackEntry::PlannerMatrix(entry) => {
-                resolved.extend(resolve_planner_matrix_runs(entry, base_dir)?);
-            }
+            ScenarioPackEntry::PlannerMatrix(entry) => bail!(
+                "planner matrix entry '{}' is retired; generated V1 route execution is no longer supported",
+                entry.id
+            ),
         }
     }
 
@@ -1361,470 +1306,6 @@ pub(super) fn resolve_transfer_matrix_runs(
     Ok(runs)
 }
 
-pub(super) fn resolve_planner_matrix_runs(
-    entry: &PlannerMatrixEntry,
-    base_dir: &Path,
-) -> Result<Vec<ResolvedBatchRun>> {
-    let base_path = base_dir.join(&entry.base_scenario);
-    let base_scenario = load_scenario(&base_path)?;
-    let family_spec = transfer_route_family_spec("signed_route_arc_transfer_v1")?;
-    let route_angle_specs = selected_planner_route_angle_specs(entry, family_spec)?;
-    let seed_specs = transfer_seed_specs(entry.seed_tier);
-    let mut runs = Vec::new();
-
-    for lane in &entry.lanes {
-        let controller_spec = load_controller_spec(
-            base_dir,
-            lane.controller.as_str(),
-            lane.controller_config.as_deref(),
-        )?;
-        for route_angle in &route_angle_specs {
-            for seed_spec in seed_specs {
-                let physical_case_id = planner_physical_case_id(
-                    &entry.id,
-                    entry.terrain_profile.as_str(),
-                    &entry.vehicle_variant,
-                    route_angle.id,
-                    seed_spec.index,
-                    &lane.id,
-                );
-                let run_id = physical_case_id.clone();
-                let mut scenario = resolve_planner_matrix_scenario(
-                    entry,
-                    &base_scenario,
-                    family_spec,
-                    route_angle,
-                    seed_spec,
-                    &lane.id,
-                    &run_id,
-                )?;
-                let target_pad_id = scenario.mission.goal.target_pad_id().to_owned();
-                let route = scenario
-                    .mission
-                    .transfer_route
-                    .as_ref()
-                    .ok_or_else(|| anyhow!("planner scenario is missing transfer route"))?;
-                let request = RoutePlanningRequest {
-                    world: scenario.world.clone(),
-                    vehicle: scenario.vehicle.clone(),
-                    initial_state: scenario.initial_state.clone(),
-                    source_pad_id: route.source_pad_id.clone(),
-                    target_pad_id: route.target_pad_id.clone(),
-                    policy: entry.policy.clone(),
-                };
-                let planner_started_at = Instant::now();
-                let plan = pd_plan::plan(&request).map_err(|rejection| {
-                    anyhow!(
-                        "planner matrix entry '{}' case '{}' rejected: {} ({})",
-                        entry.id,
-                        physical_case_id,
-                        rejection.code,
-                        rejection.message
-                    )
-                })?;
-                let planner_compute = PlannerComputeEvidence {
-                    wall_time_us: planner_started_at
-                        .elapsed()
-                        .as_micros()
-                        .min(u128::from(u64::MAX)) as u64,
-                };
-                let actual_waypoint_count = u8::try_from(plan.waypoints().len())
-                    .map_err(|_| anyhow!("planner produced too many waypoints"))?;
-                if plan.topology != entry.expected_topology
-                    || actual_waypoint_count != entry.expected_waypoint_count
-                {
-                    bail!(
-                        "planner matrix entry '{}' case '{}' produced topology {:?} with {} waypoints; expected {:?} with {}",
-                        entry.id,
-                        physical_case_id,
-                        plan.topology,
-                        actual_waypoint_count,
-                        entry.expected_topology,
-                        entry.expected_waypoint_count
-                    );
-                }
-                validate_route(&request, &plan.route).map_err(|error| {
-                    anyhow!(
-                        "planner matrix entry '{}' case '{}' shared route validation failed: {error}",
-                        entry.id, physical_case_id
-                    )
-                })?;
-                scenario.mission.transfer_route = Some(plan.route.clone());
-                scenario.mission.goal = match entry.evaluation_goal {
-                    TransferMatrixEvaluationGoal::LandingOnPad => EvaluationGoal::LandingOnPad {
-                        target_pad_id: target_pad_id.clone(),
-                    },
-                    TransferMatrixEvaluationGoal::WaypointHandoff => {
-                        EvaluationGoal::WaypointHandoff {
-                            target_pad_id: target_pad_id.clone(),
-                            waypoint_index: 0,
-                        }
-                    }
-                    TransferMatrixEvaluationGoal::WaypointSequence => {
-                        EvaluationGoal::WaypointSequence {
-                            target_pad_id: target_pad_id.clone(),
-                        }
-                    }
-                };
-                scenario
-                    .metadata
-                    .insert("route_source".to_owned(), "planner_matrix".to_owned());
-                scenario
-                    .metadata
-                    .insert("physical_case_id".to_owned(), physical_case_id.clone());
-                scenario
-                    .metadata
-                    .insert("planner_algorithm_id".to_owned(), plan.algorithm_id.clone());
-                scenario.metadata.insert(
-                    "planner_policy_version".to_owned(),
-                    plan.policy.policy_version.clone(),
-                );
-                scenario.metadata.insert(
-                    "planner_request_digest".to_owned(),
-                    plan.request_digest.clone(),
-                );
-                scenario
-                    .metadata
-                    .insert("planner_plan_digest".to_owned(), plan.plan_digest.clone());
-                scenario.metadata.insert(
-                    "expected_topology".to_owned(),
-                    route_topology_label(plan.topology),
-                );
-                scenario.metadata.insert(
-                    "expected_waypoint_count".to_owned(),
-                    entry.expected_waypoint_count.to_string(),
-                );
-                scenario.validate().map_err(anyhow::Error::msg)?;
-
-                let provenance = RoutePlanProvenance {
-                    route_source: "planner_matrix".to_owned(),
-                    physical_case_id: physical_case_id.clone(),
-                    algorithm_id: plan.algorithm_id.clone(),
-                    policy_version: plan.policy.policy_version.clone(),
-                    policy_digest: stable_digest(&plan.policy)?,
-                    request_digest: plan.request_digest.clone(),
-                    plan_digest: plan.plan_digest.clone(),
-                    expected_topology: entry.expected_topology,
-                    expected_waypoint_count: entry.expected_waypoint_count,
-                };
-                let selector = planner_selector_axes(entry, route_angle.id, &lane.id);
-                let mut resolved_parameters = BTreeMap::new();
-                resolved_parameters.insert("gravity_mps2".to_owned(), scenario.world.gravity_mps2);
-                resolved_parameters.insert("route_angle_deg".to_owned(), route_angle.angle_deg);
-                resolved_parameters.insert(
-                    "route_radius_m".to_owned(),
-                    plan.normalized_geometry.direct_distance_m,
-                );
-                resolved_parameters.insert(
-                    "expected_waypoint_count".to_owned(),
-                    f64::from(entry.expected_waypoint_count),
-                );
-                resolved_parameters.insert(
-                    "planned_route_length_m".to_owned(),
-                    plan.diagnostics.route_length_m,
-                );
-                resolved_parameters.insert(
-                    "planned_peak_extra_loft_m".to_owned(),
-                    plan.diagnostics.peak_extra_loft_m,
-                );
-                for (index, waypoint) in plan.waypoints().iter().enumerate() {
-                    resolved_parameters
-                        .insert(format!("waypoint_{index}_x_m"), waypoint.position_m.x);
-                    resolved_parameters
-                        .insert(format!("waypoint_{index}_y_m"), waypoint.position_m.y);
-                }
-                let descriptor = ResolvedRunDescriptor {
-                    run_id,
-                    entry_id: entry.id.clone(),
-                    source_kind: ResolvedRunSourceKind::PlannerMatrix,
-                    scenario_source: entry.base_scenario.clone(),
-                    resolved_scenario_id: scenario.id.clone(),
-                    resolved_scenario_name: scenario.name.clone(),
-                    family_id: Some(entry.id.clone()),
-                    selector,
-                    lane_id: lane.id.clone(),
-                    resolved_seed: seed_spec.index,
-                    resolved_parameters,
-                    controller_id: controller_spec.id().to_owned(),
-                    controller_spec: controller_spec.clone(),
-                    physical_case_id: Some(physical_case_id),
-                    route_provenance: Some(provenance),
-                    route_plan: Some(plan),
-                    planner_compute: Some(planner_compute),
-                };
-                runs.push(ResolvedBatchRun {
-                    descriptor,
-                    scenario,
-                });
-            }
-        }
-    }
-
-    Ok(runs)
-}
-
-fn planner_physical_case_id(
-    entry_id: &str,
-    terrain_profile: &str,
-    vehicle_variant: &str,
-    route_angle: &str,
-    seed: u64,
-    lane_id: &str,
-) -> String {
-    sanitize_token(&format!(
-        "{entry_id}__{terrain_profile}__{vehicle_variant}__{}__seed_{seed:02}__{lane_id}",
-        signed_selector_token(route_angle)
-    ))
-}
-
-fn planner_selector_axes(
-    entry: &PlannerMatrixEntry,
-    route_angle: &str,
-    lane_id: &str,
-) -> SelectorAxes {
-    let goal = entry.evaluation_goal.as_str();
-    SelectorAxes {
-        mission: "transfer_guidance".to_owned(),
-        arrival_family: entry.planner_matrix.clone(),
-        condition_set: "clean".to_owned(),
-        vehicle_variant: entry.vehicle_variant.clone(),
-        arc_point: route_angle.to_owned(),
-        velocity_band: entry.terrain_profile.as_str().to_owned(),
-        route_family: entry.planner_matrix.clone(),
-        route_angle: route_angle.to_owned(),
-        radius_tier: "nominal".to_owned(),
-        waypoint_profile: entry.terrain_profile.as_str().to_owned(),
-        waypoint_handoff_envelope: "planner_generated_v1".to_owned(),
-        expectation_tier: Some(format!("{}:{}:{}", entry.expectation_tier, goal, lane_id)),
-    }
-}
-
-fn route_topology_label(topology: RouteTopology) -> String {
-    match topology {
-        RouteTopology::Direct => "direct".to_owned(),
-        RouteTopology::Waypoint => "waypoint".to_owned(),
-    }
-}
-
-pub(super) fn resolve_planner_matrix_scenario(
-    entry: &PlannerMatrixEntry,
-    base_scenario: &ScenarioSpec,
-    family_spec: &TransferRouteFamilySpec,
-    route_angle: &TransferRouteAngleSpec,
-    seed_spec: &TransferSeedSpec,
-    lane_id: &str,
-    run_id: &str,
-) -> Result<ScenarioSpec> {
-    let mut scenario = base_scenario.clone();
-    scenario.id = run_id.to_owned();
-    scenario.name = format!(
-        "{} [planner {} {} {} seed {} {}]",
-        base_scenario.name,
-        entry.terrain_profile.as_str(),
-        entry.vehicle_variant,
-        route_angle.id,
-        seed_spec.index,
-        lane_id
-    );
-    scenario.description = format!(
-        "{} (planner matrix {} profile {} angle {} seed {} lane {})",
-        base_scenario.description,
-        entry.planner_matrix,
-        entry.terrain_profile.as_str(),
-        route_angle.id,
-        seed_spec.index,
-        lane_id
-    );
-    scenario.seed = seed_spec.index;
-    // Planner-backed rows use the same execution horizon as the maintained
-    // transfer matrices.  Route choice is setup-time work, but waypoint
-    // guidance needs the longer horizon to complete its terminal descent;
-    // keeping the base scenario's larger value preserves explicit overrides.
-    scenario.sim.max_time_s = scenario
-        .sim
-        .max_time_s
-        .max(if entry.expected_waypoint_count > 0 {
-            130.0
-        } else {
-            90.0
-        });
-    scenario.tags = merge_unique_tags(&base_scenario.tags, &entry.tags);
-    scenario.metadata.extend(entry.metadata.clone());
-    scenario
-        .metadata
-        .insert("family".to_owned(), entry.id.clone());
-    scenario
-        .metadata
-        .insert("family_entry_id".to_owned(), entry.id.clone());
-    scenario
-        .metadata
-        .insert("resolved_seed".to_owned(), seed_spec.index.to_string());
-    scenario
-        .metadata
-        .insert("mission".to_owned(), "transfer_guidance".to_owned());
-    scenario
-        .metadata
-        .insert("planner_matrix".to_owned(), entry.planner_matrix.clone());
-    scenario.metadata.insert(
-        "terrain_profile".to_owned(),
-        entry.terrain_profile.as_str().to_owned(),
-    );
-    scenario
-        .metadata
-        .insert("vehicle_variant".to_owned(), entry.vehicle_variant.clone());
-    scenario
-        .metadata
-        .insert("route_angle".to_owned(), route_angle.id.to_owned());
-    scenario
-        .metadata
-        .insert("radius_tier".to_owned(), "nominal".to_owned());
-    scenario
-        .metadata
-        .insert("lane_id".to_owned(), lane_id.to_owned());
-    scenario.metadata.insert(
-        "evaluation_goal".to_owned(),
-        entry.evaluation_goal.as_str().to_owned(),
-    );
-    scenario.world.gravity_mps2 = family_spec.gravity_mps2;
-    for adjustment in &entry.adjustments {
-        apply_numeric_adjustment(&mut scenario, adjustment)?;
-    }
-
-    let radius_m = SIGNED_ROUTE_ARC_TRANSFER_V1_NOMINAL_RADIUS_M * (1.0 + seed_spec.radius_pct);
-    let radius_tier = TransferRadiusTierSpec {
-        id: "nominal",
-        radius_m,
-    };
-    configure_transfer_route_geometry(&mut scenario, route_angle, &radius_tier, None, None)?;
-    let route = scenario
-        .mission
-        .transfer_route
-        .as_ref()
-        .ok_or_else(|| anyhow!("planner geometry did not create transfer route"))?
-        .clone();
-    let source_pad = scenario
-        .world
-        .landing_pad(&route.source_pad_id)
-        .cloned()
-        .ok_or_else(|| anyhow!("planner geometry is missing source pad"))?;
-    let target_pad = scenario
-        .world
-        .landing_pad(&route.target_pad_id)
-        .cloned()
-        .ok_or_else(|| anyhow!("planner geometry is missing target pad"))?;
-    scenario.world.terrain = TerrainDefinition::Heightfield {
-        points_m: planner_terrain_points(
-            &source_pad,
-            &target_pad,
-            entry.terrain_profile.as_str(),
-            &scenario.vehicle,
-            &entry.policy,
-        )?,
-    };
-    scenario.metadata.insert(
-        "resolved.route_radius_m".to_owned(),
-        format!("{radius_m:.6}"),
-    );
-    scenario.metadata.insert(
-        "resolved.route_angle_deg".to_owned(),
-        format!("{:.6}", route_angle.angle_deg),
-    );
-    scenario.metadata.insert(
-        "waypoint_profile".to_owned(),
-        entry.terrain_profile.as_str().to_owned(),
-    );
-    Ok(scenario)
-}
-
-fn planner_terrain_points(
-    source_pad: &LandingPadSpec,
-    target_pad: &LandingPadSpec,
-    profile: &str,
-    vehicle: &VehicleSpec,
-    policy: &RoutePlanningPolicy,
-) -> Result<Vec<Vec2>> {
-    let source_left = source_pad.center_x_m - source_pad.half_width_m();
-    let source_right = source_pad.center_x_m + source_pad.half_width_m();
-    let target_left = target_pad.center_x_m - target_pad.half_width_m();
-    let target_right = target_pad.center_x_m + target_pad.half_width_m();
-    if source_right >= target_left {
-        bail!("planner geometry source and target pads overlap");
-    }
-    let span = target_pad.center_x_m - source_pad.center_x_m;
-    if span <= 0.0 {
-        bail!("planner geometry requires target pad to be right of source pad");
-    }
-    let margin = (span * 0.15).max(160.0);
-    let contact_half_span = vehicle.geometry.touchdown_half_span_m;
-    let source_transition_start = source_pad.half_width_m() + contact_half_span;
-    let target_transition_end = span - target_pad.half_width_m() - contact_half_span;
-    let free_span = target_transition_end - source_transition_start;
-    if free_span <= 0.0 {
-        bail!("planner terrain has no usable endpoint transition span");
-    }
-    let transition = policy.endpoint_transition_m.min(free_span * 0.25);
-    let source_transition_end = source_transition_start + transition;
-    let target_transition_start = target_transition_end - transition;
-    let chord_y = |x: f64| {
-        source_pad.surface_y_m
-            + ((target_pad.surface_y_m - source_pad.surface_y_m) * (x - source_pad.center_x_m)
-                / span)
-    };
-    let low = |x: f64| chord_y(x) - 140.0;
-    let mut points = vec![
-        Vec2::new(source_pad.center_x_m - margin, source_pad.surface_y_m),
-        Vec2::new(source_left, source_pad.surface_y_m),
-        Vec2::new(source_right, source_pad.surface_y_m),
-        Vec2::new(
-            source_pad.center_x_m + source_transition_start,
-            low(source_pad.center_x_m + source_transition_start),
-        ),
-        Vec2::new(
-            source_pad.center_x_m + source_transition_end,
-            low(source_pad.center_x_m + source_transition_end),
-        ),
-    ];
-    match profile {
-        "clear_direct" => {}
-        "single_mid_ridge" => {
-            let x = source_pad.center_x_m + (span * 0.5);
-            points.extend([
-                Vec2::new(x - 42.0, low(x - 42.0)),
-                Vec2::new(x, chord_y(x) + 120.0),
-                Vec2::new(x + 42.0, low(x + 42.0)),
-            ]);
-        }
-        "double_separated_ridge" => {
-            for fraction in [0.28, 0.72] {
-                let x = source_pad.center_x_m + (span * fraction);
-                points.extend([
-                    Vec2::new(x - 16.0, low(x - 16.0)),
-                    Vec2::new(x, chord_y(x) + 230.0),
-                    Vec2::new(x + 16.0, low(x + 16.0)),
-                ]);
-            }
-        }
-        _ => bail!("unsupported planner terrain profile '{profile}'"),
-    }
-    let target_transition_start_x = source_pad.center_x_m + target_transition_start;
-    let target_transition_end_x = source_pad.center_x_m + target_transition_end;
-    points.extend([
-        Vec2::new(target_transition_start_x, low(target_transition_start_x)),
-        Vec2::new(target_transition_end_x, low(target_transition_end_x)),
-        Vec2::new(target_left, target_pad.surface_y_m),
-        Vec2::new(target_right, target_pad.surface_y_m),
-        Vec2::new(target_pad.center_x_m + margin, target_pad.surface_y_m),
-    ]);
-    points.sort_by(|lhs, rhs| lhs.x.total_cmp(&rhs.x));
-    points.dedup_by(|lhs, rhs| (lhs.x - rhs.x).abs() <= 1.0e-9);
-    TerrainDefinition::Heightfield {
-        points_m: points.clone(),
-    }
-    .validate()
-    .map_err(anyhow::Error::msg)?;
-    Ok(points)
-}
-
 pub(super) fn selected_transfer_route_angle_specs<'a>(
     entry: &TransferMatrixEntry,
     family_spec: &'a TransferRouteFamilySpec,
@@ -1852,43 +1333,6 @@ pub(super) fn selected_transfer_route_angle_specs<'a>(
                     format!(
                         "transfer matrix entry '{}' route_angle selector '{}' is not supported by matrix '{}'",
                         entry.id, route_angle, entry.transfer_matrix
-                    )
-                })
-        })
-        .collect()
-}
-
-pub(super) fn selected_planner_route_angle_specs<'a>(
-    entry: &PlannerMatrixEntry,
-    family_spec: &'a TransferRouteFamilySpec,
-) -> Result<Vec<&'a TransferRouteAngleSpec>> {
-    if entry.route_angles.is_empty() {
-        return Ok(family_spec
-            .route_angles
-            .iter()
-            .filter(|candidate| matches!(candidate.id, "r-30" | "r00" | "r+30"))
-            .collect());
-    }
-    let mut seen = BTreeSet::new();
-    entry
-        .route_angles
-        .iter()
-        .map(|route_angle| {
-            if !seen.insert(route_angle.clone()) {
-                return Err(anyhow!(
-                    "planner matrix entry '{}' route_angles must not contain duplicate '{}'",
-                    entry.id,
-                    route_angle
-                ));
-            }
-            family_spec
-                .route_angles
-                .iter()
-                .find(|candidate| candidate.id == route_angle)
-                .with_context(|| {
-                    format!(
-                        "planner matrix entry '{}' route_angle selector '{}' is not supported",
-                        entry.id, route_angle
                     )
                 })
         })
