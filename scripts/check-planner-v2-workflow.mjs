@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Maintained read-only checks for the selected native V2 common report and a
-// same-source repeat. Historical checkpoint scripts remain unchanged.
+// same-source repeat.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {lstatSync, readFileSync, realpathSync} from 'node:fs';
@@ -8,11 +8,10 @@ import {dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {assertSharedBatch, assertSharedSummary} from './check-planner-v2-common.mjs';
-import {expectedProjection, extractProjection} from './check-planner-v2-tree.mjs';
 import {
+  assertSharedBatch, assertSharedSummary, expectedProjection, extractProjection,
   comparableFlight, extractReportData, verifyCorrectionAnnotations,
-} from './check-planner-v2-batch.mjs';
+} from './planner-v2-report-checks.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PACK = 'planner_v2_lab_suite';

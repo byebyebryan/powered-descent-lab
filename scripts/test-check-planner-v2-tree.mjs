@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {expectedProjection,extractProjection,assertSummaryText} from './check-planner-v2-tree.mjs';
+import {expectedProjection,extractProjection,assertSummaryText} from './planner-v2-report-checks.mjs';
 const record={case_id:'v2_test',group:'clear',family:'clear',annotated_report_path:'runs/test/index.html',planning_stop:'landed',physical_outcome:'landed_on_target',planning_s:.1};
 const scenario={vehicle:{max_fuel_kg:200}};
 const flight={planning_stop:'landed',physical_outcome:'landed_on_target',mission_outcome:'success',integrity_passed:true,final_source_replay_passed:true,correction_count:0,segments:[],manifest:{physics_steps:120,sim_time_s:1,summary:{fuel_used_kg:20,landing:{touchdown_center_offset_m:-.5}}}};

@@ -7,7 +7,7 @@ import {mkdirSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {cdpClient, waitForBrowserPage, captureScreenshot, checkFlightInteractions} from './check-planner-v2-batch.mjs';
+import {cdpClient, waitForBrowserPage, captureScreenshot, checkFlightInteractions} from './planner-v2-browser-helpers.mjs';
 
 const BASE = '/reports/eval/planner_v2_lab_suite/';
 const TOPIC = '/reports/topics/waypoint-planning/index.html';

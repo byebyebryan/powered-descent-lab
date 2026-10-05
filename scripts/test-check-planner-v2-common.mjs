@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertSharedBatch,assertSharedSummary} from './check-planner-v2-common.mjs';
+import {assertSharedBatch,assertSharedSummary} from './planner-v2-report-checks.mjs';
 
 const common='<div data-batch-template="common-v1"><h2>Overview</h2><h2>Coverage</h2><h2>Context</h2><h2>Review Tree</h2><table><tr>'+['Selector','Success / Outcome','Fuel Used','Flight Time','Landing Offset','Reference deviation','Preview'].map(h=>`<th>${h}</th>`).join('')+'</tr></table></div>';
 test('common template contract requires established sections and columns',()=>{assertSharedBatch(common);for(const section of ['Overview','Coverage','Context','Review Tree'])assert.throws(()=>assertSharedBatch(common.replace(`<h2>${section}</h2>`,'')));assert.throws(()=>assertSharedBatch(common.replace('common-v1','custom-v2')));});

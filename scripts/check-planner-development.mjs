@@ -114,7 +114,7 @@ export function buildPlannerDevelopmentSteps({
     step(root, 'diff whitespace', ['git', 'diff', '--check']),
     step(root, 'strict all-target Clippy', [
       'cargo', 'clippy', '--workspace', '--all-targets', '--all-features', '--',
-      '-D', 'warnings', '-A', 'clippy::single_element_loop',
+      '-D', 'warnings',
     ]),
     step(root, 'maintained JavaScript tests', ['node', '--test', ...nodeTests]),
   ];

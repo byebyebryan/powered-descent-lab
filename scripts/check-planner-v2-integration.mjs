@@ -8,7 +8,7 @@ import {lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFile
 import {basename, dirname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
-import {comparableFlight, extractReportData, verifyCorrectionAnnotations} from './check-planner-v2-batch.mjs';
+import {comparableFlight, extractReportData, verifyCorrectionAnnotations} from './planner-v2-report-checks.mjs';
 import {comparableCompactSummary, nativeAcceptance, safeFile, verifySavedExecution} from './check-planner-v2-workflow.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
