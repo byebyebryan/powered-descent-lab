@@ -3,8 +3,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{self, OpenOptions},
-    io::Write,
+    fs,
     path::{Component, Path, PathBuf},
 };
 
@@ -17,9 +16,12 @@ use pd_report::waypoint_v2::{self as renderer, data::*};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::waypoint_direct_body_aware_terminal::sha256_bytes;
 use crate::{
     WaypointV2FlightResult,
+    evidence_io::{
+        reserve_output_root, sha256_bytes, write_bytes_create_only_with_context,
+        write_json_create_only,
+    },
     waypoint_v2::{WaypointV2CycleDecision, WaypointV2SegmentKind},
 };
 
@@ -103,15 +105,9 @@ pub(super) fn executed_annotations(
 }
 
 pub fn policy_version(policy: &WaypointV2Policy) -> Result<u32> {
-    if policy == &WaypointV2Policy::default() {
-        Ok(1)
-    } else if policy == &WaypointV2Policy::revision_2() {
-        Ok(2)
-    } else if policy == &WaypointV2Policy::revision_3() {
-        Ok(3)
-    } else {
-        anyhow::bail!("unsupported report policy identity")
-    }
+    policy
+        .version()
+        .map_err(|_| anyhow::anyhow!("unsupported report policy identity"))
 }
 
 fn point(state: &SimulationStateSnapshotV1) -> FlightPoint {
@@ -485,17 +481,11 @@ pub fn project_flight(
 }
 
 pub fn write_flight_page(path: &Path, data: &FlightReport) -> Result<()> {
-    write_bytes_create_only(path, renderer::render_flight(data)?.as_bytes())
-}
-
-pub(crate) fn write_bytes_create_only(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .with_context(|| format!("create-only report {}", path.display()))?;
-    file.write_all(bytes)?;
-    Ok(())
+    write_bytes_create_only_with_context(
+        path,
+        renderer::render_flight(data)?.as_bytes(),
+        "create-only report",
+    )
 }
 
 #[derive(Deserialize)]
@@ -885,15 +875,19 @@ pub fn render_retained_suite(
             sha256_bytes(&fs::read(repo_root.join(relative))?)?,
         );
     }
-    crate::nominal_direct_flight::reserve_output_root(output_dir)?;
+    reserve_output_root(output_dir)?;
     let mut outputs = BTreeMap::new();
     for (relative, html) in &pages {
         let path = output_dir.join(relative);
         fs::create_dir_all(path.parent().context("page parent")?)?;
-        write_bytes_create_only(&path, html.as_bytes())?;
+        write_bytes_create_only_with_context(&path, html.as_bytes(), "create-only report")?;
         outputs.insert(relative.clone(), sha256_bytes(html.as_bytes())?);
     }
-    write_bytes_create_only(&output_dir.join("index.html"), index_html.as_bytes())?;
+    write_bytes_create_only_with_context(
+        &output_dir.join("index.html"),
+        index_html.as_bytes(),
+        "create-only report",
+    )?;
     outputs.insert("index.html".into(), sha256_bytes(index_html.as_bytes())?);
     let receipt = RenderReceipt {
         schema_id: "waypoint_v2_report_render_v1",
@@ -909,10 +903,7 @@ pub fn render_retained_suite(
         renderer_source_sha256: renderer_hashes,
         rendering_process_sha256: sha256_bytes(&fs::read(std::env::current_exe()?)?)?,
     };
-    crate::nominal_direct_flight::write_create_only(
-        &output_dir.join("render-provenance.json"),
-        &receipt,
-    )?;
+    write_json_create_only(&output_dir.join("render-provenance.json"), &receipt)?;
     if case_id.is_none()
         && let Ok(presentation_root) = repo_root.join("outputs/reports/waypoint-v2").canonicalize()
         && output_dir.canonicalize()?.parent() == Some(presentation_root.as_path())
@@ -1185,24 +1176,18 @@ mod tests {
         };
         let summary = json!({"schema_id": "waypoint_v2_flight_summary_v1", "input_identity": result.input_identity, "policy": result.policy, "result": compact, "run_summary": run_summary});
         let suite = json!({"schema_id": "waypoint_v2_practical_suite_run_v1", "status": "completed", "policy_version": 3, "case_count": 1, "provenance": {"synthetic": true}, "cases": [{"case_id": scenario.id, "group": if unsupported {"diagnostic"} else {"clear"}, "summary_path": "runs/v2_clear_synthetic/summary.json", "flight_path": "runs/v2_clear_synthetic/flight.json", "result": compact, "run_summary": suite_run_summary}]});
-        crate::nominal_direct_flight::write_create_only(
-            &case_root.join("scenario.json"),
-            &scenario,
-        )
-        .unwrap();
-        crate::nominal_direct_flight::write_create_only(&case_root.join("flight.json"), &result)
-            .unwrap();
-        crate::nominal_direct_flight::write_create_only(&case_root.join("summary.json"), &summary)
-            .unwrap();
+        write_json_create_only(&case_root.join("scenario.json"), &scenario).unwrap();
+        write_json_create_only(&case_root.join("flight.json"), &result).unwrap();
+        write_json_create_only(&case_root.join("summary.json"), &summary).unwrap();
         if !unsupported {
-            write_bytes_create_only(
+            write_bytes_create_only_with_context(
                 &case_root.join("report.html"),
                 b"original synthetic generic report",
+                "create-only report",
             )
             .unwrap();
         }
-        crate::nominal_direct_flight::write_create_only(&root.join("suite-summary.json"), &suite)
-            .unwrap();
+        write_json_create_only(&root.join("suite-summary.json"), &suite).unwrap();
     }
 
     #[test]

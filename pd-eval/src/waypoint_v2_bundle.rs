@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     WaypointDirectNominalDirectGenerationRequest, WaypointV2FlightResult, WaypointV2Policy,
     WaypointV2SessionProgress,
+    evidence_io::{sha256_bytes, write_json_create_only},
     nominal_direct_flight::nominal_direct_flight_identity,
-    waypoint_direct_body_aware_terminal::sha256_bytes,
     waypoint_v2::{preflight_waypoint_v2_flight, replay_saved_waypoint_v2_evidence},
     waypoint_v2_output::{waypoint_v2_rich_report_eligible, write_waypoint_v2_flight_result},
 };
@@ -90,7 +90,7 @@ pub fn write_waypoint_v2_cli_bundle(
     );
 
     write_waypoint_v2_flight_result(request, result, output_dir, total_started)?;
-    crate::nominal_direct_flight::write_create_only(&output_dir.join("progress.json"), progress)?;
+    write_json_create_only(&output_dir.join("progress.json"), progress)?;
 
     // Keep a diagnosable flight, summary and progress trace even when the
     // additive metadata validator rejects the trace. The receipt remains the
@@ -118,7 +118,7 @@ pub fn write_waypoint_v2_cli_bundle(
         input_identity: result.input_identity.clone(),
         artifact_sha256,
     };
-    crate::nominal_direct_flight::write_create_only(&output_dir.join("bundle.json"), &receipt)?;
+    write_json_create_only(&output_dir.join("bundle.json"), &receipt)?;
     Ok(receipt)
 }
 

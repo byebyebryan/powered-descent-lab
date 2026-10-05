@@ -17,10 +17,10 @@ pub use pd_plan::waypoint_v2::{WaypointV2Policy, WaypointV2Stop};
 use crate::{
     AirborneDirectAuditV1, BodyAwareTerminalPolicyV1, NominalDirectFlightDecisionV1,
     WaypointDirectNominalDirectGenerationRequest, audit_airborne_acquisition_proposal,
-    audit_airborne_direct_proposal, audit_canonical_initial_direct,
+    audit_canonical_initial_direct,
     canonical_initial_direct::{has_actual_terrain_conflict, source_pad_input},
     clearing_body_reserve_query, evaluate_airborne_acquisition_direct,
-    evaluate_airborne_nominal_direct, evaluate_canonical_initial_direct,
+    evaluate_canonical_initial_direct,
     local_clearing::{
         OrdinaryLive, advance_ordinary, entry_rejection, local_rank, new_ordinary, search_row,
     },
@@ -58,7 +58,7 @@ pub fn preflight_waypoint_v2_flight(
             }
             _ => unreachable!("input-only preflight cannot return a flight"),
         }
-    } else if let Err(reason) = policy.validate() {
+    } else if let Err(reason) = policy.validate_for_execution() {
         (Some(WaypointV2Stop::Unsupported), Some(reason))
     } else if request.scenario.mission.transfer_route.is_some() {
         (
@@ -321,10 +321,8 @@ impl FlightLoop {
     ) -> Result<NominalBuild> {
         if initial {
             self.build_initial_nominal(request, cycle)
-        } else if self.result.policy == WaypointV2Policy::revision_3() {
-            self.build_acquisition_nominal(cycle)
         } else {
-            self.build_historical_airborne_nominal(cycle)
+            self.build_acquisition_nominal(cycle)
         }
     }
 
@@ -385,36 +383,6 @@ impl FlightLoop {
         };
         let audit =
             audit_airborne_acquisition_proposal(&self.context, &self.live.state, &proposal, 5.0)?;
-        retain_selected_nominal(
-            cycle,
-            proposal.identity,
-            proposal.peak_com_height_m,
-            proposal.updates,
-        );
-        Ok(NominalBuild::Ready {
-            source_handoff: None,
-            audit: Box::new(audit),
-        })
-    }
-
-    fn build_historical_airborne_nominal(
-        &self,
-        cycle: &mut WaypointV2Cycle,
-    ) -> Result<NominalBuild> {
-        let search =
-            evaluate_airborne_nominal_direct(&self.context, &self.live.state, self.deadline)?;
-        for attempt in &search.attempts {
-            record_nominal_attempt(cycle, &attempt.status, attempt.reason.as_deref());
-        }
-        cycle.nominal_search_identity = search.identity;
-        if let Some(reason) = search.unsupported_reason {
-            return Ok(NominalBuild::Unsupported(reason));
-        }
-        let Some(proposal) = search.selected else {
-            return Ok(NominalBuild::NoNominal);
-        };
-        let audit =
-            audit_airborne_direct_proposal(&self.context, &self.live.state, &proposal, 5.0)?;
         retain_selected_nominal(
             cycle,
             proposal.identity,

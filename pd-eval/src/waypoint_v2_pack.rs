@@ -21,9 +21,11 @@ use serde_json::Value;
 use crate::{
     WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointV2FlightResult,
-    nominal_direct_flight::{reserve_output_root, write_create_only},
+    evidence_io::{
+        reserve_output_root, sha256_bytes, write_bytes_create_only_with_context,
+        write_json_create_only,
+    },
     preflight_waypoint_v2_flight,
-    waypoint_direct_body_aware_terminal::sha256_bytes,
     waypoint_v2_output::write_waypoint_v2_flight,
     waypoint_v2_report::render_rich_flight,
 };
@@ -351,7 +353,7 @@ pub fn is_waypoint_v2_pack(path: &Path) -> Result<bool> {
 
 fn policy_for_version(version: u8) -> Result<WaypointV2Policy> {
     match version {
-        1 => Ok(WaypointV2Policy::default()),
+        1 => Ok(WaypointV2Policy::revision_1()),
         2 => Ok(WaypointV2Policy::revision_2()),
         3 => Ok(WaypointV2Policy::revision_3()),
         _ => bail!("policy_version must be 1, 2, or 3"),
@@ -1486,16 +1488,6 @@ fn input_identity_still_matches(
     Ok(true)
 }
 
-fn write_bytes_create_only(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .with_context(|| format!("create-only artifact {}", path.display()))?;
-    file.write_all(bytes)?;
-    Ok(())
-}
-
 fn digest_expanded_inputs(inputs: &[WaypointV2PackInput]) -> Result<String> {
     let digest_items = inputs
         .iter()
@@ -1523,6 +1515,9 @@ pub fn run_waypoint_v2_pack(
     let effective_workers = bounded_worker_count(workers)?;
     let expanded = load_and_expand(pack_path)?;
     let policy = policy_for_version(expanded.definition.policy_version)?;
+    policy
+        .validate_for_execution()
+        .map_err(anyhow::Error::msg)?;
     // Complete admission checks before reserving any output or beginning a flight.
     for input in &expanded.inputs {
         let preflight = preflight_waypoint_v2_flight(&request_for(input), &policy);
@@ -1537,11 +1532,16 @@ pub fn run_waypoint_v2_pack(
     reserve_output_root(capture_root)?;
     let runs = capture_root.join("runs");
     fs::create_dir(&runs)?;
-    write_bytes_create_only(&capture_root.join("pack.json"), &expanded.pack_bytes)?;
+    write_bytes_create_only_with_context(
+        &capture_root.join("pack.json"),
+        &expanded.pack_bytes,
+        "create-only artifact",
+    )?;
     let expanded_inputs_bytes = serde_json::to_vec_pretty(&expanded.inputs)?;
-    write_bytes_create_only(
+    write_bytes_create_only_with_context(
         &capture_root.join("expanded-inputs.json"),
         &expanded_inputs_bytes,
+        "create-only artifact",
     )?;
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(effective_workers)
@@ -1596,7 +1596,7 @@ pub fn run_waypoint_v2_pack(
             source_after: Some(source_after),
         },
     };
-    write_create_only(&capture_root.join("summary.json"), &report)?;
+    write_json_create_only(&capture_root.join("summary.json"), &report)?;
     render_waypoint_v2_batch(capture_root)
 }
 
@@ -2143,8 +2143,12 @@ pub fn render_waypoint_v2_batch_preview(
     let html = tree_report::render(&report, &verified, Some(&source_href))?;
     let renderer_source = capture_source_state(repo)?;
     reserve_output_root(&destination)?;
-    write_bytes_create_only(&destination.join("index.html"), html.as_bytes())?;
-    write_create_only(
+    write_bytes_create_only_with_context(
+        &destination.join("index.html"),
+        html.as_bytes(),
+        "create-only artifact",
+    )?;
+    write_json_create_only(
         &destination.join("preview.json"),
         &serde_json::json!({
             "schema_id":"planner_v2_batch_tree_preview_v1", "source_capture":source,
@@ -2710,8 +2714,18 @@ mod tests {
         let expanded = load_and_expand(Path::new(DEFAULT_PLANNER_PACK_PATH)).unwrap();
         let pack_bytes = expanded.pack_bytes.clone();
         let inputs_bytes = serde_json::to_vec_pretty(&expanded.inputs).unwrap();
-        write_bytes_create_only(&temp.join("pack.json"), &pack_bytes).unwrap();
-        write_bytes_create_only(&temp.join("expanded-inputs.json"), &inputs_bytes).unwrap();
+        write_bytes_create_only_with_context(
+            &temp.join("pack.json"),
+            &pack_bytes,
+            "create-only artifact",
+        )
+        .unwrap();
+        write_bytes_create_only_with_context(
+            &temp.join("expanded-inputs.json"),
+            &inputs_bytes,
+            "create-only artifact",
+        )
+        .unwrap();
         let cases = expanded
             .inputs
             .iter()
@@ -2744,7 +2758,7 @@ mod tests {
                 unchanged_during_capture: None,
             },
         };
-        write_create_only(&temp.join("summary.json"), &report).unwrap();
+        write_json_create_only(&temp.join("summary.json"), &report).unwrap();
         assert!(validated_waypoint_v2_batch(&temp).is_err());
         assert!(render_waypoint_v2_site_pages(&temp, "/eval/capture/").is_err());
         assert!(render_waypoint_v2_batch(&temp).is_err());

@@ -2,6 +2,9 @@
 //! No simulation, archive rewrites, stable-site publication or latest selection.
 
 use super::*;
+use crate::evidence_io::{
+    reserve_output_root, sha256_bytes, write_bytes_create_only_with_context, write_json_create_only,
+};
 use pd_report::{
     flight_annotations::{AnnotationNavigation, NavigationLink},
     navigation_preview::{PreviewNavigation, render_preview_home, render_preview_suite},
@@ -467,12 +470,12 @@ fn render_edition(
         );
     }
     let process_hash = sha256_bytes(&fs::read(std::env::current_exe()?)?)?;
-    crate::nominal_direct_flight::reserve_output_root(&output)?;
+    reserve_output_root(&output)?;
     let mut outputs = BTreeMap::new();
     for (relative, html) in prepared.pages {
         let path = output.join(&relative);
         fs::create_dir_all(path.parent().context("page parent")?)?;
-        write_bytes_create_only(&path, html.as_bytes())?;
+        write_bytes_create_only_with_context(&path, html.as_bytes(), "create-only report")?;
         outputs.insert(relative, sha256_bytes(html.as_bytes())?);
     }
     let receipt = RenderReceipt {
@@ -497,7 +500,7 @@ fn render_edition(
         renderer_source_sha256: renderer_hashes,
         rendering_process_sha256: process_hash,
     };
-    crate::nominal_direct_flight::write_create_only(
+    write_json_create_only(
         &receipt.output_root.join("render-provenance.json"),
         &receipt,
     )?;

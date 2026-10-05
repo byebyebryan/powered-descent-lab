@@ -8,7 +8,9 @@ use serde::Serialize;
 
 use crate::{
     WaypointDirectNominalDirectGenerationRequest, WaypointV2FlightResult,
-    nominal_direct_flight::{reserve_output_root, write_create_only},
+    evidence_io::{
+        reserve_output_root, write_bytes_create_only_with_context, write_json_create_only,
+    },
     run_waypoint_v2_flight,
 };
 
@@ -121,8 +123,8 @@ pub fn write_waypoint_v2_flight_result(
     );
 
     let output_started = Instant::now();
-    write_create_only(&output_dir.join("scenario.json"), &request.scenario)?;
-    write_create_only(&output_dir.join("flight.json"), &result)?;
+    write_json_create_only(&output_dir.join("scenario.json"), &request.scenario)?;
+    write_json_create_only(&output_dir.join("flight.json"), &result)?;
     if waypoint_v2_rich_report_eligible(result) {
         let navigation = pd_report::flight_annotations::AnnotationNavigation {
             source_links: vec![
@@ -150,9 +152,10 @@ pub fn write_waypoint_v2_flight_result(
                 result.policy.policy_id
             ),
         )?;
-        crate::waypoint_v2_report::write_bytes_create_only(
+        write_bytes_create_only_with_context(
             &output_dir.join("report.html"),
             html.as_bytes(),
+            "create-only report",
         )?;
     }
     let output_s = output_started.elapsed().as_secs_f64();
@@ -193,7 +196,7 @@ pub fn write_waypoint_v2_flight_result(
         run_summary,
         timings: OutputTimings { output_s, total_s },
     };
-    write_create_only(&output_dir.join("summary.json"), &summary)?;
+    write_json_create_only(&output_dir.join("summary.json"), &summary)?;
     Ok(())
 }
 

@@ -251,14 +251,12 @@ struct NominalDirectFlightArgs {
 struct WaypointV2FlightArgs {
     #[command(flatten)]
     flight: NominalDirectFlightArgs,
-    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=3), default_value_t = 3)]
+    #[arg(long, value_parser = clap::value_parser!(u8).range(3..=3), default_value_t = 3)]
     policy_version: u8,
 }
 
 fn waypoint_v2_policy_for_version(version: u8) -> WaypointV2Policy {
     match version {
-        1 => WaypointV2Policy::default(),
-        2 => WaypointV2Policy::revision_2(),
         3 => WaypointV2Policy::revision_3(),
         _ => unreachable!("clap restricts the V2 policy version"),
     }
@@ -2419,7 +2417,7 @@ mod direct_generation_cli_tests {
                 "2",
                 "--preflight-only",
             ]))
-            .is_ok()
+            .is_err()
         );
         let version_3 = Cli::try_parse_from(flight.into_iter().chain([
             "--policy-version",
@@ -2902,28 +2900,36 @@ mod tests {
             panic!("wrong command");
         };
         assert_eq!(default.policy_version, 3);
-        for version in ["1", "2", "3"] {
+        let mut args = common.to_vec();
+        args.extend(["--policy-version", "3"]);
+        let Commands::WaypointV2Flight(parsed) = Cli::try_parse_from(args).unwrap().command else {
+            panic!("wrong command");
+        };
+        assert_eq!(parsed.policy_version, 3);
+        assert_eq!(
+            pd_eval::waypoint_v2_report::policy_version(&waypoint_v2_policy_for_version(
+                parsed.policy_version
+            ))
+            .unwrap(),
+            3
+        );
+        for version in ["1", "2"] {
             let mut args = common.to_vec();
             args.extend(["--policy-version", version]);
-            let Commands::WaypointV2Flight(parsed) = Cli::try_parse_from(args).unwrap().command
-            else {
-                panic!("wrong command");
-            };
-            assert_eq!(parsed.policy_version.to_string(), version);
-            assert_eq!(
-                pd_eval::waypoint_v2_report::policy_version(&waypoint_v2_policy_for_version(
-                    parsed.policy_version
-                ))
-                .unwrap()
-                .to_string(),
-                version
-            );
+            assert!(Cli::try_parse_from(args).is_err());
         }
-        // Frozen policy constructors retain their historical identity; only
-        // user-facing selection changes, not numerical or recorded policies.
+        // Saved identities do not depend on the current executable default.
         assert_eq!(
             pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::default()).unwrap(),
+            3
+        );
+        assert_eq!(
+            pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::revision_1()).unwrap(),
             1
+        );
+        assert_eq!(
+            pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::revision_2()).unwrap(),
+            2
         );
     }
 

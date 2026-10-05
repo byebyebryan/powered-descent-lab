@@ -5,7 +5,7 @@ use std::{
     fs::{self, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -21,6 +21,8 @@ use crate::{
     validate_body_aware_terminal_policy,
     validate_waypoint_direct_nominal_direct_generation_request, verify_body_aware_terminal_case,
 };
+
+pub(crate) use crate::evidence_io::sha256_bytes;
 
 pub const WAYPOINT_DIRECT_BODY_AWARE_TERMINAL_FRESH_MANIFEST: &str =
     "fixtures/research/waypoint_direct_body_aware_terminal_fresh_inputs_v1.json";
@@ -1431,34 +1433,6 @@ fn sha256_file(path: &Path) -> Result<String> {
         .unwrap_or_default();
     if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         bail!("sha256sum returned a malformed file digest");
-    }
-    Ok(digest.to_owned())
-}
-
-/// SHA-256 over exact bytes, shared with the physical evaluator engine.
-pub(crate) fn sha256_bytes(bytes: &[u8]) -> Result<String> {
-    let mut child = Command::new("sha256sum")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("starting sha256sum")?;
-    child
-        .stdin
-        .take()
-        .context("opening sha256sum stdin")?
-        .write_all(bytes)
-        .context("writing bytes to sha256sum")?;
-    let output = child.wait_with_output().context("waiting for sha256sum")?;
-    if !output.status.success() {
-        bail!("sha256sum failed while hashing bytes");
-    }
-    let digest = std::str::from_utf8(&output.stdout)?
-        .split_whitespace()
-        .next()
-        .unwrap_or_default();
-    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        bail!("sha256sum returned a malformed digest");
     }
     Ok(digest.to_owned())
 }

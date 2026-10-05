@@ -4,12 +4,7 @@
 //! comparison work. A decision carries the accepted executable program; no
 //! chord-plan/controller compatibility is inferred from a Direct label.
 
-use std::{
-    fs::{self, OpenOptions},
-    io::Write,
-    path::Path,
-    time::Instant,
-};
+use std::{path::Path, time::Instant};
 
 use anyhow::{Context, Result, bail};
 use pd_control::{ControlledRunArtifacts, run_flight_program};
@@ -24,6 +19,10 @@ use crate::{
     BodyAwareTerminalWitnessV1, WaypointDirectNominalDirectGenerationPolicyV1,
     WaypointDirectNominalDirectGenerationRequest, evaluate_waypoint_direct_body_aware_terminal,
     validate_waypoint_direct_nominal_direct_generation_request, verify_body_aware_terminal_witness,
+};
+
+pub(crate) use crate::evidence_io::{
+    reserve_output_root, write_json_create_only as write_create_only,
 };
 
 pub const NOMINAL_DIRECT_FLIGHT_PROTOCOL: &str =
@@ -661,26 +660,6 @@ fn write_ordinary_bundle(
         &artifacts.controller_updates,
         Some(&artifacts.performance),
     )?;
-    Ok(())
-}
-
-pub(crate) fn reserve_output_root(output_dir: &Path) -> Result<()> {
-    if let Some(parent) = output_dir.parent().filter(|p| !p.as_os_str().is_empty()) {
-        fs::create_dir_all(parent)?;
-    }
-    fs::create_dir(output_dir)
-        .with_context(|| format!("create-only output root {}", output_dir.display()))
-}
-
-pub(crate) fn write_create_only<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
-    let bytes = serde_json::to_vec_pretty(value)?;
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .with_context(|| format!("create-only artifact {}", path.display()))?;
-    file.write_all(&bytes)?;
-    file.write_all(b"\n")?;
     Ok(())
 }
 

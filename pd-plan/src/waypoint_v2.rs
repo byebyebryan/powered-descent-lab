@@ -15,16 +15,20 @@ pub struct WaypointV2Policy {
 
 impl Default for WaypointV2Policy {
     fn default() -> Self {
+        Self::revision_3()
+    }
+}
+
+impl WaypointV2Policy {
+    /// Historical identity for saved records, not an executable policy.
+    pub fn revision_1() -> Self {
         Self {
             policy_id: WAYPOINT_V2_POLICY_ID.into(),
             maximum_corrections: 6,
         }
     }
-}
 
-impl WaypointV2Policy {
-    /// Policy 2 changes initial entry spacing only. The sealed one-clearing
-    /// policy remains untouched.
+    /// Historical identity for saved records, not an executable policy.
     pub fn revision_2() -> Self {
         Self {
             policy_id: WAYPOINT_V2_POLICY_REVISION_2_ID.into(),
@@ -42,8 +46,25 @@ impl WaypointV2Policy {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self != &Self::default() && self != &Self::revision_2() && self != &Self::revision_3() {
+        self.version().map(|_| ())
+    }
+
+    /// Recognize exact saved identities independently of the current default.
+    pub fn version(&self) -> Result<u32, String> {
+        if self == &Self::revision_1() {
+            Ok(1)
+        } else if self == &Self::revision_2() {
+            Ok(2)
+        } else if self == &Self::revision_3() {
+            Ok(3)
+        } else {
             return Err("unsupported V2 policy; revisions must be explicitly versioned".into());
+        }
+    }
+
+    pub fn validate_for_execution(&self) -> Result<(), String> {
+        if self.version()? != 3 {
+            return Err("V2 policies 1 and 2 are retired; execution requires policy 3".into());
         }
         Ok(())
     }
@@ -52,10 +73,7 @@ impl WaypointV2Policy {
         &self,
         source_handoff: u64,
     ) -> Result<Vec<(String, u64)>, String> {
-        self.validate()?;
-        if self == &Self::default() {
-            return crate::local_clearing::intervention_boundaries(source_handoff);
-        }
+        self.validate_for_execution()?;
         let bridge = source_handoff
             .checked_sub(72)
             .ok_or("source handoff before launch")?;
@@ -194,9 +212,10 @@ mod tests {
         assert!(original_deadline(f64::INFINITY, 80.0).is_err());
     }
     #[test]
-    fn revision_two_changes_initial_entries_only() {
-        let p = WaypointV2Policy::revision_2();
-        assert!(p.validate().is_ok());
+    fn current_default_preserves_policy_three_entries_and_bounds() {
+        let p = WaypointV2Policy::default();
+        assert_eq!(p, WaypointV2Policy::revision_3());
+        assert!(p.validate_for_execution().is_ok());
         assert_eq!(
             p.initial_intervention_boundaries(1992)
                 .unwrap()
@@ -205,36 +224,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1512, 1272, 1032, 792]
         );
-        assert_eq!(
-            WaypointV2Policy::default()
-                .initial_intervention_boundaries(1992)
-                .unwrap()
-                .iter()
-                .map(|x| x.1)
-                .collect::<Vec<_>>(),
-            [1994, 1512, 1032, 552]
-        );
         assert_eq!(p.maximum_local_work().unwrap(), (1008, 362880));
         assert!(p.initial_intervention_boundaries(72).is_err());
         assert!(p.initial_intervention_boundaries(u64::MAX - 1).is_err());
     }
 
     #[test]
-    fn revision_three_matches_policy_two_entries_and_local_bounds() {
-        let policy_2 = WaypointV2Policy::revision_2();
-        let policy_3 = WaypointV2Policy::revision_3();
-
-        assert_ne!(policy_3.policy_id, policy_2.policy_id);
-        assert_eq!(policy_3.policy_id, WAYPOINT_V2_POLICY_REVISION_3_ID);
-        assert!(policy_3.validate().is_ok());
-        assert_eq!(
-            policy_3.initial_intervention_boundaries(1992).unwrap(),
-            policy_2.initial_intervention_boundaries(1992).unwrap()
-        );
-        assert_eq!(policy_3.maximum_corrections, policy_2.maximum_corrections);
-        assert_eq!(policy_3.maximum_local_work().unwrap(), (1008, 362880));
-        assert!(policy_3.can_correct(5));
-        assert!(!policy_3.can_correct(6));
+    fn historical_policies_remain_recognizable_but_cannot_execute() {
+        for (version, policy) in [
+            (1, WaypointV2Policy::revision_1()),
+            (2, WaypointV2Policy::revision_2()),
+        ] {
+            let saved = serde_json::to_string(&policy).unwrap();
+            let restored: WaypointV2Policy = serde_json::from_str(&saved).unwrap();
+            assert_eq!(restored.version().unwrap(), version);
+            assert!(restored.validate().is_ok());
+            assert!(
+                restored
+                    .validate_for_execution()
+                    .unwrap_err()
+                    .contains("retired")
+            );
+            assert!(restored.initial_intervention_boundaries(1992).is_err());
+        }
     }
 
     #[test]

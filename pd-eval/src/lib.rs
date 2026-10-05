@@ -68,6 +68,8 @@ pub use comparison::compare_batch_reports;
 pub(crate) use comparison::run_pointer;
 pub(crate) use comparison::{metric_summary, success_rate, summarize_records};
 
+mod evidence_io;
+
 mod runtime;
 use runtime::*;
 

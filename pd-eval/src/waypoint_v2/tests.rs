@@ -309,6 +309,31 @@ fn preflight_is_input_only_and_disallows_even_empty_authored_route() {
 }
 
 #[test]
+fn historical_policy_execution_is_rejected_without_creating_a_simulation() {
+    let request = request();
+    for policy in [
+        WaypointV2Policy::revision_1(),
+        WaypointV2Policy::revision_2(),
+    ] {
+        let preflight = preflight_waypoint_v2_flight(&request, &policy);
+        assert_eq!(preflight.rejection, Some(WaypointV2Stop::Unsupported));
+        assert!(preflight.reason.as_deref().unwrap().contains("retired"));
+        assert!(!preflight.simulation_created);
+        let mut session = WaypointV2Session::start(request.clone(), policy).unwrap();
+        assert!(matches!(
+            session.advance_piece().unwrap(),
+            WaypointV2SessionProgress::Terminal {
+                planning_stop: WaypointV2Stop::Unsupported,
+                ..
+            }
+        ));
+        let result = session.finish().unwrap();
+        assert!(result.cycles.is_empty());
+        assert!(result.ordinary_flight.is_none());
+    }
+}
+
+#[test]
 fn failed_finalization_updates_terminal_and_retains_partial_capture() {
     let request = request();
     let mut session =

@@ -125,6 +125,52 @@ test('injected execution is fail-fast and ordinary mode creates no capture artif
   }
 });
 
+test('default-off leaks and command spawn errors fail before later steps', () => {
+  const root = syntheticRoot();
+  const steps = buildPlannerDevelopmentSteps({repositoryRoot: root});
+  const failures = [
+    {
+      label: 'default-off CLI help',
+      result: {status: 0, stdout: 'Commands: run replay report waypoint-v2-flight', stderr: ''},
+      message: /must not expose optional V2 commands/,
+    },
+    {
+      label: 'default-off normal dependency tree',
+      result: {status: 0, stdout: 'pd-cli v0.1.0\n└── pd-eval v0.1.0', stderr: ''},
+      message: /pd-eval must stay out of the default-off normal dependency tree/,
+    },
+    {
+      label: 'workspace all-features tests',
+      result: {status: null, stdout: '', stderr: '', error: new Error('synthetic spawn error')},
+      message: /workspace all-features tests failed with exit status null:.*synthetic spawn error/s,
+    },
+  ];
+
+  try {
+    for (const failure of failures) {
+      const failingIndex = steps.findIndex(step => step.label === failure.label);
+      const attempted = [];
+      assert.throws(() => runPlannerDevelopmentSteps(steps, {
+        write: () => {},
+        execute: step => {
+          attempted.push(step.label);
+          return step.label === failure.label
+            ? failure.result
+            : {status: 0, stdout: outputFor(step), stderr: ''};
+        },
+      }), failure.message);
+      assert.deepEqual(
+        attempted,
+        steps.slice(0, failingIndex + 1).map(step => step.label),
+        `${failure.label} must stop the runner before later checks`,
+      );
+    }
+    assert.equal(existsSync(join(root, 'outputs')), false);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
 test('main rejects bad arguments before any synthetic command runs', () => {
   const root = syntheticRoot();
   let calls = 0;
