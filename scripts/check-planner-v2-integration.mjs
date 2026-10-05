@@ -331,6 +331,7 @@ export function checkCliMatrix(native, directory) {
   assert.equal(matrix.schema_id, SCHEMA); assert.equal(matrix.pack_id, PACK);
   assert.equal(matrix.status, 'completed'); assert.equal(matrix.passed, true);
   assert.equal(matrix.attempted_case_count, 44); assert.equal(matrix.cases.length, 44);
+  assert.equal(matrix.invocations.length, 44, 'every attempted CLI invocation must be retained');
   assert.deepEqual(matrix.source_before, matrix.source_after); assert.equal(matrix.source_before.git_dirty, false);
   const source = batch.provenance.source_before;
   for (const key of ['git_commit', 'git_dirty', 'rust_source_tree_sha256']) assert.equal(matrix.source_before[key], source[key], `same-checkout ${key}`);
@@ -346,6 +347,9 @@ export function checkCliMatrix(native, directory) {
   for (const [i, input] of inputs.entries()) {
     const saved = matrix.cases[i], nativeRow = batch.cases[i];
     assert.equal(saved.case_id, input.case_id); assert.equal(nativeRow.case_id, input.case_id);
+    const invocation = readJson(directory, `logs/${input.case_id}.invocation.json`);
+    assert.deepEqual(invocation, {schema_id: 'planner_v2_cli_invocation_v1', case_id: input.case_id, status: 'process_exited', exit_code: saved.exit_code}, `${input.case_id}: invocation exit receipt`);
+    assert.deepEqual(matrix.invocations[i], invocation, `${input.case_id}: ordered attempted invocation`);
     assert.deepEqual(saved.paths, rowFor(input));
     const root = join(directory, 'runs', input.case_id);
     const {flight} = verifyBundle(root, input, readJson(native, nativeRow.flight_path));
@@ -391,6 +395,7 @@ export function compareCliRepeat(first, repeat) {
   assert.notEqual(realpathSync(first), realpathSync(repeat));
   assert.equal(a.passed, true); assert.equal(b.passed, true);
   assert.deepEqual(a.source_before, b.source_before, 'repeat source/both binaries');
+  assert.deepEqual(a.invocations, b.invocations, 'repeat process exits and attempted identities');
   assert.deepEqual(a.source_before, a.source_after); assert.deepEqual(b.source_before, b.source_after);
   assert.deepEqual(a.input_identity, b.input_identity); assert.deepEqual(a.totals, b.totals);
   assert.deepEqual(readJson(first, 'expanded-inputs.json'), readJson(repeat, 'expanded-inputs.json'));
@@ -441,6 +446,27 @@ function invoke(executable, args, cwd) {
   });
 }
 
+export function recordCliInvocation(directory, caseId, result) {
+  assert(/^[a-zA-Z0-9_-]+$/.test(caseId), 'unsafe invocation identity');
+  const receipt = {schema_id: 'planner_v2_cli_invocation_v1', case_id: caseId, status: 'process_exited', exit_code: result.code};
+  // Save the process outcome and raw output before attempting JSON parsing.
+  write(join(directory, `${caseId}.invocation.json`), receipt);
+  writeFileSync(join(directory, `${caseId}.stdout.json`), result.stdout, {flag: 'wx'});
+  writeFileSync(join(directory, `${caseId}.stderr.txt`), result.stderr, {flag: 'wx'});
+  return receipt;
+}
+
+export function parseCliOutcome(result, caseId) {
+  try {
+    const outcome = JSON.parse(result.stdout);
+    assert(outcome && typeof outcome === 'object' && !Array.isArray(outcome), 'expected a structured outcome object');
+    return outcome;
+  }
+  catch (cause) {
+    throw new Error(`${caseId}: missing or malformed structured CLI outcome (exit ${result.code}); stderr: ${result.stderr.trim() || '(empty)'}`, {cause});
+  }
+}
+
 async function captureCli(options) {
   const {root, native, evaluator, cli, first, baseline} = options;
   const directory = validateOutputSeparation(root, options.directory, [native, baseline, ...(first ? [first] : [])]);
@@ -460,7 +486,7 @@ async function captureCli(options) {
   for (const folder of ['inputs', 'runs', 'logs']) mkdirSync(join(directory, folder));
   write(join(directory, 'expanded-inputs.json'), inputs);
   const matrix = {schema_id: SCHEMA, pack_id: PACK, status: 'failed', passed: false, attempted_case_count: 0,
-    native_capture: native, native_summary_sha256: fileSha(safeFile(native, 'summary.json')), input_identity: batch.input_identity, source_before: before, cases: [],
+    native_capture: native, native_summary_sha256: fileSha(safeFile(native, 'summary.json')), input_identity: batch.input_identity, source_before: before, cases: [], invocations: [],
     baseline_capture: baseline, baseline_summary_sha256: fileSha(safeFile(baseline, 'summary.json'))};
   try {
     for (const [i, input] of inputs.entries()) {
@@ -468,11 +494,14 @@ async function captureCli(options) {
       const scenario = join(directory, 'inputs', `${input.case_id}.json`), output = join(directory, 'runs', input.case_id);
       write(scenario, input.scenario);
       matrix.attempted_case_count++;
-      const result = await invoke(cli, ['waypoint-v2-flight', scenario, '--source-pad', input.source_pad_id, '--target-pad', input.target_pad_id, '--output-dir', output], directory);
-      writeFileSync(join(directory, 'logs', `${input.case_id}.stdout.json`), result.stdout, {flag: 'wx'});
-      writeFileSync(join(directory, 'logs', `${input.case_id}.stderr.txt`), result.stderr, {flag: 'wx'});
-      const row = {case_id: input.case_id, exit_code: result.code, stdout: JSON.parse(result.stdout), paths: rowFor(input)};
+      const invocationIndex = matrix.invocations.push({schema_id: 'planner_v2_cli_invocation_v1', case_id: input.case_id, status: 'started', exit_code: null}) - 1;
+      let result;
+      try {result = await invoke(cli, ['waypoint-v2-flight', scenario, '--source-pad', input.source_pad_id, '--target-pad', input.target_pad_id, '--output-dir', output], directory);}
+      catch (error) {matrix.invocations[invocationIndex].status = 'failed_to_complete'; matrix.invocations[invocationIndex].error = String(error); throw error;}
+      matrix.invocations[invocationIndex] = recordCliInvocation(join(directory, 'logs'), input.case_id, result);
+      const row = {case_id: input.case_id, exit_code: result.code, stdout: parseCliOutcome(result, input.case_id), paths: rowFor(input)};
       matrix.cases.push(row);
+      assert.equal(row.stdout.status, 'completed', `${input.case_id}: CLI output phase ${row.stdout.status}; ${row.stdout.reason ?? result.stderr}`);
       const {flight} = verifyBundle(output, input, readJson(native, batch.cases[i].flight_path));
       checkCaseOutcome(input, flight, result.code);
       flightPair(native, batch.cases[i], directory, row.paths);
@@ -508,9 +537,8 @@ async function savedReplays({root, native, directory, evaluator, cli, output: re
     for (const input of inputs.filter(x => !x.expected_preflight)) {
       receipt.attempted_replays++;
       const result = await invoke(cli, ['waypoint-v2-replay', '--bundle-dir', join(directory, 'runs', input.case_id)], output);
-      writeFileSync(join(output, `${input.case_id}.stdout.json`), result.stdout, {flag: 'wx'});
-      writeFileSync(join(output, `${input.case_id}.stderr.txt`), result.stderr, {flag: 'wx'});
-      const outcome = JSON.parse(result.stdout);
+      recordCliInvocation(output, input.case_id, result);
+      const outcome = parseCliOutcome(result, input.case_id);
       cases.push({case_id: input.case_id, exit_code: result.code, outcome});
       assert.equal(result.code, 0, `${input.case_id}: source replay failed: ${result.stderr}`);
       verifyReplayReceipt(outcome, readFileSync(safeFile(directory, `runs/${input.case_id}/flight.json`), 'utf8'), input.case_id);
@@ -543,6 +571,7 @@ export function checkSavedReplays(native, directory, output) {
   const inputs = readJson(directory, 'expanded-inputs.json').filter(x => !x.expected_preflight);
   for (const [i, input] of inputs.entries()) {
     const row = receipt.cases[i]; assert.equal(row.case_id, input.case_id); assert.equal(row.exit_code, 0);
+    assert.deepEqual(readJson(output, `${input.case_id}.invocation.json`), {schema_id: 'planner_v2_cli_invocation_v1', case_id: input.case_id, status: 'process_exited', exit_code: 0});
     assert.deepEqual(row.outcome, readJson(output, `${input.case_id}.stdout.json`));
     verifyReplayReceipt(row.outcome, readFileSync(safeFile(directory, `runs/${input.case_id}/flight.json`), 'utf8'), input.case_id);
   }

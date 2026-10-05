@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, relative} from 'node:path';
-import {checkCaseOutcome, checkCliMatrix, checkSavedReplays, compactJsonLexical, compareCliRepeat, compareNativePhysical, expectedReplayDigests, landed, latencyStats, rawObjectFields, requestIdentity, validateOutputSeparation, verifyBundle, verifyProgress, verifyReplayReceipt} from './check-planner-v2-integration.mjs';
+import {checkCaseOutcome, checkCliMatrix, checkSavedReplays, compactJsonLexical, compareCliRepeat, compareNativePhysical, expectedReplayDigests, landed, latencyStats, parseCliOutcome, rawObjectFields, recordCliInvocation, requestIdentity, validateOutputSeparation, verifyBundle, verifyProgress, verifyReplayReceipt} from './check-planner-v2-integration.mjs';
 
 // These small files test checker logic only. No binary, simulator or retained
 // capture is needed; they are deliberately not physical acceptance evidence.
@@ -55,7 +55,7 @@ function synthetic(t, suffix = '') {
     .concat(['land0', 'land1', 'finite0', 'finite1', 'finite2', 'finite3', 'unsupported0', 'unsupported1'].map(case_id => ({case_id, group: 'diagnostic'})))
     .map(x => ({...x, family: x.group, expected_preflight: x.case_id.startsWith('unsupported') ? 'unsupported' : null,
       source_pad_id: 'source', target_pad_id: 'target', scenario: {id: x.case_id, initial_state: {position_m: {x: 0, y: 5}}, world: {landing_pads: [{id: 'source'}, {id: 'target'}]}}}));
-  const rows = [], cases = [];
+  const rows = [], cases = [], invocations = [];
   for (const input of inputs) {
     const f = flight(input), paths = {case_id: input.case_id, scenario_path: `runs/${input.case_id}/scenario.json`, flight_path: `runs/${input.case_id}/flight.json`, summary_path: `runs/${input.case_id}/summary.json`, rich_report_path: `runs/${input.case_id}/report.html`};
     for (const base of [native, cli]) {
@@ -74,14 +74,14 @@ function synthetic(t, suffix = '') {
     write(join(dir, 'bundle.json'), {schema_id: 'planner_v2_cli_bundle_v1', request, policy: POLICY, input_identity: f.input_identity, artifact_sha256: Object.fromEntries(names.map(name => [name, hash(join(dir, name))]))});
     const stdout = {...Object.fromEntries(['planning_stop', 'reason', 'physical_outcome', 'mission_outcome', 'integrity_passed', 'final_source_replay_passed', 'correction_count', 'input_identity'].map(key => [key, f[key]])), output_dir: dir,
       schema_id: 'planner_v2_cli_flight_v1', status: 'completed', supported: !input.expected_preflight, policy: POLICY};
-    write(join(cli, 'logs', `${input.case_id}.stdout.json`), stdout); writeFileSync(join(cli, 'logs', `${input.case_id}.stderr.txt`), '');
+    invocations.push(recordCliInvocation(join(cli, 'logs'), input.case_id, {code: landed(f) ? 0 : 1, stdout: JSON.stringify(stdout), stderr: ''}));
     rows.push({...paths, status: f.ordinary_flight ? 'simulated' : 'preflight_rejected', planning_s: 1, execution_s: 2, replay_s: 3, artifact_sha256: {}});
     cases.push({case_id: input.case_id, exit_code: landed(f) ? 0 : 1, stdout, paths});
   }
   const batch = {schema_id: 'planner_v2_eval_batch_v1', pack_id: 'planner_v2_lab_suite', status: 'completed', policy_version: 3, case_count: 44, cases: rows, summary: {physical_test_fixture: true}, input_identity: {test: 'same-inputs'}, provenance: {source_before: source, source_after: source, unchanged_during_capture: true}};
   write(join(native, 'summary.json'), batch); write(join(native, 'pack.json'), {id: 'planner_v2_lab_suite'}); write(join(native, 'expanded-inputs.json'), inputs); write(join(cli, 'expanded-inputs.json'), inputs);
   const cliSource = {...source, evaluator_sha256: source.executable_sha256, cli_sha256: 'distinct-cli-exe', integration_source_sha256: 'cli-inclusive-seal'}; delete cliSource.executable_sha256;
-  const matrix = {schema_id: 'planner_v2_cli_validation_matrix_v1', pack_id: 'planner_v2_lab_suite', status: 'completed', passed: true, attempted_case_count: 44, cases,
+  const matrix = {schema_id: 'planner_v2_cli_validation_matrix_v1', pack_id: 'planner_v2_lab_suite', status: 'completed', passed: true, attempted_case_count: 44, cases, invocations,
     source_before: cliSource, source_after: cliSource, native_summary_sha256: hash(join(native, 'summary.json')), input_identity: batch.input_identity,
     totals: {mandatory_landings: 36, direct_clear_landings: 11, corrected_terrain_landings: 25, diagnostic_landings: 2, diagnostic_finite_stops: 4, unsupported: 2, integrity: 44, supported_source_replay: 42}, artifact_sha256: inventory(cli)};
   write(join(cli, 'matrix.json'), matrix);
@@ -102,6 +102,7 @@ test('matrix rejects missing rows, mixed source/input seals, altered exit semant
     m => m.cases.pop(), m => {m.cases[0].case_id = 'foreign';}, m => {m.cases[0].exit_code = 1;},
     m => {m.source_before.git_commit = 'other'; m.source_after.git_commit = 'other';},
     m => {m.input_identity.test = 'different';}, m => {delete m.artifact_sha256['logs/clear0.stderr.txt'];},
+    m => m.invocations.pop(), m => {m.invocations[0].exit_code = 1;},
   ]) {
     const m = structuredClone(s.matrix); mutate(m); write(p, m);
     assert.throws(() => checkCliMatrix(s.native, s.cli));
@@ -154,7 +155,7 @@ test('saved replay inventory has exactly 42 supported bound actual-component rec
       physics_step: f.ordinary_flight.final_state.physics_step, sim_time_s: f.ordinary_flight.final_state.sim_time_s,
       comparison_sha256: expectedReplayDigests(raw)};
     cases.push({case_id: input.case_id, exit_code: 0, outcome});
-    write(join(out, `${input.case_id}.stdout.json`), outcome); writeFileSync(join(out, `${input.case_id}.stderr.txt`), '');
+    recordCliInvocation(out, input.case_id, {code: 0, stdout: JSON.stringify(outcome), stderr: ''});
   }
   const receipt = {schema_id: 'planner_v2_cli_saved_replay_matrix_v1', status: 'completed', passed: true, attempted_replays: 42, cases,
     source_before: s.matrix.source_before, source_after: s.matrix.source_after, cli_sha256: s.matrix.source_before.cli_sha256,
@@ -166,6 +167,33 @@ test('saved replay inventory has exactly 42 supported bound actual-component rec
     r => {r.matrix_sha256 = 'unbound';}, r => {delete r.artifact_sha256['land0.stderr.txt'];}]) {
     const r = structuredClone(receipt); mutate(r); write(p, r); assert.throws(() => checkSavedReplays(s.native, s.cli, out));
   }
+});
+
+test('failed CLI JSON preserves process exit and raw output before parsing', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'pd-v2-invocation-log-'));
+  t.after(() => rmSync(dir, {recursive: true}));
+  const result = {code: 1, stdout: '', stderr: 'Error: V2 progress handoff differs from its executed actual H segment\n'};
+  const receipt = recordCliInvocation(dir, 'v2_ridge_early', result);
+  assert.deepEqual(receipt, {schema_id: 'planner_v2_cli_invocation_v1', case_id: 'v2_ridge_early', status: 'process_exited', exit_code: 1});
+  assert.throws(() => parseCliOutcome(result, 'v2_ridge_early'), /v2_ridge_early.*exit 1.*actual H segment/);
+  for (const stdout of ['null', '[]', '7']) assert.throws(() => parseCliOutcome({...result, stdout}, 'unstructured'), /unstructured.*exit 1/);
+  assert.deepEqual(read(join(dir, 'v2_ridge_early.invocation.json')), receipt);
+  assert.equal(readFileSync(join(dir, 'v2_ridge_early.stdout.json'), 'utf8'), '');
+  assert.equal(readFileSync(join(dir, 'v2_ridge_early.stderr.txt'), 'utf8'), result.stderr);
+  const before = inventory(dir);
+  assert.throws(() => recordCliInvocation(dir, 'v2_ridge_early', {code: 0, stdout: '{}', stderr: ''}), /EEXIST/);
+  assert.deepEqual(inventory(dir), before, 'diagnostic logs are create-only');
+  assert.throws(() => recordCliInvocation(dir, '../other', result), /unsafe/);
+  assert.deepEqual(parseCliOutcome({code: 0, stdout: '{"status":"completed"}', stderr: ''}, 'valid'), {status: 'completed'});
+});
+
+test('invocation metadata must agree with the ordered cases even after resealing logs', t => {
+  const s = synthetic(t), p = join(s.cli, 'logs', 'clear0.invocation.json');
+  const receipt = read(p); receipt.exit_code = 1; write(p, receipt);
+  const m = structuredClone(s.matrix); m.invocations[0] = receipt;
+  m.artifact_sha256['logs/clear0.invocation.json'] = hash(p);
+  write(join(s.cli, 'matrix.json'), m);
+  assert.throws(() => checkCliMatrix(s.native, s.cli), /invocation exit receipt/);
 });
 
 test('single-matrix stdout must bind schema, supported flag, policy, reason and actual output root', t => {
