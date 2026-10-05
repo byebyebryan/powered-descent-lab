@@ -95,8 +95,10 @@ without treating the old scenario files as fixtures to transliterate directly.
   contracts.
 - [Guidance Architecture](docs/guidance.md) owns current terminal, transfer,
   waypoint, and planner/guidance responsibilities.
-- [Waypoint Planning V1](docs/waypoint_planning.md) owns the implemented bounded
-  V1 contract and retained research history, with current V2 status at the top.
+- [Waypoint Planning](docs/waypoint_planning.md) owns current V2 status and
+  retained V1/research history. V1 search is retired, not a second active planner.
+- [Planner retirement and consolidation](docs/planner_retirement_cleanup_results.md)
+  records current ownership, deliberate removals and preservation checks.
 - [Roadmap](docs/roadmap.md) owns current phase status and the next execution
   slice.
 - [Planner V2 session and CLI integration](docs/waypoint_v2_session_repair_results.md)
@@ -112,6 +114,8 @@ without treating the old scenario files as fixtures to transliterate directly.
 These records explain how the current design was reached. Their dated "next"
 steps and earlier failures are not the current V2 backlog; start with Guidance
 Architecture and the accepted session/CLI results above for today's boundary.
+Their superseded executable research commands and generators have been retired;
+the documents, frozen inputs, captures and published pages remain historical evidence.
 
 - [Waypoint direct-route characterization](docs/waypoint_direct_characterization.md)
   records the opt-in continuous-terrain mismatch between V1's exact direct
@@ -243,9 +247,10 @@ Terminal, transfer and V2 now share the same batch/detail templates; V2 adds
 executed handoffs without replacing the established plots or review tree. See
 the [common-template checkpoint](docs/planner_v2_common_report_templates_results.md).
 
-The V2 single-flight command also defaults to policy 3; explicit
-`--policy-version 1` or `2` keeps historical policy selection available. Frozen
-research fixtures/scripts retain their original identities and protocols.
+Policy 3 is the sole executable planner policy and the Rust policy default.
+`--policy-version 1` or `2` is rejected; known saved policy identities remain
+readable without keeping their selectors executable. Frozen research fixtures,
+captures and report pages retain their original identities and provenance.
 Native V2 batches have their own truthful schema, not forged V1/controller
 records. They do not use controller cache/Git-ref baseline comparisons;
 unsupported comparison flags fail before flight execution. For native V2,
@@ -259,7 +264,20 @@ terminal/transfer controller defaults. See the
 The [earlier activation results](docs/waypoint_v2_eval_activation_results.md)
 retain the 2026-10-03 capture, evidence comparisons, navigation/browser checks
 and runtime-integration boundary at that checkpoint. The reliability results
-linked above supply the current captures and validation.
+linked above retain earlier captures; the session/CLI replacement supplies the
+current selected capture. Cleanup validation does not relabel that capture's source.
+
+Run the maintained developer gate without creating captures or publishing reports:
+
+```bash
+rtk proxy node scripts/check-planner-development.mjs
+```
+
+For the explicit read-only retained-baseline regression, add
+`--parity-capture outputs/eval/planner_v2_lab_suite/capture-session-repair-20261005-native`.
+It executes all 44 frozen inputs locally and requires exact complete-flight
+parity except the three existing wall-time fields. The ordinary gate uses tracked
+direct, corrected and multi-handoff tests and needs no locally saved capture.
 
 ## Report Serving
 
@@ -376,60 +394,36 @@ annotations for every simulated case. The older selected preview below remains
 presentation history; it is not the current evaluation batch. Retained preview
 editions and their original source evidence remain unchanged.
 
-To recompute the four V2 direct-ballistic probes, the bounded ridge canary, and
-their setup-only HTML/SVG report without running a controller or simulation:
-
-```bash
-cargo run -p pd-eval -- conservative-ballistic-report
-```
-
-When run, this writes the reloadable analytical summary under
-`outputs/setups/conservative-ballistic-direct-bridge-v2/` and the stable visual
-entrypoint under
-`outputs/reports/setups/conservative-ballistic-direct-bridge-v2/`. These are
-setup evidence only, not controller or simulation results. The ridge result is
-scoped to the flat-derived nominal lane plus its optimistic post-commit local-
-correction envelope; it does not claim that every global direct replan fails.
-
-The completed F6 opt-in integration lane is a separate command:
-
-```bash
-cargo run -p pd-eval -- conservative-ballistic-f6-integration
-```
-
-It consumes the retained `ridge_progress_056_probe` fixture, injects the
-identity-bound one-waypoint route, and runs the real controller/full
-simulation. Its stable report is
-`outputs/reports/eval/conservative-ballistic-ridge-f6-integration-v1/index.html`.
-This is one-mission development/regression evidence; it does not promote a
-default planner path or claim arbitrary terrain, multiple waypoints, runtime
-replanning, or mission-family coverage.
+The conservative-ballistic setup and F6 integration pages remain dated research
+evidence at their original paths. Their standalone recomputation commands and
+report builders are retired; they are not the active planner or a prerequisite
+for it. Common controller batch/detail regeneration remains supported.
 
 The default refresh covers packs in the guidance catalog. `--all` covers every
 captured fixture-backed pack. Both rebuild batch and per-run HTML from existing
 JSON bundles, preserve a recorded comparison when its basis is still readable,
 and leave `summary.json` evidence unchanged.
 
-## Opt-in Nominal Direct Flight
+## Single Planner Flight
 
-`pd-eval nominal-direct-flight` generates, independently verifies and executes
-a complete accepted ballistic-direct program from a full scenario. It does not
-use stored successful commands or call the V1 chord planner. Supply exact pad
+`pd-eval waypoint-v2-flight` runs the current piecewise planner from a full
+scenario: terrain-blind nominal construction, fixed terrain audit, local
+clearing where feasible and replanning at actual H. Supply exact pad
 IDs from that scenario and a new output directory:
 
 ```bash
-cargo run --release -p pd-eval -- nominal-direct-flight \
+cargo run --release -p pd-eval -- waypoint-v2-flight \
   --scenario SCENARIO.json --source-pad-id SOURCE_PAD_ID \
   --target-pad-id TARGET_PAD_ID --output-dir NEW_FLIGHT_ROOT
 ```
 
 Replace the uppercase arguments with real values. Use `--preflight-only`
-instead of `--output-dir` for read-only validation. Direct output includes the
-program, safety/contact audit, ordinary replay artifacts and `report.html`.
-Unknown, Unsupported and Invalid execute no flight; Unknown is finite-family
-exhaustion, not a waypoint-necessity claim or automatic fallback. Output roots
-are create-only. See the [results and measured costs](docs/nominal_direct_flight_integration_results.md)
-for the 24-control regression command and current nominal limits.
+instead of `--output-dir` for read-only validation. Output includes complete
+flight records, segment/proof evidence, ordinary replay artifacts and the common
+rich `report.html` with actual waypoint handoffs. Unsupported and invalid requests
+remain preflight-only; a finite planning stop is not a landing or an impossibility
+proof. Output roots are create-only. The old standalone nominal-direct command
+is retired; its live realization helpers now belong to `pd-eval::planner_flight`.
 
 ## Batch Eval
 
@@ -521,12 +515,9 @@ cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route
 cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_smoke.json --workers 8
 ```
 
-Run the legacy V1 planner-generated landing and route-contract packs explicitly:
-
-```bash
-cargo run -p pd-eval -- run-pack fixtures/packs/planner_generated_route_smoke.json --workers 8
-cargo run -p pd-eval -- run-pack fixtures/packs/planner_generated_route_contract_smoke.json --workers 8
-```
+The two legacy `planner_generated_route_*_smoke` packs are retained archive
+metadata, not runnable planner gates. Use `planner_v2_lab_suite` for planner
+evaluation; authored waypoint-guidance packs below remain supported.
 
 Run the full-seed nominal and all-radius waypoint closure packs:
 
@@ -820,19 +811,16 @@ remains below the `1ms` p99 budget.
 The old `single_dogleg_v1` packs and the full-matrix `late_bend_v1` pack remain
 parked diagnostic history rather than acceptance gates.
 Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
-corpus. The bounded deterministic pad-to-pad planner defined in
-`docs/waypoint_planning.md` is now implemented through evaluator integration
-and schema-36 evidence rendering. Retained focused captures close at `54 / 54`
-generated-route landings and `36 / 36` handoff/ordered contracts with zero
-invalidations, and fresh maintained no-regression packs reproduced their
-declared baselines. General runtime avoidance remains parked at the
-planning/collision-warning layer; broader angles, radii, or terrain classes
-require a separate planner checkpoint.
+corpus. The former chord-based V1 planner is retired; its schema-36 contracts and
+saved `54 / 54` landing and `36 / 36` handoff evidence remain readable history.
+The active planner is V2's terrain-blind nominal / local-clear / actual-H replan
+loop described above. Broader terrain coverage and game-host integration remain
+separate follow-ups, not capabilities established by this cleanup.
 The guidance implementation now follows the ownership boundaries in
 `docs/guidance.md`: terminal and transfer are separate modules, pure waypoint
 geometry is isolated from controller lifecycle state, telemetry emission is
 separate from control decisions, controller tests live outside production
-modules, and rejected boost scorers remain reproducible diagnostics rather than
-maintained modes.
+modules. Rejected boost scorers are retired executable modes; their saved
+diagnostics remain readable.
 Detailed checkpoint history lives in `docs/progress.md`,
 `docs/transfer_suite.md`, and `docs/terminal_suite.md`.

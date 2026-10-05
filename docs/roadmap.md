@@ -25,9 +25,10 @@ The accepted native V2 evaluation workflow is `planner_v2_lab_suite`: omitting
 the pack from `pd-eval run-pack` selects policy 3, and
 `pd-eval waypoint-v2-flight` also defaults to policy 3. This offline workflow
 covers the supported vehicle, Earth gravity, and 120 Hz physics / 60 Hz command
-setup; it is not a game-loop timing guarantee. It does not change the Rust
-`WaypointV2Policy::default()` (policy 1), `pd_plan::plan` (V1), or the
-ordinary `pd-cli run --controller baseline` default.
+setup; it is not a game-loop timing guarantee. Policy 3 is also the Rust policy
+default and sole executable planner. V1 search and policy-1/2 selectors are
+retired; saved contracts/known identities remain readable. The ordinary
+`pd-cli run --controller baseline` default is unchanged.
 
 The accepted 44-case capture has 36/36 core target landings (11 direct, 25
 corrected) and eight separate diagnostics (two landed, four zero-command and
@@ -54,7 +55,10 @@ The owned synchronous session and `pd-cli` adapter behind the default-off
 They do not provide an externally driven per-tick controller or arbitrary
 snapshot restart. Behavior-preserving review, reconciliation and the
 [core cleanup checkpoint](waypoint_v2_core_cleanup_results.md) are now complete;
-they do not themselves expand terrain coverage.
+they do not themselves expand terrain coverage. The subsequent
+[retirement and consolidation](planner_retirement_cleanup_results.md) removes
+obsolete execution lanes, extracts the current runtime, and reconciles tools/docs
+while preserving complete flight numerics and saved evidence.
 Seeded procedural terrain evaluation and a concrete game-host integration are
 separate possible follow-ups, not prerequisites for using the current lab
 planner and not selected by this reconciliation.
@@ -65,7 +69,8 @@ the accepted V2 evaluator workflow.
 
 ### Retained phase and research checkpoint detail
 
-Current implementation status:
+Historical implementation/evidence status (retired V1/research executables are
+not current entrypoints):
 
 - Phase 0 is complete.
 - Phase 1 is functionally complete for the first usable landing slice.

@@ -182,18 +182,14 @@ uses terminal-compatible aliases only as report plumbing.
 
 Waypoint work splits planning from guidance.
 
-Waypoint planning is the upstream problem: choose terrain-valid waypoint
-positions and arrival envelopes that make each next leg feasible. The
-implemented bounded v1 planner runs once over static heightfield terrain and is
-specified in [Waypoint Planning V1](waypoint_planning.md).
-
-The accepted native V2 evaluator workflow is separate from that V1 setup-time
-planner. It constructs a terrain-blind nominal transfer, audits the fixed
+Waypoint planning is distinct from authored-route guidance. The maintained
+native V2 evaluator constructs a terrain-blind nominal transfer, audits the fixed
 program against actual heightfield terrain, applies local correction where
 possible, and replans from the actual handoff state. This offline loop may hand
 off at useful safe progress before a feature's far edge; it does not require a
 landing suffix. It is evaluator-owned, not a `pd-control` update-loop
-capability. See the [current V2 evaluation status](waypoint_planning.md#current-v2-evaluation-status-2026-10-04).
+capability. The earlier chord-based V1 setup search is retired; saved route
+contracts remain readable. See the [current V2 evaluation status](waypoint_planning.md#current-v2-evaluation-status-2026-10-04).
 
 Waypoint guidance assumes the waypoint list is already planned, follows the
 currently active route leg, and enters a bounded handoff window at the waypoint
@@ -217,7 +213,7 @@ Waypoint guidance v1 is closed against a preplanned maintained corpus spanning
 turn and ordered routes, full nominal seeds, and route-radius tiers. Initial
 launch energy is regulated from immutable inbound-leg geometry, while final
 handoff selection and direct terminal entry use terrain-blind recoverability.
-Batch schema `36` adds optional planner provenance, route diagnostics,
+Retained V1 batch schema `36` adds optional planner provenance, route diagnostics,
 planned-versus-sampled clearance, and per-solve monotonic wall-time evidence to
 the schema-34 guidance evidence. Planner timing is excluded from deterministic
 plan and batch identity. The planner owns terrain-valid placement, leg
@@ -226,14 +222,17 @@ design; guidance must not infer obstacle classes or repair a structurally bad
 route. Legacy authored runs retain their existing behavior with the planner
 fields absent. Retained focused captures close at `54 / 54` generated-route
 landings and `36 / 36` handoff/ordered-contract runs with zero invalidations.
+These are historical generated-route results, not current V2 flight records.
 
 The controller implementation mirrors this ownership. `pd-control` keeps the
 registry and legacy controllers in `controllers.rs`, shared state-target math in
 `guidance.rs`, terminal guidance under `terminal/`, and transfer guidance under
 `transfer/`. Pure waypoint geometry and contract prediction live in
 `transfer/waypoint.rs`; transfer and waypoint metric/marker emission lives in
-`transfer/telemetry.rs`; rejected boost-scoring experiments are quarantined in
-`transfer/experimental.rs`. Terminal and transfer tests live in sibling test
+`transfer/telemetry.rs`; maintained endpoint scoring lives in
+`transfer/scoring.rs`. Rejected boost scorers are retired; old false-default
+configuration fields remain readable, while enabling them fails explicitly.
+Terminal and transfer tests live in sibling test
 modules instead of production files. These are internal module boundaries, not
 changes to controller JSON, IDs, telemetry, phase strings, or report artifacts.
 
@@ -371,22 +370,24 @@ controller layer.
 
 ### 5.3 `pd-plan`
 
-`pd-plan` owns deterministic setup-time route construction.
+`pd-plan` owns current deterministic planning math and sealed policies.
 
 Responsibilities:
 
-- conservative vehicle-center safety-profile construction
-- bounded visibility-candidate search over static heightfields
-- direct versus waypoint route topology
-- handoff tangent and arrival-envelope construction
-- stable planner diagnostics and rejection codes
+- discrete ballistic bridge and coast kinematics
+- canonical initial-transfer basis construction
+- supported vehicle input and conservative bridge margins
+- local-clearing finite policy and candidate math
+- versioned policy-3 bounds, correction limits and clocks
 
 `pd-plan` depends only on neutral contracts and terrain queries in `pd-core`. It
 must not depend on `pd-control`, select controller IDs, execute simulations, or
-own evaluator/report policy. The initial algorithm and bounded policy are
-defined in [Waypoint Planning V1](waypoint_planning.md). The public
-`pd_plan::plan` path remains V1; the accepted policy-3 V2 flight loop is
-orchestrated by `pd-eval` and does not change that route-construction API.
+own evaluator/report policy. Its math is always available, without a research
+feature gate. V1 visibility search, `pd_plan::plan` and research candidate
+exposure are retired. Neutral saved route DTOs stay in `pd-core`; current physical
+realization and the policy-3 flight loop stay in `pd-eval`. See
+[Waypoint Planning](waypoint_planning.md) and the
+[retirement results](planner_retirement_cleanup_results.md).
 
 ### 5.4 `pd-cli`
 
@@ -443,9 +444,21 @@ Its implementation is split by responsibility rather than pack family:
 - `comparison.rs` and `review.rs` derive cross-run and per-run evidence
 - `report.rs` is the batch-report shell; its `report/` children own overview,
   diagnostics, review-tree, and comparison presentation
+- `planner_flight/` owns current nominal input/preflight, canonical initial
+  source fitting, state-derived airborne acquisition, terminal realization and
+  contact/terrain audit, with pure ballistic math delegated to `pd-plan`
+- `waypoint_v2/` owns the piecewise session, live execution, persisted records
+  and replay-safe proofs; `local_clearing.rs` owns current correction helpers
+- `waypoint_v2_pack/` separates native models, input expansion,
+  execution/aggregation, capture validation, provenance and common presentation
+- `evidence_io.rs` provides neutral exact hashing and create-only writing;
+  callers retain their own trust and provenance checks
 
-These are internal boundaries. The `pd-eval` public exports, JSON schema, cache
-layout, and stable report paths remain compatibility surfaces.
+These are internal boundaries. Current entrypoints, persisted JSON schemas,
+cache layout and stable report paths remain compatibility surfaces. Obsolete
+research Rust exports and executable frontdoors are intentionally retired,
+not kept as migration shims. Serialized legacy-looking DTO names required by
+current or saved records are not renamed for tidiness.
 
 Recommended parallelism boundary:
 
@@ -529,12 +542,13 @@ Evidence presentation keeps these distinctions:
   compatibility entrypoint
 - `outputs/reports/setups/` contains deterministic analytical setup evidence
   that is explicitly separate from controller runs and simulation claims
-- the current conservative-ballistic setup contains the V2 direct-bridge
+- the retained conservative-ballistic setup contains the V2 direct-bridge
   certificate and one bounded ridge canary; the canary keeps flat-derived
   nominal-lane status, optimistic post-commit correction evidence, derived
   blocking terrain, terrain-derived waypoint evidence, and higher global-
   replan diagnostics distinct, and its report path is versioned so superseded
-  analytical projections cannot be mistaken for current evidence
+  analytical projections cannot be mistaken for current evidence; its obsolete
+  standalone generator is retired, while saved pages remain linked and unchanged
 - batch pages lead with outcome totals and selector coverage, while provenance,
   context, and guidance-specific diagnostics remain available in collapsed
   sections

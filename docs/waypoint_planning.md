@@ -1,4 +1,4 @@
-# Waypoint Planning V1
+# Waypoint Planning
 
 <a id="current-v2-evaluation-status-2026-10-04"></a>
 
@@ -8,9 +8,10 @@ The active native planner workflow is the evaluator-owned
 `planner_v2_lab_suite`: `pd-eval run-pack` without an explicit pack selects
 policy 3, and `pd-eval waypoint-v2-flight` also defaults to policy 3. This is
 offline evaluation on the tested vehicle, Earth-gravity, 120 Hz physics / 60 Hz
-command setup; it is not a 60 Hz game-loop guarantee. It does not change
-`pd_plan::plan` (V1), `WaypointV2Policy::default()` (policy 1), the ordinary
-`pd-cli run` controller default, or add a V2 controller to `pd-control`.
+command setup; it is not a 60 Hz game-loop guarantee. Policy 3 is the Rust
+default and sole executable planner; V1 search and policy-1/2 selectors are
+retired. Known saved identities/contracts remain readable. The ordinary
+`pd-cli run` controller default is unchanged, with no V2 controller added to `pd-control`.
 
 The accepted 44-case capture has 36/36 core target landings (11 direct and 25
 corrected). Eight diagnostics remain separate: two landings, four zero-command,
@@ -37,14 +38,18 @@ are now implemented and accepted; they remain synchronous lab execution rather
 than a per-tick game controller. See
 [current V2 design and support](guidance.md#current-v2-design-and-support) for
 the supported envelope, source ownership and reconciliation of earlier research.
-The next priority is cleanup before choosing broader terrain validation or a
-concrete host integration. The roadmap's D1, W1-W4, and F6 research entries are
-separate retained or blocked lanes, not prerequisites for this accepted V2 path.
+The [retirement/consolidation checkpoint](planner_retirement_cleanup_results.md)
+closes the approved housekeeping batch without tuning behavior or changing saved
+evidence. Broader terrain validation or concrete host integration are separate
+possible next choices. The roadmap's D1, W1-W4 and F6 entries are historical or
+parked research, not prerequisites for this accepted V2 path.
 
 ## Implementation Status
 
 This section records V1 and dated development checkpoints. Its historical
 "next" steps are not an outstanding V2 task list; current V2 status is above.
+V1 search, generated-route execution and superseded research frontdoors described
+below are now retired. Preserve the historical claims at their measured scope.
 
 V1 implementation phases 1-5 are complete. `pd-core` owns the serialized planning
 contracts, strict heightfield corridor queries, endpoint-shaped safety profile,

@@ -2,8 +2,8 @@
 
 This document is the stable boundary between terminal guidance, direct
 transfer, waypoint guidance, and waypoint planning. It describes ownership and
-compatibility rather than controller tuning. The V1 planner contract and
-current V2 evaluator boundary are summarized in
+compatibility rather than controller tuning. The current V2 evaluator boundary
+and retained V1 history are summarized in
 [Waypoint Planning](waypoint_planning.md).
 
 ## Ownership
@@ -23,24 +23,15 @@ lifecycle, handoff contract, continuation viability, and final-waypoint entry
 into terminal guidance. It is terrain-blind: waypoint placement and arrival
 envelopes must already encode a terrain-valid route.
 
-The implemented waypoint-planning layer is upstream of guidance. It owns
-terrain-valid waypoint placement, leg ordering, and arrival-envelope
-construction. V1 plans once from static setup-time context and emits a direct
-route or at most two preplanned waypoints. It does not select a controller, run
-inside the controller update loop, or move terminal and waypoint contract logic
-into route-label-specific branches.
-
-A planner success is a bounded geometric and conservative-authority result, not
-a promise that guidance will complete the mission. Existing handoff, ordered
-sequence, terminal-recoverability, terrain-clearance, and landing evidence
-remain the authority for flown behavior.
-
-The V1 descriptions above cover `pd_plan::plan` and the controller guidance
-path. The accepted native V2 workflow is separate: `pd-eval` constructs a
+The maintained planner is an evaluator-owned outer loop: `pd-eval` constructs a
 terrain-blind nominal flight, audits the fixed program against actual terrain,
 applies local correction, and replans from the actual handoff state. This
 evaluator-owned outer loop is not a `pd-control` controller or a per-tick
-runtime planner. Its policy-3 batch and report contract are recorded in the
+runtime planner. It does not convert its corrections into the authored-route
+controller's preplanned waypoint list. Flight execution, handoff proof and final
+source replay—not a geometric proposal alone—establish its flown result.
+The chord-based V1 setup planner and `pd_plan::plan` are retired. Their saved
+route contracts remain readable. The policy-3 batch and report contract are recorded in the
 [activation results](waypoint_v2_eval_activation_results.md).
 
 ## Lifecycle Contract
@@ -68,7 +59,7 @@ native V2 evaluator keeps a separate batch schema rather than converting its
 records to the controller `BatchReport`; see the
 [V2 activation results](waypoint_v2_eval_activation_results.md).
 
-- `ControllerSpec` JSON shape and built-in controller aliases
+- `ControllerSpec` JSON shape and maintained built-in controller aliases
 - canonical controller IDs
 - terminal and transfer configuration field names and defaults
 - controller phase strings
@@ -81,6 +72,10 @@ records to the controller `BatchReport`; see the
 Internal Rust types and module paths are not compatibility surfaces. They may
 be reorganized to make ownership explicit as long as the persisted contracts
 above remain unchanged.
+
+Retired pathwise/recoverability aliases and enabled experimental boost flags
+fail explicitly before execution. The historical fields still decode, default
+to false and preserve saved descriptor identity; decoding is not execution admission.
 
 ## Implementation Layout
 
@@ -103,8 +98,8 @@ The current `pd-control` layout follows those ownership boundaries:
   products and does not recompute control decisions
 - `transfer/waypoint.rs` owns pure waypoint geometry, capture prediction, and
   handoff kinematics
-- `transfer/experimental.rs` owns the frozen boost-scoring mode gates and
-  weights retained for diagnostic reproducibility
+- `transfer/scoring.rs` owns the maintained endpoint scoring; frozen
+  pathwise/recoverability scorers and their comparison frontdoors are retired
 - `transfer/tests.rs` owns the transfer and waypoint controller tests without
   changing their access to module-private fixtures
 
@@ -112,19 +107,17 @@ The controller evaluator follows the same separation. Persisted batch/report DTO
 `pd-eval/src/model.rs`; pack validation and expansion live in `resolution.rs`;
 execution, artifact/cache support, comparison, and review derivation live in
 their named modules. The batch report shell delegates overview, diagnostics,
-review-tree, and comparison rendering to `pd-eval/src/report/` modules. Public
-crate exports and persisted schema paths remain unchanged.
+review-tree, and comparison rendering to `pd-eval/src/report/` modules. Current
+entrypoints and persisted schema paths remain stable. Obsolete research
+Rust APIs are deliberately removed, rather than retained as compatibility shims.
 
-The V1 planner boundary places neutral route-planning contracts and clearance
-queries in `pd-core`, with the deterministic `pd_plan::plan` algorithm
-depending only on `pd-core`. `pd-eval` calls that planner during V1 scenario
-resolution, persists algorithm/policy/plan identity, and passes the resulting
-`TransferRouteSpec` to guidance. `pd-control` is not a planner dependency, and
-planner policy does not read controller configuration defaults.
+`pd-core` retains neutral route contracts and clearance queries used by
+authored guidance and saved reports. `pd-plan` owns current ballistic math and
+sealed finite policies, not simulations, controller selection or report I/O.
 
-The native V2 evaluator uses a separate policy-3 flight loop and native batch
-schema; it does not change `pd_plan::plan`, the ordinary `pd-cli run`
-controller path, or add a V2 controller. The common batch shell and rich detail
+The native V2 evaluator uses its policy-3 flight loop and native batch
+schema; it does not change the ordinary `pd-cli run` controller path or add a
+V2 controller. The common batch shell and rich detail
 renderer are shared through `pd-report`; V2-specific aggregation and handoff
 annotations remain in its evaluator/report adapter. See the
 [common-template results](planner_v2_common_report_templates_results.md).
@@ -157,13 +150,18 @@ The [session/CLI replacement](waypoint_v2_session_repair_results.md) is the late
 accepted measured checkpoint. Its 44-case native capture is the current report:
 36 mandatory landings (11 direct, 25 corrected), two diagnostic landings, four
 zero-step diagnostic `NoClearing` stops and two unsupported inputs. The default
-evaluation entrypoints select policy 3; the Rust policy default remains policy 1
-for historical compatibility. `pd_plan::plan` remains V1, and ordinary controller
-defaults remain unchanged.
+evaluation entrypoints and Rust policy default select policy 3. Policies 1/2
+have explicit saved-identity recognition but no executable selector. V1 search
+is retired, and ordinary controller defaults remain unchanged.
 
 V2 implementation ownership is:
 
+- `pd-plan/src/ballistic.rs` and its canonical-initial child: pure bridge,
+  kinematic and canonical-basis math without a research feature gate.
 - `pd-plan/src/waypoint_v2.rs`: versioned finite policy, correction bounds and clocks.
+- `pd-eval/src/planner_flight/`: current request/preflight, canonical initial
+  source fitting, state-derived airborne acquisition, terminal realization and
+  phase/contact geometry, extracted from historical research orchestration.
 - `pd-eval/src/waypoint_v2.rs`: input preflight, the owned session lifecycle and
   named phases for nominal generation/audit, fixed-prefix proof, direct
   execution, local clearing search and actual E-to-H/certificate execution.
@@ -173,8 +171,14 @@ V2 implementation ownership is:
   ownership, phase-aware guards and original-source replay proofs.
 - `waypoint_v2_output.rs` and `waypoint_v2_bundle.rs`: create-only evidence,
   progress/receipt validation and saved-source CLI replay.
-- `waypoint_v2_pack.rs` and `waypoint_v2_acceptance.rs`: sealed input expansion,
-  batch collection and acceptance; neither supplies archived answers to a flight.
+- `local_clearing.rs`: bounded proposal search, actual continuation and proof
+  helpers; no historical canary orchestration.
+- `evidence_io.rs`: exact-byte hashing and create-only writing/reservation;
+  caller-specific trust and provenance validation remain with their callers.
+- `waypoint_v2_pack.rs` facade and children: models, sealed input expansion,
+  execution/aggregation, capture validation, provenance and common presentation.
+  `waypoint_v2_acceptance.rs` owns acceptance. Neither supplies archived answers
+  to a flight.
 - `waypoint_v2_report.rs`, `pd-report` and `pd-cli/src/planner_v2.rs`: shared
   presentation and the optional synchronous CLI adapter, not trajectory selection.
 
@@ -183,23 +187,25 @@ V2 implementation ownership is:
 - The floor-cutaway mismatch belongs to V1's straight corridor model. V2's
   executed ballistic clear routes no longer require it; retain the original
   characterization rather than rewriting its historical results.
-- Higher terrain-aware direct arcs remain research controls, not a fallback
-  that silently avoids the current waypoint policy.
-- The old 56 coast/terminal combinations remain available to policies 1/2.
-  Policy 3 uses state-derived airborne acquisition. Those old handoff failures
+- Higher terrain-aware direct arcs remain historical research evidence, not a
+  fallback that silently avoids the current waypoint policy.
+- The old 56-combination selector is retired. Two old family constants remain
+  only in the serialized candidate identity contract. Policy 3 uses
+  state-derived airborne acquisition. Those old handoff failures
   are not the current policy-3 verdict or a reason to restart nominal research.
 - The latest corrected-case CLI failure was piece-origin/E/H validation, not a
   new first-step physics failure. The replacement and its regression tests close
   that adapter defect; the stopped first pass remains truthful historical evidence.
 - The one-update terminal completion reserve is a parked separate design, not
-  a missing prerequisite. V1, bounded-witness and F6 experiments likewise remain
-  retained research lanes, not an active V2 backlog.
+  a missing prerequisite. V1, bounded-witness and F6 documents/data remain
+  research history; their obsolete executables are retired, not an active V2 backlog.
 
 ### Behavior-preserving cleanup checks
 
 Structural cleanup must retain command ordering, state/fuel/clock continuity,
-policy values, guards, serialized field order/names, create-only outputs, public
-exports and common report paths. Keep the current capture and its provenance
+policy values, guards, serialized field order/names, create-only outputs, current
+entrypoints and common report paths. Intentional API/test removals are listed in
+the [retirement results](planner_retirement_cleanup_results.md). Keep the current capture and its provenance
 unchanged; do not relabel an older capture as evidence from refactored sources.
 
 The explicit regression test below executes all 44 bound inputs without writing
@@ -214,14 +220,22 @@ rtk proxy env PD_V2_PARITY_CAPTURE=outputs/eval/planner_v2_lab_suite/capture-ses
   cargo test --release -p pd-eval --lib retained_capture_numerical_parity -- --ignored --nocapture
 ```
 
-Default/feature-enabled CLI tests and workspace tests remain necessary alongside
-this check. Do not remove historical policy APIs or evidence scripts merely
-because the current evaluation default is policy 3. A standalone planner crate,
-solver rewrite and report redesign require a concrete separate need.
+The maintained ordinary gate includes workspace/default-off/feature CLI tests,
+help/dependency checks, formatting, strict all-target Clippy and all maintained
+JavaScript tests:
+
+```sh
+rtk proxy node scripts/check-planner-development.mjs
+```
+
+Add `--parity-capture PATH` to include the explicit saved-baseline regression.
+Normal tracked tests include direct, corrected and multi-handoff coverage without
+an external capture. A standalone planner crate, solver rewrite and report
+redesign require a concrete separate need.
 
 The records/replay-safety separation and subsequent
 [core loop cleanup](waypoint_v2_core_cleanup_results.md) passed exact numerical
-parity for all 44 inputs. The latest final gate passed 1,019 workspace tests
+parity for all 44 inputs. That earlier final gate passed 1,019 workspace tests
 (ten intentionally ignored), final CLI checks, 62 JavaScript tests, formatting
 and strict Clippy with the existing `single_element_loop` exception. The
 retained-capture test is intentionally opt-in because it depends on locally
@@ -230,7 +244,9 @@ passed. The rebuilt evaluator's saved-site check verified 42 rich payloads,
 36 actual handoffs and 46 receipt-bound pages. All 26 recorded fixture/evidence/
 report scopes retained their path/content hashes. The selected capture and
 published site are unchanged; this is local regression evidence, not a new
-accepted source freeze or expanded terrain-coverage claim.
+accepted source freeze or expanded terrain-coverage claim. The subsequent
+[retirement/consolidation results](planner_retirement_cleanup_results.md) supersede
+that source layout and test count, not its measured flight or capture provenance.
 
 ## Native V2 Acceptance Contract (2026-10-03)
 

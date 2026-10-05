@@ -237,10 +237,11 @@ attitude, and touchdown.
 
 Waypoint guidance was deliberately implemented before waypoint setup. The
 maintained guidance contract assumes a higher-level planner has already chosen
-the waypoint list and any terrain-valid spatial or energy envelopes. The first
-production planner contract and corpus are defined separately in
-[Waypoint Planning V1](waypoint_planning.md); this suite remains the authority
-for current preplanned guidance evidence.
+the waypoint list and any terrain-valid spatial or energy envelopes. The
+current planner and retained V1 history are described separately in
+[Waypoint Planning](waypoint_planning.md). V2 owns its piecewise flight loop;
+it does not feed these authored route lists to the controller. This suite remains
+the authority for current preplanned guidance evidence.
 
 The waypoint controller's job is to follow the currently active leg and keep the
 vehicle in a useful state for the next leg. The controller should reason about
@@ -809,14 +810,18 @@ The direct-transfer and waypoint update loop remains in
 `transfer/state.rs`; shared ballistic and command-conversion helpers live in
 `transfer/math.rs`; and pure waypoint geometry and capture prediction live in
 `transfer/waypoint.rs`. Metric and marker assembly lives in
-`transfer/telemetry.rs`, rejected boost scorers are quarantined in
-`transfer/experimental.rs`, and controller tests live in `transfer/tests.rs`.
-This layout does not change controller IDs, configuration JSON, telemetry, or
-phase strings.
+`transfer/telemetry.rs`, maintained endpoint scoring lives in
+`transfer/scoring.rs`, and controller tests live in `transfer/tests.rs`.
+Rejected pathwise/recoverability scorers and their comparison commands are
+retired. Historical configuration flags remain readable but enabling either
+fails before execution. Normal controller IDs, configuration JSON, telemetry
+and phase strings remain unchanged; saved experimental results above remain
+historical evidence.
 
 ## Deferred Work
 
 - terminal climbing-arrival suite extension
 - aggregate handoff quality thresholds in batch summaries
-- implement the bounded planner and planner-backed corpus defined in
-  [Waypoint Planning V1](waypoint_planning.md)
+- choose broader planner terrain validation or game-host integration separately;
+  the current [Waypoint Planning](waypoint_planning.md) V2 lab path is implemented,
+  and the earlier V1 search is retired
