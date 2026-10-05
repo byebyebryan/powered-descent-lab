@@ -11,15 +11,26 @@ use pd_core::{
 use serde::{Deserialize, Serialize};
 
 mod config;
-mod experimental;
 mod math;
+mod scoring {
+    pub(super) const TRANSFER_BOOST_SCORE_NO_TARGET_Y: f64 = 10_000.0;
+    pub(super) const TRANSFER_BOOST_SCORE_PROJECTED_DX: f64 = 100.0;
+    pub(super) const TRANSFER_BOOST_SCORE_PROJECTED_DX_CENTERING: f64 = 45.0;
+    pub(super) const TRANSFER_BOOST_SCORE_SHORTFALL: f64 = 45.0;
+    pub(super) const TRANSFER_BOOST_SCORE_MIN_ANGLE: f64 = 60.0;
+    pub(super) const TRANSFER_BOOST_SCORE_TARGET_ANGLE: f64 = 20.0;
+    pub(super) const TRANSFER_BOOST_SCORE_APEX_UNDERSHOOT: f64 = 18.0;
+    pub(super) const TRANSFER_BOOST_SCORE_APEX_OVERSHOOT: f64 = 10.0;
+    pub(super) const TRANSFER_BOOST_SCORE_THROTTLE_EFFORT: f64 = 1.0;
+    pub(super) const TRANSFER_BOOST_SCORE_TILT_EFFORT: f64 = 0.4;
+}
 mod state;
 mod telemetry;
 mod waypoint;
 
 pub use config::TransferPdgControllerConfig;
-use experimental::*;
 use math::*;
+use scoring::*;
 use state::*;
 use telemetry::{
     insert_transfer_metrics, insert_waypoint_metrics, insert_waypoint_target_state_metrics,
@@ -76,7 +87,6 @@ const WAYPOINT_VIOLATION_VERTICAL_SPEED: u8 = 1 << 4;
 pub struct TransferPdgController {
     config: TransferPdgControllerConfig,
     guidance_mode: TransferGuidanceMode,
-    boost_scoring_mode: TransferBoostScoringMode,
     terminal: TerminalPdgController,
     phase: TransferPhase,
     boost_anchor: Option<TransferBoostAnchor>,
@@ -106,14 +116,28 @@ impl Default for TransferPdgController {
 
 impl TransferPdgController {
     pub fn new(config: TransferPdgControllerConfig) -> Self {
+        Self::try_new(config)
+            .expect("TransferPdgController::new cannot use retired boost scoring flags")
+    }
+
+    pub fn try_new(config: TransferPdgControllerConfig) -> Result<Self, String> {
+        if config.boost_recoverability_scoring_enabled || config.boost_pathwise_scoring_enabled {
+            let retired_mode = if config.boost_recoverability_scoring_enabled {
+                "recoverability"
+            } else {
+                "pathwise"
+            };
+            return Err(format!(
+                "transfer {retired_mode} boost scoring has been retired"
+            ));
+        }
+
         let guidance_mode = TransferGuidanceMode::from_config(&config);
-        let boost_scoring_mode = TransferBoostScoringMode::from_config(&config);
         let mut terminal = TerminalPdgController::new(config.terminal.clone());
         terminal.set_guidance_plan_retention_enabled(guidance_mode.uses_waypoints());
-        Self {
+        Ok(Self {
             config,
             guidance_mode,
-            boost_scoring_mode,
             terminal,
             phase: TransferPhase::Takeoff,
             boost_anchor: None,
@@ -133,7 +157,7 @@ impl TransferPdgController {
             waypoint_reference_contract_pass_ever: false,
             waypoint_continuation_snapshot: None,
             waypoint_joint_snapshot: None,
-        }
+        })
     }
 
     fn transfer_diagnostics(&self, observation: &Observation) -> TransferDiagnostics {
@@ -2330,7 +2354,7 @@ impl TransferPdgController {
     }
 
     fn boost_scoring_mode(&self) -> &'static str {
-        self.boost_scoring_mode.label()
+        "legacy_endpoint"
     }
 
     fn transfer_gate_readiness(
@@ -2974,7 +2998,7 @@ impl TransferPdgController {
             target_attitude_rad: base_attitude,
         };
         let mut best_score =
-            self.score_boost_candidate(ctx, observation, diagnostics, corridor, best_command);
+            self.score_boost_candidate_endpoint(ctx, observation, corridor, best_command);
         for attitude in attitude_candidates {
             for throttle in &throttle_candidates {
                 let command = Command {
@@ -2982,7 +3006,7 @@ impl TransferPdgController {
                     target_attitude_rad: self.apply_corridor_tilt_cap(attitude, corridor),
                 };
                 let score =
-                    self.score_boost_candidate(ctx, observation, diagnostics, corridor, command);
+                    self.score_boost_candidate_endpoint(ctx, observation, corridor, command);
                 if score.score < best_score.score {
                     best_command = command;
                     best_score = score;
@@ -3009,36 +3033,6 @@ impl TransferPdgController {
                 || (gate.terrain_clearance_safe
                     && gate.latest_safe_margin_s > 0.0
                     && gate.required_accel_ratio <= 1.0))
-    }
-
-    fn score_boost_candidate(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        diagnostics: TransferDiagnostics,
-        corridor: TransferCorridorState,
-        command: Command,
-    ) -> TransferBoostCandidateScore {
-        match self.boost_scoring_mode {
-            TransferBoostScoringMode::ExperimentalRecoverability => self
-                .score_boost_candidate_recoverability(
-                    ctx,
-                    observation,
-                    diagnostics,
-                    corridor,
-                    command,
-                ),
-            TransferBoostScoringMode::ExperimentalPathwise => self.score_boost_candidate_pathwise(
-                ctx,
-                observation,
-                diagnostics,
-                corridor,
-                command,
-            ),
-            TransferBoostScoringMode::Endpoint => {
-                self.score_boost_candidate_endpoint(ctx, observation, corridor, command)
-            }
-        }
     }
 
     fn score_boost_candidate_endpoint(
@@ -3193,109 +3187,6 @@ impl TransferPdgController {
         score
     }
 
-    fn score_boost_candidate_pathwise(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        diagnostics: TransferDiagnostics,
-        corridor: TransferCorridorState,
-        command: Command,
-    ) -> TransferBoostCandidateScore {
-        let samples = self.simulate_transfer_command_samples(
-            ctx,
-            observation,
-            command,
-            self.config.boost_candidate_horizon_s,
-            self.config.boost_candidate_step_s,
-        );
-        let final_state = samples
-            .last()
-            .copied()
-            .unwrap_or_else(|| self.initial_transfer_sim_state(observation));
-        let predicted = self.observation_from_sim_state(ctx, observation, final_state);
-        let predicted_diagnostics = self.transfer_diagnostics(&predicted);
-        let projection = predicted_diagnostics.projection;
-        let quality = predicted_diagnostics.boost_quality;
-        let dx_limit_m = self.boost_dx_limit_m(observation);
-
-        let mut path_score = 0.0;
-        let mut weight_sum = 0.0;
-        for (index, state) in samples.iter().enumerate() {
-            let sample_observation = self.observation_from_sim_state(ctx, observation, *state);
-            let sample_diagnostics = self.transfer_diagnostics(&sample_observation);
-            let weight = (index + 1) as f64;
-            path_score += weight
-                * (self.score_boost_candidate_geometry(
-                    observation,
-                    &sample_observation,
-                    sample_diagnostics,
-                    dx_limit_m,
-                ) + self.score_boost_candidate_corridor(
-                    ctx,
-                    &sample_observation,
-                    sample_diagnostics,
-                    corridor,
-                ) + self.score_boost_no_away_penalty(
-                    &sample_observation,
-                    sample_diagnostics,
-                    command,
-                    dx_limit_m,
-                ));
-            weight_sum += weight;
-        }
-        if weight_sum > 0.0 {
-            path_score /= weight_sum;
-        }
-
-        let endpoint_score = self.score_boost_candidate_endpoint_terms(
-            ctx,
-            observation,
-            &predicted,
-            predicted_diagnostics,
-            corridor,
-            command,
-        );
-        let score = endpoint_score
-            + (0.25 * path_score)
-            + self.score_boost_no_away_penalty(observation, diagnostics, command, dx_limit_m);
-
-        TransferBoostCandidateScore {
-            score,
-            projection,
-            quality,
-        }
-    }
-
-    fn score_boost_no_away_penalty(
-        &self,
-        observation: &Observation,
-        diagnostics: TransferDiagnostics,
-        command: Command,
-        dx_limit_m: f64,
-    ) -> f64 {
-        let target_dx_m = observation.target_dx_m;
-        if target_dx_m.abs() <= dx_limit_m || command.throttle_frac <= 0.0 {
-            return 0.0;
-        }
-
-        let target_sign = target_dx_m.signum();
-        let thrust_lateral_sign = command.target_attitude_rad.sin().signum();
-        if thrust_lateral_sign == 0.0 || thrust_lateral_sign * target_sign >= 0.0 {
-            return 0.0;
-        }
-
-        let projected_overshoot = diagnostics
-            .projection
-            .projected_dx_m
-            .is_some_and(|projected_dx_m| projected_dx_m * target_sign < -dx_limit_m);
-        if projected_overshoot {
-            return 0.0;
-        }
-
-        let away_ratio = (target_dx_m.abs() / dx_limit_m).min(8.0);
-        60.0 * away_ratio * away_ratio * command.throttle_frac.clamp(0.0, 1.0)
-    }
-
     fn waypoint_approach_state(
         &self,
         ctx: &RunContext,
@@ -3312,123 +3203,6 @@ impl TransferPdgController {
                 .boost_tilt_rad
                 .max(self.config.uphill_boost_tilt_rad),
         )
-    }
-
-    fn score_boost_candidate_recoverability(
-        &self,
-        ctx: &RunContext,
-        observation: &Observation,
-        _diagnostics: TransferDiagnostics,
-        corridor: TransferCorridorState,
-        command: Command,
-    ) -> TransferBoostCandidateScore {
-        let simulated = self.simulate_transfer_command(
-            ctx,
-            observation,
-            command,
-            self.config.boost_candidate_horizon_s,
-            self.config.boost_candidate_step_s,
-        );
-        let predicted = self.observation_from_sim_state(ctx, observation, simulated);
-        let predicted_diagnostics = self.transfer_diagnostics(&predicted);
-        let projection = predicted_diagnostics.projection;
-        let quality = predicted_diagnostics.boost_quality;
-        let predicted_gate = self.transfer_gate_readiness_without_deferral(
-            ctx,
-            &predicted,
-            predicted_diagnostics,
-            self.transfer_gate_ready_ticks,
-        );
-
-        let settled_simulated = self.simulate_transfer_command(
-            ctx,
-            &predicted,
-            Command {
-                throttle_frac: 0.0,
-                target_attitude_rad: self.coast_attitude_rad(&predicted),
-            },
-            self.config.boost_settle_lookahead_s,
-            self.config.boost_candidate_step_s,
-        );
-        let settled = self.observation_from_sim_state(ctx, &predicted, settled_simulated);
-        let settled_diagnostics = self.transfer_diagnostics(&settled);
-        let settled_gate = self.transfer_gate_readiness_without_deferral(
-            ctx,
-            &settled,
-            settled_diagnostics,
-            predicted_gate.ready_ticks,
-        );
-
-        let endpoint_score = self.score_boost_candidate_endpoint_terms(
-            ctx,
-            observation,
-            &predicted,
-            predicted_diagnostics,
-            corridor,
-            command,
-        );
-        let recovery_score = self.score_boost_candidate_recoverability_terms(
-            &predicted,
-            predicted_diagnostics,
-            predicted_gate,
-            self.boost_dx_limit_m(observation),
-        );
-        let settled_recovery_score = self.score_boost_candidate_recoverability_terms(
-            &settled,
-            settled_diagnostics,
-            settled_gate,
-            self.boost_dx_limit_m(observation),
-        );
-        let score = endpoint_score
-            + (TRANSFER_BOOST_RECOVERY_SCORE_ENDPOINT_WEIGHT * recovery_score)
-            + (TRANSFER_BOOST_RECOVERY_SCORE_SETTLED_WEIGHT * settled_recovery_score);
-
-        TransferBoostCandidateScore {
-            score,
-            projection,
-            quality,
-        }
-    }
-
-    fn score_boost_candidate_recoverability_terms(
-        &self,
-        predicted: &Observation,
-        predicted_diagnostics: TransferDiagnostics,
-        gate: TerminalEntryAssessment,
-        dx_limit_m: f64,
-    ) -> f64 {
-        let mut score = 0.0;
-        if !gate.terrain_clearance_safe {
-            score += TRANSFER_BOOST_RECOVERY_SCORE_TERRAIN_UNSAFE;
-            score += (-gate.terrain_min_clearance_m).clamp(0.0, 200.0);
-        }
-
-        if predicted.height_above_target_m <= 0.0 {
-            score += 600.0 + (-predicted.height_above_target_m).min(200.0);
-        }
-
-        let negative_margin_s = (-gate.latest_safe_margin_s).clamp(0.0, 12.0);
-        score += TRANSFER_BOOST_RECOVERY_SCORE_LATEST_SAFE_MARGIN
-            * negative_margin_s
-            * negative_margin_s;
-
-        let accel_excess_ratio = (gate.required_accel_ratio - 1.0).clamp(0.0, 12.0);
-        score +=
-            TRANSFER_BOOST_RECOVERY_SCORE_ACCEL_RATIO * accel_excess_ratio * accel_excess_ratio;
-
-        if predicted_diagnostics.boost_quality.passed
-            && gate.mode != TerminalEntryMode::NominalReady
-        {
-            let projected_dx_ratio = predicted_diagnostics
-                .projection
-                .projected_dx_m
-                .map(|projected_dx_m| projected_dx_m.abs() / dx_limit_m.max(1.0))
-                .unwrap_or(2.0)
-                .min(8.0);
-            score += TRANSFER_BOOST_RECOVERY_SCORE_PASS_NOT_READY * projected_dx_ratio;
-        }
-
-        score
     }
 
     fn boost_settled_quality(
@@ -3654,13 +3428,7 @@ impl Controller for TransferPdgController {
         if self.guidance_mode.uses_waypoints() {
             "transfer_waypoint_pdg_v1"
         } else {
-            match self.boost_scoring_mode {
-                TransferBoostScoringMode::Endpoint => "transfer_pdg_v1",
-                TransferBoostScoringMode::ExperimentalPathwise => "transfer_pdg_pathwise_v1",
-                TransferBoostScoringMode::ExperimentalRecoverability => {
-                    "transfer_pdg_recoverability_v1"
-                }
-            }
+            "transfer_pdg_v1"
         }
     }
 

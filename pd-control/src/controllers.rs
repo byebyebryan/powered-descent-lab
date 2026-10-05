@@ -1,7 +1,7 @@
 use crate::kit::{ControllerFrameBuilder, ControllerView, metric, phase, standard_marker};
 use crate::terminal::{TerminalPdgController, TerminalPdgControllerConfig};
 use crate::{Controller, ControllerFrame, TelemetryValue};
-use pd_core::{Command, Observation, RunContext};
+use pd_core::{Command, Observation, RunContext, SimulationError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -144,16 +144,19 @@ impl ControllerSpec {
         }
     }
 
-    pub fn instantiate(&self) -> Box<dyn Controller> {
-        match self {
+    pub fn instantiate(&self) -> Result<Box<dyn Controller>, SimulationError> {
+        Ok(match self {
             Self::Idle => Box::new(IdleController),
             Self::BaselineV1 { config } => Box::new(BaselineController::new(config.clone())),
             Self::StagedDescentV1 { config } => {
                 Box::new(StagedDescentController::new(config.clone()))
             }
             Self::TerminalPdgV1 { config } => Box::new(TerminalPdgController::new(config.clone())),
-            Self::TransferPdgV1 { config } => Box::new(TransferPdgController::new(config.clone())),
-        }
+            Self::TransferPdgV1 { config } => Box::new(
+                TransferPdgController::try_new(config.clone())
+                    .map_err(SimulationError::InvalidContext)?,
+            ),
+        })
     }
 }
 
@@ -177,22 +180,6 @@ pub fn built_in_controller_spec(name: &str) -> Option<ControllerSpec> {
         "transfer_waypoint_pdg" | "transfer_waypoint_pdg_v1" | "xpdg_waypoint" => {
             let config = TransferPdgControllerConfig {
                 waypoint_guidance_enabled: true,
-                ..Default::default()
-            };
-            Some(ControllerSpec::TransferPdgV1 { config })
-        }
-        "transfer_pdg_pathwise" | "transfer_pdg_pathwise_v1" | "xpdg_pathwise" => {
-            let config = TransferPdgControllerConfig {
-                boost_pathwise_scoring_enabled: true,
-                ..Default::default()
-            };
-            Some(ControllerSpec::TransferPdgV1 { config })
-        }
-        "transfer_pdg_recoverability"
-        | "transfer_pdg_recoverability_v1"
-        | "xpdg_recoverability" => {
-            let config = TransferPdgControllerConfig {
-                boost_recoverability_scoring_enabled: true,
                 ..Default::default()
             };
             Some(ControllerSpec::TransferPdgV1 { config })

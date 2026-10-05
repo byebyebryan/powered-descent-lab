@@ -480,7 +480,9 @@ impl SourceTransitionDiagnosticInputPack {
                     case.run_id
                 )
             })?;
-            case.controller.instantiate();
+            case.controller
+                .instantiate()
+                .map_err(|error| error.to_string())?;
         }
         Ok(())
     }

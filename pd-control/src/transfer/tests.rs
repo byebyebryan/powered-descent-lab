@@ -3,8 +3,8 @@ use crate::controllers::{ControllerSpec, built_in_controller_spec};
 use crate::terminal::TerminalEntryMode;
 use pd_core::{
     EvaluationGoal, LandingPadSpec, MissionSpec, RunContext, ScenarioSpec, SimConfig,
-    TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleGeometry,
-    VehicleInitialState, VehicleSpec, WorldSpec,
+    SimulationError, TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2,
+    VehicleGeometry, VehicleInitialState, VehicleSpec, WorldSpec,
 };
 use std::collections::BTreeMap;
 
@@ -204,11 +204,6 @@ fn built_in_guidance_aliases_preserve_canonical_ids() {
         ("xpdg", "transfer_pdg_v1"),
         ("transfer_waypoint_pdg", "transfer_waypoint_pdg_v1"),
         ("xpdg_waypoint", "transfer_waypoint_pdg_v1"),
-        ("transfer_pdg_pathwise", "transfer_pdg_pathwise_v1"),
-        (
-            "transfer_pdg_recoverability",
-            "transfer_pdg_recoverability_v1",
-        ),
     ] {
         assert_eq!(
             built_in_controller_spec(alias).map(|spec| spec.id()),
@@ -216,6 +211,74 @@ fn built_in_guidance_aliases_preserve_canonical_ids() {
             "alias {alias}"
         );
     }
+}
+
+#[test]
+fn retired_transfer_scoring_aliases_are_rejected() {
+    for alias in [
+        "transfer_pdg_pathwise",
+        "transfer_pdg_pathwise_v1",
+        "xpdg_pathwise",
+        "transfer_pdg_recoverability",
+        "transfer_pdg_recoverability_v1",
+        "xpdg_recoverability",
+    ] {
+        assert_eq!(built_in_controller_spec(alias), None, "alias {alias}");
+    }
+}
+
+#[test]
+fn retired_transfer_scoring_specs_preserve_identity_but_cannot_instantiate() {
+    for (flag, expected_id) in [
+        ("boost_pathwise_scoring_enabled", "transfer_pdg_pathwise_v1"),
+        (
+            "boost_recoverability_scoring_enabled",
+            "transfer_pdg_recoverability_v1",
+        ),
+    ] {
+        let mut config = TransferPdgControllerConfig::default();
+        match flag {
+            "boost_pathwise_scoring_enabled" => config.boost_pathwise_scoring_enabled = true,
+            "boost_recoverability_scoring_enabled" => {
+                config.boost_recoverability_scoring_enabled = true
+            }
+            _ => unreachable!("test flag is known"),
+        }
+        assert!(TransferPdgController::try_new(config.clone()).is_err());
+
+        let mut serialized = serde_json::to_value(ControllerSpec::TransferPdgV1 { config })
+            .expect("serialize historical transfer spec");
+        serialized[flag] = serde_json::Value::Bool(true);
+        let spec: ControllerSpec =
+            serde_json::from_value(serialized).expect("deserialize historical transfer spec");
+
+        assert_eq!(spec.id(), expected_id);
+        assert!(matches!(
+            spec.instantiate(),
+            Err(SimulationError::InvalidContext(message)) if message.contains("retired")
+        ));
+    }
+
+    let mut waypoint_config = TransferPdgControllerConfig {
+        waypoint_guidance_enabled: true,
+        boost_pathwise_scoring_enabled: true,
+        ..Default::default()
+    };
+    let waypoint_spec = ControllerSpec::TransferPdgV1 {
+        config: waypoint_config.clone(),
+    };
+    let waypoint_spec: ControllerSpec = serde_json::from_value(
+        serde_json::to_value(waypoint_spec).expect("serialize waypoint historical spec"),
+    )
+    .expect("deserialize waypoint historical spec");
+    assert_eq!(waypoint_spec.id(), "transfer_waypoint_pdg_v1");
+    assert!(matches!(
+        waypoint_spec.instantiate(),
+        Err(SimulationError::InvalidContext(message)) if message.contains("retired")
+    ));
+
+    waypoint_config.boost_recoverability_scoring_enabled = true;
+    assert!(TransferPdgController::try_new(waypoint_config).is_err());
 }
 
 #[test]
@@ -2632,239 +2695,6 @@ fn transfer_boost_scorer_reduces_throttle_when_apex_is_high() {
     assert!(selection.selected_score.is_finite());
     assert!(selection.command.throttle_frac < 1.0);
     assert!(selection.command.throttle_frac >= ctx.vehicle.min_throttle_frac);
-}
-
-#[test]
-fn transfer_pathwise_alias_enables_pathwise_boost_scoring() {
-    let spec = built_in_controller_spec("transfer_pdg_pathwise")
-        .expect("pathwise transfer controller alias should exist");
-
-    match spec {
-        ControllerSpec::TransferPdgV1 { config } => {
-            assert!(config.boost_pathwise_scoring_enabled);
-            assert_eq!(
-                ControllerSpec::TransferPdgV1 { config }.id(),
-                "transfer_pdg_pathwise_v1"
-            );
-        }
-        _ => panic!("pathwise alias should resolve to transfer controller"),
-    }
-}
-
-#[test]
-fn transfer_recoverability_alias_enables_recoverability_boost_scoring() {
-    let spec = built_in_controller_spec("transfer_pdg_recoverability")
-        .expect("recoverability transfer controller alias should exist");
-
-    match spec {
-        ControllerSpec::TransferPdgV1 { config } => {
-            assert!(config.boost_recoverability_scoring_enabled);
-            assert!(!config.boost_pathwise_scoring_enabled);
-            assert_eq!(
-                ControllerSpec::TransferPdgV1 { config }.id(),
-                "transfer_pdg_recoverability_v1"
-            );
-        }
-        _ => panic!("recoverability alias should resolve to transfer controller"),
-    }
-}
-
-#[test]
-fn transfer_pathwise_scorer_keeps_targetward_tilt_for_shortfall() {
-    let ctx = uphill_transfer_context();
-    let mut config = TransferPdgControllerConfig::default();
-    config.boost_pathwise_scoring_enabled = true;
-    let mut controller = TransferPdgController::new(config);
-    controller.boost_anchor = Some(TransferBoostAnchor {
-        route_dx_m: 500.0,
-        route_dy_m: 120.0,
-    });
-    let observation = transfer_observation(500.0, -120.0, Vec2::new(5.0, 30.0), 6.0);
-    let diagnostics = controller.transfer_diagnostics(&observation);
-
-    let selection = controller.select_boost_command(
-        &ctx,
-        &observation,
-        diagnostics,
-        transfer_gate_fixture(2.0, 0.8, true),
-        TransferCorridorState::inactive(),
-    );
-
-    assert_eq!(controller.boost_scoring_mode(), "pathwise_geometry");
-    assert!(selection.selected_score.is_finite());
-    assert!(selection.command.target_attitude_rad > 0.0);
-    assert!(selection.command.throttle_frac >= 0.7);
-}
-
-#[test]
-fn transfer_pathwise_scorer_penalizes_away_thrust_outside_corridor() {
-    let mut config = TransferPdgControllerConfig::default();
-    config.boost_pathwise_scoring_enabled = true;
-    let mut controller = TransferPdgController::new(config);
-    controller.boost_anchor = Some(TransferBoostAnchor {
-        route_dx_m: 500.0,
-        route_dy_m: 120.0,
-    });
-    let observation = transfer_observation(500.0, -120.0, Vec2::new(5.0, 20.0), 6.0);
-    let diagnostics = controller.transfer_diagnostics(&observation);
-    let dx_limit_m = controller.boost_dx_limit_m(&observation);
-
-    let away = controller.score_boost_no_away_penalty(
-        &observation,
-        diagnostics,
-        Command {
-            throttle_frac: 1.0,
-            target_attitude_rad: -0.3,
-        },
-        dx_limit_m,
-    );
-    let targetward = controller.score_boost_no_away_penalty(
-        &observation,
-        diagnostics,
-        Command {
-            throttle_frac: 1.0,
-            target_attitude_rad: 0.3,
-        },
-        dx_limit_m,
-    );
-
-    assert!(away > 0.0);
-    assert_eq!(targetward, 0.0);
-}
-
-#[test]
-fn transfer_pathwise_scorer_is_finite_without_target_y_solution() {
-    let ctx = uphill_transfer_context();
-    let mut config = TransferPdgControllerConfig::default();
-    config.boost_pathwise_scoring_enabled = true;
-    let controller = TransferPdgController::new(config);
-    let observation = transfer_observation(500.0, -220.0, Vec2::new(5.0, 5.0), 6.0);
-    let diagnostics = controller.transfer_diagnostics(&observation);
-
-    assert!(!diagnostics.projection.has_target_y_solution);
-    let score = controller.score_boost_candidate(
-        &ctx,
-        &observation,
-        diagnostics,
-        TransferCorridorState::inactive(),
-        Command {
-            throttle_frac: 1.0,
-            target_attitude_rad: 0.3,
-        },
-    );
-
-    assert!(score.score.is_finite());
-    assert!(!score.quality.passed);
-}
-
-#[test]
-fn transfer_recoverability_scorer_penalizes_overdue_terminal_gate() {
-    let controller = TransferPdgController::default();
-    let observation = transfer_observation(220.0, 80.0, Vec2::new(35.0, -18.0), 6.0);
-    let diagnostics = controller.transfer_diagnostics(&observation);
-    let ready = TerminalEntryAssessment {
-        mode: TerminalEntryMode::NominalReady,
-        ready_ticks: 2,
-        burn_time_s: 2.0,
-        latest_safe_margin_s: 0.5,
-        required_accel_ratio: 0.8,
-        terrain_min_clearance_m: 80.0,
-        terrain_clearance_safe: true,
-        deferred: false,
-    };
-    let overdue = TerminalEntryAssessment {
-        mode: TerminalEntryMode::LatestSafe,
-        ready_ticks: 0,
-        burn_time_s: 2.0,
-        latest_safe_margin_s: -4.0,
-        required_accel_ratio: 0.8,
-        terrain_min_clearance_m: 80.0,
-        terrain_clearance_safe: true,
-        deferred: false,
-    };
-
-    let ready_score = controller.score_boost_candidate_recoverability_terms(
-        &observation,
-        diagnostics,
-        ready,
-        controller.boost_dx_limit_m(&observation),
-    );
-    let overdue_score = controller.score_boost_candidate_recoverability_terms(
-        &observation,
-        diagnostics,
-        overdue,
-        controller.boost_dx_limit_m(&observation),
-    );
-
-    assert!(overdue_score > ready_score + 100.0);
-}
-
-#[test]
-fn transfer_recoverability_scorer_prefers_margin_over_lower_accel_ratio() {
-    let controller = TransferPdgController::default();
-    let observation = transfer_observation(220.0, 80.0, Vec2::new(35.0, -18.0), 6.0);
-    let diagnostics = controller.transfer_diagnostics(&observation);
-    let better_margin = TerminalEntryAssessment {
-        mode: TerminalEntryMode::LatestSafe,
-        ready_ticks: 0,
-        burn_time_s: 2.0,
-        latest_safe_margin_s: -2.0,
-        required_accel_ratio: 8.0,
-        terrain_min_clearance_m: 80.0,
-        terrain_clearance_safe: true,
-        deferred: false,
-    };
-    let lower_accel = TerminalEntryAssessment {
-        mode: TerminalEntryMode::LatestSafe,
-        ready_ticks: 0,
-        burn_time_s: 2.0,
-        latest_safe_margin_s: -4.0,
-        required_accel_ratio: 2.0,
-        terrain_min_clearance_m: 80.0,
-        terrain_clearance_safe: true,
-        deferred: false,
-    };
-
-    let better_margin_score = controller.score_boost_candidate_recoverability_terms(
-        &observation,
-        diagnostics,
-        better_margin,
-        controller.boost_dx_limit_m(&observation),
-    );
-    let lower_accel_score = controller.score_boost_candidate_recoverability_terms(
-        &observation,
-        diagnostics,
-        lower_accel,
-        controller.boost_dx_limit_m(&observation),
-    );
-
-    assert!(better_margin_score < lower_accel_score);
-}
-
-#[test]
-fn transfer_recoverability_scorer_is_finite_without_target_y_solution() {
-    let ctx = uphill_transfer_context();
-    let mut config = TransferPdgControllerConfig::default();
-    config.boost_recoverability_scoring_enabled = true;
-    let controller = TransferPdgController::new(config);
-    let observation = transfer_observation(500.0, -220.0, Vec2::new(5.0, 5.0), 6.0);
-    let diagnostics = controller.transfer_diagnostics(&observation);
-
-    assert_eq!(controller.boost_scoring_mode(), "recoverability");
-    assert!(!diagnostics.projection.has_target_y_solution);
-    let score = controller.score_boost_candidate(
-        &ctx,
-        &observation,
-        diagnostics,
-        TransferCorridorState::inactive(),
-        Command {
-            throttle_frac: 1.0,
-            target_attitude_rad: 0.3,
-        },
-    );
-
-    assert!(score.score.is_finite());
-    assert!(!score.quality.passed);
 }
 
 #[test]

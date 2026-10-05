@@ -194,7 +194,7 @@ pub fn run_controller_spec(
     ctx: &RunContext,
     spec: &ControllerSpec,
 ) -> Result<ControlledRunArtifacts, SimulationError> {
-    let mut controller = spec.instantiate();
+    let mut controller = spec.instantiate()?;
     run_controller(ctx, controller.as_mut())
 }
 

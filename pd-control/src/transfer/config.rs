@@ -116,8 +116,12 @@ pub struct TransferPdgControllerConfig {
     pub boost_candidate_step_s: f64,
     #[serde(default = "default_transfer_boost_settle_lookahead_s")]
     pub boost_settle_lookahead_s: f64,
+    /// Historical serialized flag retained for decoding and identity reporting.
+    /// Runtime controller construction rejects `true`.
     #[serde(default = "default_transfer_boost_pathwise_scoring_enabled")]
     pub boost_pathwise_scoring_enabled: bool,
+    /// Historical serialized flag retained for decoding and identity reporting.
+    /// Runtime controller construction rejects `true`.
     #[serde(default = "default_transfer_boost_recoverability_scoring_enabled")]
     pub boost_recoverability_scoring_enabled: bool,
     #[serde(default = "default_transfer_waypoint_guidance_enabled")]
