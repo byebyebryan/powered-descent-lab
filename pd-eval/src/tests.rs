@@ -103,6 +103,158 @@ fn maintained_clean_terminal_packs_expand_only_the_current_controller_lane() {
 }
 
 #[test]
+fn maintained_authored_waypoint_pack_resolution_fingerprints() {
+    const EXPECTED: [(&str, usize, &str); 20] = [
+        (
+            "transfer_waypoint_bend_contract_rpos80_full.json",
+            108,
+            "746406ed859a675d1ea1e5d4fd26d656540e064114adbf03860ba2fc9247d413",
+        ),
+        (
+            "transfer_waypoint_bend_contract_rpos80_smoke.json",
+            27,
+            "64c1bf010e74e9aa6b2581c1ec653ef20fb99d593663fc68aebf41e8246cfd15",
+        ),
+        (
+            "transfer_waypoint_bend_rpos80_full.json",
+            108,
+            "248af2da6934a5c761802c3159915c4a4412cead9d90e9468bde6399601a5b9b",
+        ),
+        (
+            "transfer_waypoint_bend_rpos80_smoke.json",
+            27,
+            "a00fa0bcb5e14bba36cb9213925c423f07a277cf53a94a18f3cfc00852e6d886",
+        ),
+        (
+            "transfer_waypoint_sequence_contract_route_angle_full.json",
+            180,
+            "aabe6bfeae96337ce8e297b3aee6d60f2c17c9e05c7cf2c21cfdee31127cd02a",
+        ),
+        (
+            "transfer_waypoint_sequence_contract_route_angle_radius_smoke.json",
+            135,
+            "a3547356e9233da09f03e51a62e0fb478cbe193f48cb4039d1934ddb9992956f",
+        ),
+        (
+            "transfer_waypoint_sequence_contract_route_angle_smoke.json",
+            45,
+            "07c19cf8f4f0c357e591aa49ae353d70e6759aae686c8a18693841d279cf430a",
+        ),
+        (
+            "transfer_waypoint_sequence_contract_smoke.json",
+            27,
+            "c1f55128e1708b0f8bda8ebbca052eaa30c96000d28f7f46c8ed8fa3dbaf8891",
+        ),
+        (
+            "transfer_waypoint_sequence_route_angle_full.json",
+            180,
+            "4f2b3b48cd2daf89723ce0524364f027bdaa73a04679a8a2cdaac9b853a77e89",
+        ),
+        (
+            "transfer_waypoint_sequence_route_angle_radius_smoke.json",
+            135,
+            "6ee83a4d7eee120cb443b9b6842fc81c276406125b3265a58e73f8847b6f7b6d",
+        ),
+        (
+            "transfer_waypoint_sequence_route_angle_smoke.json",
+            45,
+            "8d39eb0815977b99611d83cbb556925aa1a9f689784da56899f9aaa3f9f4efc0",
+        ),
+        (
+            "transfer_waypoint_sequence_smoke.json",
+            27,
+            "170e0987b1ea829b37d83ab87ef4365979acb4ec7fd710a810740233e6f74625",
+        ),
+        (
+            "transfer_waypoint_turn_contract_route_angle_full.json",
+            540,
+            "3f7113e1440a7b45ff23215ebe960705f84801553e0ddddb59107f8971f51d3f",
+        ),
+        (
+            "transfer_waypoint_turn_contract_route_angle_radius_smoke.json",
+            405,
+            "c0232042314b7d98a3508d00933150128a026f1684df4bf7ec53025a80a91656",
+        ),
+        (
+            "transfer_waypoint_turn_contract_route_angle_smoke.json",
+            135,
+            "6c7cfd06f9447aa8a8e58da6da6bfe6c2b62ed675816b475a7126daec5d3240e",
+        ),
+        (
+            "transfer_waypoint_turn_contract_smoke.json",
+            81,
+            "913303decee797310099ae8420ea316b9edcc0888a29bd53080dddaa2c1c2a7e",
+        ),
+        (
+            "transfer_waypoint_turn_route_angle_full.json",
+            540,
+            "605846270760d47c817997cde8b89e0e135d03dbdf60fe825a62426497a0dfab",
+        ),
+        (
+            "transfer_waypoint_turn_route_angle_radius_smoke.json",
+            405,
+            "c3b2093351a87629383dfc022eead9dbc5c2f84ed78669f9808434dbcca6254e",
+        ),
+        (
+            "transfer_waypoint_turn_route_angle_smoke.json",
+            135,
+            "f62344bf964994625ebdb14980ced33166910134305f95b4f3b0972a821a3d91",
+        ),
+        (
+            "transfer_waypoint_turn_smoke.json",
+            81,
+            "3555110024d9571aeb4ce277409cbdea337291355f728b4f6789aee0d3d11167",
+        ),
+    ];
+
+    let packs_dir = fixtures_root().join("packs");
+    let mut filenames = fs::read_dir(&packs_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|filename| filename.starts_with("transfer_waypoint") && filename.ends_with(".json"))
+        .filter(|filename| {
+            !matches!(
+                filename.as_str(),
+                "transfer_waypoint_contract_rpos80_full.json"
+                    | "transfer_waypoint_contract_rpos80_smoke.json"
+                    | "transfer_waypoint_rpos80_full.json"
+                    | "transfer_waypoint_rpos80_smoke.json"
+                    | "transfer_waypoint_sequence_late_bend_diagnostic.json"
+            )
+        })
+        .collect::<Vec<_>>();
+    filenames.sort();
+    let expected_filenames = EXPECTED
+        .iter()
+        .map(|(name, _, _)| *name)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        filenames.iter().map(String::as_str).collect::<Vec<_>>(),
+        expected_filenames
+    );
+
+    for (filename, expected_runs, expected_fingerprint) in EXPECTED {
+        let pack = load_pack(&packs_dir.join(&filename)).unwrap();
+        let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
+        assert_eq!(
+            runs.len(),
+            expected_runs,
+            "unexpected run count for {filename}"
+        );
+        let serialized_inputs = runs
+            .iter()
+            .map(|run| (&run.descriptor, &run.scenario))
+            .collect::<Vec<_>>();
+        let compact_json = serde_json::to_vec(&serialized_inputs).unwrap();
+        let fingerprint = evidence_io::sha256_bytes(&compact_json).unwrap();
+        assert_eq!(
+            fingerprint, expected_fingerprint,
+            "changed resolution for {filename}"
+        );
+    }
+}
+
+#[test]
 fn retired_research_pack_descriptors_are_rejected_before_resolution() {
     let packs_dir = fixtures_root().join("packs");
     for filename in [
