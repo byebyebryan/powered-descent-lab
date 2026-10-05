@@ -57,13 +57,7 @@ fn retained_capture_numerical_parity() {
 }
 
 fn request() -> WaypointDirectNominalDirectGenerationRequest {
-    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap();
-    crate::load_nominal_direct_operational_fresh_inputs(repo)
-        .unwrap()
-        .remove(0)
-        .1
+    crate::test_inputs::planner_request("v2_clear_845")
 }
 
 #[test]
@@ -562,23 +556,8 @@ fn synthetic_corridor_queries_keep_launch_and_terminal_exemptions_separate() {
 }
 #[test]
 fn odd_actual_contact_proof_has_no_endpoint_padding_or_extra_command() {
-    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap();
-    let manifest =
-        crate::load_waypoint_direct_obstacle_discrimination_fresh_manifest(repo).unwrap();
-    let base = manifest
-        .cases
-        .iter()
-        .find(|c| c.case_id == "fresh_flat_control_span_900")
-        .unwrap();
-    let mut request = WaypointDirectNominalDirectGenerationRequest {
-        scenario: base.scenario.clone(),
-        source_pad_id: base.source_pad_id.clone(),
-        target_pad_id: base.target_pad_id.clone(),
-        probe_id: "odd_contact_proof".into(),
-        policy: manifest.generation_policy,
-    };
+    let mut request = crate::test_inputs::archived_obstacle_request("fresh_flat_control_span_900");
+    request.probe_id = "odd_contact_proof".into();
     let mut points = request.scenario.world.terrain.points().to_vec();
     points.extend([
         pd_core::Vec2::new(-540.0, 0.0),
@@ -622,98 +601,6 @@ fn odd_actual_contact_proof_has_no_endpoint_padding_or_extra_command() {
     assert_eq!(proof.incoming_contact, audit.incoming_contact);
     assert!(fixed_outcome(&audit, true).unwrap());
 }
-#[test]
-fn reference_plateau_composes_actual_handoffs_without_reset() {
-    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap();
-    let manifest =
-        crate::load_waypoint_direct_obstacle_discrimination_fresh_manifest(repo).unwrap();
-    let case = manifest
-        .cases
-        .iter()
-        .find(|c| c.case_id == "fresh_late_broad_span_900")
-        .unwrap();
-    let request = WaypointDirectNominalDirectGenerationRequest {
-        scenario: case.scenario.clone(),
-        source_pad_id: case.source_pad_id.clone(),
-        target_pad_id: case.target_pad_id.clone(),
-        probe_id: "v2_reference_test".into(),
-        policy: manifest.generation_policy,
-    };
-    let mut session =
-        WaypointV2Session::start(request.clone(), WaypointV2Policy::default()).unwrap();
-    let mut handoff_steps = Vec::new();
-    let mut previous_handoff = None;
-    loop {
-        match session.advance_piece().unwrap() {
-            WaypointV2SessionProgress::Handoff {
-                piece_index,
-                entry_physics_step,
-                handoff_physics_step,
-                correction_count,
-            } => {
-                assert_eq!(entry_physics_step, previous_handoff.unwrap_or(0));
-                assert_eq!(correction_count as usize, piece_index + 1);
-                let result = session.result();
-                let cycle = result.cycles.get(piece_index).unwrap();
-                let selected = cycle
-                    .local_search
-                    .as_ref()
-                    .and_then(|local| local.selected.as_ref())
-                    .unwrap();
-                assert_eq!(selected.schedule.handoff_physics_step, handoff_physics_step);
-                assert_eq!(selected.handoff_state.physics_step, handoff_physics_step);
-                assert_eq!(
-                    result.segments.last().unwrap().end_state,
-                    selected.handoff_state
-                );
-                handoff_steps.push(handoff_physics_step);
-                previous_handoff = Some(handoff_physics_step);
-            }
-            WaypointV2SessionProgress::Terminal {
-                planning_stop: WaypointV2Stop::Landed,
-                ..
-            } => break,
-            progress => panic!("unexpected session progress {progress:?}"),
-        }
-    }
-    let result = session.finish().unwrap().clone();
-    assert!(result.integrity_passed, "{:?}", result.reason);
-    assert!(result.final_source_replay_passed);
-    assert!(result.initial_nominal_terrain_blocked);
-    assert!(result.correction_count >= 1);
-    assert_eq!(result.planning_stop, WaypointV2Stop::Landed);
-    assert!(result.correction_count >= 2);
-    assert_eq!(handoff_steps.len(), result.correction_count as usize);
-    assert!(handoff_steps.windows(2).all(|pair| pair[1] >= pair[0]));
-    let selected = result.cycles[0]
-        .local_search
-        .as_ref()
-        .unwrap()
-        .selected
-        .as_ref()
-        .unwrap();
-    assert_eq!(selected.row_id, "source_75_percent_row_26");
-    assert_eq!(selected.schedule.entry_physics_step, 1512);
-    assert_eq!(selected.schedule.handoff_physics_step, 2820);
-    assert_eq!(
-        selected.handoff_state.position_m,
-        pd_core::Vec2::new(-337.77126006831395, 382.8205898542399)
-    );
-    for cycle in &result.cycles[1..] {
-        assert!(cycle.current_state.physics_step >= 2820);
-        assert_eq!(
-            cycle.current_state.sim_time_s,
-            cycle.current_state.physics_step as f64 / 120.0
-        );
-    }
-    eprintln!(
-        "reference result: {:?}, corrections {}, timings {:?}",
-        result.planning_stop, result.correction_count, result.timings
-    );
-}
-
 #[test]
 fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

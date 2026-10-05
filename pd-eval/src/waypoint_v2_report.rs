@@ -941,9 +941,7 @@ mod tests {
 
     /// Synthetic evidence, not a physical flight. No commands are simulated.
     fn synthetic(odd_endpoint: bool) -> (ScenarioSpec, WaypointV2FlightResult) {
-        let mut scenario = crate::waypoint_direct_known_flat_generation_request(&repo())
-            .unwrap()
-            .scenario;
+        let mut scenario = crate::test_inputs::planner_request("v2_clear_845").scenario;
         scenario.id = "v2_clear_synthetic".into();
         let context = RunContext::from_scenario(&scenario).unwrap();
         let initial = SimulationState::new(&context).unwrap();

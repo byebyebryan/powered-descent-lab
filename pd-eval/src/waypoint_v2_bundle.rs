@@ -658,11 +658,7 @@ mod tests {
     }
 
     fn supported_request() -> WaypointDirectNominalDirectGenerationRequest {
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-        crate::load_nominal_direct_operational_fresh_inputs(repository)
-            .expect("tracked operational request")
-            .remove(0)
-            .1
+        crate::test_inputs::planner_request("v2_clear_845")
     }
 
     fn create_unsupported_bundle(root: &Path) -> WaypointV2CliBundleReceiptV1 {

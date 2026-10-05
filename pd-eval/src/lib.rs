@@ -1673,3 +1673,6 @@ pub fn run_pack_with_workers(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod test_inputs;

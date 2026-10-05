@@ -283,8 +283,7 @@ mod tests {
     #[test]
     fn unsupported_preflight_is_recorded_without_report_and_root_is_create_only() {
         let root = fresh_test_root();
-        let request = crate::waypoint_direct_known_flat_generation_request(&repository_root())
-            .expect("known flat input");
+        let request = crate::test_inputs::planner_request("v2_clear_845");
         let mut policy = WaypointV2Policy::default();
         policy.maximum_corrections -= 1;
 
