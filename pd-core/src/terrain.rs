@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::math::Vec2;
 
-/// A conservative vehicle-center envelope used by exact corridor queries.
+/// A conservative vehicle-center envelope used by exact terrain clearance queries.
 ///
 /// The envelope is axis aligned in the world frame.  Keeping this primitive
 /// independent of the vehicle model lets callers describe endpoint tapers and
@@ -180,172 +180,14 @@ impl TerrainDefinition {
         (points[0].x, points[points.len() - 1].x)
     }
 
-    /// Return the exact minimum centerline-to-terrain clearance for a segment.
-    ///
-    /// The centerline and both envelope extents are linearly interpolated over
-    /// the segment.  The query partitions the segment at every terrain vertex
-    /// crossing of the left/right lateral envelope and evaluates each linear
-    /// residual at its exact interval endpoints.  This is sufficient for a
-    /// piecewise-linear terrain/profile pair and intentionally does not rely on
-    /// fixed sampling.
-    pub fn exact_corridor_clearance(
-        &self,
-        start_m: Vec2,
-        end_m: Vec2,
-        start_envelope: CorridorEnvelope,
-        end_envelope: CorridorEnvelope,
-    ) -> Result<CorridorClearance, TerrainQueryError> {
-        self.validate()
-            .map_err(|message| TerrainQueryError::InvalidTerrain { message })?;
-        start_envelope
-            .validate()
-            .and_then(|_| end_envelope.validate())
-            .map_err(|message| TerrainQueryError::InvalidCorridor { message })?;
-        for (label, point) in [("start", start_m), ("end", end_m)] {
-            if !point.x.is_finite() || !point.y.is_finite() {
-                return Err(TerrainQueryError::InvalidCorridor {
-                    message: format!("corridor {label} point must be finite"),
-                });
-            }
-        }
-        let dx = end_m.x - start_m.x;
-        if dx.abs() <= f64::EPSILON {
-            return Err(TerrainQueryError::InvalidCorridor {
-                message: "corridor segment must have non-zero horizontal span".to_owned(),
-            });
-        }
-
-        // The lateral interval is linear in segment parameter.  Checking its
-        // endpoints is enough to reject a domain overrun, because the terrain
-        // domain itself is an interval.
-        let domain = self.domain_x();
-        let left_start = start_m.x - start_envelope.horizontal_extent_m;
-        let right_start = start_m.x + start_envelope.horizontal_extent_m;
-        let left_end = end_m.x - end_envelope.horizontal_extent_m;
-        let right_end = end_m.x + end_envelope.horizontal_extent_m;
-        for x_m in [left_start, right_start, left_end, right_end] {
-            if x_m < domain.0 || x_m > domain.1 {
-                return Err(TerrainQueryError::DomainOverrun {
-                    x_m,
-                    domain_min_x_m: domain.0,
-                    domain_max_x_m: domain.1,
-                });
-            }
-        }
-
-        // Build an exact arrangement of all parameter locations at which an
-        // envelope boundary crosses a terrain vertex.  On each resulting
-        // interval, terrain evaluated at either envelope boundary and at any
-        // included terrain vertex is affine, so its maximum is at an endpoint.
-        let mut parameters = vec![0.0, 1.0];
-        for vertex in self.points().iter().skip(1).take(self.points().len() - 2) {
-            if let Some(t) = solve_linear_crossing(left_start, left_end, vertex.x)
-                && t > 0.0
-                && t < 1.0
-            {
-                parameters.push(t);
-            }
-            if let Some(t) = solve_linear_crossing(right_start, right_end, vertex.x)
-                && t > 0.0
-                && t < 1.0
-            {
-                parameters.push(t);
-            }
-        }
-        parameters.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-        parameters.dedup_by(|a, b| (*a - *b).abs() <= 1.0e-12);
-
-        let mut worst: Option<CorridorResidual> = None;
-        for window in parameters.windows(2) {
-            let t0 = window[0];
-            let t1 = window[1];
-            // Evaluate both interval endpoints.  This catches envelope
-            // boundaries and every vertex entering/leaving the lateral span.
-            for t in [t0, t1] {
-                let center = interpolate(start_m, end_m, t);
-                let horizontal_extent = lerp(
-                    start_envelope.horizontal_extent_m,
-                    end_envelope.horizontal_extent_m,
-                    t,
-                );
-                let vertical_extent = lerp(
-                    start_envelope.vertical_extent_m,
-                    end_envelope.vertical_extent_m,
-                    t,
-                );
-                let left = center.x - horizontal_extent;
-                let right = center.x + horizontal_extent;
-
-                // The domain check above covers the extrema of the lateral
-                // boundaries.  Keep the per-evaluation guard for numerical
-                // safety and to make this function robust to future profile
-                // changes.
-                for x_m in [left, right] {
-                    if x_m < domain.0 || x_m > domain.1 {
-                        return Err(TerrainQueryError::DomainOverrun {
-                            x_m,
-                            domain_min_x_m: domain.0,
-                            domain_max_x_m: domain.1,
-                        });
-                    }
-                }
-
-                let mut evaluate = |terrain_x: f64| {
-                    let terrain_y = self.sample_height(terrain_x);
-                    let required_y = center.y - vertical_extent;
-                    let residual = terrain_y - required_y;
-                    let candidate = CorridorResidual {
-                        residual_m: residual,
-                        centerline_position_m: center,
-                        terrain_position_m: Vec2::new(terrain_x, terrain_y),
-                        terrain_segment_index: self.segment_index_for(terrain_x),
-                        required_envelope_y_m: required_y,
-                        centerline_y_m: center.y,
-                        vertical_extent_m: vertical_extent,
-                    };
-                    if worst
-                        .as_ref()
-                        .is_none_or(|current| residual > current.residual_m)
-                    {
-                        worst = Some(candidate);
-                    }
-                };
-
-                evaluate(left);
-                evaluate(right);
-                for (index, vertex) in self.points().iter().enumerate() {
-                    if vertex.x >= left && vertex.x <= right {
-                        // Record the canonical vertex segment.  At a shared
-                        // vertex either adjacent segment is equivalent for
-                        // clearance; retaining the lower-index segment keeps
-                        // diagnostics stable.
-                        let _ = index;
-                        evaluate(vertex.x);
-                    }
-                }
-            }
-        }
-
-        let worst_residual = worst.ok_or_else(|| TerrainQueryError::InvalidCorridor {
-            message: "corridor query produced no evaluation points".to_owned(),
-        })?;
-        Ok(CorridorClearance {
-            clear: worst_residual.residual_m <= 0.0,
-            minimum_clearance_m: -worst_residual.residual_m,
-            worst_residual,
-        })
-    }
-
     /// Return the exact minimum clearance between a point-centred envelope
     /// and the terrain over that envelope's lateral span.
     ///
-    /// Unlike [`Self::exact_corridor_clearance`], this query has no segment
-    /// interpolation and accepts a zero-width lateral span.  The terrain is
-    /// piecewise linear, so its maximum over the closed span is attained at a
-    /// span endpoint or at a terrain vertex contained by the span.  A point
-    /// query is intentionally strict about the terrain domain: callers must
-    /// not accidentally turn an out-of-domain clearance into an edge-clamped
-    /// observation.
+    /// The terrain is piecewise linear, so its maximum over the closed span is
+    /// attained at a span endpoint or at a terrain vertex contained by the
+    /// span. A point query is intentionally strict about the terrain domain:
+    /// callers must not accidentally turn an out-of-domain clearance into an
+    /// edge-clamped observation.
     pub fn exact_point_clearance(
         &self,
         center_m: Vec2,
@@ -476,23 +318,6 @@ impl TerrainDefinition {
     }
 }
 
-fn interpolate(start: Vec2, end: Vec2, t: f64) -> Vec2 {
-    Vec2::new(lerp(start.x, end.x, t), lerp(start.y, end.y, t))
-}
-
-fn lerp(start: f64, end: f64, t: f64) -> f64 {
-    start + ((end - start) * t)
-}
-
-fn solve_linear_crossing(start: f64, end: f64, value: f64) -> Option<f64> {
-    let delta = end - start;
-    if delta.abs() <= f64::EPSILON {
-        None
-    } else {
-        Some((value - start) / delta)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,75 +342,6 @@ mod tests {
             Err(TerrainQueryError::DomainOverrun { .. })
         ));
         assert_eq!(terrain.sample_height_strict(10.0).unwrap(), 0.0);
-    }
-
-    #[test]
-    fn exact_corridor_catches_narrow_terrain_vertex() {
-        let terrain = TerrainDefinition::Heightfield {
-            points_m: vec![
-                Vec2::new(-10.0, 0.0),
-                Vec2::new(0.0, 20.0),
-                Vec2::new(10.0, 0.0),
-            ],
-        };
-        let clearance = terrain
-            .exact_corridor_clearance(
-                Vec2::new(-10.0, 10.0),
-                Vec2::new(10.0, 10.0),
-                CorridorEnvelope::new(0.0, 0.0),
-                CorridorEnvelope::new(0.0, 0.0),
-            )
-            .unwrap();
-        assert!(!clearance.clear);
-        assert_eq!(
-            clearance.worst_residual.terrain_position_m,
-            Vec2::new(0.0, 20.0)
-        );
-        assert_eq!(clearance.worst_residual.terrain_segment_index, 0);
-    }
-
-    #[test]
-    fn exact_corridor_accounts_for_lateral_envelope_on_steep_slope() {
-        let terrain = TerrainDefinition::Heightfield {
-            points_m: vec![Vec2::new(0.0, 0.0), Vec2::new(10.0, 100.0)],
-        };
-        let clearance = terrain
-            .exact_corridor_clearance(
-                Vec2::new(4.0, 55.0),
-                Vec2::new(6.0, 55.0),
-                CorridorEnvelope::new(2.0, 0.0),
-                CorridorEnvelope::new(2.0, 0.0),
-            )
-            .unwrap();
-        assert!(!clearance.clear);
-        assert!(clearance.worst_residual.terrain_position_m.x >= 7.9);
-    }
-
-    #[test]
-    fn exact_threshold_is_clear_but_lower_centerline_is_not() {
-        let terrain = TerrainDefinition::Heightfield {
-            points_m: vec![Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)],
-        };
-        let threshold = terrain
-            .exact_corridor_clearance(
-                Vec2::new(0.0, 10.0),
-                Vec2::new(10.0, 10.0),
-                CorridorEnvelope::new(0.0, 10.0),
-                CorridorEnvelope::new(0.0, 10.0),
-            )
-            .unwrap();
-        assert!(threshold.clear);
-        assert_eq!(threshold.minimum_clearance_m, 0.0);
-
-        let below = terrain
-            .exact_corridor_clearance(
-                Vec2::new(0.0, 9.999),
-                Vec2::new(10.0, 9.999),
-                CorridorEnvelope::new(0.0, 10.0),
-                CorridorEnvelope::new(0.0, 10.0),
-            )
-            .unwrap();
-        assert!(!below.clear);
     }
 
     #[test]

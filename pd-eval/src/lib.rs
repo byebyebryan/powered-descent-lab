@@ -13,9 +13,8 @@ use pd_control::{
 };
 use pd_core::{
     EndReason, EvaluationGoal, EventRecord, LandingPadSpec, MissionOutcome, Observation,
-    RoutePlanningRequest, RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec,
-    TerrainDefinition, TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleSpec,
-    WaypointHandoffKinematics, build_endpoint_profile,
+    RunContext, RunManifest, RunSummary, SampleRecord, ScenarioSpec, TerrainDefinition,
+    TransferRouteSpec, TransferWaypointSpec, Vec2, VehicleSpec, WaypointHandoffKinematics,
 };
 use rayon::{ThreadPoolBuilder, prelude::*};
 use serde::{Deserialize, Serialize};

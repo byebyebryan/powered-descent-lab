@@ -42,8 +42,6 @@ pub(crate) fn write_artifact_bundle(
     scenario: &ScenarioSpec,
     controller_spec: &ControllerSpec,
     artifacts: &ControlledRunArtifacts,
-    route_plan: Option<&pd_core::RoutePlan>,
-    planner_compute: Option<&pd_core::PlannerComputeEvidence>,
 ) -> Result<()> {
     fs::create_dir_all(path)
         .with_context(|| format!("failed to create artifact bundle dir {}", path.display()))?;
@@ -58,12 +56,6 @@ pub(crate) fn write_artifact_bundle(
     write_json(&path.join("actions.json"), &artifacts.run.actions)?;
     write_json(&path.join("events.json"), &artifacts.run.events)?;
     write_json(&path.join("samples.json"), &artifacts.run.samples)?;
-    if let Some(route_plan) = route_plan {
-        write_json(&path.join("route_plan.json"), route_plan)?;
-    }
-    if let Some(planner_compute) = planner_compute {
-        write_json(&path.join("planner_compute.json"), planner_compute)?;
-    }
     pd_report::write_run_report_with_plan_context_and_compute(
         &path.join("report.html"),
         scenario,
@@ -78,8 +70,8 @@ pub(crate) fn write_artifact_bundle(
             parent_report_label: Some("Batch report".to_owned()),
             run_index_href: Some("../".to_owned()),
         }),
-        route_plan,
-        planner_compute,
+        None,
+        None,
     )?;
     pd_report::write_run_preview_svg_with_plan(
         &path.join("preview.svg"),
@@ -87,7 +79,7 @@ pub(crate) fn write_artifact_bundle(
         &artifacts.run.manifest,
         &artifacts.run.samples,
         &artifacts.controller_updates,
-        route_plan,
+        None,
     )?;
     Ok(())
 }

@@ -4616,6 +4616,9 @@ fn cached_run_bundle_requires_route_plan_only_for_planner_descriptor() {
     };
     let mut report = run_pack_with_workers(&pack, &base_dir, Some(&output_dir), 1).unwrap();
     assert!(validate_cached_run_bundles(&report.records));
+    assert!(report.records[0].review.planner.is_none());
+    assert!(report.records[0].resolved.route_plan.is_none());
+    assert!(report.records[0].resolved.planner_compute.is_none());
 
     let route_plan = artifact_test_route_plan();
     report.records[0].resolved.route_plan = Some(route_plan.clone());
@@ -4627,6 +4630,8 @@ fn cached_run_bundle_requires_route_plan_only_for_planner_descriptor() {
             .as_deref()
             .expect("run should have a bundle directory"),
     );
+    assert!(!bundle_dir.join("route_plan.json").exists());
+    assert!(!bundle_dir.join("planner_compute.json").exists());
     fs::write(
         bundle_dir.join("route_plan.json"),
         serde_json::to_vec_pretty(&route_plan).unwrap(),
@@ -4641,6 +4646,12 @@ fn cached_run_bundle_requires_route_plan_only_for_planner_descriptor() {
             .unwrap(),
     )
     .unwrap();
+    refresh_run_report(&bundle_dir).unwrap();
+    assert!(
+        fs::read_to_string(bundle_dir.join("report.html"))
+            .unwrap()
+            .contains("artifact-plan")
+    );
     assert!(validate_cached_run_bundles(&report.records));
 }
 
