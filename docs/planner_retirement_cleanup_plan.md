@@ -131,3 +131,46 @@ defect remains. Commit reviewed checkpoints as work proceeds.
 No push, publication, server restart, new terrain campaign, solver redesign,
 ordinary controller-default promotion or deletion of captured evidence is part
 of this batch.
+
+## Follow-up housekeeping round: October 5, 2026
+
+The user authorized this round after a fresh read-only scan at clean `90a2228`,
+using `worker-goal-loop` and reviewed local commits as work proceeds. The original
+eight-phase batch above is already complete; this round removes its remaining
+stranded dependencies rather than reopening the flight design.
+
+1. Remove the uncalled strict/operational `pd-control::FlightProgram` playback
+   module and execution-only core validators/factories. Preserve the live
+   `FlightProgramUpdateV1` and historical binding/program serialized shapes and
+   strict unknown-field handling; ordinary simulation/action replay is unchanged.
+2. Remove V1 route authority, validation and shaping after removing unreachable
+   new-run evaluator planner metrics and plan-artifact generation. Keep saved
+   route/policy/diagnostic DTOs, their custom infinity decoding, historical cache
+   completeness checks and saved-report refresh/rendering. Remove exclusive
+   helpers/tests, not the current exact point-centred terrain/body query.
+3. Retire execution of the four `single_dogleg_v1` packs and the `late_bend_v1`
+   diagnostic pack, reject those profiles even in renamed packs, and remove only
+   their exclusive geometry/tests. Keep pack JSON as archive metadata and saved
+   reports; maintained bend/sequence guidance and legacy handoff envelopes stay.
+4. Remove the unused sample-based aggregate-preview API. Extract the common rich
+   template into an owned module without changing its bytes, charts, data,
+   annotations or public maintained render/write entrypoints. Avoid unrelated
+   evaluator-wide structural moves.
+5. Reconcile nonexistent code paths, stale research-wrapper comments and
+   active-versus-archival navigation labels; record the exact removals and gates.
+
+The primary owns retirement/compatibility decisions, integration, final review,
+documentation and commits. One Luna writer handles bounded independent slices.
+Workers do not commit or mutate fixtures/captured evidence. Keep the flight
+invariants and final gates from the original plan: exact all-44 flight parity
+excluding only three existing timing fields, ordinary workspace/CLI/default-off,
+formatting, Clippy and maintained JS checks, saved-site acceptance and saved
+report compatibility. No tuning or new acceptance campaign is permitted.
+
+A fresh protected inventory is stored locally at
+`outputs/validation/planner_housekeeping_round2_20261005/baseline.json`. Its 31
+scopes include the original protected outputs plus all pack/scenario fixtures and
+the old analytical fixtures; hashes also bind directory and symlink identities.
+Compare against that inventory on final source. Published pages, current selectors
+and receipts must remain unchanged; navigation-copy changes are source changes,
+not authorization to republish the site.
