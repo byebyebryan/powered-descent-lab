@@ -54,6 +54,8 @@ struct FlightOutput<'a> {
     physical_outcome: Option<PhysicalOutcome>,
     mission_outcome: Option<MissionOutcome>,
     output_dir: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 pub(super) fn flight(args: WaypointV2FlightArgs) -> Result<()> {
@@ -88,6 +90,7 @@ pub(super) fn flight(args: WaypointV2FlightArgs) -> Result<()> {
             physical_outcome: None,
             mission_outcome: None,
             output_dir: None,
+            error: None,
         };
         print_json(&output)?;
         ensure!(
@@ -132,7 +135,15 @@ pub(super) fn flight(args: WaypointV2FlightArgs) -> Result<()> {
         entries,
         finalization_elapsed_s,
     };
-    write_waypoint_v2_cli_bundle(&request, &result, output_dir, &progress, total_started)?;
+    if let Err(error) =
+        write_waypoint_v2_cli_bundle(&request, &result, output_dir, &progress, total_started)
+    {
+        let failure = bundle_failed_output(&result, output_dir.to_path_buf(), &error);
+        print_json(&failure)?;
+        return Err(
+            error.context("V2 flight bundle writing failed; inspect any retained artifacts")
+        );
+    }
 
     let output = result_output(&result, Some(output_dir.to_path_buf()));
     print_json(&output)?;
@@ -168,7 +179,19 @@ fn result_output(result: &WaypointV2FlightResult, output_dir: Option<PathBuf>) -
         physical_outcome: result.physical_outcome.clone(),
         mission_outcome: result.mission_outcome.clone(),
         output_dir,
+        error: None,
     }
+}
+
+fn bundle_failed_output<'a>(
+    result: &'a WaypointV2FlightResult,
+    output_dir: PathBuf,
+    error: &anyhow::Error,
+) -> FlightOutput<'a> {
+    let mut output = result_output(result, Some(output_dir));
+    output.status = "bundle_failed";
+    output.error = Some(format!("{error:#}"));
+    output
 }
 
 fn flight_succeeded(result: &WaypointV2FlightResult) -> bool {
@@ -258,5 +281,44 @@ mod tests {
         result.integrity_passed = true;
         result.physical_outcome = Some(PhysicalOutcome::LandedOffTarget);
         assert!(!flight_succeeded(&result));
+    }
+
+    #[test]
+    fn bundle_failure_status_preserves_flight_outcomes_without_changing_normal_json() {
+        let result = WaypointV2FlightResult {
+            policy: WaypointV2Policy::revision_3(),
+            input_identity: "input-identity".into(),
+            planning_stop: WaypointV2Stop::NoClearing,
+            reason: Some("local search exhausted".into()),
+            correction_count: 1,
+            initial_nominal_terrain_blocked: true,
+            integrity_passed: true,
+            physical_outcome: Some(PhysicalOutcome::Flying),
+            mission_outcome: Some(MissionOutcome::InProgress),
+            absolute_deadline_physics_step: Some(100),
+            cycles: Vec::new(),
+            segments: Vec::new(),
+            ordinary_flight: None,
+            final_source_replay_passed: false,
+            manifest: None,
+            failed_local_row: None,
+            timings: Default::default(),
+        };
+
+        let normal = serde_json::to_value(result_output(&result, None)).unwrap();
+        assert_eq!(normal["status"], "completed");
+        assert!(normal.get("error").is_none());
+
+        let error = anyhow::anyhow!("V2 progress handoff differs from actual H");
+        let failure = bundle_failed_output(&result, PathBuf::from("capture"), &error);
+        let failed_json = serde_json::to_value(failure).unwrap();
+        assert_eq!(failed_json["schema_id"], FLIGHT_SCHEMA_ID);
+        assert_eq!(failed_json["status"], "bundle_failed");
+        assert_eq!(failed_json["planning_stop"], "no_clearing");
+        assert_eq!(failed_json["physical_outcome"], "flying");
+        assert_eq!(failed_json["mission_outcome"], "in_progress");
+        assert_eq!(failed_json["reason"], "local search exhausted");
+        assert!(failed_json["error"].as_str().unwrap().contains("actual H"));
+        assert_eq!(failed_json["output_dir"], "capture");
     }
 }

@@ -81,11 +81,6 @@ pub fn write_waypoint_v2_cli_bundle(
     total_started: std::time::Instant,
 ) -> Result<WaypointV2CliBundleReceiptV1> {
     ensure!(
-        progress.schema_id == WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID,
-        "unsupported V2 CLI progress schema"
-    );
-    validate_progress(progress, result)?;
-    ensure!(
         result.policy == WaypointV2Policy::revision_3(),
         "V2 CLI bundles are sealed to planner policy revision 3"
     );
@@ -96,6 +91,15 @@ pub fn write_waypoint_v2_cli_bundle(
 
     write_waypoint_v2_flight_result(request, result, output_dir, total_started)?;
     crate::nominal_direct_flight::write_create_only(&output_dir.join("progress.json"), progress)?;
+
+    // Keep a diagnosable flight, summary and progress trace even when the
+    // additive metadata validator rejects the trace. The receipt remains the
+    // final create-only artifact and is written only after validation.
+    ensure!(
+        progress.schema_id == WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID,
+        "unsupported V2 CLI progress schema"
+    );
+    validate_progress(progress, result)?;
 
     let mut artifact_sha256 = BTreeMap::new();
     for name in REQUIRED_ARTIFACTS {
@@ -294,7 +298,9 @@ fn validate_progress(
                     .get(*piece_index)
                     .with_context(|| format!("progress references missing cycle {piece_index}"))?;
                 ensure!(
-                    cycle.current_state.physics_step == *entry_physics_step,
+                    cycle.cycle_index == *piece_index
+                        && cycle.current_state.physics_step == *entry_physics_step
+                        && cycle.decision == crate::WaypointV2CycleDecision::LocalCleared,
                     "V2 progress handoff entry differs from its cycle origin"
                 );
                 let correction_segment = result
@@ -304,23 +310,41 @@ fn validate_progress(
                     .nth(*piece_index)
                     .context("V2 progress handoff has no executed correction segment")?;
                 ensure!(
-                    correction_segment.entry_state.physics_step == *entry_physics_step
-                        && correction_segment.end_state.physics_step == *handoff_physics_step
-                        && correction_segment.start_physics_step == *entry_physics_step
+                    correction_segment.start_physics_step
+                        == correction_segment.entry_state.physics_step
+                        && correction_segment.end_physics_step
+                            == correction_segment.end_state.physics_step
+                        && correction_segment.start_physics_step >= *entry_physics_step
+                        && correction_segment.start_physics_step < *handoff_physics_step
                         && correction_segment.end_physics_step == *handoff_physics_step,
                     "V2 progress handoff differs from its executed actual H segment"
                 );
-                if let Some(selected) = cycle
+                let selected = cycle
                     .local_search
                     .as_ref()
-                    .and_then(|search| search.selected.as_ref())
-                {
-                    ensure!(
-                        selected.schedule.handoff_physics_step == *handoff_physics_step
-                            && selected.handoff_state.physics_step == *handoff_physics_step,
-                        "V2 progress handoff differs from its selected validated H"
-                    );
-                }
+                    .context("V2 progress handoff cycle is missing its local search")?
+                    .selected
+                    .as_ref()
+                    .context("V2 progress handoff cycle is missing its selected proposal")?;
+                let selected_handoff_updates = selected
+                    .schedule
+                    .updates
+                    .iter()
+                    .take_while(|update| update.physics_step < *handoff_physics_step)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                ensure!(
+                    selected.schedule.entry_physics_step == correction_segment.start_physics_step
+                        && selected.entry_state.physics_step
+                            == correction_segment.start_physics_step
+                        && selected.entry_state == correction_segment.entry_state
+                        && selected.schedule.handoff_physics_step == *handoff_physics_step
+                        && selected.handoff_state.physics_step == *handoff_physics_step
+                        && selected.handoff_state == correction_segment.end_state
+                        && selected.identity == correction_segment.proposal_identity
+                        && correction_segment.updates == selected_handoff_updates,
+                    "V2 progress correction segment differs from its selected E/H proposal"
+                );
                 expected_piece += 1;
                 previous_handoff = *handoff_physics_step;
             }
@@ -350,7 +374,9 @@ fn validate_progress(
                             .get(*piece_index)
                             .context("V2 terminal progress references a missing planner cycle")?;
                         ensure!(
-                            *entry_physics_step == Some(cycle.current_state.physics_step),
+                            cycle.cycle_index == *piece_index
+                                && cycle.current_state.physics_step == previous_handoff
+                                && *entry_physics_step == Some(cycle.current_state.physics_step),
                             "V2 terminal progress entry differs from its cycle origin"
                         );
                     } else {
@@ -672,6 +698,161 @@ mod tests {
             .collect()
     }
 
+    fn distinct_origin_handoff_fixture() -> (WaypointV2FlightResult, WaypointV2CliProgressV1) {
+        let request = supported_request();
+        let context = RunContext::from_scenario(&request.scenario).unwrap();
+        let deadline = original_deadline(
+            context.sim.max_time_s,
+            request.policy.analytical_policy.mission_budget_s(),
+        )
+        .unwrap();
+        let mut ordinary = crate::local_clearing::new_ordinary(&context)
+            .unwrap()
+            .evidence;
+        let origin = ordinary.final_state.clone();
+        let snapshot_at = |step: u64| {
+            let mut state = origin.clone();
+            state.physics_step = step;
+            state.sim_time_s = step as f64 / f64::from(request.policy.physics_hz);
+            state.position_m.x += step as f64;
+            state
+        };
+        let entry_state = snapshot_at(100);
+        let powered_end_state = snapshot_at(120);
+        let handoff_state = snapshot_at(200);
+        let continuation_end_state = snapshot_at(400);
+        ordinary.final_state = handoff_state.clone();
+
+        let local_policy = pd_plan::local_clearing::LocalClearingPolicyV1::default();
+        let template = local_policy.templates().unwrap().remove(0);
+        let proposal = crate::local_clearing::LocalClearingProposalV1 {
+            policy: local_policy,
+            context_identity: "synthetic-context".into(),
+            goal: pd_plan::local_clearing::LocalClearingGoalV1 {
+                first_conflict_physics_step: 150,
+                first_conflict_position_m: Vec2::default(),
+                absolute_deadline_physics_step: deadline,
+            },
+            row_id: "synthetic-row".into(),
+            template,
+            entry_state: entry_state.clone(),
+            powered_end_state,
+            handoff_state: handoff_state.clone(),
+            continuation_end_state: continuation_end_state.clone(),
+            minimum_progress_x_m: 0.0,
+            actual_fuel_burn_to_handoff_kg: 0.0,
+            schedule: pd_plan::local_clearing::LocalClearingScheduleV1 {
+                entry_physics_step: 100,
+                powered_end_physics_step: 120,
+                handoff_physics_step: 200,
+                continuation_end_physics_step: 400,
+                absolute_deadline_physics_step: deadline,
+                updates: Vec::new(),
+            },
+            trajectory: Vec::new(),
+            identity: "synthetic-proposal".into(),
+        };
+        let local_search = crate::waypoint_v2::WaypointV2LocalSearch {
+            entries: Vec::new(),
+            row_count: 1,
+            boundary_count: 1,
+            accepted_row_count: 1,
+            row_status_counts: BTreeMap::new(),
+            row_stop_reason_counts: BTreeMap::new(),
+            boundary_status_counts: BTreeMap::new(),
+            selected: Some(proposal),
+            certificate_state: Some(continuation_end_state),
+            handoff_source_replay_passed: true,
+            certificate_source_replay_passed: true,
+        };
+        let cycle = crate::WaypointV2Cycle {
+            cycle_index: 0,
+            current_state: origin,
+            nominal_search_identity: "synthetic-search".into(),
+            nominal_proposal_identity: Some("synthetic-nominal".into()),
+            nominal_peak_com_height_m: None,
+            nominal_attempt_status_counts: BTreeMap::new(),
+            nominal_rejection_reason_counts: BTreeMap::new(),
+            nominal_updates: Vec::new(),
+            audit: None,
+            fixed_consumed_prefix_proven: true,
+            decision: crate::WaypointV2CycleDecision::LocalCleared,
+            conflict_state: None,
+            conflict_incoming_contact: None,
+            local_search: Some(local_search),
+        };
+        let terminal_cycle = crate::WaypointV2Cycle {
+            cycle_index: 1,
+            current_state: handoff_state.clone(),
+            nominal_search_identity: "synthetic-terminal-search".into(),
+            nominal_proposal_identity: None,
+            nominal_peak_com_height_m: None,
+            nominal_attempt_status_counts: BTreeMap::new(),
+            nominal_rejection_reason_counts: BTreeMap::new(),
+            nominal_updates: Vec::new(),
+            audit: None,
+            fixed_consumed_prefix_proven: false,
+            decision: crate::WaypointV2CycleDecision::NoNominal,
+            conflict_state: None,
+            conflict_incoming_contact: None,
+            local_search: None,
+        };
+        let segment = crate::WaypointV2Segment {
+            kind: crate::WaypointV2SegmentKind::LocalCorrection,
+            start_physics_step: 100,
+            end_physics_step: 200,
+            proposal_identity: "synthetic-proposal".into(),
+            updates: Vec::new(),
+            entry_state,
+            end_state: handoff_state,
+        };
+        let result = WaypointV2FlightResult {
+            policy: WaypointV2Policy::revision_3(),
+            input_identity: String::new(),
+            planning_stop: crate::WaypointV2Stop::NoNominal,
+            reason: Some("synthetic corrected finite stop".into()),
+            correction_count: 1,
+            initial_nominal_terrain_blocked: true,
+            integrity_passed: true,
+            physical_outcome: Some(PhysicalOutcome::Flying),
+            mission_outcome: Some(MissionOutcome::InProgress),
+            absolute_deadline_physics_step: Some(deadline),
+            cycles: vec![cycle, terminal_cycle],
+            segments: vec![segment],
+            ordinary_flight: Some(ordinary),
+            final_source_replay_passed: true,
+            manifest: None,
+            failed_local_row: None,
+            timings: Default::default(),
+        };
+        let progress = WaypointV2CliProgressV1 {
+            schema_id: WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID.into(),
+            entries: vec![
+                WaypointV2CliProgressEntryV1 {
+                    elapsed_s: 0.0,
+                    progress: WaypointV2SessionProgress::Handoff {
+                        piece_index: 0,
+                        correction_count: 1,
+                        entry_physics_step: 0,
+                        handoff_physics_step: 200,
+                    },
+                },
+                WaypointV2CliProgressEntryV1 {
+                    elapsed_s: 0.0,
+                    progress: WaypointV2SessionProgress::Terminal {
+                        piece_index: Some(1),
+                        entry_physics_step: Some(200),
+                        planning_stop: crate::WaypointV2Stop::NoNominal,
+                        correction_count: 1,
+                        physics_step: Some(200),
+                    },
+                },
+            ],
+            finalization_elapsed_s: 0.0,
+        };
+        (result, progress)
+    }
+
     #[test]
     fn progress_trace_requires_terminal_entry_and_monotonic_piece_origins() {
         let result = WaypointV2FlightResult {
@@ -718,6 +899,115 @@ mod tests {
             *physics_step = Some(0);
         }
         assert!(validate_progress(&bad_terminal, &result).is_err());
+    }
+
+    #[test]
+    fn corrected_progress_binds_piece_origin_entry_handoff_and_selected_proposal() {
+        let (result, progress) = distinct_origin_handoff_fixture();
+        let segment = result
+            .segments
+            .iter()
+            .find(|segment| segment.kind == crate::WaypointV2SegmentKind::LocalCorrection)
+            .unwrap();
+        assert_eq!(result.cycles[0].current_state.physics_step, 0);
+        assert_eq!(segment.entry_state.physics_step, 100);
+        assert_eq!(segment.end_state.physics_step, 200);
+        validate_progress(&progress, &result).unwrap();
+
+        let mut bad_handoff = progress.clone();
+        if let WaypointV2SessionProgress::Handoff {
+            handoff_physics_step,
+            ..
+        } = &mut bad_handoff.entries[0].progress
+        {
+            *handoff_physics_step += 1;
+        }
+        assert!(validate_progress(&bad_handoff, &result).is_err());
+
+        let mut bad_origin = progress.clone();
+        if let WaypointV2SessionProgress::Handoff {
+            entry_physics_step, ..
+        } = &mut bad_origin.entries[0].progress
+        {
+            *entry_physics_step += 1;
+        }
+        assert!(validate_progress(&bad_origin, &result).is_err());
+
+        let mut bad_entry = result.clone();
+        let selected = bad_entry.cycles[0]
+            .local_search
+            .as_mut()
+            .unwrap()
+            .selected
+            .as_mut()
+            .unwrap();
+        selected.entry_state.position_m.x += 1.0;
+        assert!(validate_progress(&progress, &bad_entry).is_err());
+
+        let mut missing_local_search = result.clone();
+        missing_local_search.cycles[0].local_search = None;
+        assert!(validate_progress(&progress, &missing_local_search).is_err());
+
+        let mut missing_selected = result.clone();
+        missing_selected.cycles[0]
+            .local_search
+            .as_mut()
+            .unwrap()
+            .selected = None;
+        assert!(validate_progress(&progress, &missing_selected).is_err());
+
+        let mut bad_proposal = result;
+        bad_proposal.segments[0].proposal_identity = "different-proposal".into();
+        assert!(validate_progress(&progress, &bad_proposal).is_err());
+    }
+
+    #[test]
+    fn invalid_output_progress_retains_raw_evidence_without_receipt() {
+        let root = fresh_root("invalid-output-progress");
+        let request = unsupported_request();
+        let policy = WaypointV2Policy::revision_3();
+        let mut session = crate::WaypointV2Session::start(request.clone(), policy).unwrap();
+        let _ = session.advance_piece().unwrap();
+        let result = session.finish().unwrap().clone();
+        crate::waypoint_v2_output::reserve_waypoint_v2_flight_output(&root).unwrap();
+
+        let invalid_progress = WaypointV2CliProgressV1 {
+            schema_id: WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID.into(),
+            entries: Vec::new(),
+            finalization_elapsed_s: 0.0,
+        };
+        assert!(
+            write_waypoint_v2_cli_bundle(
+                &request,
+                &result,
+                &root,
+                &invalid_progress,
+                std::time::Instant::now(),
+            )
+            .is_err()
+        );
+
+        let names = files(&root).keys().cloned().collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            [
+                "flight.json",
+                "progress.json",
+                "scenario.json",
+                "summary.json"
+            ]
+        );
+        assert!(!root.join("bundle.json").exists());
+        let saved_result: WaypointV2FlightResult = read_json(&root.join("flight.json")).unwrap();
+        assert_eq!(
+            saved_result.planning_stop,
+            crate::WaypointV2Stop::InvalidInput
+        );
+        let saved_progress: WaypointV2CliProgressV1 =
+            read_json(&root.join("progress.json")).unwrap();
+        assert!(saved_progress.entries.is_empty());
+        assert!(root.join("summary.json").is_file());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1108,14 +1398,100 @@ mod tests {
         let mut ordinary = crate::local_clearing::new_ordinary(&context)
             .unwrap()
             .evidence;
-        let entry_state = ordinary.final_state.clone();
-        let handoff_step = 120;
-        ordinary.final_state.physics_step = handoff_step;
-        ordinary.final_state.sim_time_s = handoff_step as f64 / 120.0;
-        ordinary.final_state.fuel_kg = 0.0;
+        let piece_origin = ordinary.final_state.clone();
+        let snapshot_at = |step: u64| {
+            let mut state = piece_origin.clone();
+            state.physics_step = step;
+            state.sim_time_s = step as f64 / f64::from(request.policy.physics_hz);
+            state.position_m.x += step as f64;
+            state
+        };
+        let entry_step = 60;
+        let powered_end_step = 120;
+        let handoff_step = 180;
+        let continuation_end_step = handoff_step + 240;
+        let entry_state = snapshot_at(entry_step);
+        let powered_end_state = snapshot_at(powered_end_step);
+        let mut handoff_state = snapshot_at(handoff_step);
+        handoff_state.fuel_kg = 0.0;
+        let mut continuation_end_state = snapshot_at(continuation_end_step);
+        continuation_end_state.fuel_kg = 0.0;
+        ordinary.final_state = handoff_state.clone();
+
+        let local_policy = pd_plan::local_clearing::LocalClearingPolicyV1::default();
+        let template = local_policy.templates().unwrap().remove(0);
+        let schedule_updates = (entry_step..continuation_end_step)
+            .step_by(2)
+            .map(|physics_step| {
+                let powered = physics_step < powered_end_step;
+                pd_core::FlightProgramUpdateV1 {
+                    physics_step,
+                    phase: if powered {
+                        "local_powered".into()
+                    } else {
+                        "local_coast".into()
+                    },
+                    command: if powered {
+                        Command {
+                            throttle_frac: 0.5,
+                            target_attitude_rad: template.target_attitude_rad,
+                        }
+                    } else {
+                        Command::idle()
+                    },
+                }
+            })
+            .collect::<Vec<_>>();
+        let selected_handoff_updates = schedule_updates
+            .iter()
+            .take_while(|update| update.physics_step < handoff_step)
+            .cloned()
+            .collect::<Vec<_>>();
+        let schedule = pd_plan::local_clearing::LocalClearingScheduleV1 {
+            entry_physics_step: entry_step,
+            powered_end_physics_step: powered_end_step,
+            handoff_physics_step: handoff_step,
+            continuation_end_physics_step: continuation_end_step,
+            absolute_deadline_physics_step: deadline,
+            updates: schedule_updates,
+        };
+        schedule.validate(&template).unwrap();
+        let selected = crate::local_clearing::LocalClearingProposalV1 {
+            policy: local_policy,
+            context_identity: "synthetic-deadline-context".into(),
+            goal: pd_plan::local_clearing::LocalClearingGoalV1 {
+                first_conflict_physics_step: 100,
+                first_conflict_position_m: Vec2::default(),
+                absolute_deadline_physics_step: deadline,
+            },
+            row_id: "synthetic-deadline-row".into(),
+            template,
+            entry_state: entry_state.clone(),
+            powered_end_state,
+            handoff_state: handoff_state.clone(),
+            continuation_end_state: continuation_end_state.clone(),
+            minimum_progress_x_m: 0.0,
+            actual_fuel_burn_to_handoff_kg: entry_state.fuel_kg - handoff_state.fuel_kg,
+            schedule,
+            trajectory: Vec::new(),
+            identity: "synthetic-handoff".into(),
+        };
+        let local_search = crate::waypoint_v2::WaypointV2LocalSearch {
+            entries: Vec::new(),
+            row_count: 1,
+            boundary_count: 1,
+            accepted_row_count: 1,
+            row_status_counts: BTreeMap::new(),
+            row_stop_reason_counts: BTreeMap::new(),
+            boundary_status_counts: BTreeMap::new(),
+            selected: Some(selected),
+            certificate_state: Some(continuation_end_state),
+            handoff_source_replay_passed: true,
+            certificate_source_replay_passed: true,
+        };
         let cycle = crate::WaypointV2Cycle {
             cycle_index: 0,
-            current_state: entry_state.clone(),
+            current_state: piece_origin.clone(),
             nominal_search_identity: "synthetic-deadline-after-handoff".into(),
             nominal_proposal_identity: None,
             nominal_peak_com_height_m: None,
@@ -1127,16 +1503,16 @@ mod tests {
             decision: crate::WaypointV2CycleDecision::LocalCleared,
             conflict_state: None,
             conflict_incoming_contact: None,
-            local_search: None,
+            local_search: Some(local_search),
         };
         let segment = crate::WaypointV2Segment {
             kind: crate::WaypointV2SegmentKind::LocalCorrection,
-            start_physics_step: entry_state.physics_step,
+            start_physics_step: entry_step,
             end_physics_step: handoff_step,
             proposal_identity: "synthetic-handoff".into(),
-            updates: Vec::new(),
+            updates: selected_handoff_updates,
             entry_state,
-            end_state: ordinary.final_state.clone(),
+            end_state: handoff_state,
         };
         let result = WaypointV2FlightResult {
             policy: policy.clone(),
@@ -1194,16 +1570,23 @@ mod tests {
         .unwrap();
         assert!(root.join("bundle.json").is_file());
         let saved: WaypointV2CliProgressV1 = read_json(&root.join("progress.json")).unwrap();
-        assert!(matches!(
-            saved.entries.last().unwrap().progress,
+        match &saved.entries.last().unwrap().progress {
             WaypointV2SessionProgress::Terminal {
-                piece_index: None,
-                entry_physics_step: Some(120),
-                physics_step: Some(120),
-                planning_stop: crate::WaypointV2Stop::Deadline,
+                piece_index,
+                entry_physics_step,
+                physics_step,
+                planning_stop,
                 ..
+            } => {
+                assert_eq!(*piece_index, None);
+                assert_eq!(*entry_physics_step, Some(handoff_step));
+                assert_eq!(*physics_step, Some(handoff_step));
+                assert_eq!(*planning_stop, crate::WaypointV2Stop::Deadline);
             }
-        ));
+            WaypointV2SessionProgress::Handoff { .. } => {
+                panic!("saved trace did not end in its deadline terminal")
+            }
+        }
         fs::remove_dir_all(root).unwrap();
     }
 }

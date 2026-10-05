@@ -59,6 +59,20 @@ fn supported_request() -> WaypointDirectNominalDirectGenerationRequest {
         .1
 }
 
+fn tracked_pack_request(case_id: &str) -> WaypointDirectNominalDirectGenerationRequest {
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let pack_path = repository.join(pd_eval::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH);
+    let input = pd_eval::waypoint_v2_pack::load_waypoint_v2_pack_case_input(&pack_path, case_id)
+        .expect("tracked V2 pack input");
+    WaypointDirectNominalDirectGenerationRequest {
+        probe_id: input.scenario.id.clone(),
+        scenario: input.scenario,
+        source_pad_id: input.source_pad_id,
+        target_pad_id: input.target_pad_id,
+        policy: pd_eval::WaypointDirectNominalDirectGenerationPolicyV1::default(),
+    }
+}
+
 fn write_copied_scenario(root: &Path, request: &WaypointDirectNominalDirectGenerationRequest) {
     fs::write(
         root.join("scenario.json"),
@@ -283,6 +297,114 @@ fn copied_scenario_cli_flight_is_portable_receipted_and_replay_is_read_only() {
     );
     assert!(!tampered_request.status.success());
     fs::write(capture.join("bundle.json"), original_receipt).unwrap();
+}
+
+#[test]
+fn corrected_tracked_scenario_cli_flight_writes_complete_bundle_and_portable_replay() {
+    let root = TestRoot::new();
+    let request = tracked_pack_request("v2_ridge_early");
+    write_copied_scenario(root.path(), &request);
+
+    let flight = flight_args(&request);
+    let flight_result = cli(root.path(), &string_args(&flight));
+    assert!(
+        flight_result.status.success(),
+        "corrected flight stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&flight_result.stdout),
+        String::from_utf8_lossy(&flight_result.stderr)
+    );
+    let flight_json: Value = serde_json::from_slice(&flight_result.stdout).unwrap();
+    assert_eq!(flight_json["status"], "completed");
+    assert_eq!(flight_json["planning_stop"], "landed");
+    assert_eq!(flight_json["physical_outcome"], "landed_on_target");
+    assert_eq!(flight_json["mission_outcome"], "success");
+    assert_eq!(flight_json["integrity_passed"], true);
+    assert_eq!(flight_json["final_source_replay_passed"], true);
+    assert_eq!(flight_json["correction_count"], 1);
+
+    let capture = root.path().join("capture");
+    let before_replay = inventory(&capture);
+    assert_eq!(
+        before_replay.keys().map(String::as_str).collect::<Vec<_>>(),
+        [
+            "bundle.json",
+            "flight.json",
+            "progress.json",
+            "report.html",
+            "scenario.json",
+            "summary.json",
+        ]
+    );
+    let receipt: Value = serde_json::from_slice(&before_replay["bundle.json"]).unwrap();
+    let artifact_hashes = receipt["artifact_sha256"].as_object().unwrap();
+    for (name, expected) in artifact_hashes {
+        assert_eq!(
+            sha256(&before_replay[name.as_str()]),
+            expected.as_str().unwrap(),
+            "receipt digest for {name}"
+        );
+    }
+
+    let saved_flight: WaypointV2FlightResult =
+        serde_json::from_slice(&before_replay["flight.json"]).unwrap();
+    let saved_progress: WaypointV2CliProgressV1 =
+        serde_json::from_slice(&before_replay["progress.json"]).unwrap();
+    let handoff = saved_progress
+        .entries
+        .iter()
+        .find_map(|entry| match entry.progress {
+            WaypointV2SessionProgress::Handoff {
+                piece_index,
+                entry_physics_step,
+                handoff_physics_step,
+                ..
+            } => Some((piece_index, entry_physics_step, handoff_physics_step)),
+            WaypointV2SessionProgress::Terminal { .. } => None,
+        })
+        .expect("corrected trace has a handoff");
+    let (piece_index, piece_origin, actual_h) = handoff;
+    let cycle = &saved_flight.cycles[piece_index];
+    let segment = saved_flight
+        .segments
+        .iter()
+        .filter(|segment| segment.kind == pd_eval::WaypointV2SegmentKind::LocalCorrection)
+        .nth(piece_index)
+        .unwrap();
+    let selected = cycle
+        .local_search
+        .as_ref()
+        .and_then(|search| search.selected.as_ref())
+        .expect("corrected cycle retains selected proposal");
+    assert_eq!(piece_origin, cycle.current_state.physics_step);
+    assert_eq!(
+        segment.start_physics_step,
+        selected.schedule.entry_physics_step
+    );
+    assert_eq!(segment.entry_state, selected.entry_state);
+    assert_eq!(segment.end_physics_step, actual_h);
+    assert_eq!(segment.end_state, selected.handoff_state);
+    assert_eq!(segment.proposal_identity, selected.identity);
+    assert_ne!(piece_origin, segment.start_physics_step);
+    assert_ne!(segment.start_physics_step, segment.end_physics_step);
+
+    let other_cwd = root.path().join("elsewhere");
+    fs::create_dir(&other_cwd).unwrap();
+    let replay_result = cli(
+        &other_cwd,
+        &["waypoint-v2-replay", "--bundle-dir", "../capture"],
+    );
+    assert!(
+        replay_result.status.success(),
+        "corrected replay stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&replay_result.stdout),
+        String::from_utf8_lossy(&replay_result.stderr)
+    );
+    let replay_json: Value = serde_json::from_slice(&replay_result.stdout).unwrap();
+    assert_eq!(replay_json["replay_passed"], true);
+    assert_eq!(replay_json["input_identity"], flight_json["input_identity"]);
+    assert_eq!(replay_json["physical_outcome"], "landed_on_target");
+    assert_eq!(replay_json["mission_outcome"], "success");
+    assert_eq!(inventory(&capture), before_replay);
 }
 
 #[test]

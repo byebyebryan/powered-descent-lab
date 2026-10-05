@@ -1119,6 +1119,23 @@ fn load_and_expand(pack_path: &Path) -> Result<ExpandedPack> {
     })
 }
 
+/// Expand the tracked V2 pack as input data only and return one named case.
+/// This fixture seam does not execute a planner or create output artifacts.
+pub fn load_waypoint_v2_pack_case_input(
+    pack_path: &Path,
+    case_id: &str,
+) -> Result<WaypointV2PackInput> {
+    ensure!(
+        !case_id.trim().is_empty(),
+        "V2 pack case ID must be nonempty"
+    );
+    load_and_expand(pack_path)?
+        .inputs
+        .into_iter()
+        .find(|input| input.case_id == case_id)
+        .with_context(|| format!("V2 pack has no case named {case_id}"))
+}
+
 /// Frozen typed input identity for the tracked default pack. Acceptance uses
 /// this read-only expansion to bind saved cases to the registered recipe and
 /// fixtures; it deliberately does not compare the capture's Git HEAD to the
@@ -2220,6 +2237,26 @@ mod tests {
             .expect("clock")
             .as_nanos();
         std::env::temp_dir().join(format!("pd-v2-pack-{label}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn named_case_input_loader_is_input_only_and_rejects_unknown_ids() {
+        let input = load_waypoint_v2_pack_case_input(
+            Path::new(DEFAULT_PLANNER_PACK_PATH),
+            "v2_ridge_early",
+        )
+        .unwrap();
+        assert_eq!(input.case_id, "v2_ridge_early");
+        assert_eq!(input.scenario.id, "v2_ridge_early");
+        assert_eq!(input.group, WaypointV2PackGroup::Ordinary);
+        assert_eq!(input.expected_preflight, None);
+        assert!(
+            load_waypoint_v2_pack_case_input(
+                Path::new(DEFAULT_PLANNER_PACK_PATH),
+                "not-a-pack-case"
+            )
+            .is_err()
+        );
     }
 
     #[test]
