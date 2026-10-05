@@ -133,6 +133,101 @@ This split is internal. Public controller exports still resolve through
 `pd-control`, and persisted controller, phase, telemetry, and artifact contracts
 remain unchanged.
 
+## Current V2 design and support
+
+The accepted flight policy is **policy 3**: construct a target-appropriate,
+terrain-blind nominal transfer; audit that fixed command program on real terrain;
+if genuinely terrain-blocked, select and execute a bounded local clearing
+maneuver; regenerate from its actual handoff H. Terrain rejection must not select
+a higher nominal arc. A missing feasible nominal is not itself an obstacle.
+Local clearing needs useful progress and a finite safe continuation, not a direct
+landing suffix or a literal terrain-feature far edge. Another correction may
+follow. Initial rest and airborne acquisition use different realization helpers
+but share this outer-loop contract.
+
+The supported initial request is a route-free `LandingOnPad` mission with the
+tested vehicle, Earth gravity, 120 Hz physics / 60 Hz commands, upright rest on
+the source pad, a target to its right, and valid flat pad shelves. Airborne
+planning is supported from actual session handoffs; arbitrary externally supplied
+airborne starts, other vehicles/gravities, random-terrain reliability and live
+disturbance recovery are not established. These are coverage boundaries, not
+proof that a stopped case is physically impossible.
+
+The [session/CLI replacement](waypoint_v2_session_repair_results.md) is the latest
+accepted measured checkpoint. Its 44-case native capture is the current report:
+36 mandatory landings (11 direct, 25 corrected), two diagnostic landings, four
+zero-step diagnostic `NoClearing` stops and two unsupported inputs. The default
+evaluation entrypoints select policy 3; the Rust policy default remains policy 1
+for historical compatibility. `pd_plan::plan` remains V1, and ordinary controller
+defaults remain unchanged.
+
+V2 implementation ownership is:
+
+- `pd-plan/src/waypoint_v2.rs`: versioned finite policy, correction bounds and clocks.
+- `pd-eval/src/waypoint_v2.rs`: input preflight, nominal/audit/local-clearing loop
+  and the owned session lifecycle.
+- `pd-eval/src/waypoint_v2/model.rs`: persisted flight records and additive
+  session progress, re-exported through the unchanged public paths.
+- `pd-eval/src/waypoint_v2/execution.rs`: forward queries, exclusive segment
+  ownership, phase-aware guards and original-source replay proofs.
+- `waypoint_v2_output.rs` and `waypoint_v2_bundle.rs`: create-only evidence,
+  progress/receipt validation and saved-source CLI replay.
+- `waypoint_v2_pack.rs` and `waypoint_v2_acceptance.rs`: sealed input expansion,
+  batch collection and acceptance; neither supplies archived answers to a flight.
+- `waypoint_v2_report.rs`, `pd-report` and `pd-cli/src/planner_v2.rs`: shared
+  presentation and the optional synchronous CLI adapter, not trajectory selection.
+
+### Reconciled earlier questions
+
+- The floor-cutaway mismatch belongs to V1's straight corridor model. V2's
+  executed ballistic clear routes no longer require it; retain the original
+  characterization rather than rewriting its historical results.
+- Higher terrain-aware direct arcs remain research controls, not a fallback
+  that silently avoids the current waypoint policy.
+- The old 56 coast/terminal combinations remain available to policies 1/2.
+  Policy 3 uses state-derived airborne acquisition. Those old handoff failures
+  are not the current policy-3 verdict or a reason to restart nominal research.
+- The latest corrected-case CLI failure was piece-origin/E/H validation, not a
+  new first-step physics failure. The replacement and its regression tests close
+  that adapter defect; the stopped first pass remains truthful historical evidence.
+- The one-update terminal completion reserve is a parked separate design, not
+  a missing prerequisite. V1, bounded-witness and F6 experiments likewise remain
+  retained research lanes, not an active V2 backlog.
+
+### Behavior-preserving cleanup checks
+
+Structural cleanup must retain command ordering, state/fuel/clock continuity,
+policy values, guards, serialized field order/names, create-only outputs, public
+exports and common report paths. Keep the current capture and its provenance
+unchanged; do not relabel an older capture as evidence from refactored sources.
+
+The explicit regression test below executes all 44 bound inputs without writing
+or publishing captures and compares complete flight records to an independently
+validated accepted baseline. Only the three flight wall-time fields are excluded;
+commands, full states/contact, selections, cycles, segments, manifests, outcomes
+and replay flags must match. It is an opted-in local numerical regression, not a
+new final-source acceptance/publication matrix:
+
+```sh
+rtk proxy env PD_V2_PARITY_CAPTURE=outputs/eval/planner_v2_lab_suite/capture-session-repair-20261005-native \
+  cargo test --release -p pd-eval --lib retained_capture_numerical_parity -- --ignored --nocapture
+```
+
+Default/feature-enabled CLI tests and workspace tests remain necessary alongside
+this check. Do not remove historical policy APIs or evidence scripts merely
+because the current evaluation default is policy 3. A standalone planner crate,
+solver rewrite and report redesign require a concrete separate need.
+
+The 2026-10-05 structural cleanup passed exact numerical parity for all 44
+inputs, the full feature-enabled workspace tests, final CLI checks, 62 JavaScript
+tests, formatting and strict Clippy with the existing `single_element_loop`
+exception. The retained-capture parity test is intentionally opt-in because it
+depends on locally saved evidence rather than a tracked CI fixture. A final
+saved-site check using the rebuilt evaluator verified 42 rich payloads,
+36 actual handoffs and 46 receipt-bound pages. The
+selected capture, published batch and retained validation artifacts remain
+unchanged; this is local regression evidence, not a new accepted source freeze.
+
 ## Native V2 Acceptance Contract (2026-10-03)
 
 The completed reliability pass adds a versioned, evaluator-owned acceptance
@@ -166,15 +261,19 @@ new terrain experiment. The following contract was settled before measured runs:
   recording the result; collection-only operation distinguishes completion
   from acceptance explicitly.
 
-The final validation allowance is one fresh 44-case batch and, only after it
-passes, one repeat: at most 88 measured case attempts. Unit tests and read-only
-artifact comparisons are separate checks, not additional measured batches.
-Freeze source before these captures; retain every miss, and do not alter cases,
-flight policy, or acceptance thresholds in response to results. Local
-checkpoint commits are authorized; pushes, server restarts, runtime-default
-changes, new mission corpora, and planner tuning are not part of this pass.
+The completed reliability pass used a separately approved allowance of one
+fresh 44-case batch and one conditional repeat (88 attempts). Its execution
+budget and commit permissions were local to that pass, not standing authority
+for future work. New measured captures need their own scope; freeze source,
+retain every miss and do not alter cases, policy or acceptance thresholds in
+response to results. Unit tests and read-only comparisons are separate checks.
+
+<a id="optional-v2-runtime-consumer-next-phase-design"></a>
 
 ## Optional V2 session and CLI integration
+
+The former optional-runtime design is now implemented at the bounded session
+and CLI scope below. The legacy anchor is retained for historical document links.
 
 The [accepted session and CLI replacement](waypoint_v2_session_repair_results.md)
 provides `pd-eval::WaypointV2Session` and a default-off `pd-cli` feature

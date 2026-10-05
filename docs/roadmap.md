@@ -39,16 +39,24 @@ canonical batch and rich mission details use the shared report templates at
 [common-template results](planner_v2_common_report_templates_results.md) for
 the earlier capture and report checkpoints. Two final-source
 [reliability captures](planner_v2_reliability_results.md) reproduced the same
-outcomes and now supply current evidence. A reusable acceptance gate binds the
+outcomes before the accepted
+[session/CLI replacement](waypoint_v2_session_repair_results.md). That latest
+checkpoint passes native, real CLI and CLI-repeat matrices with exact retained
+flight parity and 42 saved-source CLI replays. Its native capture supplies the
+current published evidence. A reusable acceptance gate binds the
 frozen inputs, requires all 36 ordinary landings and integrity/replay evidence,
 and keeps diagnostic expectations separate. Failed captures retain their rich
 reports but cannot replace the accepted current site. The checked native batch
 workflow returns failure for an acceptance miss.
 
-The next integration step is a reviewed, design-only optional runtime consumer,
-starting with an internal session seam and command/state parity. Runtime
-implementation, latency work, new captures and default promotion are separate
-future scopes, not remaining work in this completed reliability pass.
+The owned synchronous session and `pd-cli` adapter behind the default-off
+`planner-v2` Cargo feature are implemented and accepted, not a pending design.
+They do not provide an externally driven per-tick controller or arbitrary
+snapshot restart. The immediate priority is behavior-preserving review,
+reconciliation and cleanup
+before expanding terrain coverage. Seeded procedural terrain evaluation and a
+concrete game-host integration are separate possible follow-ups, not prerequisites
+for using the current lab planner and not selected by this reconciliation.
 
 The phase and research notes below retain their original evidence scope. Their
 date-local “next” steps and stop rules are not an ordered prerequisite list for
@@ -793,14 +801,18 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Use the completed policy-3 V2 lab and its reusable acceptance gate rather than
-reopening nominal fitting. For a normal runtime consumer, begin with the
-reviewed internal session/iteration design and prove command/state parity
-before adding an optional driver. The
-[reliability result](planner_v2_reliability_results.md) defines current evidence
-and limits; the [runtime design](guidance.md#optional-v2-runtime-consumer-next-phase-design)
-defines the staged follow-up. No runtime implementation, new measured allowance
-or default promotion is selected by this roadmap update.
+Consolidate the accepted policy-3 V2 lab without reopening nominal fitting or
+retuning terrain cases. Keep persisted contracts, current reports, input fixtures
+and historical evidence intact; make planning, live execution/replay, session
+lifecycle and adapter responsibilities explicit. Use the frozen 44-case inputs
+and exact numerical parity to check structural changes.
+
+The [current guidance boundary](guidance.md#current-v2-design-and-support) and
+[session/CLI replacement result](waypoint_v2_session_repair_results.md) define
+where we are. Once cleanup is reviewed, choose a bounded procedural-terrain
+evaluation or a concrete host-consumer requirement. Do not automatically add a
+new solver, extract a standalone crate, expand vehicles/gravities or promote
+controller defaults. No new terrain experiment or publication is selected here.
 
 ### Retained V1 and research-track checkpoint history
 

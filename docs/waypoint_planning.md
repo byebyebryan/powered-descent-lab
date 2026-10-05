@@ -1,6 +1,8 @@
 # Waypoint Planning V1
 
-## Current V2 Evaluation Status (2026-10-04)
+<a id="current-v2-evaluation-status-2026-10-04"></a>
+
+## Current V2 Evaluation Status (2026-10-05)
 
 The active native planner workflow is the evaluator-owned
 `planner_v2_lab_suite`: `pd-eval run-pack` without an explicit pack selects
@@ -14,10 +16,13 @@ The accepted 44-case capture has 36/36 core target landings (11 direct and 25
 corrected). Eight diagnostics remain separate: two landings, four zero-command,
 zero-step `NoClearing` stops before departure, and two unsupported inputs. All
 44 inputs passed integrity; all 42 supported results passed final-source replay.
-The two [reliability captures](planner_v2_reliability_results.md) reproduced
-these results on the final Rust source and supply the current provenance. The
-[activation results](waypoint_v2_eval_activation_results.md) retain the earlier
-checkpoint. The active batch and mission details are available
+The accepted [session/CLI replacement](waypoint_v2_session_repair_results.md)
+reproduces these results through native, real CLI and CLI-repeat matrices with
+exact retained flight parity and 42 saved-source CLI replays. Its native capture
+supplies current provenance. The
+[reliability captures](planner_v2_reliability_results.md) and
+[activation results](waypoint_v2_eval_activation_results.md) retain earlier
+checkpoints. The active batch and mission details are available
 at `/reports/eval/planner_v2_lab_suite/` and use the
 [shared report templates](planner_v2_common_report_templates_results.md).
 
@@ -26,16 +31,22 @@ against actual terrain, applies local correction where possible, then replans
 from the actual handoff state. A useful safe handoff need not reach a literal
 feature far edge or include a landing suffix. A reusable acceptance gate now
 binds the frozen 44-case pack, keeps diagnostics separate and prevents failed
-captures from replacing current evidence. The next integration step is the
-reviewed, design-only
-[optional runtime consumer](guidance.md#optional-v2-runtime-consumer-next-phase-design),
-beginning with an internal session seam and command/state parity. The roadmap's
-D1, W1-W4, and F6 research entries are separate retained or blocked lanes, not prerequisites for
-this accepted V2 path.
+captures from replacing current evidence. The owned
+[session and optional CLI adapter](guidance.md#optional-v2-session-and-cli-integration)
+are now implemented and accepted; they remain synchronous lab execution rather
+than a per-tick game controller. See
+[current V2 design and support](guidance.md#current-v2-design-and-support) for
+the supported envelope, source ownership and reconciliation of earlier research.
+The next priority is cleanup before choosing broader terrain validation or a
+concrete host integration. The roadmap's D1, W1-W4, and F6 research entries are
+separate retained or blocked lanes, not prerequisites for this accepted V2 path.
 
 ## Implementation Status
 
-Implementation phases 1-5 are complete. `pd-core` owns the serialized planning
+This section records V1 and dated development checkpoints. Its historical
+"next" steps are not an outstanding V2 task list; current V2 status is above.
+
+V1 implementation phases 1-5 are complete. `pd-core` owns the serialized planning
 contracts, strict heightfield corridor queries, endpoint-shaped safety profile,
 and shared all-leg route validator. `pd-plan` owns the deterministic bounded
 search and stable plan identity. `pd-eval` resolves the focused generated-route

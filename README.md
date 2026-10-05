@@ -89,12 +89,30 @@ without treating the old scenario files as fixtures to transliterate directly.
 
 ## Docs
 
+### Current architecture and workflow
+
 - [Architecture](docs/architecture.md) owns system boundaries and persisted
   contracts.
 - [Guidance Architecture](docs/guidance.md) owns current terminal, transfer,
   waypoint, and planner/guidance responsibilities.
 - [Waypoint Planning V1](docs/waypoint_planning.md) owns the implemented bounded
-  planner contract, search policy, evidence model, and closure sequence.
+  V1 contract and retained research history, with current V2 status at the top.
+- [Roadmap](docs/roadmap.md) owns current phase status and the next execution
+  slice.
+- [Planner V2 session and CLI integration](docs/waypoint_v2_session_repair_results.md)
+  is the latest accepted measured checkpoint: native, real CLI and CLI-repeat
+  validation through an owned piecewise session, exact preserved flight behavior
+  and 42 saved-source CLI replays. The CLI feature remains default-off.
+- [Terminal Suite Design](docs/terminal_suite.md) and
+  [Transfer Suite Design](docs/transfer_suite.md) own maintained corpus shape
+  and current evidence interpretation.
+
+### Retained development checkpoints
+
+These records explain how the current design was reached. Their dated "next"
+steps and earlier failures are not the current V2 backlog; start with Guidance
+Architecture and the accepted session/CLI results above for today's boundary.
+
 - [Waypoint direct-route characterization](docs/waypoint_direct_characterization.md)
   records the opt-in continuous-terrain mismatch between V1's exact direct
   chord and the unchanged direct controller; it does not select or implement a
@@ -142,13 +160,6 @@ without treating the old scenario files as fixtures to transliterate directly.
   Remaining diagnostics are recorded limits. V2 policy 3 is now the default
   planner **evaluation** workflow described below; ordinary `pd-cli` controller
   integration remains separate.
-- [Planner V2 session and CLI integration](docs/waypoint_v2_session_repair_results.md)
-  now passes native, real CLI and CLI-repeat validation through an owned
-  piecewise session, with exact preserved flight behavior and 42 saved-source
-  CLI replays. The repaired progress boundary distinguishes piece origin,
-  correction entry E and actual handoff H. The accepted native capture is
-  published through the common report; the CLI feature remains default-off
-  and ordinary controller defaults are unchanged.
 - [Conservative Ballistic Route Planning](docs/conservative_ballistic_route_planning.md)
   owns the game-oriented analytical contingency, its completed CB0 gameplay
   audit, the V2 direct-ballistic bridge certificate, and the bounded ridge
@@ -167,11 +178,6 @@ without treating the old scenario files as fixtures to transliterate directly.
   proposal exhaustion remains `unknown`.
 - [W4 Physical/Executor Comparison](docs/physical_executor_comparison.md) owns
   the outcome-isolated already-seen result and its strict selected-route join.
-- [Roadmap](docs/roadmap.md) owns current phase status and the next execution
-  slice.
-- [Terminal Suite Design](docs/terminal_suite.md) and
-  [Transfer Suite Design](docs/transfer_suite.md) own maintained corpus shape
-  and current evidence interpretation.
 - [Progress](docs/progress.md) is append-only checkpoint history; older results
   there are not current claims.
 - [Early Design Scratchpad](docs/early_design.md) is retained exploratory

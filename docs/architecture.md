@@ -426,6 +426,14 @@ policy 3 selected by the default `run-pack` workflow. It records its own V2
 batch schema and complete flight evidence; it does not create a V2 controller
 variant or change ordinary `pd-cli run` behavior.
 
+`pd-eval::WaypointV2Session` also exposes that same owned, synchronous flight
+loop to the default-off `pd-cli` `planner-v2` feature. The session retains the
+actual live handoff state between whole-piece advances and requires final
+source replay before success. This is an explicit lab adapter, not a per-tick
+controller, externally supplied snapshot restart or evaluator-free game API.
+See [Guidance Architecture](guidance.md#current-v2-design-and-support) for the
+V2 module boundaries and supported envelope.
+
 Its implementation is split by responsibility rather than pack family:
 
 - `model.rs` owns persisted batch, cache, comparison, and review DTOs
