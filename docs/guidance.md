@@ -111,15 +111,20 @@ review-tree, and comparison rendering to `pd-eval/src/report/` modules. Current
 entrypoints and persisted schema paths remain stable. Obsolete research
 Rust APIs are deliberately removed, rather than retained as compatibility shims.
 
-`pd-core` retains neutral route contracts and clearance queries used by
-authored guidance and saved reports. `pd-plan` owns current ballistic math and
-sealed finite policies, not simulations, controller selection or report I/O.
+`pd-core` retains neutral authored-route contracts, read-only historical planner
+DTOs and the exact point-centred envelope query used by current flight geometry.
+The obsolete V1 validation/shaping engine and complete-program playback are
+retired; decoding saved data is separate from execution admission. `pd-plan`
+owns current ballistic math and sealed finite policies, not simulations,
+controller selection or report I/O.
 
 The native V2 evaluator uses its policy-3 flight loop and native batch
 schema; it does not change the ordinary `pd-cli run` controller path or add a
 V2 controller. The common batch shell and rich detail
-renderer are shared through `pd-report`; V2-specific aggregation and handoff
-annotations remain in its evaluator/report adapter. See the
+renderer are shared through `pd-report`; its raw rich-detail HTML/CSS/JS lives
+in `pd-report/src/rich_template.rs`, with data construction and substitution in
+the existing facade. V2-specific aggregation and handoff annotations remain in
+its evaluator/report adapter. See the
 [common-template results](planner_v2_common_report_templates_results.md).
 
 This split is internal. Public controller exports still resolve through

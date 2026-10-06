@@ -477,8 +477,8 @@ late polish.
 
 The current split is:
 
-- `pd-report` owns reusable single-run static report and trajectory rendering,
-  plus dedicated setup-only analytical planning reports
+- `pd-report` owns reusable single-run static report and trajectory rendering;
+  `rich_template.rs` owns the unchanged common rich-detail HTML/CSS/JS
 - `pd-report::batch` owns the shared full batch shell, sections, review-tree
   rows, and interactions used by controller batches and native V2
 - `pd-report::site` owns stable report paths, latest links, and shared site
@@ -486,8 +486,8 @@ The current split is:
 - `pd-cli` invokes that path for targeted one-run inspection
 - `pd-eval` owns domain aggregation, batch adapters and publication over the
   same captured artifacts; it supplies native V2 data to the shared batch
-  renderer and also orchestrates deterministic setup reports from feature-gated
-  planner projections without invoking a controller or simulator
+  renderer. Old setup-only analytical generators are retired; their saved
+  pages remain readable historical evidence
 - `fixtures/reports/guidance_catalog.json` declares the curated terminal,
   direct-transfer, and waypoint evidence scorecards without making generated
   outputs source-controlled truth
@@ -498,7 +498,7 @@ Responsibilities:
 - trace and replay inspection pages
 - single-run trajectory and state inspection
 - batch summary and candidate-vs-baseline compare pages
-- setup-only analytical mission geometry and candidate classification
+- navigation to saved analytical studies without admitting retired execution
 - lightweight interaction over precomputed run data
 - trajectory scrubbing, hover, or drag-based state inspection
 
@@ -534,7 +534,8 @@ editions remain separate.
 
 Evidence presentation keeps these distinctions:
 
-- `outputs/reports/guidance/` preserves the maintained cross-guidance scorecard
+- `outputs/reports/guidance/` preserves controller scorecards and archived V1
+  planner evidence; it does not make the retired planner executable
 - each guidance group separates primary smoke evidence from supporting
   full-seed evidence
 - `outputs/reports/library/` is the friendly report inventory, including missing
@@ -649,8 +650,8 @@ powered-descent-lab/
 Notes:
 
 - `fixtures/scenarios` stores authored concrete scenarios
-- `fixtures/packs` stores batch matrices, comparison fixtures, and maintained
-  regression gates
+- `fixtures/packs` stores batch matrices, comparison fixtures, maintained
+  regression gates and explicitly retired packs retained as archive metadata
 - `pd-report` provides reusable per-run rendering; `pd-eval` owns batch report
   assembly and comparison UX
 - `outputs/` stores generated run bundles, cache entries, stable report aliases,

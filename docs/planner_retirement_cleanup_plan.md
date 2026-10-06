@@ -160,7 +160,7 @@ stranded dependencies rather than reopening the flight design.
    active-versus-archival navigation labels; record the exact removals and gates.
 
 The primary owns retirement/compatibility decisions, integration, final review,
-documentation and commits. One Luna writer handles bounded independent slices.
+documentation and commits. Luna writers handle bounded independent slices.
 Workers do not commit or mutate fixtures/captured evidence. Keep the flight
 invariants and final gates from the original plan: exact all-44 flight parity
 excluding only three existing timing fields, ordinary workspace/CLI/default-off,
