@@ -1,5 +1,9 @@
 # Waypoint V2 fresh terrain readiness plan
 
+> Historical record: superseded executable commands are retired. Use the
+> [current documentation](../README.md#docs) for current tooling. Links to retired source
+> below point to verified pre-retirement Git revisions, not live modules.
+
 Status: Executed after user approval on 2026-10-03. The declared pass completed
 28/28 allowed primary attempts; both fresh runs passed. See the
 [readiness results](waypoint_v2_fresh_terrain_readiness_results.md). The contract
@@ -250,8 +254,8 @@ The analysis reads the current
 [flight command](../pd-eval/src/main.rs),
 [V2 loop](../pd-eval/src/waypoint_v2.rs),
 [capture writer](../pd-eval/src/waypoint_v2_output.rs),
-[input preflight](../pd-eval/src/nominal_direct_flight.rs),
-[existing suite runner](../scripts/run_waypoint_v2_practical_suite.mjs),
+[input preflight](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval/src/nominal_direct_flight.rs),
+[existing suite runner](https://github.com/byebyebryan/powered-descent-lab/blob/5ab3d84281d1ff78fdd73425881e96aa86ebd9ac/scripts/run_waypoint_v2_practical_suite.mjs),
 [suite recipes](../fixtures/research/waypoint_v2_practical_suite_plan_v1.json)
 and [accepted results](waypoint_v2_airborne_integration_results.md).
 This is repository-based analysis and a proposed execution contract, not a new

@@ -66,6 +66,9 @@ test('ordinary and explicit parity plans preserve feature and test discovery bou
     assert(find('default-off normal dependency tree').validateOutput);
     assert(find('maintained JavaScript tests').args.includes('scripts/test-a.mjs'));
     assert(find('maintained JavaScript tests').args.includes('scripts/test-z.mjs'));
+    assert.deepEqual(find('local documentation links').args, [
+      'proxy', 'node', 'scripts/check-docs.mjs',
+    ]);
     assert(ordinary.every(step => step.command === 'rtk' && step.args[0] === 'proxy'));
 
     const parity = buildPlannerDevelopmentSteps({

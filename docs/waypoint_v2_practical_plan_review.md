@@ -1,5 +1,9 @@
 # Practical waypoint V2 design review
 
+> Historical record: superseded executable commands are retired. Use the
+> [current documentation](../README.md#docs) for current tooling. Links to retired source
+> below point to verified pre-retirement Git revisions, not live modules.
+
 This is the historical review of the original loop implementation contract.
 The current [unified nominal plan](waypoint_v2_unified_nominal_plan.md) replaces
 the next-action proposal, not these earlier readiness checks or measured results.
@@ -53,7 +57,7 @@ The canonical JSON digest of the complete expanded scenario/pad-ID list is
 Future suite implementation must reproduce these complete inputs, not merely
 their count or names. This does not claim that the new V2 preflight exists yet.
 
-The [checker](../scripts/check_waypoint_v2_practical_plan.mjs) verifies base hashes,
+The [checker](https://github.com/byebyebryan/powered-descent-lab/blob/5ab3d84281d1ff78fdd73425881e96aa86ebd9ac/scripts/check_waypoint_v2_practical_plan.mjs) verifies base hashes,
 case IDs, group/family counts, complete vehicle/initial-state/clock/mission
 preservation before diagnostic mutations, strict terrain ordering/domain, unchanged
 pad shelves, non-lowered floor and exact reference terrain. Six structural

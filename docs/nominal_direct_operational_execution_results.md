@@ -1,5 +1,9 @@
 # Strict saved-coverage nominal direct execution results
 
+> Historical record: superseded executable commands are retired. Use the
+> [current documentation](../README.md#docs) for current tooling. Links to retired source
+> below point to verified pre-retirement Git revisions, not live modules.
+
 The opt-in operational executor passes its declared gate: all 24 exposed
 controls retain exact nominal proof, and all four presealed fresh missions are
 `Direct / CompletedSafeTarget / Match`. Two independent final-source release
@@ -19,12 +23,12 @@ uncovered observations or authorize its last-command hold.
   contact snapshot before ordinary stable-contact normalization. It advances
   the same ordinary plant/mission transition once. A separate versioned envelope
   retains actual final state, stop cause, boundary flags and the ordinary prefix.
-- [Control](../pd-control/src/flight_program.rs) adds
+- [Control](https://github.com/byebyebryan/powered-descent-lab/blob/d7b7075f6c6a3e3ee3603fce3bb88114be7e648c/pd-control/src/flight_program.rs) adds
   `run_flight_program_operational` and `replay_flight_program_operational` with
   controller identity `flight_program_operational_v1`. Both derive coverage
   from the complete validated program, not the observed log. Existing strict
   `run_flight_program`, `FlightProgramV1` and default controllers are unchanged.
-- [The evaluator](../pd-eval/src/nominal_direct_operational.rs) independently
+- [The evaluator](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval/src/nominal_direct_operational.rs) independently
   admits the unchanged full nominal witness/program before motion. Its fixed
   `body_aware_operational_validity_v1` guard audits initial source support,
   every transition's actual held-command fuel budget, airborne phase-aware

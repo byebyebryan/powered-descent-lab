@@ -12,7 +12,7 @@ export const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), 
 export const USAGE = [
   'Usage: node scripts/check-planner-development.mjs [--parity-capture PATH]',
   '',
-  'Runs ordinary workspace, CLI, formatting, Clippy and maintained Node checks.',
+  'Runs ordinary workspace, CLI, formatting, Clippy, documentation and maintained Node checks.',
   'The exact 44-case retained-capture regression runs only when --parity-capture is given.',
 ].join('\n');
 
@@ -117,6 +117,7 @@ export function buildPlannerDevelopmentSteps({
       '-D', 'warnings',
     ]),
     step(root, 'maintained JavaScript tests', ['node', '--test', ...nodeTests]),
+    step(root, 'local documentation links', ['node', 'scripts/check-docs.mjs']),
   ];
 
   if (parityCapture !== undefined) {

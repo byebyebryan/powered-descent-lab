@@ -210,6 +210,8 @@ Render evidence is under
 The earlier create-only preview and incomplete checker attempts remain local,
 unpublished artifacts; none is a user-accepted edition.
 
+<a id="navigation-entrypoint-follow-up"></a>
+
 ## Earlier navigation entrypoint follow-up
 
 This was the link-only checkpoint before the user clarified the need for a

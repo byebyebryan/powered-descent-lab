@@ -1,5 +1,9 @@
 # Practical waypoint planner V2 plan
 
+> Historical record: superseded executable commands are retired. Use the
+> [current documentation](../README.md#docs) for current tooling. Links to retired source
+> below point to verified pre-retirement Git revisions, not live modules.
+
 Current next-phase design is the
 [unified nominal plan](waypoint_v2_unified_nominal_plan.md): common state-aware
 construction, finite acquisition estimates and preservation of already-safe
@@ -246,7 +250,7 @@ or repeatedly write full traces during normal flight planning.
 
 The [input recipes](../fixtures/research/waypoint_v2_practical_suite_plan_v1.json)
 pin three existing base manifests by hash and define deterministic new terrain.
-The [read-only checker](../scripts/check_waypoint_v2_practical_plan.mjs) resolves
+The [read-only checker](https://github.com/byebyebryan/powered-descent-lab/blob/5ab3d84281d1ff78fdd73425881e96aa86ebd9ac/scripts/check_waypoint_v2_practical_plan.mjs) resolves
 complete scenarios in memory and tests geometry, accounting and existing input
 preflight. New vertices add height above the existing flat/sloped base; source
 and target shelves, vehicle and clock remain unchanged. This is an exposed
