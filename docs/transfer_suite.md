@@ -122,24 +122,23 @@ Current corpus tiers:
   - retained as the focused steep-uphill regression despite its historical
     `frontier` name; the current controller lands all `108` runs
 - `transfer_waypoint_rpos80_smoke`
-  - 27 runs
+  - archived 27-run matrix; execution retired
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, smoke seeds
-  - injects the `single_dogleg_v1` waypoint profile
-  - parked historical hairpin diagnostic; requires
-    `expectation_tier = diagnostic` and is not a maintained gate
+  - used the `single_dogleg_v1` waypoint profile
+  - historical hairpin diagnostic, not a maintained gate
 - `transfer_waypoint_rpos80_full`
-  - 108 runs
+  - archived 108-run matrix; execution retired
   - `r+80` only, all 3 payload tiers, all 3 radius tiers, all 12 transfer seeds
-  - injects the `single_dogleg_v1` waypoint profile
-  - parked with the smoke pack and not regenerated for acceptance evidence
+  - used the `single_dogleg_v1` waypoint profile
+  - retained with the smoke pack as metadata and saved evidence only
 - `transfer_waypoint_contract_rpos80_smoke`
-  - 27 runs
+  - archived 27-run matrix; execution retired
   - same geometry as `transfer_waypoint_rpos80_smoke`
-  - uses `evaluation_goal = waypoint_handoff` to score the first waypoint
+  - used `evaluation_goal = waypoint_handoff` to score the first waypoint
     contract directly
   - parked diagnostic history
 - `transfer_waypoint_contract_rpos80_full`
-  - 108 runs
+  - archived 108-run matrix; execution retired
   - same geometry as `transfer_waypoint_rpos80_full`
   - parked diagnostic history
 - `transfer_waypoint_bend_rpos80_smoke`
@@ -188,7 +187,7 @@ Current corpus tiers:
     pack
   - scores both waypoints in order with `evaluation_goal = waypoint_sequence`
 - `transfer_waypoint_sequence_late_bend_diagnostic`
-  - 27 final-landing diagnostic runs over the full former `late_bend_v1` matrix
+  - archived 27-run final-landing diagnostic matrix; execution retired
   - preserves physical and handoff-window evidence without making its asymmetric
     route geometry an acceptance gate
 
@@ -202,8 +201,9 @@ Resolved transfer runs use transfer-specific selector fields:
 - `vehicle_variant = empty | half | full`
 - `waypoint_profile` selects `single_gentle_bend_v1`,
   `single_medium_bend_v1`, or `single_sharp_bend_v1` for the balanced turn
-  corpus; the maintained sequence corpus uses `double_bend_v1`, while
-  `late_bend_v1` is diagnostic-only
+  corpus; the maintained sequence corpus uses `double_bend_v1`. Historical
+  `single_dogleg_v1` and `late_bend_v1` strings decode but are rejected for
+  execution, even in renamed/custom packs
 - `waypoint_handoff_envelope = continuation_pass_through_v1` for maintained
   single-bend and balanced-turn corpora
 - `waypoint_handoff_envelope = sequence_pass_through_v1` for the ordered
@@ -291,10 +291,9 @@ controller behavior.
 Implementation checkpoint:
 
 - `TransferRouteSpec` now carries preplanned waypoints.
-- `single_dogleg_v1` is historical stress geometry, not maintained waypoint
-  evidence. Pack validation permits it only with
-  `expectation_tier = diagnostic`; the old packs remain available for explicit
-  experiments but are parked outside the acceptance scorecard.
+- `single_dogleg_v1` is retired historical stress geometry. Its four pack
+  descriptors remain readable, but neither those IDs nor reuse of the profile
+  in renamed/custom packs admits execution.
 - `single_bend_v1` is the first smoother waypoint profile. It places one
   pass-through waypoint at 55% of the source-to-target route plus a 20%
   route-radius source-side lateral offset, producing a roughly 44 degree
@@ -322,8 +321,8 @@ Implementation checkpoint:
   turns are `-31.22deg | -31.22deg`; waypoint speed caps are
   `55m/s | 65m/s`. Each waypoint's handoff tangent is the normalized bisector
   of its inbound and outbound leg directions.
-- Diagnostic-only `late_bend_v1` uses the same nominal progress with offsets
-  `0.13R | 0.26R`. The resulting signed turns are
+- The retired diagnostic-only `late_bend_v1` used the same nominal progress
+  with offsets `0.13R | 0.26R`. The resulting signed turns were
   `-0.58deg | -59.16deg`, so the first bend no longer reverses direction;
   speed caps are `45m/s | 65m/s`.
 - `sequence_pass_through_v1` uses the same `0.35rad` heading, `8m/s` progress,
@@ -597,7 +596,7 @@ on 2026-07-15 and the all-radius primary packs were recaptured on 2026-07-22:
   transfer controller.
 - `transfer_waypoint_sequence_late_bend_diagnostic`: `27 / 27` landings and
   complete route telemetry; `27 / 54` handoffs enter outside the contract and
-  recover before the waypoint plane
+  recover before the waypoint plane (archived capture, execution now retired)
 - Batch schema `34` separates the immutable planned tangent, first window-entry
   snapshot, final resolution reason, and window duration. It also reports the
   final-handoff required acceleration ratio, recoverable-run count, and
@@ -610,8 +609,9 @@ on 2026-07-15 and the all-radius primary packs were recaptured on 2026-07-22:
 - every maintained scenario resolves with `0` invalidations. The fixed
   route-frame geometry is therefore a valid corpus baseline; these outcome
   changes are controller evidence, not hidden waypoint movement.
-- `single_dogleg_v1`, its four packs, and `late_bend_v1` contract scoring are
-  parked diagnostic history rather than acceptance gates.
+- `single_dogleg_v1`, its four packs, and the `late_bend_v1` diagnostic pack
+  are retired execution paths. Their metadata and captured results remain
+  readable history rather than acceptance gates.
 - Maintained waypoint geometry now expands across all three route-radius tiers.
   Capture radii scale with route geometry, and double-bend speed caps scale with
   the square root of radius. Resolver tests require paired landing/contract

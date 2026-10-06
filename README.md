@@ -786,7 +786,7 @@ Transfer route-angle checkpoint:
   - bounded final authority-recovery search closes the former
     `single_gentle_bend_v1/full/r-30/short/seed 02` landing residual
 - `transfer_waypoint_sequence_late_bend_diagnostic`
-  - `current`: `27 / 27` final landings and complete route telemetry
+  - archived capture: `27 / 27` final landings and complete route telemetry
   - `27 / 54` handoffs enter the capture radius outside the envelope, then
     recover before the waypoint plane; this profile is diagnostic, not a gate
 - smoother `r+80` bend reset:
@@ -808,8 +808,10 @@ contracts are `405 / 405` turn and `135 / 135` ordered; paired landings are
 terminal braking authority rather than route/profile labels. Controller compute
 remains below the `1ms` p99 budget.
 
-The old `single_dogleg_v1` packs and the full-matrix `late_bend_v1` pack remain
-parked diagnostic history rather than acceptance gates.
+Execution of the four old `single_dogleg_v1` packs and the full-matrix
+`late_bend_v1` pack is retired, including profile reuse in renamed/custom packs.
+Their fixture metadata and saved reports remain readable diagnostic history;
+they are not acceptance gates or executable experiment frontdoors.
 Terrain-blind waypoint guidance v1 is closed over the preplanned maintained
 corpus. The former chord-based V1 planner is retired; its schema-36 contracts and
 saved `54 / 54` landing and `36 / 36` handoff evidence remain readable history.

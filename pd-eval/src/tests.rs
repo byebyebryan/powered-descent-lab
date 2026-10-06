@@ -329,6 +329,24 @@ fn legacy_descriptor_and_report_json_default_planner_fields() {
     assert!(review.planner.is_none());
 }
 
+#[test]
+fn saved_descriptors_preserve_retired_waypoint_profile_strings() {
+    let packs_dir = fixtures_root().join("packs");
+    let maintained_pack = load_pack(&packs_dir.join("transfer_waypoint_turn_smoke.json")).unwrap();
+    let descriptor = resolve_pack_runs(&maintained_pack, &packs_dir)
+        .unwrap()
+        .remove(0)
+        .descriptor;
+
+    for profile in ["single_dogleg_v1", "late_bend_v1"] {
+        let mut historical_descriptor = descriptor.clone();
+        historical_descriptor.selector.waypoint_profile = profile.to_owned();
+        let encoded = serde_json::to_value(historical_descriptor).unwrap();
+        let decoded: ResolvedRunDescriptor = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.selector.waypoint_profile, profile);
+    }
+}
+
 fn easy_landing_scenario() -> ScenarioSpec {
     ScenarioSpec {
         id: "unit_flat_landing".to_owned(),
@@ -1268,180 +1286,114 @@ fn transfer_matrix_seed_tier_perturbs_route_radius() {
 }
 
 #[test]
-fn transfer_matrix_waypoint_profile_injects_dogleg_waypoint() {
-    let base_dir = fixtures_root();
-    let pack = ScenarioPackSpec {
-        id: "transfer_matrix_waypoint_profile".to_owned(),
-        name: "Transfer matrix waypoint profile".to_owned(),
-        description: "transfer matrix waypoint profile".to_owned(),
-        terminal_matrix_max_time_s: None,
-        entries: vec![ScenarioPackEntry::TransferMatrix(TransferMatrixEntry {
-            id: "transfer_guidance_waypoint_nominal".to_owned(),
-            transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
-            base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
-            lanes: vec![TransferMatrixLaneSpec {
-                id: "current".to_owned(),
-                controller: "transfer_pdg".to_owned(),
-                controller_config: None,
-            }],
-            seed_tier: TransferSeedTier::Smoke,
-            vehicle_variant: "nominal".to_owned(),
-            expectation_tier: TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC.to_owned(),
-            route_angles: vec!["r+80".to_owned()],
-            radius_tiers: vec!["nominal".to_owned()],
-            waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1.to_owned()),
-            waypoint_handoff_envelope: None,
-            evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
-            adjustments: Vec::new(),
-            tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
-            metadata: BTreeMap::new(),
-        })],
-    };
-
-    let resolved_runs = resolve_pack_runs(&pack, &base_dir).unwrap();
-
-    assert_eq!(resolved_runs.len(), 3);
-    let run = resolved_runs
-        .iter()
-        .find(|run| run.descriptor.resolved_seed == 0)
-        .expect("seed 0 waypoint transfer run should be present");
-    let route = run
-        .scenario
-        .mission
-        .transfer_route
-        .as_ref()
-        .expect("transfer route should be present");
-    let waypoint = route
-        .waypoints
-        .first()
-        .expect("dogleg waypoint should be present");
-    let source_pad = run
-        .scenario
-        .world
-        .landing_pad(&route.source_pad_id)
-        .unwrap();
-
-    assert_eq!(route.waypoints.len(), 1);
-    assert_eq!(waypoint.id, "wp_dogleg_01");
-    assert!(waypoint.position_m.x < source_pad.center_x_m);
-    assert!(waypoint.position_m.y > 0.0);
-    assert_eq!(
-        run.scenario.metadata.get("route_mode").map(String::as_str),
-        Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1)
-    );
-    assert_eq!(
-        run.scenario
-            .metadata
-            .get("waypoint_profile")
-            .map(String::as_str),
-        Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1)
-    );
-    assert_eq!(
-        run.descriptor.selector.waypoint_profile,
-        TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1
-    );
-    assert_eq!(
-        run.descriptor.selector.waypoint_handoff_envelope,
-        TRANSFER_WAYPOINT_ENVELOPE_LEGACY_V1
-    );
-    assert_eq!(
-        run.descriptor.resolved_parameters.get("waypoint_0_x_m"),
-        Some(&waypoint.position_m.x)
-    );
-    assert_eq!(
-        run.descriptor
-            .resolved_parameters
-            .get("waypoint_0_capture_radius_m"),
-        Some(&waypoint.capture_radius_m)
-    );
-    assert_eq!(
-        run.descriptor
-            .resolved_parameters
-            .get("waypoint_0_max_outbound_heading_error_rad"),
-        Some(&waypoint.max_outbound_heading_error_rad)
-    );
-    assert_eq!(
-        run.descriptor
-            .resolved_parameters
-            .get("waypoint_0_min_outbound_progress_mps"),
-        Some(&waypoint.min_outbound_progress_mps)
-    );
-    assert_eq!(
-        run.descriptor
-            .resolved_parameters
-            .get("waypoint_0_max_vertical_speed_mps"),
-        waypoint.max_vertical_speed_mps.as_ref()
-    );
-    let turn_angle_deg = run
-        .descriptor
-        .resolved_parameters
-        .get("waypoint_0_turn_angle_deg")
-        .expect("dogleg profile should expose turn angle");
-    assert!(*turn_angle_deg > 140.0);
-}
-
-#[test]
-fn transfer_matrix_dogleg_profile_requires_diagnostic_tier() {
-    let entry = TransferMatrixEntry {
-        id: "transfer_guidance_waypoint_dogleg".to_owned(),
-        transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
-        base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
-        lanes: vec![TransferMatrixLaneSpec {
-            id: "current".to_owned(),
-            controller: "transfer_pdg".to_owned(),
-            controller_config: None,
-        }],
-        seed_tier: TransferSeedTier::Smoke,
-        vehicle_variant: "nominal".to_owned(),
-        expectation_tier: "frontier_probe".to_owned(),
-        route_angles: vec!["r+80".to_owned()],
-        radius_tiers: vec!["nominal".to_owned()],
-        waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1.to_owned()),
-        waypoint_handoff_envelope: None,
-        evaluation_goal: TransferMatrixEvaluationGoal::LandingOnPad,
-        adjustments: Vec::new(),
-        tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
-        metadata: BTreeMap::new(),
-    };
-
-    let message = validate_transfer_matrix_entry(&entry)
-        .unwrap_err()
-        .to_string();
-
-    assert!(message.contains("requires expectation_tier 'diagnostic'"));
-}
-
-#[test]
-fn transfer_matrix_late_bend_profile_requires_diagnostic_tier() {
-    let entry = TransferMatrixEntry {
-        id: "transfer_guidance_waypoint_late_bend".to_owned(),
-        transfer_matrix: "signed_route_arc_transfer_v1".to_owned(),
-        base_scenario: "scenarios/flat_terminal_descent.json".to_owned(),
-        lanes: vec![TransferMatrixLaneSpec {
-            id: "current".to_owned(),
-            controller: "transfer_pdg".to_owned(),
-            controller_config: None,
-        }],
-        seed_tier: TransferSeedTier::Smoke,
-        vehicle_variant: "empty".to_owned(),
-        expectation_tier: "contract_probe".to_owned(),
-        route_angles: vec!["r+30".to_owned()],
-        radius_tiers: vec!["nominal".to_owned()],
-        waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1.to_owned()),
-        waypoint_handoff_envelope: Some(
-            TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1.to_owned(),
+fn retired_waypoint_packs_preserve_archival_decoding_but_reject_execution() {
+    let packs_dir = fixtures_root().join("packs");
+    let retired_packs = [
+        (
+            "transfer_waypoint_contract_rpos80_full.json",
+            "transfer_waypoint_contract_rpos80_full",
+            "single_dogleg_v1",
         ),
-        evaluation_goal: TransferMatrixEvaluationGoal::WaypointSequence,
-        adjustments: Vec::new(),
-        tags: vec!["transfer".to_owned(), "waypoint".to_owned()],
-        metadata: BTreeMap::new(),
-    };
+        (
+            "transfer_waypoint_contract_rpos80_smoke.json",
+            "transfer_waypoint_contract_rpos80_smoke",
+            "single_dogleg_v1",
+        ),
+        (
+            "transfer_waypoint_rpos80_full.json",
+            "transfer_waypoint_rpos80_full",
+            "single_dogleg_v1",
+        ),
+        (
+            "transfer_waypoint_rpos80_smoke.json",
+            "transfer_waypoint_rpos80_smoke",
+            "single_dogleg_v1",
+        ),
+        (
+            "transfer_waypoint_sequence_late_bend_diagnostic.json",
+            "transfer_waypoint_sequence_late_bend_diagnostic",
+            "late_bend_v1",
+        ),
+    ];
 
-    let message = validate_transfer_matrix_entry(&entry)
+    for (filename, expected_pack_id, profile) in retired_packs {
+        let path = packs_dir.join(filename);
+        let raw = fs::read(&path).unwrap();
+        let mut archived_pack: ScenarioPackSpec = serde_json::from_slice(&raw).unwrap();
+        assert_eq!(archived_pack.id, expected_pack_id);
+        assert!(!archived_pack.name.trim().is_empty());
+        assert!(!archived_pack.description.trim().is_empty());
+        assert!(archived_pack.entries.iter().all(|entry| match entry {
+            ScenarioPackEntry::TransferMatrix(entry) => {
+                entry.waypoint_profile.as_deref() == Some(profile)
+                    && entry.metadata.get("maintenance").map(String::as_str) == Some("parked")
+            }
+            _ => false,
+        }));
+
+        let load_error = load_pack(&path).unwrap_err().to_string();
+        assert!(load_error.contains("retired"), "{filename}: {load_error}");
+        assert!(
+            load_error.contains(expected_pack_id),
+            "{filename}: {load_error}"
+        );
+
+        archived_pack.id = format!("renamed_{expected_pack_id}");
+        let pack_error = validate_pack(&archived_pack).unwrap_err().to_string();
+        assert!(pack_error.contains("retired"), "{filename}: {pack_error}");
+        assert!(pack_error.contains(profile), "{filename}: {pack_error}");
+
+        let ScenarioPackEntry::TransferMatrix(entry) = &archived_pack.entries[0] else {
+            panic!("{filename} should retain its transfer-matrix metadata");
+        };
+        let entry_error = validate_transfer_matrix_entry(entry)
+            .unwrap_err()
+            .to_string();
+        assert!(entry_error.contains("retired"), "{filename}: {entry_error}");
+        assert!(entry_error.contains(profile), "{filename}: {entry_error}");
+
+        let resolution_error = resolve_pack_runs(&archived_pack, &packs_dir)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            resolution_error.contains("retired"),
+            "{filename}: {resolution_error}"
+        );
+        assert!(
+            resolution_error.contains(profile),
+            "{filename}: {resolution_error}"
+        );
+    }
+
+    let source_pad = LandingPadSpec {
+        id: "source".to_owned(),
+        center_x_m: -100.0,
+        surface_y_m: 0.0,
+        width_m: 20.0,
+    };
+    let target_pad = LandingPadSpec {
+        id: "target".to_owned(),
+        center_x_m: 0.0,
+        surface_y_m: 0.0,
+        width_m: 20.0,
+    };
+    for profile in ["single_dogleg_v1", "late_bend_v1"] {
+        let profile_error = validate_transfer_waypoint_profile("renamed_entry", profile)
+            .unwrap_err()
+            .to_string();
+        assert!(profile_error.contains("retired"), "{profile_error}");
+
+        let helper_error = transfer_route_waypoints_for_profile(
+            Some(profile),
+            &source_pad,
+            &target_pad,
+            &SIGNED_ROUTE_ARC_TRANSFER_V1_ROUTE_ANGLES[0],
+            &SIGNED_ROUTE_ARC_TRANSFER_V1_RADIUS_TIERS[0],
+        )
         .unwrap_err()
         .to_string();
-
-    assert!(message.contains("requires expectation_tier 'diagnostic'"));
+        assert!(helper_error.contains("retired"), "{helper_error}");
+    }
 }
 
 #[test]
@@ -2430,41 +2382,6 @@ fn maintained_waypoint_radius_profiles_resolve_at_full_seed_depth() {
 }
 
 #[test]
-fn transfer_waypoint_late_bend_diagnostic_preserves_full_matrix() {
-    let packs_dir = fixtures_root().join("packs");
-    let pack =
-        load_pack(&packs_dir.join("transfer_waypoint_sequence_late_bend_diagnostic.json")).unwrap();
-    let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
-
-    assert_eq!(runs.len(), 27);
-    assert!(runs.iter().all(|run| {
-        run.descriptor.selector.expectation_tier.as_deref() == Some("diagnostic")
-            && run.descriptor.selector.radius_tier == "nominal"
-            && run.descriptor.selector.waypoint_profile == TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1
-            && run.descriptor.selector.waypoint_handoff_envelope
-                == TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1
-            && matches!(
-                run.scenario.mission.goal,
-                EvaluationGoal::LandingOnPad { .. }
-            )
-            && run
-                .scenario
-                .mission
-                .transfer_route
-                .as_ref()
-                .is_some_and(|route| route.waypoints.len() == 2)
-    }));
-    for vehicle in ["empty", "half", "full"] {
-        assert_eq!(
-            runs.iter()
-                .filter(|run| run.descriptor.selector.vehicle_variant == vehicle)
-                .count(),
-            9
-        );
-    }
-}
-
-#[test]
 fn transfer_matrix_waypoint_handoff_goal_resolves_probe_goal() {
     let base_dir = fixtures_root();
     let pack = ScenarioPackSpec {
@@ -2483,11 +2400,13 @@ fn transfer_matrix_waypoint_handoff_goal_resolves_probe_goal() {
             }],
             seed_tier: TransferSeedTier::Smoke,
             vehicle_variant: "nominal".to_owned(),
-            expectation_tier: TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC.to_owned(),
+            expectation_tier: "frontier_probe".to_owned(),
             route_angles: vec!["r+80".to_owned()],
             radius_tiers: vec!["nominal".to_owned()],
-            waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1.to_owned()),
-            waypoint_handoff_envelope: None,
+            waypoint_profile: Some(TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1.to_owned()),
+            waypoint_handoff_envelope: Some(
+                TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1.to_owned(),
+            ),
             evaluation_goal: TransferMatrixEvaluationGoal::WaypointHandoff,
             adjustments: Vec::new(),
             tags: vec!["transfer".to_owned(), "waypoint".to_owned()],

@@ -7,6 +7,11 @@ const RETIRED_PACK_IDS: &[&str] = &[
     "transfer_route_angle_recoverability_compare",
     "transfer_bot_lab_pathwise_compare",
     "transfer_bot_lab_recoverability_compare",
+    "transfer_waypoint_contract_rpos80_full",
+    "transfer_waypoint_contract_rpos80_smoke",
+    "transfer_waypoint_rpos80_full",
+    "transfer_waypoint_rpos80_smoke",
+    "transfer_waypoint_sequence_late_bend_diagnostic",
 ];
 
 const RETIRED_TRANSFER_CONTROLLER_IDS: &[&str] =
@@ -353,26 +358,6 @@ pub(super) fn validate_transfer_matrix_entry(entry: &TransferMatrixEntry) -> Res
     }
     if let Some(profile) = &entry.waypoint_profile {
         validate_transfer_waypoint_profile(&entry.id, profile)?;
-        if profile == TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1
-            && entry.expectation_tier != TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC
-        {
-            bail!(
-                "transfer matrix entry '{}' waypoint_profile '{}' requires expectation_tier '{}'",
-                entry.id,
-                profile,
-                TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC
-            );
-        }
-        if profile == TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1
-            && entry.expectation_tier != TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC
-        {
-            bail!(
-                "transfer matrix entry '{}' waypoint_profile '{}' requires expectation_tier '{}'",
-                entry.id,
-                profile,
-                TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC
-            );
-        }
     }
     if let Some(envelope) = &entry.waypoint_handoff_envelope {
         validate_transfer_waypoint_envelope(&entry.id, envelope)?;
@@ -504,15 +489,16 @@ pub(super) fn validate_transfer_waypoint_profile(entry_id: &str, profile: &str) 
     if profile.trim().is_empty() {
         bail!("transfer matrix entry '{entry_id}' waypoint_profile must not be empty");
     }
+    if matches!(profile, "single_dogleg_v1" | "late_bend_v1") {
+        bail!("transfer matrix entry '{entry_id}' waypoint_profile '{profile}' is retired");
+    }
     if !matches!(
         profile,
-        TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1
-            | TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1
+        TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1
             | TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1
             | TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1
             | TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1
             | TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1
-            | TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1
     ) {
         bail!(
             "transfer matrix entry '{}' waypoint_profile '{}' is not supported",
@@ -1082,20 +1068,17 @@ pub(super) const SIGNED_ROUTE_ARC_TRANSFER_V1_SPEC: TransferRouteFamilySpec =
         smoke_route_angles: &SIGNED_ROUTE_ARC_TRANSFER_V1_SMOKE_ROUTE_ANGLES,
     };
 
-pub(super) const TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1: &str = "single_dogleg_v1";
 pub(super) const TRANSFER_WAYPOINT_PROFILE_SINGLE_BEND_V1: &str = "single_bend_v1";
 pub(super) const TRANSFER_WAYPOINT_PROFILE_SINGLE_GENTLE_BEND_V1: &str = "single_gentle_bend_v1";
 pub(super) const TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1: &str = "single_medium_bend_v1";
 pub(super) const TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1: &str = "single_sharp_bend_v1";
 pub(super) const TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1: &str = "double_bend_v1";
-pub(super) const TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1: &str = "late_bend_v1";
 pub(super) const TRANSFER_WAYPOINT_ENVELOPE_LEGACY_V1: &str = "legacy_v1";
 pub(super) const TRANSFER_WAYPOINT_ENVELOPE_PASS_THROUGH_V1: &str = "pass_through_v1";
 pub(super) const TRANSFER_WAYPOINT_ENVELOPE_CONTINUATION_PASS_THROUGH_V1: &str =
     "continuation_pass_through_v1";
 pub(super) const TRANSFER_WAYPOINT_ENVELOPE_SEQUENCE_PASS_THROUGH_V1: &str =
     "sequence_pass_through_v1";
-pub(super) const TRANSFER_WAYPOINT_EXPECTATION_TIER_DIAGNOSTIC: &str = "diagnostic";
 pub(super) const TRANSFER_WAYPOINT_SINGLE_BEND_PROGRESS_FRAC: f64 = 0.55;
 pub(super) const TRANSFER_WAYPOINT_SINGLE_BEND_LATERAL_OFFSET_RATIO: f64 = 0.20;
 pub(super) const TRANSFER_WAYPOINT_GEOMETRY_TOLERANCE: f64 = 1.0e-6;
@@ -1157,19 +1140,6 @@ pub(super) const DOUBLE_BEND_GEOMETRY: [TransferWaypointGeometryExpectation; 2] 
         signed_turn_deg: -31.2184,
     },
 ];
-pub(super) const LATE_BEND_GEOMETRY: [TransferWaypointGeometryExpectation; 2] = [
-    TransferWaypointGeometryExpectation {
-        progress_frac: 0.33,
-        lateral_offset_ratio: 0.13,
-        signed_turn_deg: -0.5769,
-    },
-    TransferWaypointGeometryExpectation {
-        progress_frac: 0.67,
-        lateral_offset_ratio: 0.26,
-        signed_turn_deg: -59.1583,
-    },
-];
-
 pub(super) const TRANSFER_SMOKE_SEEDS: [TransferSeedSpec; 3] = [
     TransferSeedSpec {
         index: 0,
@@ -1739,9 +1709,7 @@ pub(super) fn configure_transfer_route_geometry(
         radius_tier,
     )?;
     apply_transfer_waypoint_envelope(&mut waypoints, waypoint_handoff_envelope, radius_tier.id)?;
-    if let Some(profile) =
-        waypoint_profile.filter(|profile| *profile != TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1)
-    {
+    if let Some(profile) = waypoint_profile {
         validate_transfer_waypoint_geometry(
             profile,
             &source_pad,
@@ -1833,38 +1801,8 @@ pub(super) fn transfer_route_waypoints_for_profile(
     };
     validate_transfer_waypoint_profile("resolved transfer matrix", profile)?;
     match profile {
-        TRANSFER_WAYPOINT_PROFILE_SINGLE_DOGLEG_V1 => {
-            if route_angle.angle_deg < 70.0 {
-                bail!(
-                    "waypoint profile '{}' requires a steep uphill route angle, got '{}'",
-                    profile,
-                    route_angle.id
-                );
-            }
-            let route_dx_m = target_pad.center_x_m - source_pad.center_x_m;
-            let direction = if route_dx_m >= 0.0 { 1.0 } else { -1.0 };
-            let radius_m = radius_tier.radius_m;
-            let capture_radius_m = (radius_m * 0.08).clamp(35.0, 95.0);
-            Ok(vec![TransferWaypointSpec {
-                id: "wp_dogleg_01".to_owned(),
-                position_m: Vec2::new(
-                    source_pad.center_x_m - (direction * radius_m * 0.70),
-                    target_pad.surface_y_m + (radius_m * 0.45),
-                ),
-                handoff_tangent_unit: None,
-                capture_radius_m,
-                max_cross_track_m: capture_radius_m * 1.25,
-                max_outbound_heading_error_rad: 0.85,
-                min_outbound_progress_mps: 8.0,
-                max_outbound_cross_speed_mps: None,
-                min_speed_mps: 10.0,
-                max_speed_mps: 130.0,
-                min_vertical_speed_mps: Some(-80.0),
-                max_vertical_speed_mps: Some(65.0),
-            }])
-        }
-        TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 | TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1 => {
-            transfer_route_sequence_waypoints(profile, source_pad, target_pad, radius_tier)
+        TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 => {
+            transfer_route_sequence_waypoints(source_pad, target_pad, radius_tier)
         }
         _ => {
             let profile_spec = transfer_waypoint_bend_profile_spec(profile)
@@ -1915,11 +1853,11 @@ pub(super) fn transfer_route_waypoints_for_profile(
 }
 
 pub(super) fn transfer_route_sequence_waypoints(
-    profile: &str,
     source_pad: &LandingPadSpec,
     target_pad: &LandingPadSpec,
     radius_tier: &TransferRadiusTierSpec,
 ) -> Result<Vec<TransferWaypointSpec>> {
+    let profile = TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1;
     let source_m = Vec2::new(source_pad.center_x_m, source_pad.surface_y_m);
     let target_m = Vec2::new(target_pad.center_x_m, target_pad.surface_y_m);
     let route_m = target_m - source_m;
@@ -1929,52 +1867,35 @@ pub(super) fn transfer_route_sequence_waypoints(
     let direction = if route_m.x >= 0.0 { 1.0 } else { -1.0 };
     let source_side_normal_m = Vec2::new(-route_unit_m.y * direction, route_unit_m.x * direction);
     let radius_m = radius_tier.radius_m;
-    let maintained = profile == TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1;
-    let capture_radius_m = if maintained {
-        (radius_m * 0.08).min(95.0)
-    } else {
-        (radius_m * 0.08).clamp(35.0, 95.0)
-    };
-    let speed_scale = if maintained {
-        (radius_m / SIGNED_ROUTE_ARC_TRANSFER_V1_NOMINAL_RADIUS_M).sqrt()
-    } else {
-        1.0
-    };
-    let node_specs = match profile {
-        TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 => [
-            ("wp_double_bend_01", 0.33, 0.20, 55.0),
-            ("wp_double_bend_02", 0.67, 0.20, 65.0),
-        ],
-        TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1 => [
-            ("wp_late_bend_01", 0.33, 0.13, 45.0),
-            ("wp_late_bend_02", 0.67, 0.26, 65.0),
-        ],
-        _ => unreachable!("validated sequence waypoint profile"),
-    };
-    let mut waypoints = node_specs
-        .into_iter()
-        .map(
-            |(waypoint_id, progress_frac, lateral_offset_ratio, max_speed_mps)| {
-                let position_m = source_m
-                    + (route_m * progress_frac)
-                    + (source_side_normal_m * (radius_m * lateral_offset_ratio));
-                TransferWaypointSpec {
-                    id: waypoint_id.to_owned(),
-                    position_m,
-                    handoff_tangent_unit: None,
-                    capture_radius_m,
-                    max_cross_track_m: capture_radius_m * 1.25,
-                    max_outbound_heading_error_rad: 0.35,
-                    min_outbound_progress_mps: 8.0,
-                    max_outbound_cross_speed_mps: Some(20.0),
-                    min_speed_mps: 10.0,
-                    max_speed_mps: max_speed_mps * speed_scale,
-                    min_vertical_speed_mps: None,
-                    max_vertical_speed_mps: None,
-                }
-            },
-        )
-        .collect::<Vec<_>>();
+    let capture_radius_m = (radius_m * 0.08).min(95.0);
+    let speed_scale = (radius_m / SIGNED_ROUTE_ARC_TRANSFER_V1_NOMINAL_RADIUS_M).sqrt();
+    let mut waypoints = [
+        ("wp_double_bend_01", 0.33, 0.20, 55.0),
+        ("wp_double_bend_02", 0.67, 0.20, 65.0),
+    ]
+    .into_iter()
+    .map(
+        |(waypoint_id, progress_frac, lateral_offset_ratio, max_speed_mps)| {
+            let position_m = source_m
+                + (route_m * progress_frac)
+                + (source_side_normal_m * (radius_m * lateral_offset_ratio));
+            TransferWaypointSpec {
+                id: waypoint_id.to_owned(),
+                position_m,
+                handoff_tangent_unit: None,
+                capture_radius_m,
+                max_cross_track_m: capture_radius_m * 1.25,
+                max_outbound_heading_error_rad: 0.35,
+                min_outbound_progress_mps: 8.0,
+                max_outbound_cross_speed_mps: Some(20.0),
+                min_speed_mps: 10.0,
+                max_speed_mps: max_speed_mps * speed_scale,
+                min_vertical_speed_mps: None,
+                max_vertical_speed_mps: None,
+            }
+        },
+    )
+    .collect::<Vec<_>>();
     apply_transfer_waypoint_handoff_tangents(profile, source_m, target_m, &mut waypoints)?;
     Ok(waypoints)
 }
@@ -2128,10 +2049,7 @@ pub(super) fn validate_transfer_waypoint_geometry(
                 expected.signed_turn_deg
             );
         }
-        if matches!(
-            profile,
-            TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 | TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1
-        ) {
+        if profile == TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 {
             let expected_tangent = waypoint_normalized(
                 waypoint_normalized(inbound_m).unwrap() + waypoint_normalized(outbound_m).unwrap(),
             )
@@ -2174,7 +2092,6 @@ pub(super) fn transfer_waypoint_geometry_expectations(
         TRANSFER_WAYPOINT_PROFILE_SINGLE_MEDIUM_BEND_V1 => Some(&SINGLE_MEDIUM_BEND_GEOMETRY),
         TRANSFER_WAYPOINT_PROFILE_SINGLE_SHARP_BEND_V1 => Some(&SINGLE_SHARP_BEND_GEOMETRY),
         TRANSFER_WAYPOINT_PROFILE_DOUBLE_BEND_V1 => Some(&DOUBLE_BEND_GEOMETRY),
-        TRANSFER_WAYPOINT_PROFILE_LATE_BEND_V1 => Some(&LATE_BEND_GEOMETRY),
         _ => None,
     }
 }
