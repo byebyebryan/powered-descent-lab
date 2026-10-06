@@ -1,5 +1,7 @@
 # Terminal Suite Design
 
+[Documentation home](README.md) · [Evaluation workflow](evaluation.md#batch-eval) · [Transfer suite](transfer_suite.md)
+
 This document is the maintained design reference for the terminal-guidance
 evaluation suite.
 
@@ -123,7 +125,7 @@ Reference geometry preview:
 Regenerate with:
 
 ```bash
-uv run scripts/render_terminal_suite.py
+rtk proxy uv run scripts/render_terminal_suite.py
 ```
 
 ### Arc points

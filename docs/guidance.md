@@ -1,5 +1,7 @@
 # Guidance Architecture
 
+[Documentation home](README.md) · [Architecture](architecture.md) · [Evaluation](evaluation.md)
+
 This document is the stable boundary between terminal guidance, direct
 transfer, waypoint guidance, and waypoint planning. It describes ownership and
 compatibility rather than controller tuning. The current V2 evaluator boundary
@@ -226,8 +228,8 @@ rtk proxy env PD_V2_PARITY_CAPTURE=outputs/eval/planner_v2_lab_suite/capture-ses
 ```
 
 The maintained ordinary gate includes workspace/default-off/feature CLI tests,
-help/dependency checks, formatting, strict all-target Clippy and all maintained
-JavaScript tests:
+help/dependency checks, formatting, strict all-target Clippy, local documentation
+links and all maintained JavaScript tests:
 
 ```sh
 rtk proxy node scripts/check-planner-development.mjs

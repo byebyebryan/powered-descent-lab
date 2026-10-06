@@ -1,5 +1,73 @@
 # Progress
 
+## 2026-10-06
+
+### Documentation and hygiene review before split commits
+
+- The user authorizes review, commit and push. Review reproduces and fixes a
+  link-checker masking bug without changing flight code: literal comment markers
+  cannot hide following links, and inline-code HTML IDs cannot invent anchors.
+  The eight checker tests and all 52 Node tests pass.
+- All 11 developer checks pass: 447 Rust tests (four ignored), CLI feature and
+  dependency boundaries, formatting, whitespace and strict Clippy. An output-free
+  copy of the first staged commit passes independently; final docs are checked
+  the same way. The prior preparation counts below retain their original scope.
+- Split tooling/archive repair (`df6de82`) from documentation/navigation/repository
+  guidance. All 31 protected scopes / 3,867 entries remain unchanged; no Rust,
+  Cargo, frozen JSON, report-template, campaign, report-publication, server or
+  worktree-cleanup change. [Final review](docs_repo_hygiene_results.md#review-before-commit-2026-10-06)
+  records the findings and commit boundary; Git push is verified after commits.
+
+### Deep documentation and repository hygiene review
+
+- Reviewed the pending docs reorganization against live source and tool help.
+  Corrected current architecture's retired V1 geometry/validator ownership and
+  actual report-refresh scope. Added safe native/optional-CLI workflows, explicit
+  publication/browser boundaries, LAN serving caveats, and script/fixture guides.
+- Strengthened the docs checker against inline-code/comment false links and
+  deleted tracked documents; seven focused tests now pass. All 11 developer gate
+  steps pass, including 447 Rust tests (four ignored), 51 JavaScript tests, CLI
+  boundaries, formatting and strict Clippy. An output-free temporary repository
+  copy also passes all 51 Node tests and documentation checks.
+- Retained all 34 original README command lines, historical controller snapshots,
+  rationale and research records. Verified five archival source blobs and both
+  frozen planner-source hashes. The read-only selected-site check passes all 44
+  cases, 42 rich payloads, 36 actual handoffs and 46 receipt-bound pages.
+- All 31 protected scopes / 3,867 entries remain unchanged. No Rust/Cargo/frozen
+  JSON or report-template changes, new acceptance campaign, publication or server
+  action. The dirty detached analysis worktree and two stale temporary worktree
+  registrations are preserved; no actual prune, broad deletion, license/CI choice,
+  commit or push. [Review results](docs_repo_hygiene_results.md) record the handoff.
+
+### Documentation and repository alignment
+
+- Code starts at reviewed/pushed `7039b33`. Policy 3 remains the sole executable
+  planner; accepted flight evidence and the supported setup are unchanged.
+- Replaced the root README's mixed workflow/research ledger with an overview and
+  task-first links. The [documentation home](README.md) separates current
+  contracts/workflows, accepted results, completed housekeeping and archive
+  discovery. Detailed evaluation, reporting, controller snapshots, selected
+  milestones and project rationale were relocated, not discarded.
+- Preserved old README anchors and restored the historical navigation-entrypoint
+  anchor without rewriting progress records. Eight broken retired-source links
+  now use verified pre-retirement Git revisions and explicit historical banners.
+  Corrected the roadmap's already-completed pack/template split and stale transfer
+  partition descriptions; no recorded mission outcomes were revised.
+- Added repository agent guidance, development prerequisites and safe output/
+  fixture boundaries. Local debug scratch and Python caches are ignored, not
+  deleted. No license, CI service, package dependency or flight behavior changed.
+- Added a read-only local documentation-link/anchor check to the maintained
+  developer gate, with five focused tests. All 11 gate steps pass: 447 workspace
+  tests (four intentionally ignored), 49 JavaScript tests, CLI feature/default-off
+  boundaries, formatting and strict Clippy. The final documentation check passes;
+  generated evidence links are deliberately optional on fresh checkouts.
+- The original report workflow, complete controller checkpoint tail, project
+  rationale and selected research milestones pass explicit extraction-preservation
+  checks. All 31 protected scopes / 3,867 entries remain unchanged. No source
+  implementation, frozen inputs, captures, published reports, selectors or
+  receipts were edited. No new acceptance campaign, publication or server change
+  occurred. Changes are prepared for review; this pass does not commit or push.
+
 ## 2026-10-03
 
 ### Fresh-terrain review and commit

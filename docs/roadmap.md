@@ -1,5 +1,7 @@
 # Powered Descent Lab Roadmap
 
+[Documentation home](README.md) · [Current guidance](guidance.md) · [Research archive](history.md)
+
 This roadmap began as the design-first reboot sequence. It now tracks the
 implemented phase boundaries, maintained evidence, and the next work above the
 closed guidance baseline.
@@ -812,8 +814,10 @@ or retuning terrain cases. Persisted records and replay safety have separate
 ownership, and the flight loop delegates to named planning and execution phases.
 The [core cleanup results](waypoint_v2_core_cleanup_results.md) record exact
 44-case numerical parity, the final workspace gate and unchanged saved evidence.
-The larger pack/report module split remains a separate optional organization
-pass, not a flight defect or prerequisite.
+The subsequent [retirement and housekeeping](planner_retirement_cleanup_results.md)
+completed the current pack-responsibility split and common rich-template
+extraction. Optional further domain splits or report-reference math consolidation
+need a concrete maintenance reason; neither is a flight defect or prerequisite.
 
 The [current guidance boundary](guidance.md#current-v2-design-and-support) and
 [session/CLI replacement result](waypoint_v2_session_repair_results.md) define

@@ -1,5 +1,7 @@
 # Waypoint Planning
 
+[Documentation home](README.md) · [Current evaluation](evaluation.md#planner-evaluation-v2-default) · [Research archive](history.md)
+
 <a id="current-v2-evaluation-status-2026-10-04"></a>
 
 ## Current V2 Evaluation Status (2026-10-05)

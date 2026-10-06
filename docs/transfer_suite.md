@@ -1,5 +1,7 @@
 # Transfer Suite Design
 
+[Documentation home](README.md) · [Evaluation workflow](evaluation.md#batch-eval) · [Terminal suite](terminal_suite.md)
+
 This document defines the first `pd-lab` transfer-guidance matrix. It is a
 separate Phase 3 family, not another terminal `condition_set`.
 

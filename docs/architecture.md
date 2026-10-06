@@ -1,5 +1,7 @@
 # Powered Descent Lab Architecture
 
+[Documentation home](README.md) · [Current guidance](guidance.md) · [Development](development.md)
+
 ## 1. Purpose
 
 Powered Descent Lab is a control and simulation lab for 2D rocket flight.
@@ -258,9 +260,13 @@ The implemented heightfield query layer provides:
 - local surface normal
 - full immutable terrain through the setup-time `RunContext`
 - strict, non-clamping height lookup for planning validation
-- exact segment-to-heightfield corridor clearance for a linearly varying
-  conservative envelope
-- endpoint-aware route validation and stable minimum-clearance diagnostics
+- exact point-centred body-envelope clearance, including the terrain vertices
+  within the queried footprint, with stable minimum-clearance diagnostics
+
+V1's segment/chord corridor query, endpoint-shaped safety profile and all-leg
+route validator are retired. Their serialized diagnostics remain readable;
+they are not current geometry APIs. V2 audits realized flight states with the
+maintained point-envelope query and phase-aware contact guards.
 
 Closest-point and ray queries remain useful later for collision warnings and
 reactive guardrails, but they are not prerequisites for the bounded planner.
@@ -323,9 +329,8 @@ Responsibilities:
 
 - world and vehicle state
 - deterministic stepping
-- heightfield terrain and terrain-derived clearance queries, including exact
-  conservative corridor clearance
-- neutral serialized route-planning contracts and shared route validation
+- heightfield terrain and exact point-centred envelope clearance queries
+- neutral authored-route contracts and read-only historical planner DTOs
 - mission setup
 - observation generation
 - action validation and actuation rules
@@ -632,8 +637,9 @@ The implemented workspace shape is:
 
 ```text
 powered-descent-lab/
+  AGENTS.md
   README.md
-  docs/
+  docs/        # README.md indexes current workflows and dated history
   fixtures/
     packs/
     scenarios/
@@ -645,6 +651,7 @@ powered-descent-lab/
   pd-eval/
   scripts/
   outputs/      # generated and ignored
+  target/       # build products and ignored
 ```
 
 Notes:

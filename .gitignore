@@ -1,2 +1,5 @@
 /target
 /outputs
+/tmp_flat_debug/
+__pycache__/
+*.py[cod]
