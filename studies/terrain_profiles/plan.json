@@ -1,0 +1,59 @@
+{
+  "schema": "pd-lab.terrain-profile-study.v1",
+  "seeds": [0, 1, 2, 7, 42, 12345],
+  "domain_m": [-160, 1360],
+  "review_span_m": [0, 1200],
+  "source_offset_m": 137,
+  "spacing_m": 4,
+  "reference_spacing_m": 1,
+  "coarser_spacing_m": 8,
+  "turn_height_m": 8,
+  "turn_half_width_m": 40,
+  "interpolation_warning_m": 0.5,
+  "pylander": {
+    "revision": "41c4be26c3bb209a495c725bdb9d618378a24202",
+    "files": {
+      "game/core/noise.py": "7ec995ffed740de06f8fca512842b97e7910e8827bff3587eea1365354295ee9",
+      "game/core/terrain.py": "8c5d265be5b58282b0425fa0478a9fbcb23b9d4cdf66aef27a254f942271c474"
+    }
+  },
+  "baseline": {
+    "base_height": 0,
+    "macro_amplitude": 900,
+    "macro_frequency": 0.00008,
+    "structure_amplitude": 1800,
+    "structure_frequency": 0.00023,
+    "structure_octaves": 4,
+    "structure_persistence": 0.45,
+    "structure_lacunarity": 2.1,
+    "ridge_mix": 0.55,
+    "warp_amplitude": 450,
+    "warp_frequency": 0.00015,
+    "feature_cell_size": 900,
+    "feature_density": 0.38
+  },
+  "refined": {
+    "base_height": 0,
+    "macro_amplitude": 80,
+    "macro_frequency": 0.0005555555555555556,
+    "structure_amplitude": 140,
+    "structure_frequency": 0.0016666666666666668,
+    "structure_octaves": 3,
+    "structure_persistence": 0.35,
+    "structure_lacunarity": 2,
+    "ridge_mix": 0.45,
+    "warp_amplitude": 25,
+    "warp_frequency": 0.001,
+    "feature_cell_size": 360,
+    "feature_density": 0.35
+  },
+  "weighted_strength": 0.65,
+  "fastnoise_lite": {
+    "version": "1.1.1",
+    "noise_type": "Perlin",
+    "fractal_type": "None",
+    "coordinate_precision": "f64",
+    "sample_precision": "f32",
+    "recipe_arithmetic": "f64"
+  }
+}

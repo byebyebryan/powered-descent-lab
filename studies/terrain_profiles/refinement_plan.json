@@ -1,0 +1,29 @@
+{
+  "schema": "pd-lab.terrain-ridge-slice-study.v1",
+  "control_plan_sha256": "82665074d99180549a03ee5d4716ff29cac7379230eab6e10e01b4dace5f77f5",
+  "control_receipt_sha256": "32e6ccf775cf7d10fb3dce9e53632eb71a7f62d300a1dab888ba925ff1585a9f",
+  "variants": ["refined", "fastnoise"],
+  "ridge_slice_offset": 0.37,
+  "landmarks_m": [463, 1063],
+  "landmark_radius_m": 25,
+  "peak_descriptor": "Strict rise followed by non-rise on the unchanged 1 m reference; no prominence filter. Diagnostic only.",
+  "shape_decision": "Review reduction in landmark alignment and shared-scale variety; no automated aesthetic gate or outcome-dependent retuning.",
+  "authoritative_surface": "Resolved 4 m piecewise-linear polyline, with only explicitly recorded fixed local pad patches for scenarios.",
+  "pad_preparation": {
+    "width_m": 36,
+    "transition_m": 24,
+    "source_center_x_m": 0,
+    "target_center_x_m": 1200,
+    "source_pad_id": "pad_source",
+    "target_pad_id": "pad_main",
+    "surface_height_rule": "Original resolved-polyline height at each pad centre; no vertical normalization.",
+    "transition_rule": "Linear shelf-edge to original-polyline outer anchor; retain original vertices and insert exact patch/shelf boundaries. Outside patches identical."
+  },
+  "scenario_template": {
+    "path": "scenario_template.json",
+    "sha256": "953ddd914abb440898314a79d5566f4ad118b37c19dc7bed28d0aac49cd02983",
+    "provenance": "Exact v2_clear_845 scenario from capture-session-repair-20261005-native; only used for supported vehicle, gravity, clocks and route-free mission defaults."
+  },
+  "flight_runs": 0,
+  "native_validation": "pd-cli waypoint-v2-flight --preflight-only; never pass output-dir or create a simulator."
+}

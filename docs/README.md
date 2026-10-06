@@ -51,6 +51,20 @@ later code and documentation housekeeping does not create a new flight capture.
 These are measured or completed records, not commands to generate new evidence.
 For current developer validation, use the development workflow above.
 
+## Terrain source study
+
+The [procedural profile study](terrain_profile_study_results.md) compares 18
+Pylander-based and FastNoiseLite profiles, with raw data, shared-scale plots and
+repeatability/sampling checks. It is a shape-only checkpoint, not a new flight
+capture or planner-coverage claim. Its [runner and frozen contract](../studies/terrain_profiles/README.md)
+are explicit opt-in; the flight workspace and accepted report site are unchanged.
+
+The [ridge-slice refinement](terrain_ridge_refinement_results.md) adds twelve
+fixed-offset before/after profiles and twelve locally pad-prepared inputs. The
+shared ridge motif is reduced and 12/12 native input-only preflights pass; no
+procedural flight or landing result is claimed. Its offline galleries remain
+separate from the accepted common-template flight report site.
+
 ## Research and history
 
 [Development history and archive](history.md) groups the earlier trajectory,
