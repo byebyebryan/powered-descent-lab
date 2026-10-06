@@ -234,7 +234,7 @@ fn maintained_authored_waypoint_pack_resolution_fingerprints() {
     );
 
     for (filename, expected_runs, expected_fingerprint) in EXPECTED {
-        let pack = load_pack(&packs_dir.join(&filename)).unwrap();
+        let pack = load_pack(&packs_dir.join(filename)).unwrap();
         let runs = resolve_pack_runs(&pack, &packs_dir).unwrap();
         assert_eq!(
             runs.len(),
