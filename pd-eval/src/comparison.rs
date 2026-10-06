@@ -126,14 +126,6 @@ fn records_for_lane<'a>(records: &'a [BatchRunRecord], lane_id: &str) -> Vec<&'a
         .collect()
 }
 
-fn summarize_record_refs(records: &[&BatchRunRecord]) -> BatchSummary {
-    let owned_records = records
-        .iter()
-        .map(|record| (*record).clone())
-        .collect::<Vec<_>>();
-    summarize_records(&owned_records)
-}
-
 fn evaluate_regression_policy(
     summary: &BatchSummaryDelta,
     basis: &BatchCompareBasis,
@@ -344,7 +336,7 @@ fn record_failure(record: &BatchRunRecord) -> bool {
     record_scored(record) && !matches!(record.manifest.mission_outcome, MissionOutcome::Success)
 }
 
-pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
+pub(crate) fn summarize_record_refs(records: &[&BatchRunRecord]) -> BatchSummary {
     let total_runs = records.len();
     let invalidated_runs = records
         .iter()
@@ -363,19 +355,21 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
     } else {
         records
             .iter()
+            .copied()
             .map(|record| record.manifest.sim_time_s)
             .sum::<f64>()
             / total_runs as f64
     };
     let max_sim_time_s = records
         .iter()
+        .copied()
         .map(|record| record.manifest.sim_time_s)
         .fold(0.0_f64, f64::max);
 
     let mut mission_outcomes = BTreeMap::new();
     let mut physical_outcomes = BTreeMap::new();
     let mut end_reasons = BTreeMap::new();
-    for record in records {
+    for &record in records {
         *mission_outcomes
             .entry(enum_label(&record.manifest.mission_outcome))
             .or_insert(0) += 1;
@@ -389,7 +383,7 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut by_entry_groups = BTreeMap::<String, Vec<&BatchRunRecord>>::new();
     let mut by_family_groups = BTreeMap::<String, Vec<&BatchRunRecord>>::new();
-    for record in records {
+    for &record in records {
         by_entry_groups
             .entry(record.resolved.entry_id.clone())
             .or_default()
@@ -410,6 +404,7 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut failed_runs = records
         .iter()
+        .copied()
         .filter(|record| record_failure(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
@@ -420,7 +415,7 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
             .then(lhs.run_id.cmp(&rhs.run_id))
     });
 
-    let mut slowest_runs = records.iter().map(run_pointer).collect::<Vec<_>>();
+    let mut slowest_runs = records.iter().copied().map(run_pointer).collect::<Vec<_>>();
     slowest_runs.sort_by(|lhs, rhs| {
         rhs.sim_time_s
             .partial_cmp(&lhs.sim_time_s)
@@ -431,6 +426,7 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut closest_failures = records
         .iter()
+        .copied()
         .filter(|record| record_failure(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
@@ -439,6 +435,7 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut worst_failures = records
         .iter()
+        .copied()
         .filter(|record| record_failure(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
@@ -447,6 +444,7 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut weakest_successes = records
         .iter()
+        .copied()
         .filter(|record| record_success(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
@@ -455,6 +453,7 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
 
     let mut lowest_fuel_successes = records
         .iter()
+        .copied()
         .filter(|record| record_success(record))
         .map(run_pointer)
         .collect::<Vec<_>>();
@@ -480,6 +479,11 @@ pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
         weakest_successes,
         lowest_fuel_successes,
     }
+}
+
+pub(crate) fn summarize_records(records: &[BatchRunRecord]) -> BatchSummary {
+    let borrowed_records = records.iter().collect::<Vec<_>>();
+    summarize_record_refs(&borrowed_records)
 }
 
 fn compare_summary_delta(candidate: &BatchSummary, baseline: &BatchSummary) -> BatchSummaryDelta {

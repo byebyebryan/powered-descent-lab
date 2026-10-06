@@ -312,3 +312,61 @@ an executable old planner or failed experiment to revive. Broader refactoring is
 not required for the next product pass. Seeded terrain validation or a concrete
 game-host adapter remains a separate decision; neither is established by cleanup.
 No push, report publication, server restart or new acceptance campaign occurred.
+
+## Small report-check and aggregation follow-up: October 5, 2026
+
+The bounded round from clean `3d6d6c0` is complete. It closes the two small
+items selected by the next read-only scan, rather than reopening planner design
+or undertaking the optional domain-module and reference-math refactors.
+
+- Removed the five obsolete test-only report helpers `verifyOrdinaryExecution`,
+  `parseAnchors`, `verifyHttpContent`, `isEvidenceAnchor` and `assertSummaryText`,
+  plus their exclusive HTML parsing glue. Retired tests for the old rebased
+  navigation and preview-summary format, not the entire batch/tree test files.
+  Exact flight comparison, handoff annotation and projection tests remain. The
+  useful replay-denominator negative assertion now targets `assertSharedSummary`;
+  current saved-execution tests already cover all six honest finite stops.
+- Made the existing summary computation operate on borrowed records. Comparison
+  scopes no longer clone whole `BatchRunRecord` values; the owned-slice facade
+  builds a lightweight reference list. Arithmetic order, outcome classification,
+  group/sort behavior and serialized models remain unchanged. A new regression
+  covers empty, subset, reordered and mixed-lane records, with independent
+  expected counts, invalidation, group order and slowest-run assertions. The
+  current-lane comparison regression remains intact.
+- Counted refreshed V2 cases directly through typed `physical_outcome` options,
+  removing serialization of the complete batch just to count fields. The saved
+  batch still counts 42 supported cases: 38 landings and four zero-step flying
+  stops; the two unsupported cases have no physical outcome. This is a refresh
+  count, not a claim that all 42 departed or landed.
+
+One Luna writer implemented the cohesive slices and focused tests. The primary
+reviewed the real diff, returned two test-only issues for correction (fixture
+argument count and missing assertion borrows), and owned scope, documentation,
+integration, final acceptance and the reviewed local commit. No production
+behavior correction or tuning was needed.
+
+| Final check | Result |
+| --- | --- |
+| Focused JavaScript checks | 24 passed |
+| New aggregation and retained current-lane regressions | Both passed |
+| Maintained ordinary developer gate | All 10 steps passed |
+| Workspace all-features tests | 447 passed, 4 intentionally ignored |
+| Maintained JavaScript tests | 44 passed; five obsolete tests retired |
+| CLI feature/default-off tests, help and dependency boundary | Passed |
+| Formatting, diff whitespace and strict all-target Clippy | Passed |
+| Rebuilt release evaluator and read-only saved-site check | 44 cases, 42 rich payloads, 36 H, 46 receipt-bound pages passed |
+| Protected evidence inventory | 31 scopes / 3,867 entries unchanged |
+
+The ordinary gate ran once on final Rust/JavaScript source. The optional external
+all-44 flight-execution parity test was not rerun: no planner, controller, physics,
+candidate generation, command, fixture or report-template implementation changed.
+This is aggregation/checker cleanup and saved-site validation, not new flight
+acceptance or an expanded terrain envelope. The selected capture retains its
+original source provenance and published bytes.
+
+Local ignored validation evidence is under
+`outputs/validation/planner_housekeeping_round3_20261005/`. No required item
+remains in this round. Larger module splits and duplicated report-reference math
+remain optional work requiring a concrete maintenance need, not prerequisites
+for the next planner product pass. No push, publication, server restart or new
+flight campaign occurred.

@@ -178,3 +178,35 @@ not authorization to republish the site.
 This follow-up is complete at Rust checkpoint `f9e85b0`; its detailed retirement
 inventory and final gates are recorded in the
 [follow-up results](planner_retirement_cleanup_results.md#follow-up-housekeeping-round-october-5-2026).
+
+## Small report-check and aggregation follow-up: October 5, 2026
+
+This separately bounded round starts at clean `3d6d6c0`, following another
+read-only scan and explicit `worker-goal-loop` authorization. It does not reopen
+the completed retirement inventory or flight design.
+
+1. Remove the five obsolete JavaScript report-check helpers whose only remaining
+   consumers are their own tests, together with exclusive HTML parsing glue.
+   Retain exact flight comparison, projection and handoff checks. Move useful
+   assertions to the maintained common-template and saved-execution checks;
+   retire tests for the old rebased navigation and preview-summary formats.
+2. Summarize selected borrowed batch records without cloning whole records.
+   Preserve summary serialization, numeric operation order, grouping/sorting,
+   outcome classification and preferred comparison-lane behavior. Count refreshed
+   V2 cases through their typed optional physical outcomes, rather than
+   serializing the complete batch just to inspect those fields.
+
+One Luna implementation writer owns both cohesive slices; the primary owns
+review, integration, documentation and the reviewed local commit. Larger domain
+module splits and reference-trajectory math consolidation are out of scope.
+No report template, navigation, planner, controller, input or captured source
+provenance changes are permitted.
+
+Run focused JavaScript and aggregation regressions, then the maintained ordinary
+developer gate and rebuilt evaluator's read-only saved-site checker. This slice
+does not change flight computation, so the external all-44 flight-execution parity
+check is not required again. Verify the same 31 protected scopes / 3,867 entries
+before and after. Do not publish, push, restart servers or run a new campaign.
+
+This small follow-up is complete; see the
+[results and final gates](planner_retirement_cleanup_results.md#small-report-check-and-aggregation-follow-up-october-5-2026).

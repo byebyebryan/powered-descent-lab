@@ -660,6 +660,212 @@ fn family_entry_expands_deterministically_across_workers() {
 }
 
 #[test]
+fn borrowed_record_summaries_match_owned_empty_subset_reordered_and_mixed_scopes() {
+    let base_dir = temp_fixture_root("borrowed_record_summary");
+    write_scenario(
+        &base_dir,
+        "scenarios/landing_case.json",
+        &easy_landing_scenario(),
+    );
+    let pack = ScenarioPackSpec {
+        id: "borrowed_record_summary".to_owned(),
+        name: "Borrowed record summary".to_owned(),
+        description: "borrowed record summary fixture".to_owned(),
+        terminal_matrix_max_time_s: None,
+        entries: vec![ScenarioPackEntry::Scenario(ConcreteScenarioPackEntry {
+            id: "landing_case".to_owned(),
+            scenario: "scenarios/landing_case.json".to_owned(),
+            controller: "baseline".to_owned(),
+            controller_config: None,
+            metadata: BTreeMap::new(),
+        })],
+    };
+    let template = run_pack(&pack, &base_dir, None).unwrap().records.remove(0);
+    let fixture_record = |run_id: &str,
+                          entry_id: &str,
+                          family_id: Option<&str>,
+                          lane_id: &str,
+                          sim_time_s: f64,
+                          outcomes: (MissionOutcome, pd_core::PhysicalOutcome, EndReason),
+                          analytic_class: BatchRunAnalyticClass| {
+        let mut record = template.clone();
+        record.resolved.run_id = run_id.to_owned();
+        record.resolved.entry_id = entry_id.to_owned();
+        record.resolved.family_id = family_id.map(str::to_owned);
+        record.resolved.lane_id = lane_id.to_owned();
+        record.manifest.sim_time_s = sim_time_s;
+        record.manifest.mission_outcome = outcomes.0;
+        record.manifest.physical_outcome = outcomes.1;
+        record.manifest.end_reason = outcomes.2;
+        record.analytic.class = analytic_class;
+        record
+    };
+    let records = vec![
+        fixture_record(
+            "run_success_alpha",
+            "entry_b",
+            Some("family_z"),
+            "current",
+            3.0,
+            (
+                MissionOutcome::Success,
+                pd_core::PhysicalOutcome::LandedOnTarget,
+                EndReason::TouchdownOnTarget,
+            ),
+            BatchRunAnalyticClass::Scored,
+        ),
+        fixture_record(
+            "run_failure",
+            "entry_a",
+            Some("family_a"),
+            "staged",
+            5.0,
+            (
+                MissionOutcome::FailedCrash,
+                pd_core::PhysicalOutcome::Crashed,
+                EndReason::Crash,
+            ),
+            BatchRunAnalyticClass::Scored,
+        ),
+        fixture_record(
+            "run_invalidated",
+            "entry_b",
+            Some("family_a"),
+            "current",
+            7.0,
+            (
+                MissionOutcome::FailedCheckpoint,
+                pd_core::PhysicalOutcome::Flying,
+                EndReason::CheckpointFailed,
+            ),
+            BatchRunAnalyticClass::Impossible,
+        ),
+        fixture_record(
+            "run_success_beta",
+            "entry_a",
+            None,
+            "staged",
+            1.0,
+            (
+                MissionOutcome::Success,
+                pd_core::PhysicalOutcome::LandedOnTarget,
+                EndReason::TouchdownOnTarget,
+            ),
+            BatchRunAnalyticClass::Scored,
+        ),
+    ];
+    let to_json = |summary: &BatchSummary| serde_json::to_value(summary).unwrap();
+
+    let empty_records = Vec::new();
+    let empty_refs: [&BatchRunRecord; 0] = [];
+    assert_eq!(
+        to_json(&summarize_records(&empty_records)),
+        to_json(&summarize_record_refs(&empty_refs)),
+    );
+
+    let subset_records = vec![records[0].clone(), records[2].clone()];
+    let subset_refs = vec![&records[0], &records[2]];
+    let subset_summary = summarize_record_refs(&subset_refs);
+    assert_eq!(
+        to_json(&summarize_records(&subset_records)),
+        to_json(&subset_summary),
+    );
+    assert_eq!(subset_summary.total_runs, 2);
+    assert_eq!(subset_summary.success_runs, 1);
+    assert_eq!(subset_summary.invalidated_runs, 1);
+
+    let mixed_summary = summarize_records(&records);
+    let mixed_refs = records.iter().collect::<Vec<_>>();
+    assert_eq!(
+        to_json(&mixed_summary),
+        to_json(&summarize_record_refs(&mixed_refs)),
+    );
+    assert_eq!(mixed_summary.total_runs, 4);
+    assert_eq!(mixed_summary.success_runs, 2);
+    assert_eq!(mixed_summary.failure_runs, 1);
+    assert_eq!(mixed_summary.invalidated_runs, 1);
+    assert_eq!(mixed_summary.mean_sim_time_s, 4.0);
+    assert_eq!(mixed_summary.max_sim_time_s, 7.0);
+    assert_eq!(mixed_summary.mission_outcomes["success"], 2);
+    assert_eq!(mixed_summary.mission_outcomes["failed_crash"], 1);
+    assert_eq!(mixed_summary.mission_outcomes["failed_checkpoint"], 1);
+    assert_eq!(mixed_summary.physical_outcomes["landed_on_target"], 2);
+    assert_eq!(mixed_summary.physical_outcomes["crashed"], 1);
+    assert_eq!(mixed_summary.physical_outcomes["flying"], 1);
+    assert_eq!(
+        mixed_summary
+            .by_entry
+            .iter()
+            .map(|group| group.key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["entry_a", "entry_b"],
+    );
+    assert_eq!(mixed_summary.by_entry[0].total_runs, 2);
+    assert_eq!(mixed_summary.by_entry[0].success_runs, 1);
+    assert_eq!(mixed_summary.by_entry[0].failure_runs, 1);
+    assert_eq!(mixed_summary.by_entry[1].invalidated_runs, 1);
+    assert_eq!(
+        mixed_summary
+            .by_family
+            .iter()
+            .map(|group| group.key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["family_a", "family_z"],
+    );
+    assert_eq!(mixed_summary.by_family[0].failure_runs, 1);
+    assert_eq!(mixed_summary.by_family[0].invalidated_runs, 1);
+    assert_eq!(
+        mixed_summary
+            .failed_runs
+            .iter()
+            .map(|run| run.run_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["run_failure"],
+    );
+    assert_eq!(
+        mixed_summary
+            .slowest_runs
+            .iter()
+            .map(|run| run.run_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "run_invalidated",
+            "run_failure",
+            "run_success_alpha",
+            "run_success_beta",
+        ],
+    );
+
+    let reordered_indices = [3, 1, 0, 2];
+    let reordered_records = reordered_indices
+        .iter()
+        .map(|index| records[*index].clone())
+        .collect::<Vec<_>>();
+    let reordered_refs = reordered_indices
+        .iter()
+        .map(|index| &records[*index])
+        .collect::<Vec<_>>();
+    let reordered_summary = summarize_record_refs(&reordered_refs);
+    assert_eq!(
+        to_json(&summarize_records(&reordered_records)),
+        to_json(&reordered_summary),
+    );
+    assert_eq!(
+        reordered_summary
+            .slowest_runs
+            .iter()
+            .map(|run| run.run_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "run_invalidated",
+            "run_failure",
+            "run_success_alpha",
+            "run_success_beta",
+        ],
+    );
+}
+
+#[test]
 fn compare_reports_flags_regressions_on_shared_runs() {
     let base_dir = temp_fixture_root("compare_pack");
     write_scenario(

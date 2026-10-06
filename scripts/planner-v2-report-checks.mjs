@@ -163,70 +163,6 @@ export function verifyCorrectionAnnotations(flight, reportData, label) {
   return corrections.length;
 }
 
-export function verifyOrdinaryExecution(flight, id) {
-  const ordinary = flight.ordinary_flight;
-  check(Array.isArray(ordinary?.actions), `${id}: simulated result has no raw action array`);
-  check(Array.isArray(ordinary?.samples) && ordinary.samples.length > 0, `${id}: simulated result has no raw samples`);
-  if (ordinary.actions.length === 0) {
-    check(flight.planning_stop === 'no_clearing' && flight.physical_outcome === 'flying'
-      && flight.mission_outcome === 'in_progress', `${id}: empty commands are not a landing`);
-    check(flight.manifest.physics_steps === 0 && flight.manifest.controller_updates === 0
-      && flight.manifest.sim_time_s === 0, `${id}: empty commands have nonzero execution coverage`);
-    check(ordinary.samples.length === 1 && ordinary.samples[0].physics_step === 0,
-      `${id}: zero-command stop must retain only its initial sample`);
-  }
-}
-
-function parseAttributes(source) {
-  const attributes = {};
-  const pattern = /([^\s=]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
-  let match;
-  while ((match = pattern.exec(source))) attributes[match[1].toLowerCase()] = decodeHtml(match[2] ?? match[3] ?? match[4] ?? '');
-  return attributes;
-}
-
-function decodeHtml(value) {
-  return value.replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'")
-    .replaceAll('&lt;', '<').replaceAll('&gt;', '>');
-}
-
-function visibleText(html) {
-  return decodeHtml(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
-}
-
-export function parseAnchors(html, pageUrl) {
-  const baseMatch = /<base\b([^>]*)>/i.exec(html);
-  const baseHref = baseMatch ? parseAttributes(baseMatch[1]).href : null;
-  const baseUrl = baseHref ? new URL(baseHref, pageUrl) : new URL(pageUrl);
-  const anchors = [];
-  const pattern = /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi;
-  let match;
-  while ((match = pattern.exec(html))) {
-    const attributes = parseAttributes(match[1]);
-    if (!attributes.href) continue;
-    let url;
-    try { url = new URL(attributes.href, baseUrl); } catch { continue; }
-    anchors.push({href: attributes.href, url: url.href, pathname: url.pathname, text: visibleText(match[2]), attributes});
-  }
-  return {baseHref, baseUrl: baseUrl.href, anchors};
-}
-
-export function verifyHttpContent(contentType, body, label, kind = 'html') {
-  if (kind === 'json') {
-    check(/application\/json/i.test(contentType), `${label}: expected JSON, got ${contentType || 'no content type'}`);
-    JSON.parse(body);
-  } else {
-    check(/text\/html|application\/xhtml\+xml/i.test(contentType), `${label}: expected HTML, got ${contentType || 'no content type'}`);
-  }
-}
-
-export function isEvidenceAnchor(anchor) {
-  return new URL(anchor.url).pathname.endsWith('.json')
-    || /source|original|scenario\.json|flight\.json|summary\.json|input/i.test(anchor.text);
-}
-
 export function assertSharedBatch(html) {
   assert(html.includes('data-batch-template="common-v1"'),'must render through the shared full batch template');
   const headings=[...html.matchAll(/<h2[^>]*>(.*?)<\/h2>/gs)].map(m=>m[1].replace(/<[^>]+>/g,'').trim());
@@ -265,15 +201,4 @@ export function extractProjection(html) {
   const match = html.match(/const batchTreeData = (.*?);<\/script>/s);
   assert(match, 'missing tree projection');
   return JSON.parse(match[1]);
-}
-
-export function assertSummaryText(html, summary) {
-  for (const text of [
-    `${summary.integrity_passed_count}/44 integrity passed`,
-    `${summary.final_source_replay_passed_count}/42 supported source replays passed`,
-    `<strong>${summary.valid_landing_count}/36</strong>`,
-    `${summary.direct_landing_count} direct · ${summary.corrected_landing_count} corrected · ${summary.non_landing_count} non-landings`,
-    `${summary.diagnostic_landing_count} landed · ${summary.diagnostic_non_landing_count} supported non-landings · ${summary.unsupported_count} unsupported`,
-    `${summary.crash_count} crashes.`,
-  ]) assert(html.includes(text), `missing or inaccurate page-level summary: ${text}`);
 }

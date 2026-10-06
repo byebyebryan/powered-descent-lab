@@ -9,5 +9,7 @@ test('template section ordering is part of acceptance, not just shared colors',(
 test('common summary keeps core and diagnostics separate and exact',()=>{
   const summary={valid_landing_count:36,direct_landing_count:11,corrected_landing_count:25,non_landing_count:0,diagnostic_landing_count:2,diagnostic_non_landing_count:4,unsupported_count:2,integrity_passed_count:44,final_source_replay_passed_count:42};
   const html='36/36 target landings;11 direct · 25 corrected · 0 non-landings;2 landed · 4 supported non-landings · 2 unsupported;44/44 integrity passed;42/42 supported source replays passed';
-  assertSharedSummary(html,summary);assert.throws(()=>assertSharedSummary(html.replace('36/36','38/36'),summary));
+  assertSharedSummary(html,summary);
+  assert.throws(()=>assertSharedSummary(html.replace('36/36','38/36'),summary));
+  assert.throws(()=>assertSharedSummary(html.replace('42/42','44/42'),summary));
 });

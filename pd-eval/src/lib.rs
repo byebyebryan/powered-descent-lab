@@ -39,9 +39,9 @@ pub use model::*;
 
 mod comparison;
 pub use comparison::compare_batch_reports;
-#[cfg(test)]
-pub(crate) use comparison::run_pointer;
 pub(crate) use comparison::{metric_summary, success_rate, summarize_records};
+#[cfg(test)]
+pub(crate) use comparison::{run_pointer, summarize_record_refs};
 
 mod evidence_io;
 
@@ -181,13 +181,11 @@ pub fn refresh_report_outputs(all: bool) -> Result<ReportRefreshSummary> {
                 );
             }
             summary.refreshed_batches += 1;
-            let saved = serde_json::to_value(&refreshed)?;
-            summary.refreshed_runs += saved["cases"].as_array().map_or(0, |cases| {
-                cases
-                    .iter()
-                    .filter(|case| !case["physical_outcome"].is_null())
-                    .count()
-            });
+            summary.refreshed_runs += refreshed
+                .cases
+                .iter()
+                .filter(|case| case.physical_outcome.is_some())
+                .count();
             continue;
         }
         if !output_dir.join("summary.json").is_file() {
