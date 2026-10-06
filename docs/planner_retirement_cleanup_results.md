@@ -4,6 +4,8 @@ The approved [eight-phase batch](planner_retirement_cleanup_plan.md) is complete
 Policy 3 is the sole maintained planner execution path and the Rust policy
 default. The current runtime no longer depends on the historical research tree.
 Complete flight numerics, current input identities and saved evidence are preserved.
+The [follow-up housekeeping round](#follow-up-housekeeping-round-october-5-2026)
+below closes the stranded dependencies found after that first batch.
 
 This is retirement and housekeeping, not a solver change or a new terrain
 acceptance campaign. The starting checkpoint was `e1d9363`; the integrated
@@ -213,3 +215,100 @@ host. Neither is authorized or established by housekeeping. Arbitrary external
 airborne starts, other vehicles/gravities, asynchronous/per-tick planning,
 disturbance recovery and random-terrain reliability remain outside the accepted
 envelope. No push, publication, server restart or new acceptance campaign occurred.
+
+## Follow-up housekeeping round: October 5, 2026
+
+The bounded follow-up from clean `90a2228` is complete. Its final Rust checkpoint
+is `f9e85b0`; subsequent result documentation does not change that source. The
+selected accepted capture still names `561b6e5`, its original measured source.
+This round removes about 3,000 net Rust lines, including replacement tests, without
+changing flight selection, commands, controller behavior or report presentation.
+
+### Removed and retained boundaries
+
+- Removed the uncalled 961-line `pd-control` complete-program playback module,
+  strict/operational playback exports, and its exclusive core validation/factory
+  helpers. Live `FlightProgramUpdateV1` and historical program/binding DTOs retain
+  their serialized shapes and strict unknown-field decoding. Current V2 owns its
+  schedule/proof validation; ordinary simulator and saved-action replay remain.
+- Removed obsolete V1 route validation, authority and endpoint-shaping math,
+  plus its exclusive exact segment-corridor query. The live exact point-centred
+  clearance implementation is byte-identical to the starting source. Nine checked
+  historical planning declarations retain their shapes, including custom
+  infinity/null decoding and existing policy snapshot values.
+- Removed unreachable new-run V1 planner metrics and route-plan/compute artifact
+  writing. Maintained resolvers already produce no V1 plans. Saved descriptors,
+  historical cache completeness checks and plan-aware report refresh/rendering
+  remain; a compatibility regression injects and refreshes a saved plan bundle.
+- Retired execution of `transfer_waypoint_{contract_,}rpos80_{smoke,full}` and
+  `transfer_waypoint_sequence_late_bend_diagnostic`. Both `single_dogleg_v1` and
+  `late_bend_v1` reject explicitly even in renamed/custom packs and direct helper
+  admission. Their fixture JSON, metadata, selector strings and saved reports
+  remain readable. Exclusive geometry/constants/tests are gone; maintained bend,
+  turn and double-bend generation and all supported handoff envelopes remain.
+- Removed unused `PreviewSeries` / `build_multi_run_preview_svg`. The live
+  `AggregatePreviewSeries` and trajectory aggregate preview remain. Extracted
+  the existing common rich HTML/CSS/JS into `pd-report/src/rich_template.rs`:
+  both raw-string hashes and all other facade source match the original extraction
+  boundary. No charts, inspection views, data or handoff annotations were removed.
+- Corrected nonexistent `transfer/scoring.rs` guide references, a stale research
+  wrapper comment and active-versus-archival catalogue/navigation wording. Current
+  ownership docs distinguish historical decoding from execution. These are source
+  changes only: published pages were not refreshed or overwritten.
+
+Intentional API/test removals cover only the retired implementations. Replacement
+tests distinguish archival decoding from execution admission, cover original and
+renamed pack rejection, retain handoff-goal coverage on a maintained bend, and
+round-trip both retired selector strings. The pre-retirement fingerprint baseline
+was committed separately as `ffc7f37` before any profile removal. It binds the
+complete ordered scenario/descriptor serialization for all 20 surviving authored
+waypoint packs: 3,366 resolved inputs, unchanged after retirement.
+
+### Follow-up validation
+
+| Check | Result |
+| --- | --- |
+| Maintained developer gate | All 11 steps passed |
+| Workspace all-features tests | 446 passed, 4 intentionally ignored |
+| Feature-enabled/default-off CLI tests, help and normal dependency boundary | Passed |
+| Formatting, diff whitespace and strict all-target/all-feature Clippy | Passed |
+| Maintained JavaScript tests | 49 passed |
+| Final-source complete-flight parity | All 44 exact; only `planning_s`, `execution_s`, `replay_s` excluded |
+| Maintained authored-waypoint input fingerprints | 20 packs / 3,366 inputs unchanged |
+| Explicit retained expansion and report-projection tests | Both passed |
+| Rebuilt evaluator acceptance and saved report-site checks | 44 cases, 42 rich payloads, 36 actual H, 46 receipt-bound pages passed |
+| Historical native/CLI/repeat and saved-replay receipts | Passed; 42 supported receipts / 252 component digests |
+| Rebuilt current CLI, fresh read-only replay of saved bundles | All 42 passed / 252 actual component digests matched; no new planning or artifact writes |
+| Rich template and checked historical DTO/live point-query source preservation | Passed |
+| Protected evidence inventory | 31 scopes / 3,867 file/link/directory entries unchanged |
+
+Integration found two test-only issues before final acceptance. Moving a handoff
+probe off the retired dogleg initially kept its old legacy envelope; the maintained
+bend needs its existing `continuation_pass_through_v1` envelope. That correction
+preserves handoff-goal coverage without tuning production geometry or guidance.
+Strict Clippy then found a needless borrow in the new fingerprint test. After its
+one-line correction, that focused test passed again and the last five developer
+gate steps were resumed; the already-passing workspace/CLI steps were not repeated.
+The 198 evaluator library tests pass, with four explicit archive checks ignored in
+ordinary runs. The final numerical regression and saved compatibility checks run
+on the corrected source, without expanded exclusions.
+
+Two bounded Luna assignments handled retirement and the independent template
+extraction. The primary owned scope/compatibility decisions, diff and source
+preservation review, docs, the final lint correction, integration acceptance and
+all reviewed local commits. No required cleanup item remains in this round.
+
+Local ignored evidence is under
+`outputs/validation/planner_housekeeping_round2_20261005/`: the initial inventory,
+source/template preservation receipts, initial and resumed developer logs,
+historical receipt checks and final structured result. All pack/scenario/research
+fixtures and saved evidence retain their original contents and identities. The
+frozen verdict remains 36 mandatory landings (11 direct, 25 corrected), two diagnostic landings, four
+zero-step diagnostic stops and two unsupported inputs; all 44 pass integrity and
+all 42 supported flights retain source replay.
+
+Remaining V1-looking names and data readers are deliberate compatibility, not
+an executable old planner or failed experiment to revive. Broader refactoring is
+not required for the next product pass. Seeded terrain validation or a concrete
+game-host adapter remains a separate decision; neither is established by cleanup.
+No push, report publication, server restart or new acceptance campaign occurred.

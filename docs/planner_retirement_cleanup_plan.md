@@ -174,3 +174,7 @@ the old analytical fixtures; hashes also bind directory and symlink identities.
 Compare against that inventory on final source. Published pages, current selectors
 and receipts must remain unchanged; navigation-copy changes are source changes,
 not authorization to republish the site.
+
+This follow-up is complete at Rust checkpoint `f9e85b0`; its detailed retirement
+inventory and final gates are recorded in the
+[follow-up results](planner_retirement_cleanup_results.md#follow-up-housekeeping-round-october-5-2026).
