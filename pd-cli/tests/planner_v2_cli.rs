@@ -359,6 +359,14 @@ fn corrected_tracked_scenario_cli_flight_writes_complete_bundle_and_portable_rep
         .expect("corrected trace has a handoff");
     let (piece_index, piece_origin, actual_h) = handoff;
     let cycle = &saved_flight.cycles[piece_index];
+    let search = cycle.local_search.as_ref().unwrap();
+    assert_eq!(search.entries.len(), 4);
+    assert!(
+        search
+            .entries
+            .iter()
+            .all(|entry| !entry.entry_id.starts_with("fallback_"))
+    );
     let segment = saved_flight
         .segments
         .iter()

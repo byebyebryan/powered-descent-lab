@@ -10,7 +10,8 @@ use pd_core::{
     IncomingContactV1, RunContext, SampleRecord, SimulationState, SimulationStateSnapshotV1,
 };
 use pd_plan::local_clearing::{
-    LocalClearingGoalV1, LocalClearingPolicyV1, LocalClearingScheduleV1, LocalClearingTemplateV1,
+    HandoffBrakingRoomEstimate, LocalClearingGoalV1, LocalClearingPolicyV1,
+    LocalClearingScheduleV1, LocalClearingTemplateV1, handoff_braking_room,
 };
 use serde::{Deserialize, Serialize};
 
@@ -84,11 +85,27 @@ pub struct LocalClearingProposalV1 {
     pub identity: String,
 }
 
+pub(crate) fn braking_room_at_handoff(
+    context: &RunContext,
+    state: &SimulationStateSnapshotV1,
+) -> Option<HandoffBrakingRoomEstimate> {
+    handoff_braking_room(
+        context.target_pad.center_x_m - state.position_m.x,
+        state.velocity_mps.x,
+        state.attitude_rad,
+        crate::planner_flight::MAX_THRUST_FRACTION * context.vehicle.max_thrust_n
+            / (context.vehicle.dry_mass_kg + state.fuel_kg),
+        context.world.gravity_mps2,
+        context.vehicle.max_rotation_rate_radps,
+        2.0 * context.sim.physics_dt_s(),
+    )
+}
+
 fn context_identity(request: &WaypointDirectNominalDirectGenerationRequest) -> Result<String> {
     nominal_direct_flight_identity(&(LocalClearingPolicyV1::default(), request))
 }
 
-fn proposal_identity(proposal: &LocalClearingProposalV1) -> Result<String> {
+pub(crate) fn proposal_identity(proposal: &LocalClearingProposalV1) -> Result<String> {
     let mut canonical = proposal.clone();
     canonical.identity.clear();
     nominal_direct_flight_identity(&canonical)

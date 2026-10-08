@@ -101,9 +101,51 @@ impl WaypointV2Policy {
         completed < self.maximum_corrections
     }
 
+    /// Additional clocks only after the unchanged primary search is exhausted.
+    /// Admission and physical acceptance still belong to the evaluator.
+    pub fn fallback_intervention_boundaries(
+        &self,
+        current: u64,
+        conflict: u64,
+        tested: &[u64],
+    ) -> Result<Vec<(String, u64)>, String> {
+        self.validate_for_execution()?;
+        if !current.is_multiple_of(2) || conflict <= current {
+            return Err("invalid live-origin/conflict clock".into());
+        }
+        let local = crate::local_clearing::LocalClearingPolicyV1::default();
+        let horizon = local
+            .powered_ticks
+            .iter()
+            .copied()
+            .max()
+            .unwrap()
+            .checked_add(local.maximum_coast_ticks)
+            .ok_or("local horizon overflow")?;
+        let start = current.max(conflict.saturating_sub(horizon) / 2 * 2);
+        let delta = conflict - start;
+        let mut entries = Vec::new();
+        for numerator in 0_u64..4 {
+            let units = (delta / 8)
+                .checked_mul(numerator)
+                .and_then(|x| x.checked_add((delta % 8) * numerator / 8))
+                .ok_or("entry overflow")?;
+            let tick = start
+                .checked_add(units.checked_mul(2).ok_or("clock overflow")?)
+                .ok_or("clock overflow")?;
+            if tick < conflict
+                && !tested.contains(&tick)
+                && entries.last().is_none_or(|(_, previous)| *previous != tick)
+            {
+                entries.push((format!("fallback_{numerator}_quarters"), tick));
+            }
+        }
+        Ok(entries)
+    }
+
     pub fn maximum_local_work(&self) -> Result<(u64, u64), String> {
         let rows = u64::from(self.maximum_corrections)
-            .checked_mul(4 * 42)
+            .checked_mul(8 * 42)
             .ok_or("row overflow")?;
         Ok((rows, rows.checked_mul(360).ok_or("boundary overflow")?))
     }
@@ -200,7 +242,7 @@ mod tests {
     #[test]
     fn bounds_and_exclusive_command_ownership() {
         let p = WaypointV2Policy::default();
-        assert_eq!(p.maximum_local_work().unwrap(), (1008, 362880));
+        assert_eq!(p.maximum_local_work().unwrap(), (2016, 725760));
         assert!(p.can_correct(5));
         assert!(!p.can_correct(6));
         assert_eq!(command_count(120, 120).unwrap(), 0);
@@ -224,7 +266,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1512, 1272, 1032, 792]
         );
-        assert_eq!(p.maximum_local_work().unwrap(), (1008, 362880));
+        assert_eq!(p.maximum_local_work().unwrap(), (2016, 725760));
         assert!(p.initial_intervention_boundaries(72).is_err());
         assert!(p.initial_intervention_boundaries(u64::MAX - 1).is_err());
     }
@@ -246,6 +288,76 @@ mod tests {
                     .contains("retired")
             );
             assert!(restored.initial_intervention_boundaries(1992).is_err());
+        }
+    }
+
+    #[test]
+    fn fallback_uses_local_horizon_and_never_retests_a_tick() {
+        let policy = WaypointV2Policy::default();
+        let ticks = |entries: Vec<(String, u64)>| {
+            entries
+                .into_iter()
+                .map(|(_, tick)| tick)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ticks(
+                policy
+                    .fallback_intervention_boundaries(0, 1861, &[])
+                    .unwrap()
+            ),
+            [180, 600, 1020, 1440]
+        );
+        assert_eq!(
+            ticks(
+                policy
+                    .fallback_intervention_boundaries(0, 1861, &[180, 1020])
+                    .unwrap()
+            ),
+            [600, 1440]
+        );
+        let tested = ticks(later_intervention_boundaries(2820, 3120).unwrap());
+        assert!(
+            policy
+                .fallback_intervention_boundaries(2820, 3120, &tested)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            ticks(
+                policy
+                    .fallback_intervention_boundaries(120, 123, &[])
+                    .unwrap()
+            ),
+            [120, 122]
+        );
+        assert_eq!(
+            ticks(policy.fallback_intervention_boundaries(0, 1, &[]).unwrap()),
+            [0]
+        );
+        assert!(
+            policy
+                .fallback_intervention_boundaries(121, 200, &[])
+                .is_err()
+        );
+        assert!(
+            policy
+                .fallback_intervention_boundaries(120, 120, &[])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn fallback_clock_near_overflow_remains_forward_aligned_and_bounded() {
+        let current = u64::MAX - 4001;
+        let entries = WaypointV2Policy::default()
+            .fallback_intervention_boundaries(current, u64::MAX, &[])
+            .unwrap();
+        assert_eq!(entries.len(), 4);
+        for (_, tick) in entries {
+            assert!(tick >= current && tick < u64::MAX);
+            assert!(tick.is_multiple_of(2));
+            assert!(u64::MAX - tick <= 1681);
         }
     }
 

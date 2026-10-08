@@ -407,7 +407,7 @@ fn validate_progress(
     Ok(())
 }
 
-fn validate_supported_saved_result(
+pub(crate) fn validate_supported_saved_result(
     result: &WaypointV2FlightResult,
     request: &WaypointDirectNominalDirectGenerationRequest,
 ) -> Result<()> {
@@ -505,7 +505,7 @@ fn validate_supported_saved_result(
     Ok(())
 }
 
-fn validate_compact_summary(
+pub(crate) fn validate_compact_summary(
     summary: &serde_json::Value,
     result: &WaypointV2FlightResult,
 ) -> Result<()> {
@@ -760,6 +760,7 @@ mod tests {
             certificate_state: Some(continuation_end_state),
             handoff_source_replay_passed: true,
             certificate_source_replay_passed: true,
+            row_diagnostics: Vec::new(),
         };
         let cycle = crate::WaypointV2Cycle {
             cycle_index: 0,
@@ -1484,6 +1485,7 @@ mod tests {
             certificate_state: Some(continuation_end_state),
             handoff_source_replay_passed: true,
             certificate_source_replay_passed: true,
+            row_diagnostics: Vec::new(),
         };
         let cycle = crate::WaypointV2Cycle {
             cycle_index: 0,

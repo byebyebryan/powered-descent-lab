@@ -162,6 +162,7 @@ fn correction_certificate_replay_failure_does_not_commit_proof_flags() {
         certificate_state: Some(certificate.evidence.final_state.clone()),
         handoff_source_replay_passed: false,
         certificate_source_replay_passed: false,
+        row_diagnostics: Vec::new(),
     };
 
     let error = flight
@@ -253,6 +254,7 @@ fn local_search_checkpoint_retains_completed_rows_after_later_error() {
         certificate_state: None,
         handoff_source_replay_passed: false,
         certificate_source_replay_passed: false,
+        row_diagnostics: Vec::new(),
     };
 
     checkpoint_local_search(&mut pending_cycle, &local_search);
@@ -653,6 +655,13 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
                     );
                 }
                 let local = cycle.local_search.as_ref().unwrap();
+                assert_eq!(local.entries.len(), 4);
+                assert!(
+                    local
+                        .entries
+                        .iter()
+                        .all(|entry| !entry.entry_id.starts_with("fallback_"))
+                );
                 let selected = local.selected.as_ref().unwrap();
                 assert_eq!(
                     selected.schedule.entry_physics_step,

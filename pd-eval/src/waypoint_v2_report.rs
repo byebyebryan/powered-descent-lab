@@ -28,19 +28,120 @@ pub fn render_rich_flight(
     annotations.caption = caption;
     let ordinary = result.ordinary_flight.as_ref().context("missing flight")?;
     let manifest = result.manifest.as_ref().context("missing manifest")?;
-    pd_report::render_run_report_with_flight_annotations(
+    let mut display_samples = ordinary.samples.clone();
+    if display_samples
+        .last()
+        .is_some_and(|s| s.physics_step < ordinary.final_state.physics_step)
+    {
+        // A proven finite planning stop may fall between sampling ticks. The
+        // exact saved endpoint is a display-only observation, never an added
+        // physics step, command, raw sample or replay-proof component.
+        let context = pd_core::RunContext::from_scenario(scenario).map_err(anyhow::Error::msg)?;
+        let state = ordinary.final_state.to_simulation_state();
+        display_samples.push(pd_core::SampleRecord {
+            sim_time_s: state.sim_time_s,
+            physics_step: state.physics_step,
+            observation: state.build_observation(&context),
+            held_command: state.held_command,
+        });
+        annotations.caption.push_str(" · Final displayed observation comes from the exact saved endpoint between sampling ticks; the raw sample ledger is unchanged.");
+    }
+    let html = pd_report::render_run_report_with_flight_annotations(
         scenario,
         None,
         manifest,
         &ordinary.events,
-        &ordinary.samples,
+        &display_samples,
         &[],
         None,
         None,
         None,
         None,
         Some(&annotations),
-    )
+    )?;
+    let diagnostics = clearing_diagnostics(result);
+    Ok(if diagnostics.is_empty() {
+        html
+    } else {
+        html.replacen("  </main>", &format!("{diagnostics}  </main>"), 1)
+    })
+}
+
+fn clearing_diagnostics(result: &WaypointV2FlightResult) -> String {
+    let escape = |value: &str| {
+        value
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    };
+    let mut html = String::new();
+    for cycle in &result.cycles {
+        let Some(search) = cycle
+            .local_search
+            .as_ref()
+            .filter(|s| !s.row_diagnostics.is_empty())
+        else {
+            continue;
+        };
+        let has_room = search
+            .row_diagnostics
+            .iter()
+            .any(|row| row.eligible_handoff.is_some());
+        let room_header = if has_room {
+            "<th>Accepted handoff / braking room estimate</th>"
+        } else {
+            ""
+        };
+        html.push_str(&format!("<section class=\"panel wide\"><details><summary>Clearing query diagnostics · cycle {} · {} rows</summary><p class=\"muted\">Queries, not executed flights. A trace cutoff after a completed handoff certificate does not invalidate that handoff. Full row diagnostics are in Flight JSON.</p><div style=\"overflow-x:auto\"><table><thead><tr><th>Row / entry s</th><th>Exact trace cutoff</th><th>Cutoff t / x</th><th>vx / vy</th><th>Required x</th><th>Min reserve</th><th>First handoff / continuation rejection</th>{room_header}</tr></thead><tbody>", cycle.cycle_index, search.row_diagnostics.len()));
+        for row in &search.row_diagnostics {
+            let pose = row.stop_state.as_ref().map_or_else(
+                || "not propagated".into(),
+                |s| format!("{:.3} s / {:.2} m", s.sim_time_s, s.position_m.x),
+            );
+            let velocity = row.stop_state.as_ref().map_or_else(
+                || "—".into(),
+                |s| format!("{:.2} / {:.2} m/s", s.velocity_mps.x, s.velocity_mps.y),
+            );
+            let reserve = row
+                .minimum_clearance_m
+                .map_or_else(|| "—".into(), |c| format!("{c:.3} m"));
+            let continuation = row
+                .first_continuation_rejection
+                .as_ref()
+                .and_then(|b| b.reason.as_deref())
+                .unwrap_or("none recorded");
+            let room_cell = if has_room {
+                let value = row.eligible_handoff.as_ref().map_or_else(
+                    || "—".into(),
+                    |h| {
+                        let room = h.braking_room.as_ref().map_or_else(
+                            || "estimate unavailable".into(),
+                            |r| {
+                                format!(
+                                    "{:.2} m room (heuristic, not landing proof)",
+                                    r.remaining_room_m
+                                )
+                            },
+                        );
+                        format!(
+                            "H {:.3} s / x {:.2} m<br>vx / vy {:.2} / {:.2} m/s<br>{room}",
+                            h.state.sim_time_s,
+                            h.state.position_m.x,
+                            h.state.velocity_mps.x,
+                            h.state.velocity_mps.y
+                        )
+                    },
+                );
+                format!("<td>{value}</td>")
+            } else {
+                String::new()
+            };
+            html.push_str(&format!("<tr><td>{}<br>{:.3}</td><td>{}</td><td>{pose}</td><td>{velocity}</td><td>{:.2} m</td><td>{reserve}</td><td>{}</td>{room_cell}</tr>", escape(&row.row_id), row.entry_physics_step as f64 / 120.0, escape(row.stop_reason.as_deref().unwrap_or("none")), row.minimum_progress_x_m, escape(continuation)));
+        }
+        html.push_str("</tbody></table></div></details></section>");
+    }
+    html
 }
 
 pub(super) fn executed_annotations(
@@ -253,9 +354,35 @@ pub fn project_flight(
         })
         .collect::<Result<Vec<_>>>()?;
     ensure!(
-        samples.first() == Some(&start) && samples.last() == Some(&finish),
-        "missing or contradictory first/final actual sample"
+        samples.first() == Some(&start),
+        "missing or contradictory first actual sample"
     );
+    if samples.last() != Some(&finish) {
+        let interval = scenario
+            .sim
+            .sample_interval_steps()
+            .context("missing sample cadence")?;
+        let last = samples.last().context("missing last actual sample")?;
+        ensure!(
+            result.integrity_passed
+                && result.final_source_replay_passed
+                && manifest.physical_outcome == PhysicalOutcome::Flying
+                && manifest.mission_outcome == MissionOutcome::InProgress
+                && manifest.end_reason == pd_core::EndReason::Running
+                && matches!(
+                    result.planning_stop,
+                    WaypointV2Stop::NoNominal
+                        | WaypointV2Stop::NominalRejected
+                        | WaypointV2Stop::NoClearing
+                        | WaypointV2Stop::CorrectionLimit
+                        | WaypointV2Stop::Deadline
+                        | WaypointV2Stop::NoProgress
+                )
+                && !finish.physics_step.is_multiple_of(interval)
+                && last.physics_step == finish.physics_step / interval * interval,
+            "missing or contradictory final actual sample"
+        );
+    }
     ensure!(
         samples
             .windows(2)
@@ -583,6 +710,54 @@ mod tests {
         assert!(data.segments.is_empty());
         assert_eq!(data.elapsed_s, 0.0);
         assert!(data.outcome.starts_with("Stopped before departure"));
+    }
+
+    #[test]
+    fn proven_finite_off_cadence_endpoint_is_displayed_without_changing_evidence() {
+        let (scenario, mut result) = synthetic(true);
+        result.integrity_passed = true;
+        result.final_source_replay_passed = true;
+        result.planning_stop = WaypointV2Stop::NoNominal;
+        let ordinary = result.ordinary_flight.as_mut().unwrap();
+        ordinary.final_state.physics_step = 14;
+        ordinary.final_state.sim_time_s = 14.0 / 120.0;
+        ordinary.samples[1].physics_step = 12;
+        ordinary.samples[1].sim_time_s = 0.1;
+        ordinary.samples[1].observation.physics_step = 12;
+        ordinary.samples[1].observation.sim_time_s = 0.1;
+        result.segments[0].end_physics_step = 14;
+        result.segments[0].end_state = ordinary.final_state.clone();
+        let manifest = result.manifest.as_mut().unwrap();
+        manifest.physics_steps = 14;
+        manifest.sim_time_s = 14.0 / 120.0;
+        let original = result.clone();
+        let display = project_flight(&scenario, &result).unwrap();
+        assert_eq!(display.finish.physics_step, 14);
+        assert!(!display.landed);
+        let html =
+            render_rich_flight(&scenario, &result, Default::default(), String::new()).unwrap();
+        assert!(html.contains("exact saved endpoint between sampling ticks"));
+        assert_eq!(result, original, "display must not mutate raw evidence");
+        let mut bad = result.clone();
+        bad.final_source_replay_passed = false;
+        assert!(project_flight(&scenario, &bad).is_err());
+        let mut bad = result.clone();
+        bad.ordinary_flight.as_mut().unwrap().samples.pop();
+        assert!(project_flight(&scenario, &bad).is_err());
+        let mut bad = result;
+        bad.ordinary_flight.as_mut().unwrap().samples[1].physics_step = 14;
+        bad.ordinary_flight.as_mut().unwrap().samples[1].sim_time_s = 14.0 / 120.0;
+        bad.ordinary_flight.as_mut().unwrap().samples[1]
+            .observation
+            .physics_step = 14;
+        bad.ordinary_flight.as_mut().unwrap().samples[1]
+            .observation
+            .sim_time_s = 14.0 / 120.0;
+        bad.ordinary_flight.as_mut().unwrap().samples[1]
+            .observation
+            .position_m
+            .x += 1.0;
+        assert!(project_flight(&scenario, &bad).is_err());
     }
 
     #[test]

@@ -23,7 +23,7 @@ pub(super) const MAX_PHYSICAL_WITNESSES: usize = 3;
 
 pub(super) const TERMINAL_EXTRA_TICKS: u64 = 4;
 
-pub(super) const MAX_THRUST_FRACTION: f64 = 0.925;
+pub(crate) const MAX_THRUST_FRACTION: f64 = 0.925;
 
 const FLOAT_COMPARE_TOLERANCE: f64 = 1.0e-9;
 

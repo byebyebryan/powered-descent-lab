@@ -5,6 +5,91 @@ use serde::{Deserialize, Serialize};
 
 pub const LOCAL_CLEARING_POLICY_ID: &str = "one_obstruction_powered_coast_clearing_v1";
 
+/// Cheap forward braking-room heuristic, not a safety or landing certificate.
+/// It ignores vertical energy, terrain and fuel consumed during braking.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HandoffBrakingRoomEstimate {
+    pub available_acceleration_mps2: f64,
+    pub horizontal_braking_acceleration_mps2: f64,
+    pub turn_time_s: f64,
+    pub required_distance_m: f64,
+    pub remaining_room_m: f64,
+}
+
+/// Estimate a gravity-supporting braking attitude and round the turn upward to
+/// held-command intervals. Unsupported/nonfinite inputs leave ranking unchanged.
+pub fn handoff_braking_room(
+    distance_m: f64,
+    forward_velocity_mps: f64,
+    attitude_rad: f64,
+    available_acceleration_mps2: f64,
+    gravity_mps2: f64,
+    rotation_rate_radps: f64,
+    held_interval_s: f64,
+) -> Option<HandoffBrakingRoomEstimate> {
+    if ![
+        distance_m,
+        forward_velocity_mps,
+        attitude_rad,
+        available_acceleration_mps2,
+        gravity_mps2,
+        rotation_rate_radps,
+        held_interval_s,
+    ]
+    .iter()
+    .all(|v| v.is_finite())
+        || distance_m < 0.0
+        || forward_velocity_mps < 0.0
+        || gravity_mps2 <= 0.0
+        || available_acceleration_mps2 <= gravity_mps2
+        || rotation_rate_radps <= 0.0
+        || held_interval_s <= 0.0
+    {
+        return None;
+    }
+    let braking_acceleration = ((available_acceleration_mps2 - gravity_mps2)
+        * (available_acceleration_mps2 + gravity_mps2))
+        .sqrt();
+    let brake_attitude = -(gravity_mps2 / available_acceleration_mps2).acos();
+    let turn_angle = (brake_attitude - attitude_rad + std::f64::consts::PI)
+        .rem_euclid(std::f64::consts::TAU)
+        - std::f64::consts::PI;
+    let turn_time =
+        (turn_angle.abs() / rotation_rate_radps / held_interval_s).ceil() * held_interval_s;
+    let required_distance = forward_velocity_mps * turn_time
+        + forward_velocity_mps.powi(2) / (2.0 * braking_acceleration);
+    let remaining_room = distance_m - required_distance;
+    if ![
+        braking_acceleration,
+        turn_time,
+        required_distance,
+        remaining_room,
+    ]
+    .iter()
+    .all(|v| v.is_finite())
+    {
+        return None;
+    }
+    Some(HandoffBrakingRoomEstimate {
+        available_acceleration_mps2,
+        horizontal_braking_acceleration_mps2: braking_acceleration,
+        turn_time_s: turn_time,
+        required_distance_m: required_distance,
+        remaining_room_m: remaining_room,
+    })
+}
+
+/// An alternative is preferred only across zero; no comfort margin or new
+/// feasibility rejection is introduced. The caller retains original local rank
+/// within the nonnegative subset and controls primary/fallback admission.
+pub fn prefer_nonnegative_braking_room(
+    original: Option<&HandoffBrakingRoomEstimate>,
+    alternative: Option<&HandoffBrakingRoomEstimate>,
+) -> bool {
+    original.is_some_and(|v| v.remaining_room_m < 0.0)
+        && alternative.is_some_and(|v| v.remaining_room_m >= 0.0)
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocalClearingPolicyV1 {
@@ -191,6 +276,50 @@ impl LocalClearingScheduleV1 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn braking_room_is_scalar_bounded_and_one_sided() {
+        let room = handoff_braking_room(100.0, 20.0, 0.0, 20.0, 10.0, 1.0, 1.0 / 60.0).unwrap();
+        assert_eq!(room.turn_time_s, 63.0 / 60.0);
+        assert!(
+            (room.required_distance_m - (21.0 + 400.0 / (2.0 * 300.0_f64.sqrt()))).abs() < 1e-12
+        );
+        let negative = HandoffBrakingRoomEstimate {
+            remaining_room_m: -1.0,
+            ..room.clone()
+        };
+        let zero = HandoffBrakingRoomEstimate {
+            remaining_room_m: 0.0,
+            ..room.clone()
+        };
+        assert!(prefer_nonnegative_braking_room(
+            Some(&negative),
+            Some(&room)
+        ));
+        assert!(prefer_nonnegative_braking_room(
+            Some(&negative),
+            Some(&zero)
+        ));
+        assert!(!prefer_nonnegative_braking_room(Some(&room), Some(&zero)));
+        assert!(!prefer_nonnegative_braking_room(Some(&zero), Some(&room)));
+        assert!(!prefer_nonnegative_braking_room(
+            Some(&negative),
+            Some(&negative)
+        ));
+        assert!(!prefer_nonnegative_braking_room(None, Some(&room)));
+        assert!(!prefer_nonnegative_braking_room(Some(&negative), None));
+        for (distance, velocity, accel) in [
+            (f64::NAN, 20.0, 20.0),
+            (100.0, -1.0, 20.0),
+            (100.0, 20.0, 10.0),
+            (100.0, 20.0, f64::MAX),
+        ] {
+            assert!(
+                handoff_braking_room(distance, velocity, 0.0, accel, 10.0, 1.0, 1.0 / 60.0)
+                    .is_none()
+            );
+        }
+        assert!(handoff_braking_room(100.0, 0.0, 0.0, 20.0, 10.0, 1.0, 1.0 / 60.0).is_some());
+    }
     #[test]
     fn sealed_grid_and_entry_clock() {
         assert_eq!(

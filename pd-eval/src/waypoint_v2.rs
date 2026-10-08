@@ -522,7 +522,7 @@ impl FlightLoop {
         cycle.conflict_state = Some(conflict_state.clone());
         cycle.conflict_incoming_contact = conflict.evidence.incoming_contact.clone();
         self.pending_cycle = Some(cycle.clone());
-        let entries = if let Some(source_handoff) = source_handoff {
+        let mut entries = if let Some(source_handoff) = source_handoff {
             self.result
                 .policy
                 .initial_intervention_boundaries(source_handoff)
@@ -547,88 +547,172 @@ impl FlightLoop {
             certificate_state: None,
             handoff_source_replay_passed: false,
             certificate_source_replay_passed: false,
+            row_diagnostics: Vec::new(),
         };
         let templates = LocalClearingPolicyV1::default()
             .templates()
             .map_err(anyhow::Error::msg)?;
         let mut selected_entry = None;
-        for (id, tick) in entries {
-            let mut entry = None;
-            let mut reason = if tick >= f {
-                Some("entry is not before new conflict".into())
-            } else {
-                None
-            };
-            if reason.is_none() {
-                let query = query_to(&self.context, &self.live, &cycle.nominal_updates, tick)?;
-                reason = entry_rejection(&self.context, &query.state, self.deadline);
-                if reason.is_none() {
-                    let (clearance, required) = clearing_body_reserve_query(
-                        &self.context,
-                        request,
-                        &query.state,
-                        "local",
-                        false,
-                    )?;
-                    if clearance < required {
-                        reason = Some("local entry lacks full body reserve".into());
-                    }
+        let mut nonnegative_room_alternative: Option<(
+            crate::LocalClearingProposalV1,
+            OrdinaryLive,
+        )> = None;
+        for stage in 0..2 {
+            if stage == 1 {
+                // Preserve the entire primary search and its ranking. Fallback
+                // rows cannot displace an already accepted primary proposal.
+                if local.selected.is_some() {
+                    break;
                 }
-                if reason.is_none() {
-                    entry = Some(query);
-                }
+                let tested = local
+                    .entries
+                    .iter()
+                    .map(|entry| entry.physics_step)
+                    .collect::<Vec<_>>();
+                entries = self
+                    .result
+                    .policy
+                    .fallback_intervention_boundaries(self.live.state.physics_step, f, &tested)
+                    .map_err(anyhow::Error::msg)?;
             }
-            local.entries.push(WaypointV2Entry {
-                entry_id: id.clone(),
-                physics_step: tick,
-                admitted: entry.is_some(),
-                reason: reason.clone(),
-            });
-            checkpoint_local_search(&mut self.pending_cycle, &local);
-            for template in &templates {
-                let (row, proposal) = search_row(
-                    request,
-                    &self.context,
-                    &id,
-                    entry.as_ref().map(|e| &e.state),
-                    (tick, reason.as_deref()),
-                    template,
-                    &goal,
-                )?;
-                if row.stop_reason.as_deref()
-                    == Some("physical_trace: nonfinite full simulation state")
-                {
-                    self.result.failed_local_row = Some(row);
-                    bail!("nonfinite local physical propagation is not a coverage miss");
-                }
-                local.row_count += 1;
-                if let Some(reason) = &row.stop_reason {
-                    *local
-                        .row_stop_reason_counts
-                        .entry(reason.split(':').next().unwrap_or(reason).to_string())
-                        .or_default() += 1;
-                }
-                local.boundary_count += row.boundaries.len();
-                *local.row_status_counts.entry(row.status).or_default() += 1;
-                for boundary in row.boundaries {
-                    *local
-                        .boundary_status_counts
-                        .entry(boundary.status)
-                        .or_default() += 1;
-                }
-                if let Some(proposal) = proposal {
-                    local.accepted_row_count += 1;
-                    if local
-                        .selected
-                        .as_ref()
-                        .is_none_or(|p| local_rank(&proposal, p).is_lt())
-                    {
-                        local.selected = Some(proposal);
-                        selected_entry = entry.clone();
+            for (id, tick) in entries.drain(..) {
+                let mut entry = None;
+                let mut reason = if tick >= f {
+                    Some("entry is not before new conflict".into())
+                } else {
+                    None
+                };
+                if reason.is_none() {
+                    let query = query_to(&self.context, &self.live, &cycle.nominal_updates, tick)?;
+                    reason = entry_rejection(&self.context, &query.state, self.deadline);
+                    if reason.is_none() {
+                        let (clearance, required) = clearing_body_reserve_query(
+                            &self.context,
+                            request,
+                            &query.state,
+                            "local",
+                            false,
+                        )?;
+                        if clearance < required {
+                            reason = Some("local entry lacks full body reserve".into());
+                        }
+                    }
+                    if reason.is_none() {
+                        entry = Some(query);
                     }
                 }
+                local.entries.push(WaypointV2Entry {
+                    entry_id: id.clone(),
+                    physics_step: tick,
+                    admitted: entry.is_some(),
+                    reason: reason.clone(),
+                });
                 checkpoint_local_search(&mut self.pending_cycle, &local);
+                for template in &templates {
+                    let (row, proposal) = search_row(
+                        request,
+                        &self.context,
+                        &id,
+                        entry.as_ref().map(|e| &e.state),
+                        (tick, reason.as_deref()),
+                        template,
+                        &goal,
+                    )?;
+                    if row.stop_reason.as_deref()
+                        == Some("physical_trace: nonfinite full simulation state")
+                    {
+                        self.result.failed_local_row = Some(row);
+                        bail!("nonfinite local physical propagation is not a coverage miss");
+                    }
+                    local.row_count += 1;
+                    local
+                        .row_diagnostics
+                        .push(WaypointV2RowDiagnostic::from_row(
+                            &row,
+                            goal.progress_x(
+                                entry
+                                    .as_ref()
+                                    .map_or(self.live.state.position_m.x, |e| e.state.position_m.x),
+                                &self.context.vehicle.geometry,
+                            ),
+                        ));
+                    if let Some(proposal) = proposal.as_ref() {
+                        local.row_diagnostics.last_mut().unwrap().eligible_handoff =
+                            Some(WaypointV2EligibleHandoffDiagnostic {
+                                state: proposal.handoff_state.clone(),
+                                actual_fuel_burn_to_handoff_kg: proposal
+                                    .actual_fuel_burn_to_handoff_kg,
+                                braking_room: crate::local_clearing::braking_room_at_handoff(
+                                    &self.context,
+                                    &proposal.handoff_state,
+                                ),
+                            });
+                    }
+                    if let Some(reason) = &row.stop_reason {
+                        *local
+                            .row_stop_reason_counts
+                            .entry(reason.split(':').next().unwrap_or(reason).to_string())
+                            .or_default() += 1;
+                    }
+                    local.boundary_count += row.boundaries.len();
+                    *local.row_status_counts.entry(row.status).or_default() += 1;
+                    for boundary in row.boundaries {
+                        *local
+                            .boundary_status_counts
+                            .entry(boundary.status)
+                            .or_default() += 1;
+                    }
+                    if let Some(proposal) = proposal {
+                        local.accepted_row_count += 1;
+                        if crate::local_clearing::braking_room_at_handoff(
+                            &self.context,
+                            &proposal.handoff_state,
+                        )
+                        .is_some_and(|room| room.remaining_room_m >= 0.0)
+                            && nonnegative_room_alternative
+                                .as_ref()
+                                .is_none_or(|(p, _)| local_rank(&proposal, p).is_lt())
+                        {
+                            nonnegative_room_alternative = Some((
+                                proposal.clone(),
+                                entry
+                                    .clone()
+                                    .context("accepted row lacks live query entry")?,
+                            ));
+                        }
+                        if local
+                            .selected
+                            .as_ref()
+                            .is_none_or(|p| local_rank(&proposal, p).is_lt())
+                        {
+                            local.selected = Some(proposal);
+                            selected_entry = entry.clone();
+                        }
+                    }
+                    checkpoint_local_search(&mut self.pending_cycle, &local);
+                }
             }
+        }
+        // Keep primary/fallback admission independent of this scalar heuristic.
+        // Only after the complete accepted stage may it replace a negative-room
+        // winner with the original-rank-best nonnegative-room candidate.
+        if let (Some(original), Some((alternative, entry))) =
+            (local.selected.as_ref(), nonnegative_room_alternative)
+            && pd_plan::local_clearing::prefer_nonnegative_braking_room(
+                crate::local_clearing::braking_room_at_handoff(
+                    &self.context,
+                    &original.handoff_state,
+                )
+                .as_ref(),
+                crate::local_clearing::braking_room_at_handoff(
+                    &self.context,
+                    &alternative.handoff_state,
+                )
+                .as_ref(),
+            )
+        {
+            local.selected = Some(alternative);
+            selected_entry = Some(entry);
         }
         let Some(proposal) = local.selected.as_ref() else {
             // The old search tests progress before certificate safety, so

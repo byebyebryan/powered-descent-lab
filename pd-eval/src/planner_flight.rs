@@ -19,6 +19,7 @@ pub use input::{
     preflight_nominal_direct_flight, validate_waypoint_direct_nominal_direct_generation_request,
 };
 
+pub(crate) use acquisition::MAX_THRUST_FRACTION;
 pub use acquisition::runtime::*;
 pub use airborne::{AirborneDirectAuditV1, AirborneFlightStateV1};
 pub use canonical_initial::*;
