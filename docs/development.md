@@ -50,6 +50,13 @@ absent from fresh checkouts. It is a small repository check, not a full Markdown
 parser or external-link checker; reference-style links are outside its coverage.
 It does not run historical commands or publish pages.
 
+For changes to the optional procedural-terrain tooling, also run its pure and
+synthetic tests. These do not collect measured flights or require saved captures:
+
+```sh
+rtk proxy python3 -B -m unittest discover -s studies/terrain_profiles -p 'test_*.py'
+```
+
 ## Optional retained flight regression
 
 Only when local accepted evidence is available and flight-affecting changes

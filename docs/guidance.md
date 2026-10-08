@@ -156,9 +156,62 @@ ranking and safety guards, improving its development challenge from 57/100 to
 admission and original rank unless its winner has negative estimated room and
 an already accepted nonnegative-room row exists; then original rank selects
 within that subset. This cheap horizontal heuristic cannot reject candidates,
-open fallback, or certify landing feasibility. Current challenge coverage is
+open fallback, or certify landing feasibility. Development challenge coverage is
 68/100 with all 65 prior successful flights preserved. Both fresh benchmarks
 passed without replacing the accepted site or relabeling its historical capture.
+
+The subsequent [fresh 1k validation](terrain_validation_1k_results.md) measures
+733/1000 landings under four unchanged procedural recipes: 387/387 initially
+clear routes and 346/613 blocked routes. All 1008 attempts, including separate
+controls/repeats, pass integrity and replay. Planner behavior is unchanged in
+that pass; the different sample does not establish paired improvement or
+arbitrary-terrain reliability. All 95 nominal-exhaustion stops occur after a
+correction, and local clearing remains the largest finite-stop category.
+
+The subsequent [diagnostic pack](terrain_diagnostics_results.md) freezes ten
+exact inspected worlds for departure clearance, late airborne acquisition and
+useful correction progress, with four successful comparisons. All 13 baseline
+attempts/repeats match their original complete non-timing records. The six finite
+failures remain unsolved; this is a reproducible capability checkpoint, not a
+coverage gain. Neither positive cheap braking room nor correction count alone
+certifies recovery. Keep these selected development cases separate from a future
+untouched generalization test and from the default 44-case acceptance pack.
+
+The follow-up [cap-only diagnostic](terrain_cap_probe_results.md) isolates the
+two six-correction truncations without changing their earlier flights. Under
+an explicitly separate cap-12 probe, `030` lands with seven corrections and
+`280` makes eight before a later `NoClearing`. Controls and exact repeats verify;
+the ordinary default stays six. Short hops alone are not a proven progress
+defect, and larger caps do not solve earlier nominal/local-clearing exhaustion.
+
+The subsequent [paired 1k relaxed-cap sweep](terrain_cap_sweep_results.md)
+reruns all original worlds under isolated cap 24: 748/1000 verified landings,
+with all 733 old successes preserved. None reaches cap 24; the maximum used is
+13 in a landing. All 1010 attempts verify, including three controls/seven repeats.
+The remaining 154 `NoClearing` and 98 `NoNominal` stops are no longer count-cap
+truncations. A generous finite budget is a supported default candidate, pending
+maintained-pack acceptance and saved-policy compatibility review; ordinary
+production remains cap 6. This is paired development, not held-out reliability.
+
+The [bounded handoff diagnostic](terrain_handoff_probe_results.md) then queries
+five saved nominal stops at original H, earlier settled coast on the same selected
+maneuver and a preselected accepted alternative. All 19 probes verify: earlier
+queries yield three clear nominals and two terrain-blocked nominals; max-room
+alternatives yield two clear and three missing nominals. Original/early prefixes
+and controls/repeats agree. Delayed replanning is a demonstrated limitation in
+those selected cases, not proof that a global progress relaxation is safe or that
+the sweep rate has improved. The [bounded early-exit pass](terrain_early_exit_results.md)
+implements one optional clear-nominal exit while retaining the old H fallback:
+three selected subjects now land, two keep exact old-flight fallbacks, and all
+36 core cap-6 benchmark landings pass. Actual early ends and queued checked
+nominals are explicitly bound; original H witnesses are not overwritten.
+The subsequent [paired early-exit 1k rerun](terrain_early_exit_sweep_results.md)
+records 817/1000 landings under the same isolated cap 24: 69 gained, all 748 old
+successes preserved, and all 387 clear direct flights unchanged. All four terrain
+recipes improve and all 1010 attempts verify. Remaining stops are 148 clearing
+and 35 nominal exhaustions, not crashes; 65 still stop before any correction.
+The next validation candidate is a separately frozen fresh 100-world sample,
+not additional acquisition/controller tuning or automatic default-cap promotion.
 
 The supported initial request is a route-free `LandingOnPad` mission with the
 tested vehicle, Earth gravity, 120 Hz physics / 60 Hz commands, upright rest on

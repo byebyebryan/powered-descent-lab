@@ -9,6 +9,55 @@ no accepted report site until local evidence is generated or supplied.
 
 ## Report Serving
 
+The [paired 1k cap sweep](terrain_cap_sweep_results.md) is published at
+`/reports/eval/planner_v2_random_terrain/recheck-cap-sweep-20261007-v6/`:
+**Report home → Waypoint planning → 1,000-world terrain sweep**. It uses the
+common batch template, with **primary worlds → terrain recipe → outcome →
+mission** branches, separate preservation controls/repeats, and the cap-6 versus
+cap-24 comparison. Detail copies preserve all rich plots, telemetry, diagnostics
+and actual H annotations; navigation, artifact links and an additive saved
+planning summary change, not the embedded flight numerics. `000`,
+`030`, `565`, `280` and `611` are linked under **Start here** for a direct
+landing, a new corrected landing, a 13-handoff landing, and two honest finite
+planning stops respectively. `988`/`980` show unlaunched missions whose proposed
+departure is blocked; `999` is unlaunched but blocked on its proposed approach.
+These are not executed takeoff crashes.
+
+Common preview markers distinguish **hollow grey circle: not launched**,
+**amber pause: saved airborne endpoint**, **red X: physical crash**, and
+**green circle: mission success**; other stopped outcomes use an amber square.
+Each marker has a tooltip. A native planner detail shows its planning stop/reason,
+executed endpoint and completed handoff count separately from the per-cycle
+proposed-route obstruction phase/time/location and clearing-search counts.
+Planning-cycle summaries open by default for stops. A rejected query's collision
+is not an executed crash, and missing nominal generation is not an obstacle
+finding. Older report editions and capture HTML remain unchanged; refreshed
+navigation points to the new create-only edition.
+Unfinished details label landing as **Not reached**, retaining the saved
+endpoint/envelope values under **Pre-landing diagnostics** rather than presenting
+them as measured impact/landing quality. The dashed idealized reference remains
+visible but is explicitly illustrative, not the audited planner proposal.
+
+This is an explicitly isolated cap-24 experiment, not the production default or
+accepted benchmark. Its dedicated create-only publication command is:
+
+```sh
+rtk proxy cargo run -p pd-eval -- render-terrain-cap-sweep \
+  --capture-dir /ABSOLUTE/outputs/eval/planner_v2_random_terrain/CAPTURE \
+  --output-dir /ABSOLUTE/outputs/reports/eval/planner_v2_random_terrain/recheck-ID \
+  --capture-base-href /eval/planner_v2_random_terrain/CAPTURE/
+rtk proxy cargo run -p pd-eval -- refresh-reports --home-only
+```
+
+It requires Python 3 for the study's existing read-only saved-evidence verifier
+and the authenticated original 1k baseline capture. It runs no flights, builds
+no probe, performs no fresh replay and changes no accepted selector. The same
+destination and URL protections described below apply. `render.json` binds the
+source capture receipt and every published page. Existing destinations are
+rejected; refresh-home changes navigation indexes only. Ordinary
+`render-terrain-survey` admission remains restricted to its production-policy
+survey contract and does not admit cap-probe identities.
+
 The [random-terrain survey](random_terrain_survey_plan.md) has a separate
 development collection at `/reports/eval/planner_v2_random_terrain/`, linked under
 Waypoint planning when present. It uses the common batch/detail templates, not

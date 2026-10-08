@@ -349,3 +349,161 @@ binds original input receipts separately from the current motion baseline in its
 complete-flight preservation, without historical numerical exceptions. Saved
 verification commands are in the [evaluation workflow](../../docs/evaluation.md).
 No further campaign or publication is implied by the closed allowance.
+
+## Fresh 1,000-case validation
+
+The separate [validation plan](../../docs/terrain_validation_1k_plan.md) and
+[source-bound contract](challenge_validation_1k_plan.json) retain the four
+challenge recipes and current planner, with 250 fresh seeds per recipe. The seed
+pool excludes all shape, sanity, calibration and development seeds. Three
+preservation controls and five repeats are outside the 1000-case denominator.
+This is a one-shot coverage check, not tuning or a paired planner comparison.
+
+The [completed results](../../docs/terrain_validation_1k_results.md) record
+733/1000 verified landings and 346/613 blocked-route landings. All 1008 attempts
+pass verification; the allowance is closed. The retained commands below are
+reproducibility instructions, not authorization for another run.
+
+Preparation/run require explicit campaign authorization and a new capture:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/survey.py prepare \
+  --plan studies/terrain_profiles/challenge_validation_1k_plan.json \
+  --pylander-root outputs/eval/planner_v2_random_terrain/capture-challenge-20261007-main-v2/inputs/reference \
+  --binary target/release/pd-eval \
+  --sentinels outputs/eval/planner_v2_lab_suite/capture-handoff-room-20261007-benchmark \
+  --output outputs/eval/planner_v2_random_terrain/capture-validation-1k-20261007-v1
+rtk proxy python3 -B studies/terrain_profiles/survey.py run \
+  --capture outputs/eval/planner_v2_random_terrain/capture-validation-1k-20261007-v1 \
+  --binary target/release/pd-eval
+```
+
+Use the [evaluation workflow](../../docs/evaluation.md#fresh-1000-case-terrain-validation)
+for read-only Python/native saved verification. Native `check-terrain-survey`
+checks the same evidence contract as rendering without publishing a site.
+Finite misses remain data; source drift, collection errors or failed proofs stop
+with evidence retained. No mid-campaign repair, replacement seeds or automatic
+retry is authorized. Preserve earlier captures, accepted selectors and reports.
+
+## Procedural-terrain capability diagnostics
+
+The separate [selection plan](../../docs/terrain_diagnostics_plan.md) and
+[frozen contract](diagnostics_plan.json) select ten exact saved 1k worlds:
+two failures and a successful comparison each for near-pad departure, late
+airborne acquisition and repeated short corrections, plus one clear-direct
+control. The [checked-in inputs](../../fixtures/research/terrain_diagnostics_v1/README.md)
+preserve original bytes/IDs and need no procedural generator or large saved
+survey to use. This is deliberately selected development data, not a held-out
+test or a population landing-rate estimate.
+
+[diagnostics.py](diagnostics.py) reuses native preflight, full-flight collection,
+common rich detail reports, complete landing projection and exact non-timing
+repeat comparison. Baseline mode characterizes existing behavior with a fixed
+13-attempt allowance. Explicit future candidate mode can accept repaired failures
+without relaxing successful-comparison landing/integrity/replay requirements.
+Run/verify instructions are maintained in the
+[evaluation workflow](../../docs/evaluation.md#procedural-terrain-diagnostic-pack).
+Neither mode publishes reports or changes the accepted selector. Pure/synthetic
+tests run through the [development workflow](../../docs/development.md).
+
+## Isolated correction-cap probe
+
+The [bounded follow-up plan](../../docs/terrain_cap_probe_plan.md) and
+[contract](cap_probe_plan.json) distinguish cap-truncated unfinished flights from
+physical failures. Subjects `030/280` are extended with cap 12 and, only if that
+cap still binds, cap 24. Each stage includes direct/six-handoff controls and two
+exact repeats; maximum 12 measured attempts.
+The [completed results](../../docs/terrain_cap_probe_results.md) record six cap-12
+attempts: `030` lands after seven corrections, while `280` reaches a later
+`NoClearing` after eight. No cap-24 stage ran and production stays at six.
+
+[cap_probe.py](cap_probe.py) creates source-frozen diagnostic build copies,
+changing only the copied cap and explicit probe identity. It does not relax the
+production policy validator, alter tracked Rust/defaults, restore arbitrary
+airborne state, publish reports or change prior captures. Exact prefix comparisons
+prove the original commands, H states, samples, segments and next nominal audit
+unchanged before the old cap boundary. Collection/read-only verification commands
+are in the [evaluation workflow](../../docs/evaluation.md#isolated-correction-cap-diagnostic).
+
+## Paired 1,000-world relaxed-cap sweep
+
+[cap_sweep.py](cap_sweep.py) reuses isolated cap-24 construction, strict native
+probe admission and exact prefix/control comparison from [cap_probe.py](cap_probe.py).
+Its [separate plan](../../docs/terrain_cap_sweep_plan.md) and
+[contract](cap_sweep_plan.json) rerun every original 1k input, three controls and
+seven repeats. Original flights stay in their authenticated baseline capture;
+the verifier requires that retained dependency. No generation, tuning, retry,
+production-policy relaxation or publication is part of the sweep.
+Collection and saved-verification commands are in the
+[evaluation workflow](../../docs/evaluation.md#paired-1000-world-relaxed-cap-sweep).
+The [completed results](../../docs/terrain_cap_sweep_results.md) record 748/1000
+landings, fifteen added without losing any previous success, and no cap-bound
+case. All 1010 attempts verify; production defaults and accepted reports remain
+unchanged. This is paired development evidence, not fresh held-out validation.
+
+## Bounded handoff timing/selection probes
+
+[handoff_probe.py](handoff_probe.py) collects at most 19 fixed counterfactual
+queries under the [plan](../../docs/terrain_handoff_probe_plan.md) and
+[source/input/clock contract](handoff_probe_plan.json). The native diagnostic
+reconstructs every query by forward execution from the original source and
+reproves its consumed command/action prefix. It never restores saved snapshots
+or changes the production flight session. Earlier query points are not relabeled
+as executed/accepted waypoints; a clear nominal audit is not a new mission landing.
+The [evaluation workflow](../../docs/evaluation.md#bounded-handoff-timingselection-diagnostic)
+documents isolated build, explicit collection and read-only saved verification.
+The ordinary release binary, accepted reports and current report site stay intact.
+The [completed results](../../docs/terrain_handoff_probe_results.md) close all 19
+queries and exact repeats: earlier same-maneuver states produce three clear and
+two terrain-blocked nominals, while max-room alternatives produce two clear and
+three missing nominals. No complete modified flight session is executed. The
+[bounded early-exit pass](../../docs/terrain_early_exit_results.md) subsequently
+executes three earlier target landings, preserves two blocked-query fallbacks
+and passes the normal 44-case acceptance pack. This is selected-case execution,
+not a rerun of the random population.
+
+## Completed bounded early-exit execution
+
+[early_exit.py](early_exit.py) owns the closed nine-flight allowance under the
+[frozen contract](early_exit_plan.json). Its isolated cap-24 executable has a
+distinct identity; the separately built acceptance executable uses normal cap 6.
+The collector's saved-verifier fix did not change Rust, inputs or captured bytes
+and did not rerun flights. See the [results](../../docs/terrain_early_exit_results.md)
+for source and comparison boundaries.
+
+Read-only verification of the original closed matrix:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/early_exit.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-early-exit-20261007-v1
+```
+
+Do not invoke `run` again under this completed allowance. Paired 1k/fresh-100
+campaigns, cap promotion and publication require separate authorization.
+
+## Completed paired early-exit 1,000-world rerun
+
+[early_exit_sweep.py](early_exit_sweep.py) uses a separate
+[frozen contract](early_exit_sweep_plan.json) and the exact admitted cap-24
+executable, without a build or planner/controller changes. The
+[completed results](../../docs/terrain_early_exit_sweep_results.md) record
+817/1000 landings, up from 748 with 69 gains and no losses; all four recipes
+improve and all 387 clear direct flights remain unchanged. All 1010 unique
+attempts, including three controls and seven repeats, verify. The initial
+collector serialization error is retained separately: the final capture imports
+seven verified executions without rerunning them, then executes the remaining
+1003. Complete original input bytes stay pinned; native output scenario JSON is
+checked by all parsed values without numeric tolerance.
+
+Read-only saved verification launches no flights or publication:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/early_exit_sweep.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-early-exit-sweep-20261008-v2
+```
+
+The authenticated previous cap-24 capture remains a dependency. Complete fallback
+flights, original selected proposals/early executed prefixes, exact queued
+nominals, repeat evidence and imported original ledgers are checked. This campaign
+is closed; a fresh sample, default promotion or publication needs a separate
+decision. No source or historical outcome is rewritten by saved verification.

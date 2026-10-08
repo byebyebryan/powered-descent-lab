@@ -61,9 +61,31 @@ they do not themselves expand terrain coverage. The subsequent
 [retirement and consolidation](planner_retirement_cleanup_results.md) removes
 obsolete execution lanes, extracts the current runtime, and reconciles tools/docs
 while preserving complete flight numerics and saved evidence.
-Seeded procedural terrain evaluation and a concrete game-host integration are
-separate possible follow-ups, not prerequisites for using the current lab
-planner and not selected by this reconciliation.
+Seeded procedural terrain evaluation has subsequently completed the
+[fresh 1k validation](terrain_validation_1k_results.md): 733/1000 verified
+landings, with 387/387 clear and 346/613 blocked routes. The current planner
+was frozen, all 1008 attempts verify, and accepted reports remain unchanged.
+This establishes coverage under the four tested recipes, not arbitrary-terrain
+reliability. Concrete game-host integration remains a separate decision.
+The subsequent [diagnostic missions](terrain_diagnostics_results.md) turn a
+bounded sample into ten portable frozen departure/acquisition/progress tests.
+All 13 characterization attempts/repeats reproduce the original non-timing
+records, with four preserved landings and six honest finite stops. This adds
+reproducible capability goals, not another planner improvement or coverage claim.
+The subsequent [cap-only probe](terrain_cap_probe_results.md) shows `030` landing
+with seven corrections and `280` reaching a later `NoClearing` after eight,
+with exact original H6 prefixes, controls and repeats. Production stays cap 6;
+neither short hops nor reaching that cap proves defective progress logic.
+The subsequent [paired 1k cap sweep](terrain_cap_sweep_results.md) preserves
+all 733 previous successes and adds fifteen for 748/1000 under isolated cap 24.
+All 1010 attempts verify. No case reaches the relaxed cap, and a thirteen-H
+mission lands. Production remains cap 6 pending a separate promotion decision;
+the remaining 252 stops are clearing/nominal exhaustion, not count-budget stops.
+The subsequent [paired early-exit rerun](terrain_early_exit_sweep_results.md)
+raises coverage to 817/1000 on the same cap-24 worlds: 69 gained, no old successes
+lost, every recipe improved, and all 387 clear direct routes unchanged. All 1010
+attempts verify. The 183 remaining stops are 148 clearing and 35 nominal
+exhaustions. Fresh held-out validation and default promotion remain separate.
 
 The phase and research notes below retain their original evidence scope. Their
 date-local “next” steps and stop rules are not an ordered prerequisite list for
@@ -821,10 +843,40 @@ need a concrete maintenance reason; neither is a flight defect or prerequisite.
 
 The [current guidance boundary](guidance.md#current-v2-design-and-support) and
 [session/CLI replacement result](waypoint_v2_session_repair_results.md) define
-where we are. Choose a bounded procedural-terrain evaluation or a concrete
-host-consumer requirement as the next substantive pass. Do not automatically add a
-new solver, extract a standalone crate, expand vehicles/gravities or promote
-controller defaults. No new terrain experiment or publication is selected here.
+the accepted baseline. Subsequent procedural-terrain work culminates in the
+[fresh 1k results](terrain_validation_1k_results.md), with substantial corrected
+coverage but 267 finite misses. The [validated diagnostic pack](terrain_diagnostics_results.md)
+now supplies a bounded sample with frozen inputs and successful comparisons.
+The [two-world cap sensitivity result](terrain_cap_probe_results.md) motivated
+the completed [paired 1k check](terrain_cap_sweep_results.md): fifteen of the
+23 old cap stops land under cap 24; the rest expose five clearing and three
+nominal stops. Overall coverage is 748/1000, every previous success is preserved,
+none reaches 24, and a thirteen-correction mission lands. A generous finite
+budget is now a supported default candidate. The next budget decision is normal
+maintained-pack acceptance and saved-policy compatibility review before promotion;
+ordinary production remains cap 6. Do not reopen short-hop heuristics merely
+because some successful flights use many corrections.
+The subsequent [bounded handoff diagnostic](terrain_handoff_probe_results.md)
+finds feasible nominals in all five earlier same-maneuver query states, three
+clear and two terrain-blocked, where all original H states had no nominal.
+Max-room alternatives help two but fail three. This supports investigating late
+replanning before expanding acquisition search. The
+[bounded early-exit pass](terrain_early_exit_results.md) now executes one clear
+audited nominal exit per selected maneuver with unchanged old-H fallback.
+Three selected subjects now land; two keep exact old-flight fallbacks. The normal
+44-case pack passes all 36 core landings and all 42 supported source replays.
+The separately authorized [paired early-exit 1k pass](terrain_early_exit_sweep_results.md)
+is now complete: 817/1000 landings, 69 gains and no losses across all four recipes.
+All 387 clear routes remain unchanged; 148 clearing and 35 nominal stops remain.
+The next validation candidate is a separately frozen untouched 100-world test,
+before more tuning. No global progress-gate relaxation, max-room ranking change
+or default-cap promotion occurred. Departure clearance-then-forward remains a
+separate coverage candidate, particularly for 65 unchanged pre-correction stops.
+Neither direction should become per-case threshold
+patching; later claims need paired development and an untouched test sample. A concrete
+host-consumer requirement remains a separate option. Do not automatically add
+a new solver, extract a standalone crate, expand vehicles/gravities or promote
+controller defaults. No further flight campaign or publication is selected here.
 
 ### Retained V1 and research-track checkpoint history
 

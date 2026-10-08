@@ -94,6 +94,43 @@ three landings for 68/100, preserving all 65 previous successes. It changes
 only a negative-room winner when an already accepted nonnegative-room alternative
 exists. The benchmark and accepted site remain unchanged; this is a cheap
 development heuristic, not a landing-feasibility certificate.
+The completed [fresh 1,000-case validation](terrain_validation_1k_results.md)
+lands 733/1000 unseen worlds, including 346/613 blocked routes; all 387 clear
+routes land directly. Its [plan](terrain_validation_1k_plan.md) retains the same
+four recipes with 250 worlds each and separate controls/repeats. All 1008
+attempts verify without tuning or publication; the previous 100 worlds remain
+development evidence, not part of its fresh denominator.
+The subsequent [capability diagnostic results](terrain_diagnostics_results.md)
+close a [ten-world selection/build plan](terrain_diagnostics_plan.md): six known
+finite failures, three corrected-landing comparisons and one direct control,
+plus three exact repeats. All 13 attempts reproduce their complete baseline
+records except wall timings. These portable frozen missions establish focused
+departure/acquisition/progress tests, not new coverage or a planner fix.
+The follow-up [correction-cap diagnostic](terrain_cap_probe_results.md), under
+its [bounded plan](terrain_cap_probe_plan.md), preserves the complete H6 prefixes:
+`030` lands with seven corrections under isolated cap 12; `280` reaches a later
+`NoClearing` after eight. Controls/repeats verify. Production remains cap 6;
+these paired worlds do not establish a new sweep rate or faulty short-hop logic.
+The subsequent [paired 1k cap sweep](terrain_cap_sweep_results.md), under its
+[fixed plan](terrain_cap_sweep_plan.md), reruns every original world with cap 24:
+748/1000 landings, all 733 previous successes preserved, maximum 13 corrections
+and no cap-bound cases. All 1010 attempts verify. The remaining 252 stops are
+clearing/nominal exhaustion; production cap 6 is not silently promoted.
+The [bounded handoff diagnostic plan](terrain_handoff_probe_plan.md) compares
+original, earlier same-maneuver and preselected alternative query states in five
+nominal stops, with two controls and two repeats. It tests timing versus selection
+versus acquisition, without changing flight behavior or claiming new landings.
+Its [completed results](terrain_handoff_probe_results.md) find nominals at all
+five earlier states: three clear audits and two terrain-blocked, versus only two
+clear max-room alternatives. The [bounded early-exit pass](terrain_early_exit_plan.md)
+now has [executed results](terrain_early_exit_results.md): three selected stops
+land, two blocked queries preserve their old-flight fallbacks, and the normal
+44-case acceptance pack passes. Those selected checks did not establish a new
+1k rate. The separately authorized [paired early-exit rerun](terrain_early_exit_sweep_results.md)
+now records 817/1000 landings: 69 gained, all 748 previous successes preserved,
+and all 387 clear routes unchanged. All 1010 attempts verify; the remaining
+148 clearing and 35 nominal stops are finite, not crashes. Its
+[fixed plan](terrain_early_exit_sweep_plan.md) leaves production and reports unchanged.
 The [original stopped results and diagnosis](random_terrain_survey_results.md) record three
 verified random direct landings and an initial replay-envelope roundoff failure;
 96 random cases were unattempted in that retained original capture. No

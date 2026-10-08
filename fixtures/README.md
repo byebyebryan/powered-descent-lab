@@ -27,6 +27,12 @@ Do not edit them to make a cleanup or acceptance check pass. A new terrain
 campaign needs separately declared inputs and evidence; it is not a fixture
 rename or an overwrite of the accepted pack.
 
+The separate [procedural-terrain diagnostics](research/terrain_diagnostics_v1/README.md)
+freeze ten exact worlds from the inspected 1k population: six known finite stops
+and four successful comparisons. They are opt-in capability tests, not additional
+default-pack cases or a held-out coverage denominator. Their source provenance
+and baseline observations live in the separate study contract.
+
 Eleven old V1/generated-route, comparison-scorer, dogleg and late-bend packs
 remain archived metadata. The evaluator's
 [admission rules](../pd-eval/src/resolution.rs) reject their execution, including
