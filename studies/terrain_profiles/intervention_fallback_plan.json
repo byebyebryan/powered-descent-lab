@@ -1,0 +1,14 @@
+{
+  "schema": "pd-lab.intervention-fallback-pass.v1",
+  "baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-challenge-20261007-main-v2",
+  "baseline_manifest_sha256": "a2bdf3d7bf7a5a7c36d5ed15b58e2018eb6dee9ad31fc2963d21188f9035b416",
+  "baseline_inputs_receipt_sha256": "b69f03e5e7540548b3dc02133f51ebb43fcc5eb966c1351a5424b22ac875eea0",
+  "focus_indices": [0, 13, 23, 34, 35, 43, 49, 50, 54, 56, 60, 70, 81, 85, 93, 94, 99],
+  "repeat_indices": [35, 50],
+  "successful_focus_controls": [34, 50, 54],
+  "seed_count": 100,
+  "workers": 4,
+  "case_wall_limit_s": 300,
+  "campaign_wall_limit_s": 10800,
+  "maximum_measured_attempts": 163
+}

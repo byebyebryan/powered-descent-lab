@@ -1,0 +1,21 @@
+{
+  "schema": "pd-lab.random-terrain-survey-plan.v1",
+  "master_seed": 2026100601,
+  "seed_count": 100,
+  "seed_max": 2147483246,
+  "excluded_seeds": [0, 1, 2, 7, 42, 12345],
+  "repeat_indices": [0, 1, 2, 3, 4],
+  "sentinels": ["v2_clear_685", "v2_ridge_early", "v2_plateau_reference_900"],
+  "control_plan_sha256": "82665074d99180549a03ee5d4716ff29cac7379230eab6e10e01b4dace5f77f5",
+  "refinement_plan_sha256": "7c658f421809c0d34f135220f2a7437713706f1df167d4be55cecc0fc103ae0b",
+  "recipe": "Pylander refined composition, weighting 0.65, ridge slice 67.37; no FastNoiseLite arm",
+  "surface": "Resolved 4 m polyline; unchanged fixed 36 m pads with 24 m transitions at x=0 and x=1200",
+  "workers": 4,
+  "checkpoint_count": 10,
+  "case_wall_limit_s": 300,
+  "campaign_wall_limit_s": 10800,
+  "maximum_measured_attempts": 108,
+  "policy_version": 3,
+  "expectation": "Exploratory coverage survey; no predeclared landing percentage or waypoint quota",
+  "stop_rule": "Stop new launches on input/source drift, implementation or integrity/replay failures; retain ordinary physical misses and finite stops"
+}

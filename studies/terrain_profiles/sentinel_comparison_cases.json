@@ -1,0 +1,46 @@
+{
+  "baseline": {
+    "cycles": [{"audit": {"passed": false, "clearance_scan": {
+      "minimum_airborne": {"physics_step": 1, "phase": "upright", "corridor": "source_pad_transition", "clearance_m": 0.0005533556252945715, "required_clearance_m": 0.0},
+      "first_violation": {"physics_step": 10, "phase": "coast", "corridor": "none", "reason": "below declared clearance", "clearance_m": 4.820264603009434, "required_clearance_m": 5.0}
+    }}}],
+    "commands": [{"throttle_frac": 0.5}],
+    "states": [{"position_m": {"x": 1.0, "y": 5.0}}],
+    "segments": [{"end_state": {"physics_step": 12}}],
+    "integrity_passed": true,
+    "final_source_replay_passed": true,
+    "timings": {"planning_s": 1.0, "execution_s": 2.0, "replay_s": 3.0}
+  },
+  "cases": [
+    {"name": "exact", "accepted": true, "exceptions": 0},
+    {"name": "timing-only", "edits": [{"path": "/timings/planning_s", "value": 99.0}], "accepted": true, "exceptions": 0},
+    {"name": "observed-clearance-roundoff", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": 0.0005533556252954597}], "accepted": true, "exceptions": 1},
+    {"name": "violation-roundoff", "edits": [{"path": "/cycles/0/audit/clearance_scan/first_violation/clearance_m", "value": 4.820264603009934}], "accepted": true, "exceptions": 1},
+    {"name": "multiple-exceptions", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": 0.0005533556252954597}, {"path": "/cycles/0/audit/clearance_scan/first_violation/clearance_m", "value": 4.820264603009934}], "accepted": true, "exceptions": 2},
+    {"name": "legacy-exact-rejects-roundoff", "exact": true, "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": 0.0005533556252954597}], "accepted": false},
+    {"name": "repeat-exact-rejects-roundoff", "exact": true, "edits": [{"path": "/cycles/0/audit/clearance_scan/first_violation/clearance_m", "value": 4.820264603009934}], "accepted": false},
+    {"name": "exceeds-bound", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": 0.0005533556272945715}], "accepted": false},
+    {"name": "zero-sign-crossing", "baseline_edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": 1e-13}], "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": -1e-13}], "accepted": false},
+    {"name": "zero-touch-crossing", "baseline_edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": 0.0}], "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": 1e-13}], "accepted": false},
+    {"name": "required-reserve-crossing", "baseline_edits": [{"path": "/cycles/0/audit/clearance_scan/first_violation/clearance_m", "value": 4.9999999999999}], "edits": [{"path": "/cycles/0/audit/clearance_scan/first_violation/clearance_m", "value": 5.0000000000001}], "accepted": false},
+    {"name": "changed-measurement-location", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/physics_step", "value": 2}], "accepted": false},
+    {"name": "changed-corridor", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/corridor", "value": "none"}], "accepted": false},
+    {"name": "changed-required-reserve", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/required_clearance_m", "value": 1e-13}], "accepted": false},
+    {"name": "changed-reason", "edits": [{"path": "/cycles/0/audit/clearance_scan/first_violation/reason", "value": "different"}], "accepted": false},
+    {"name": "changed-safety-decision", "edits": [{"path": "/cycles/0/audit/passed", "value": true}], "accepted": false},
+    {"name": "changed-command", "edits": [{"path": "/commands/0/throttle_frac", "value": 0.6}], "accepted": false},
+    {"name": "changed-state", "edits": [{"path": "/states/0/position_m/x", "value": 1.0000000000001}], "accepted": false},
+    {"name": "changed-handoff", "edits": [{"path": "/segments/0/end_state/physics_step", "value": 13}], "accepted": false},
+    {"name": "changed-proof", "edits": [{"path": "/final_source_replay_passed", "value": false}], "accepted": false},
+    {"name": "boolean-is-not-number", "edits": [{"path": "/integrity_passed", "value": 1}], "accepted": false},
+    {"name": "null-is-not-clearance", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "value": null}], "accepted": false},
+    {"name": "missing-clearance", "edits": [{"path": "/cycles/0/audit/clearance_scan/minimum_airborne/clearance_m", "remove": true}], "accepted": false},
+    {"name": "additional-field", "edits": [{"path": "/invented", "value": 1}], "accepted": false},
+    {"name": "unknown-timing-exclusion", "edits": [{"path": "/timings/fuel", "value": 1.0}], "accepted": false},
+    {"name": "missing-timing", "edits": [{"path": "/timings/replay_s", "remove": true}], "accepted": false},
+    {"name": "negative-timing", "edits": [{"path": "/timings/planning_s", "value": -1.0}], "accepted": false},
+    {"name": "boolean-timing", "edits": [{"path": "/timings/planning_s", "value": true}], "accepted": false},
+    {"name": "changed-contract-bound", "contract_edits": [{"path": "/absolute_tolerance_m", "value": 1e-6}], "accepted": false},
+    {"name": "changed-contract-paths", "contract_edits": [{"path": "/allowed_paths", "value": ["/states/*/position_m/x"]}], "accepted": false}
+  ]
+}

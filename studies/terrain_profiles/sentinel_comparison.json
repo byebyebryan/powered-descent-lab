@@ -1,0 +1,8 @@
+{
+  "id": "derived_clearance_preservation_v1",
+  "absolute_tolerance_m": 1e-12,
+  "allowed_paths": [
+    "/cycles/*/audit/clearance_scan/minimum_airborne/clearance_m",
+    "/cycles/*/audit/clearance_scan/first_violation/clearance_m"
+  ]
+}

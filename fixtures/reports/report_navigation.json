@@ -10,7 +10,7 @@
     {
       "id": "waypoint-planning",
       "title": "Waypoint planning",
-      "description": "Start with the current Planner V2 batch: direct landings and terrain-clearing waypoint flights. Earlier V1 planner evidence and research are labeled separately.",
+      "description": "Start with the accepted Planner V2 batch, then the bounded timing comparison and harder-terrain challenge for development coverage. The rejected timing replacement, calibration, clear-route sanity sweep and earlier research remain separate.",
       "entries": [
         {
           "id": "planner-v2-current",
@@ -19,6 +19,62 @@
           "report_type": "Batch report",
           "status": "Active · default planner evaluation",
           "source": { "kind": "batch_pack", "pack_id": "planner_v2_lab_suite" }
+        },
+        {
+          "id": "planner-v2-intervention-focus",
+          "title": "Planner V2 · intervention timing comparison",
+          "description": "Frozen 16-case diagnostic comparison: three baseline landings versus six with conflict-relative timing. Four new landings, but random-054 and the existing ridge CLI test regress. Candidate not adopted; previous timing restored. Open random-035 for a gain and random-054 for the lost control.",
+          "report_type": "Batch report",
+          "status": "Completed diagnostic · timing replacement rejected",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-intervention-20261007-focus/index.html" }
+        },
+        {
+          "id": "planner-v2-terrain-challenge",
+          "title": "Planner V2 · harder terrain challenge",
+          "description": "Held-out 100-case development population: 64 initially blocked routes, 21 corrected landings; all 36 clear routes landed. Retains 43 finite planning stops, actual handoffs up to six, three preservation controls and five exact repeats. Not the accepted benchmark.",
+          "report_type": "Batch report",
+          "status": "Completed challenge · 21/64 blocked routes landed",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-challenge-20261007-main-v2/index.html" }
+        },
+        {
+          "id": "planner-v2-terrain-calibration",
+          "title": "Planner V2 · harder-terrain calibration",
+          "description": "Separate 24-case recipe calibration: 15 initially blocked routes, six corrected landings and nine clear direct landings. All four global recipes retained unchanged for the independent 100-case challenge; these are not held-out trials.",
+          "report_type": "Batch report",
+          "status": "Completed calibration · 24 cases, separate denominator",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-challenge-20261007-calibration-v2/index.html" }
+        },
+        {
+          "id": "planner-v2-random-terrain-full",
+          "title": "Planner V2 · full random-terrain sweep",
+          "description": "Preserved clear-route sanity baseline: 100/100 frozen random cases verified landed, all with direct clear routes. Separate controls demonstrate one and three executed handoffs; all five repeats agree. Harder blocked-route coverage and the accepted benchmark remain separate.",
+          "report_type": "Batch report",
+          "status": "Completed development sweep · 100/100 random landings",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-20261007-v4-full/index.html" }
+        },
+        {
+          "id": "planner-v2-random-terrain-comparison",
+          "title": "Planner V2 · comparison-aware terrain recheck",
+          "description": "Earlier stopped pass on the same 100 frozen worlds. Direct control accepted; corrected control landed with passing proofs but stopped on diagnostic-derived proposal hashes. Zero random flights attempted; preserved history, not the accepted benchmark.",
+          "report_type": "Batch report",
+          "status": "Development recheck · corrected-control comparison stop",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-20261006-v3/index.html" }
+        },
+        {
+          "id": "planner-v2-random-terrain-recheck",
+          "title": "Planner V2 · numerical-fix terrain recheck",
+          "description": "Same 100 frozen procedural worlds. Stopped at the first preservation control on a clearance-only numerical mismatch; zero random flights attempted. Separate from the accepted benchmark and original stopped survey.",
+          "report_type": "Batch report",
+          "status": "Development recheck · preservation review required",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-20261006-v2/index.html" }
+        },
+        {
+          "id": "planner-v2-random-terrain",
+          "title": "Planner V2 · procedural terrain survey",
+          "description": "100 frozen procedural worlds; four random flights attempted, three verified landings. Stopped on a replay guard error with 96 unattempted; not the accepted benchmark.",
+          "report_type": "Batch report",
+          "status": "Development survey · stopped early",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/index.html" }
         },
         {
           "id": "waypoint-v2-preview",
@@ -87,6 +143,26 @@
     }
   ],
   "history": [
+    {
+      "id": "planner-v2-intervention-diagnostics",
+      "title": "Intervention timing · diagnostics-only baseline",
+      "description": "Same frozen 16-case subset before the timing change. All flight motion, selection and proofs match the prior challenge, excluding only additive query diagnostics and wall timings. Three landings; thirteen NoClearing stops. Instrumentation retained, not a new reliability sample.",
+      "path": "eval/planner_v2_random_terrain/recheck-intervention-20261007-diagnostics/index.html",
+      "topic_id": "waypoint-planning",
+      "report_type": "Batch report",
+      "status": "Diagnostic baseline · exact motion preserved",
+      "capture_label": "Source-frozen logging-only baseline, 16 cases"
+    },
+    {
+      "id": "planner-v2-terrain-calibration-output-stop",
+      "title": "Harder-terrain calibration · earlier output stop",
+      "description": "First calibration capture retained with seven attempts. An honest NoNominal stop after an off-cadence handoff passed replay but the rich report rejected its final sample. Presentation-only repair followed by a separate complete retry; no old flight was rewritten.",
+      "path": "eval/planner_v2_random_terrain/recheck-challenge-20261007-calibration-v1/index.html",
+      "topic_id": "waypoint-planning",
+      "report_type": "Batch report",
+      "status": "Stopped development capture · presentation defect",
+      "capture_label": "Earlier calibration source, seven retained attempts"
+    },
     {
       "id": "waypoint-v2-lean-view-edition",
       "title": "Waypoint planner V2 · lean view edition",

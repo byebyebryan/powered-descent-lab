@@ -34,6 +34,30 @@ enum Commands {
     PromoteCache(PromoteCacheArgs),
     /// Run the current repeated local-clearing waypoint V2 planner (policy 3 by default).
     WaypointV2Flight(WaypointV2FlightArgs),
+    /// Render a saved random-terrain survey using common reports; runs no flights.
+    RenderTerrainSurvey(TerrainSurveyArgs),
+    /// Compare saved flights under an explicit preservation contract; no flights or writes.
+    CompareTerrainFlights(TerrainComparisonArgs),
+}
+
+#[derive(Debug, Parser)]
+struct TerrainComparisonArgs {
+    #[arg(long)]
+    actual: PathBuf,
+    #[arg(long)]
+    baseline: PathBuf,
+    #[arg(long)]
+    contract_id: String,
+}
+
+#[derive(Debug, Parser)]
+struct TerrainSurveyArgs {
+    #[arg(long)]
+    capture_dir: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
+    #[arg(long)]
+    capture_base_href: String,
 }
 
 #[derive(Debug, Parser)]
@@ -292,6 +316,22 @@ fn main() -> Result<()> {
             )?;
             println!("{}", promoted_dir.display());
         }
+        Commands::RenderTerrainSurvey(args) => {
+            pd_eval::terrain_survey::render_saved_survey(
+                &args.capture_dir,
+                &args.output_dir,
+                &args.capture_base_href,
+            )?;
+            println!("{}", args.output_dir.display());
+        }
+        Commands::CompareTerrainFlights(args) => {
+            let exceptions = pd_eval::terrain_survey::compare_saved_flights(
+                &args.actual,
+                &args.baseline,
+                &args.contract_id,
+            )?;
+            println!("{}", serde_json::to_string(&exceptions)?);
+        }
         Commands::WaypointV2Flight(args) => {
             let policy_version = args.policy_version;
             let flight_args = args.flight;
@@ -544,6 +584,8 @@ mod direct_generation_cli_tests {
                 "refresh-navigation",
                 "promote-cache",
                 "waypoint-v2-flight",
+                "render-terrain-survey",
+                "compare-terrain-flights",
             ]
         );
         for command in [
@@ -579,6 +621,46 @@ mod direct_generation_cli_tests {
             ])
             .is_ok()
         );
+    }
+
+    #[test]
+    fn terrain_survey_renderer_requires_explicit_capture_site_and_url() {
+        let common = ["pd-eval", "render-terrain-survey"];
+        assert!(Cli::try_parse_from(common).is_err());
+        let args = [
+            "pd-eval",
+            "render-terrain-survey",
+            "--capture-dir",
+            "saved",
+            "--output-dir",
+            "site",
+            "--capture-base-href",
+            "/eval/planner_v2_random_terrain/saved/",
+        ];
+        assert!(matches!(
+            Cli::try_parse_from(args).unwrap().command,
+            Commands::RenderTerrainSurvey(_)
+        ));
+    }
+
+    #[test]
+    fn terrain_comparison_requires_explicit_saved_inputs_and_contract() {
+        assert!(Cli::try_parse_from(["pd-eval", "compare-terrain-flights"]).is_err());
+        assert!(matches!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "compare-terrain-flights",
+                "--actual",
+                "actual.json",
+                "--baseline",
+                "baseline.json",
+                "--contract-id",
+                "derived_clearance_preservation_v2"
+            ])
+            .unwrap()
+            .command,
+            Commands::CompareTerrainFlights(_)
+        ));
     }
 
     #[test]

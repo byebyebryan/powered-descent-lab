@@ -73,6 +73,7 @@ pub mod planner_eval_site;
 pub mod waypoint_v2_acceptance;
 pub mod waypoint_v2_bundle;
 pub use waypoint_v2_bundle::*;
+pub mod terrain_survey;
 pub mod waypoint_v2_pack;
 
 #[derive(Clone, Debug)]

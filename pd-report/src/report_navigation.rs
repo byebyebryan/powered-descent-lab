@@ -1315,7 +1315,13 @@ mod tests {
             match mutate {
                 0 => bad["schema_version"] = 99.into(),
                 1 => {
-                    bad["topics"][0]["entries"][2]["source"]["path"] = "../escape/index.html".into()
+                    let entry = bad["topics"][0]["entries"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|entry| entry["source"]["kind"] == "report_page")
+                        .unwrap();
+                    entry["source"]["path"] = "../escape/index.html".into()
                 }
                 2 => bad["topics"][1]["id"] = "other-topic".into(),
                 3 => bad["topics"][0]["entries"][1]["id"] = "planner-v2-current".into(),

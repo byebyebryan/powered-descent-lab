@@ -1,0 +1,20 @@
+{
+  "schema": "pd-lab.handoff-room-pass.v1",
+  "baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-challenge-20261007-main-v2",
+  "baseline_manifest_sha256": "a2bdf3d7bf7a5a7c36d5ed15b58e2018eb6dee9ad31fc2963d21188f9035b416",
+  "baseline_inputs_receipt_sha256": "b69f03e5e7540548b3dc02133f51ebb43fcc5eb966c1351a5424b22ac875eea0",
+  "motion_baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-fallback-20261007-challenge",
+  "motion_baseline_manifest_sha256": "f45cbfea2ec13c9b0d890508c555340d5440984e0feb411be2b391c8efd439d4",
+  "motion_baseline_receipt_sha256": "7f7c162eda55bf3b292daa800ddd8ab9007cae6fe35e0fce1cc5d1fd4757c535",
+  "benchmark_baseline_capture": "outputs/eval/planner_v2_lab_suite/capture-fallback-20261007-benchmark",
+  "benchmark_baseline_summary_sha256": "118f09ce7d5cbd555c1890d0155fe465602ea42fe2bbc147ecc3b816edd95551",
+  "diagnostic_indices": [8, 28, 29, 60, 66, 94, 90, 64],
+  "focus_indices": [0, 8, 28, 29, 60, 66, 77, 80, 90, 94, 97, 34, 50, 54, 23, 43, 64],
+  "repeat_indices": [28, 50],
+  "successful_focus_controls": [34, 50, 54, 23, 43, 64],
+  "seed_count": 100,
+  "workers": 4,
+  "case_wall_limit_s": 300,
+  "campaign_wall_limit_s": 10800,
+  "maximum_measured_attempts": 171
+}

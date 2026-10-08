@@ -1,0 +1,55 @@
+{
+  "schema": "pd-lab.terrain-challenge-plan.v1",
+  "seed_max": 2147483246,
+  "excluded_seeds": [
+    0,
+    1,
+    2,
+    7,
+    42,
+    12345
+  ],
+  "sentinels": [
+    "v2_clear_685",
+    "v2_ridge_early",
+    "v2_plateau_reference_900"
+  ],
+  "control_plan_sha256": "82665074d99180549a03ee5d4716ff29cac7379230eab6e10e01b4dace5f77f5",
+  "refinement_plan_sha256": "7c658f421809c0d34f135220f2a7437713706f1df167d4be55cecc0fc103ae0b",
+  "recipes": [
+    {
+      "id": "mountains_4x",
+      "vertical_scale": 4,
+      "horizontal_scale": 1
+    },
+    {
+      "id": "mountains_8x",
+      "vertical_scale": 8,
+      "horizontal_scale": 1
+    },
+    {
+      "id": "broad_massifs_8x",
+      "vertical_scale": 8,
+      "horizontal_scale": 1.5
+    },
+    {
+      "id": "successive_ridges_8x",
+      "vertical_scale": 8,
+      "horizontal_scale": 0.6
+    }
+  ],
+  "workers": 4,
+  "checkpoint_count": 10,
+  "case_wall_limit_s": 300,
+  "campaign_wall_limit_s": 10800,
+  "policy_version": 3,
+  "surface": "Resolved 4 m polyline; original-height 36 m local pads with 24 m transitions at x=0 and x=1200; no other edits",
+  "expectation": "Coverage and conditional blocked-route outcomes; no landing quota or seed rejection",
+  "stop_rule": "Pause a source-frozen capture for repairable evidence/implementation defects; retain ordinary misses and retry in new captures; goal stops only for unrecoverable safety/evidence failure",
+  "phase": "calibration",
+  "master_seed": 2026100701,
+  "seed_count": 24,
+  "cases_per_recipe": 6,
+  "repeat_indices": [],
+  "maximum_measured_attempts": 27
+}
