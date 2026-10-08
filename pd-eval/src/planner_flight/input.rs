@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::BodyAwareTerminalPolicyV1;
 
+/// Existing admission tolerance for source-pad rest and flat pad heights.
+pub(crate) const PAD_REST_TOLERANCE_M: f64 = 1.0e-9;
+
 pub(crate) const GENERATION_POLICY_VERSION: &str =
     "launch_aware_held60_nominal_direct_generation_v1";
 const GEOMETRY_CONVENTION: &str = "core_current_rotated_feet_and_hull";
@@ -202,11 +205,11 @@ pub fn validate_waypoint_direct_nominal_direct_generation_request(
     if target_pad.center_x_m <= source_pad.center_x_m {
         bail!("unsupported geometry: direct generation requires a forward source-to-target span");
     }
-    if (scenario.initial_state.position_m.x - source_pad.center_x_m).abs() > 1.0e-9
+    if (scenario.initial_state.position_m.x - source_pad.center_x_m).abs() > PAD_REST_TOLERANCE_M
         || (scenario.initial_state.position_m.y
             - (source_pad.surface_y_m + scenario.vehicle.geometry.touchdown_base_offset_m))
             .abs()
-            > 1.0e-9
+            > PAD_REST_TOLERANCE_M
     {
         bail!("unsupported source state: initial pose is not supported source-pad rest");
     }
@@ -251,14 +254,23 @@ pub(crate) fn pad_has_flat_in_domain(
 ) -> bool {
     let left = pad.center_x_m - pad.width_m * 0.5;
     let right = pad.center_x_m + pad.width_m * 0.5;
-    let (Ok(left_height), Ok(right_height)) = (
-        terrain.sample_height_strict(left),
-        terrain.sample_height_strict(right),
-    ) else {
-        return false;
+    let edge_matches = |x| {
+        let Ok(sampled_height) = terrain.sample_height_strict(x) else {
+            return false;
+        };
+        // At a stored vertex, interpolation from the preceding slope can
+        // round away from its exact height. Pad admission should prove the
+        // supplied polyline is flat, not require that redundant arithmetic
+        // reproduce a vertex bit-for-bit. No tolerance or terrain mutation.
+        let height = terrain
+            .points()
+            .iter()
+            .find(|point| point.x == x)
+            .map_or(sampled_height, |point| point.y);
+        height == pad.surface_y_m
     };
-    left_height == pad.surface_y_m
-        && right_height == pad.surface_y_m
+    edge_matches(left)
+        && edge_matches(right)
         && terrain
             .points()
             .iter()
@@ -394,12 +406,13 @@ pub fn preflight_nominal_direct_flight(
         if scenario.initial_state.attitude_rad != 0.0
             || scenario.initial_state.angular_rate_radps != 0.0
             || scenario.initial_state.velocity_mps != Vec2::new(0.0, 0.0)
-            || (scenario.initial_state.position_m.x - source.center_x_m).abs() > 1.0e-9
+            || (scenario.initial_state.position_m.x - source.center_x_m).abs()
+                > PAD_REST_TOLERANCE_M
             || (scenario.initial_state.position_m.y
                 - source.surface_y_m
                 - scenario.vehicle.geometry.touchdown_base_offset_m)
                 .abs()
-                > 1.0e-9
+                > PAD_REST_TOLERANCE_M
         {
             return Err(unsupported(
                 "source must be upright source-pad rest with zero angular rate",
@@ -410,20 +423,12 @@ pub fn preflight_nominal_direct_flight(
                 "only forward source-to-target geometry is supported",
             ));
         }
-        let flat =
-            |pad: &pd_core::LandingPadSpec| {
-                let left = pad.center_x_m - pad.half_width_m();
-                let right = pad.center_x_m + pad.half_width_m();
-                scenario.world.terrain.sample_height_strict(left).ok() == Some(pad.surface_y_m)
-                    && scenario.world.terrain.sample_height_strict(right).ok()
-                        == Some(pad.surface_y_m)
-                    && scenario.world.terrain.points().iter().all(|point| {
-                        point.x < left || point.x > right || point.y == pad.surface_y_m
-                    })
-            };
         let half_width = (scenario.vehicle.geometry.hull_width_m * 0.5)
             .max(scenario.vehicle.geometry.touchdown_half_span_m);
-        if !flat(source) || half_width > source.half_width_m() || !flat(target) {
+        if !pad_has_flat_in_domain(&scenario.world.terrain, source)
+            || half_width > source.half_width_m()
+            || !pad_has_flat_in_domain(&scenario.world.terrain, target)
+        {
             return Err(unsupported(
                 "pads must be flat in-domain shelves with a supported source footprint",
             ));
@@ -447,4 +452,97 @@ pub fn nominal_direct_flight_identity<T: Serialize>(value: &T) -> Result<String>
         "fnv1a64:{:016x}",
         crate::runtime::fnv1a64(&serde_json::to_vec(value)?)
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shelf() -> (pd_core::TerrainDefinition, pd_core::LandingPadSpec) {
+        let height = 7.765405875857499;
+        (
+            pd_core::TerrainDefinition::Heightfield {
+                points_m: vec![
+                    Vec2::new(-42.0, 346.11841901493983),
+                    Vec2::new(-20.0, 35.96149030411436),
+                    Vec2::new(-18.0, height),
+                    Vec2::new(0.0, height),
+                    Vec2::new(18.0, height),
+                    Vec2::new(42.0, 100.0),
+                ],
+            },
+            pd_core::LandingPadSpec {
+                id: "source".into(),
+                center_x_m: 0.0,
+                width_m: 36.0,
+                surface_y_m: height,
+            },
+        )
+    }
+
+    #[test]
+    fn exact_stored_shelf_edge_is_not_rejected_by_interpolation_roundoff() {
+        let (terrain, pad) = shelf();
+        let rounded = terrain.sample_height_strict(-18.0).unwrap();
+        assert_ne!(rounded, pad.surface_y_m);
+        assert_eq!(rounded - pad.surface_y_m, 8.881784197001252e-16);
+        assert!(pad_has_flat_in_domain(&terrain, &pad));
+
+        let mut request = crate::test_inputs::planner_request("v2_clear_845");
+        let mut target = request
+            .scenario
+            .world
+            .landing_pad(&request.target_pad_id)
+            .unwrap()
+            .clone();
+        target.center_x_m = 1200.0;
+        target.width_m = 36.0;
+        let mut points = terrain.points().to_vec();
+        points.extend([
+            Vec2::new(
+                target.center_x_m - target.half_width_m(),
+                target.surface_y_m,
+            ),
+            Vec2::new(
+                target.center_x_m + target.half_width_m(),
+                target.surface_y_m,
+            ),
+            Vec2::new(
+                target.center_x_m + target.half_width_m() + 100.0,
+                target.surface_y_m,
+            ),
+        ]);
+        request.scenario.world.terrain =
+            pd_core::TerrainDefinition::Heightfield { points_m: points };
+        request.scenario.world.landing_pads = vec![
+            pd_core::LandingPadSpec {
+                id: request.source_pad_id.clone(),
+                ..pad.clone()
+            },
+            target,
+        ];
+        request.scenario.initial_state.position_m = Vec2::new(
+            0.0,
+            pad.surface_y_m + request.scenario.vehicle.geometry.touchdown_base_offset_m,
+        );
+        let preflight =
+            preflight_nominal_direct_flight(&request, &BodyAwareTerminalPolicyV1::default());
+        assert!(preflight.supported, "{:?}", preflight.rejection);
+        assert!(!preflight.simulation_created);
+    }
+
+    #[test]
+    fn shelf_vertex_proof_remains_exact_and_in_domain() {
+        let (terrain, mut pad) = shelf();
+        for index in [2, 3, 4] {
+            let mut points = terrain.points().to_vec();
+            points[index].y += 1.0e-12;
+            let changed = pd_core::TerrainDefinition::Heightfield { points_m: points };
+            assert!(!pad_has_flat_in_domain(&changed, &pad));
+        }
+        pad.width_m = 100.0;
+        assert!(!pad_has_flat_in_domain(&terrain, &pad));
+        pad.center_x_m = f64::NAN;
+        assert!(!pad_has_flat_in_domain(&terrain, &pad));
+    }
 }

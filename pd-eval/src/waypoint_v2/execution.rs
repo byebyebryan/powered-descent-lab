@@ -16,6 +16,7 @@ use crate::{
     clearing_body_reserve_query,
     local_clearing::{OrdinaryLive, advance_ordinary, full_ordinary_matches, snapshot_finite},
     nominal_body_reserve_query, nominal_direct_flight_identity,
+    planner_flight::input::PAD_REST_TOLERANCE_M,
     planner_flight::terrain::phase_at_tick,
 };
 
@@ -104,9 +105,23 @@ impl FlightGuard<'_> {
                         || segment.is_some_and(|s| s.kind == WaypointV2SegmentKind::InitialNominal),
                 )?
             };
-            if clearance < required {
+            // Input admission already permits nanometre-scale pad-rest
+            // rounding. Apply it only to the unchanged original source at
+            // step zero, never to airborne reserves or later pad transitions.
+            let initial_pad_rest = state.physics_step == 0
+                && required == 0.0
+                && state.position_m == context.initial_state.position_m
+                && state.velocity_mps == context.initial_state.velocity_mps
+                && state.attitude_rad == context.initial_state.attitude_rad
+                && state.angular_rate_radps == context.initial_state.angular_rate_radps;
+            let minimum_clearance = if initial_pad_rest {
+                -PAD_REST_TOLERANCE_M
+            } else {
+                required
+            };
+            if clearance < minimum_clearance {
                 bail!(
-                    "segment reserve {clearance} below {required} at {}",
+                    "segment reserve {clearance} below {minimum_clearance} at {}",
                     state.physics_step
                 );
             }
@@ -357,4 +372,171 @@ pub(super) fn query_to(
         bail!("contact before query endpoint");
     }
     Ok(query)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pd_core::{SimulationStateSnapshotV1, TerrainDefinition, Vec2};
+
+    fn flat_source(
+        surface_y_m: f64,
+    ) -> (
+        WaypointDirectNominalDirectGenerationRequest,
+        RunContext,
+        SimulationState,
+    ) {
+        let mut request = crate::test_inputs::planner_request("v2_clear_685");
+        let TerrainDefinition::Heightfield { points_m } = &mut request.scenario.world.terrain;
+        for point in points_m {
+            point.y = surface_y_m;
+        }
+        for pad in &mut request.scenario.world.landing_pads {
+            pad.surface_y_m = surface_y_m;
+        }
+        request.scenario.initial_state.position_m.y =
+            surface_y_m + request.scenario.vehicle.geometry.touchdown_base_offset_m;
+        assert!(
+            crate::preflight_nominal_direct_flight(
+                &request,
+                &crate::BodyAwareTerminalPolicyV1::default()
+            )
+            .supported
+        );
+        let context = RunContext::from_scenario(&request.scenario).unwrap();
+        let state = SimulationState::new(&context).unwrap();
+        (request, context, state)
+    }
+
+    fn initial_segment(state: &SimulationState) -> WaypointV2Segment {
+        WaypointV2Segment {
+            kind: WaypointV2SegmentKind::InitialNominal,
+            start_physics_step: 0,
+            end_physics_step: 2,
+            proposal_identity: "source-geometry-regression".to_owned(),
+            updates: vec![FlightProgramUpdateV1 {
+                physics_step: 0,
+                phase: "upright".to_owned(),
+                command: Command::idle(),
+            }],
+            entry_state: SimulationStateSnapshotV1::from_state(state),
+            end_state: SimulationStateSnapshotV1::from_state(state),
+        }
+    }
+
+    #[test]
+    fn source_rest_roundoff_passes_initial_and_first_command_guards() {
+        for height in [
+            0.0,
+            23.206565037797983,
+            -23.206565037797983,
+            0.1,
+            -0.1,
+            27.000000000000004,
+            -37.0,
+        ] {
+            let (request, context, state) = flat_source(height);
+            let segments = [initial_segment(&state)];
+            let mut guard = FlightGuard {
+                request: &request,
+                segments: &segments,
+                diagnostic: false,
+            };
+            assert!(guard.initial(&context, &state).is_ok(), "height {height}");
+            assert!(
+                guard
+                    .before_transition(&context, &state, Command::idle())
+                    .is_ok(),
+                "height {height}"
+            );
+        }
+    }
+
+    #[test]
+    fn source_rest_guard_keeps_real_penetration_tilt_domain_and_nonfinite_rejected() {
+        let (request, context, source) = flat_source(0.0);
+        let segments = [initial_segment(&source)];
+        let mut guard = FlightGuard {
+            request: &request,
+            segments: &segments,
+            diagnostic: false,
+        };
+        let mut state = source.clone();
+        state.position_m.y -= 1.0e-6;
+        assert!(guard.initial(&context, &state).is_err());
+        state = source.clone();
+        state.attitude_rad = 0.2;
+        assert!(guard.initial(&context, &state).is_err());
+        state = source.clone();
+        state.position_m.x = context.world.terrain.points().last().unwrap().x;
+        assert!(guard.initial(&context, &state).is_err());
+        state = source;
+        state.position_m = Vec2::new(f64::NAN, state.position_m.y);
+        assert!(guard.initial(&context, &state).is_err());
+    }
+
+    #[test]
+    fn source_rest_allowance_does_not_leak_to_poststep_or_positive_reserve() {
+        let (request, context, source) = flat_source(0.1);
+        let segments = [initial_segment(&source)];
+        let mut guard = FlightGuard {
+            request: &request,
+            segments: &segments,
+            diagnostic: false,
+        };
+        let mut state = source.clone();
+        state.physics_step = 2;
+        state.sim_time_s = context.sim.physics_dt_s() * 2.0;
+        assert!(guard.after_transition(&context, &state, None).is_err());
+
+        // Even sub-tolerance discrepancies must not use the original-state
+        // allowance when the supplied state no longer matches that source.
+        state = source.clone();
+        state.position_m.y -= 1.0e-10;
+        assert!(guard.initial(&context, &state).is_err());
+        state = source.clone();
+        state.velocity_mps.y = 1.0e-12;
+        assert!(guard.initial(&context, &state).is_err());
+        state = source.clone();
+        state.attitude_rad = 1.0e-12;
+        assert!(guard.initial(&context, &state).is_err());
+        state = source.clone();
+        state.angular_rate_radps = 1.0e-12;
+        assert!(guard.initial(&context, &state).is_err());
+
+        state = source;
+        let pad = context.world.landing_pad(&request.source_pad_id).unwrap();
+        state.position_m.x += pad.width_m;
+        state.position_m.y += request.policy.analytical_policy.minimum_clearance_m - 1.0e-10;
+        assert!(guard.initial(&context, &state).is_err());
+    }
+
+    #[test]
+    fn source_rest_guard_matches_admission_tolerance_without_widening_it() {
+        let (mut request, _, _) = flat_source(0.0);
+        request.scenario.initial_state.position_m.y -= PAD_REST_TOLERANCE_M * 0.5;
+        let policy = crate::BodyAwareTerminalPolicyV1::default();
+        assert!(crate::preflight_nominal_direct_flight(&request, &policy).supported);
+        let context = RunContext::from_scenario(&request.scenario).unwrap();
+        let state = SimulationState::new(&context).unwrap();
+        let segments = [initial_segment(&state)];
+        let mut guard = FlightGuard {
+            request: &request,
+            segments: &segments,
+            diagnostic: false,
+        };
+        assert!(guard.initial(&context, &state).is_ok());
+
+        request.scenario.initial_state.position_m.y -= PAD_REST_TOLERANCE_M * 2.0;
+        assert!(!crate::preflight_nominal_direct_flight(&request, &policy).supported);
+        let context = RunContext::from_scenario(&request.scenario).unwrap();
+        let state = SimulationState::new(&context).unwrap();
+        let segments = [initial_segment(&state)];
+        let mut guard = FlightGuard {
+            request: &request,
+            segments: &segments,
+            diagnostic: false,
+        };
+        assert!(guard.initial(&context, &state).is_err());
+    }
 }

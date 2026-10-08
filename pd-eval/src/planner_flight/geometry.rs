@@ -4,7 +4,7 @@ use pd_core::{ContactClassification, CorridorEnvelope, RunContext, SimulationSta
 use pd_plan::ballistic::PadInputV2;
 use serde::{Deserialize, Serialize};
 
-const INITIAL_REST_TOLERANCE: f64 = 1.0e-9;
+use super::input::PAD_REST_TOLERANCE_M;
 
 pub(super) const GEOMETRY_CONVENTION: &str = "core_current_rotated_feet_and_hull";
 
@@ -74,12 +74,12 @@ pub(super) fn flat_pad_bounds(context: &RunContext, pad: &PadInputV2) -> FlatPad
         terrain.sample_height_strict(right),
     ) {
         (Ok(left_y), Ok(right_y)) => {
-            (left_y - pad.surface_y_m).abs() <= INITIAL_REST_TOLERANCE
-                && (right_y - pad.surface_y_m).abs() <= INITIAL_REST_TOLERANCE
+            (left_y - pad.surface_y_m).abs() <= PAD_REST_TOLERANCE_M
+                && (right_y - pad.surface_y_m).abs() <= PAD_REST_TOLERANCE_M
                 && terrain.points().iter().all(|point| {
                     point.x < left
                         || point.x > right
-                        || (point.y - pad.surface_y_m).abs() <= INITIAL_REST_TOLERANCE
+                        || (point.y - pad.surface_y_m).abs() <= PAD_REST_TOLERANCE_M
                 })
         }
         _ => false,
@@ -104,46 +104,35 @@ fn body_aabb_from_pose(
     let half_w = geometry.hull_width_m * 0.5;
     let half_h = geometry.hull_height_m * 0.5;
     let feet = [
-        position_m
-            + Vec2::new(
-                -geometry.touchdown_half_span_m,
-                -geometry.touchdown_base_offset_m,
-            )
-            .rotated(attitude_rad),
-        position_m
-            + Vec2::new(
-                geometry.touchdown_half_span_m,
-                -geometry.touchdown_base_offset_m,
-            )
-            .rotated(attitude_rad),
-    ];
+        Vec2::new(
+            -geometry.touchdown_half_span_m,
+            -geometry.touchdown_base_offset_m,
+        ),
+        Vec2::new(
+            geometry.touchdown_half_span_m,
+            -geometry.touchdown_base_offset_m,
+        ),
+    ]
+    .map(|point| point.rotated(attitude_rad));
     let hull = [
         Vec2::new(-half_w, -half_h),
         Vec2::new(half_w, -half_h),
         Vec2::new(half_w, half_h),
         Vec2::new(-half_w, half_h),
     ]
-    .map(|point| position_m + point.rotated(attitude_rad));
-    let all = feet.into_iter().chain(hull);
-    let (mut x_min, mut x_max, mut y_min, mut y_max) = (
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-    );
-    for point in all {
-        x_min = x_min.min(point.x);
-        x_max = x_max.max(point.x);
-        y_min = y_min.min(point.y);
-        y_max = y_max.max(point.y);
+    .map(|point| point.rotated(attitude_rad));
+    // Size belongs to rotated local geometry. Adding/subtracting a world
+    // position can inflate an extent by an ulp and invent pad penetration.
+    let (mut horizontal_extent_m, mut vertical_extent_m) = (0.0_f64, 0.0_f64);
+    for point in feet.into_iter().chain(hull) {
+        horizontal_extent_m = horizontal_extent_m.max(point.x.abs());
+        vertical_extent_m = vertical_extent_m.max(point.y.abs());
     }
+    let feet = feet.map(|point| position_m + point);
+    let hull = hull.map(|point| position_m + point);
     BodyAabb {
-        horizontal_extent_m: (x_min - position_m.x)
-            .abs()
-            .max((x_max - position_m.x).abs()),
-        vertical_extent_m: (y_min - position_m.y)
-            .abs()
-            .max((y_max - position_m.y).abs()),
+        horizontal_extent_m,
+        vertical_extent_m,
         feet_x_min_m: feet[0].x.min(feet[1].x),
         feet_x_max_m: feet[0].x.max(feet[1].x),
         hull_x_min_m: hull
@@ -653,4 +642,145 @@ fn hull_vertices(center: Vec2, attitude_rad: f64, context: &RunContext) -> [Vec2
 
 fn dot(left: Vec2, right: Vec2) -> f64 {
     left.x * right.x + left.y * right.y
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pd_core::TerrainDefinition;
+
+    fn flat_context(surface_y_m: f64) -> RunContext {
+        let request = crate::test_inputs::planner_request("v2_clear_685");
+        let mut context = RunContext::from_scenario(&request.scenario).unwrap();
+        context.world.terrain = TerrainDefinition::Heightfield {
+            points_m: vec![
+                Vec2::new(-5000.0, surface_y_m),
+                Vec2::new(5000.0, surface_y_m),
+            ],
+        };
+        context.initial_state.position_m.y =
+            surface_y_m + context.vehicle.geometry.touchdown_base_offset_m;
+        context
+    }
+
+    #[test]
+    fn source_rest_roundoff_does_not_inflate_body_extent() {
+        // Exact height from stopped random-001; no local capture is needed.
+        let context = flat_context(23.206565037797983);
+        let state = SimulationState::new(&context).unwrap();
+        let aabb = body_aabb(&state, &context.vehicle.geometry);
+        assert_eq!(aabb.vertical_extent_m, 5.0);
+        assert_eq!(body_clearance(&context, &state, aabb).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn rotated_body_extents_are_independent_of_world_translation() {
+        let mut geometry = flat_context(0.0).vehicle.geometry;
+        // Exercise feet extending beyond the hull, as well as the normal body.
+        for (span, base) in [(4.0, 5.0), (6.0, 7.0)] {
+            geometry.touchdown_half_span_m = span;
+            geometry.touchdown_base_offset_m = base;
+            for angle in [0.0, 0.2, -0.7, std::f64::consts::FRAC_PI_2] {
+                let reference = body_aabb_from_pose(Vec2::new(0.0, 0.0), angle, &geometry);
+                for position in [
+                    Vec2::new(0.0, 28.206565037797983),
+                    Vec2::new(1200.1, -32.1),
+                    Vec2::new(-1.0e6, 1.0e6),
+                ] {
+                    let translated = body_aabb_from_pose(position, angle, &geometry);
+                    assert_eq!(
+                        translated.horizontal_extent_m,
+                        reference.horizontal_extent_m
+                    );
+                    assert_eq!(translated.vertical_extent_m, reference.vertical_extent_m);
+                    let expected_feet = [Vec2::new(-span, -base), Vec2::new(span, -base)]
+                        .map(|point| position + point.rotated(angle));
+                    assert_eq!(
+                        translated.feet_x_min_m,
+                        expected_feet[0].x.min(expected_feet[1].x)
+                    );
+                    assert_eq!(
+                        translated.feet_x_max_m,
+                        expected_feet[0].x.max(expected_feet[1].x)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn body_query_does_not_clamp_fractional_pad_contact_roundoff() {
+        let context = flat_context(0.1);
+        let state = SimulationState::new(&context).unwrap();
+        assert!(
+            body_clearance(
+                &context,
+                &state,
+                body_aabb(&state, &context.vehicle.geometry)
+            )
+            .unwrap()
+                < 0.0
+        );
+    }
+
+    #[test]
+    fn body_query_keeps_penetration_tilt_domain_and_airborne_reserve_strict() {
+        let context = flat_context(0.0);
+        let mut state = SimulationState::new(&context).unwrap();
+        state.position_m.y -= 1.0e-6;
+        assert!(
+            body_clearance(
+                &context,
+                &state,
+                body_aabb(&state, &context.vehicle.geometry)
+            )
+            .unwrap()
+                < 0.0
+        );
+        state.position_m.y = context.initial_state.position_m.y;
+        state.attitude_rad = 0.2;
+        assert!(
+            body_clearance(
+                &context,
+                &state,
+                body_aabb(&state, &context.vehicle.geometry)
+            )
+            .unwrap()
+                < 0.0
+        );
+        state.attitude_rad = 0.0;
+        state.position_m.x = 4999.0;
+        assert!(
+            body_clearance(
+                &context,
+                &state,
+                body_aabb(&state, &context.vehicle.geometry)
+            )
+            .is_err()
+        );
+
+        state.position_m.x = context.initial_state.position_m.x;
+        state.position_m.y += 10.0 - 1.0e-6;
+        let no_pad = FlatPadBounds {
+            left_m: 0.0,
+            right_m: 0.0,
+            surface_y_m: 0.0,
+            flat: false,
+        };
+        let mut scan = empty_clearance_scan();
+        record_airborne_clearance(
+            &context,
+            &state,
+            2,
+            "coast",
+            ClearancePolicy {
+                source_pad: no_pad,
+                target_pad: no_pad,
+                minimum_clearance_m: 10.0,
+            },
+            &mut scan,
+        );
+        assert!(!scan.all_airborne_states_passed);
+        assert!(scan.first_violation.unwrap().clearance_m.unwrap() > 0.0);
+    }
 }
