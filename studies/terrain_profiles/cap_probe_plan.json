@@ -1,0 +1,37 @@
+{
+  "baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-diagnostics-20261007-v1",
+  "baseline_manifest_sha256": "1372da0120b7dbb9a2eb72ae84c2ebc6a8dbbdf823c6db9ddd95b50a9b814a7c",
+  "baseline_receipt_sha256": "03b8ac8f74b7fd7290bf0e65cd1e306fbe47da27689631e234f881d1eb6ea09c",
+  "build_wall_limit_s": 900,
+  "campaign_wall_limit_s": 900,
+  "caps": [
+    12,
+    24
+  ],
+  "case_wall_limit_s": 120,
+  "control_case_ids": [
+    "random-000",
+    "random-253"
+  ],
+  "maximum_measured_attempts": 12,
+  "policy_source_path": "pd-plan/src/waypoint_v2.rs",
+  "policy_source_sha256": "ae6d656f7ab5c75341ac37da28291dea2b7debb9ecd26324a1cd746d4c0e5016",
+  "primary_case_ids": [
+    "random-000",
+    "random-253",
+    "random-030",
+    "random-280"
+  ],
+  "production_executable_sha256": "fdbf20a694de3ac82b79492d119fe850e4bfea5d3c4c70a3ca854a72cfe5d2af",
+  "repeat_case_ids": [
+    "random-030",
+    "random-280"
+  ],
+  "schema": "pd-lab.correction-cap-probe-plan.v1",
+  "second_stage_condition": "subject_still_at_correction_limit",
+  "subject_case_ids": [
+    "random-030",
+    "random-280"
+  ],
+  "workers": 1
+}

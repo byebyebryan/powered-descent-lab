@@ -1302,6 +1302,36 @@ mod tests {
     }
 
     #[test]
+    fn cap_sweep_is_reachable_from_both_homes_topic_and_library_when_present() {
+        let root = fixture_root();
+        let relative = "eval/planner_v2_random_terrain/recheck-cap-sweep-20261007-v6/index.html";
+        let detail = root.join("outputs/reports").join(relative);
+        fs::create_dir_all(detail.parent().unwrap()).unwrap();
+        fs::write(&detail, "retained common batch").unwrap();
+        ReportSite::new(&root).refresh_home().unwrap();
+        for name in ["outputs/index.html", "outputs/reports/index.html"] {
+            let html = fs::read_to_string(root.join(name)).unwrap();
+            assert!(html.contains("href=\"/reports/topics/waypoint-planning/index.html\""));
+            assert!(html.contains("1,000-world paired terrain sweep"));
+        }
+        for name in [
+            "outputs/reports/topics/waypoint-planning/index.html",
+            "outputs/reports/library/index.html",
+        ] {
+            let html = fs::read_to_string(root.join(name)).unwrap();
+            assert!(
+                html.contains(&format!("href=\"/reports/{relative}\"")),
+                "{name}"
+            );
+            assert!(
+                html.contains("1,000-world terrain sweep") && html.contains("Experimental cap 24")
+            );
+        }
+        assert_eq!(fs::read_to_string(detail).unwrap(), "retained common batch");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn malformed_navigation_fails_before_home_writes() {
         let root = fixture_root();
         fs::write(root.join("outputs/index.html"), "root sentinel").unwrap();

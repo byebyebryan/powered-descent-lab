@@ -1,4 +1,4 @@
-//! Presentation-only adapter for a separate frozen procedural coverage survey.
+//! Saved-evidence validation and presentation for a frozen procedural survey.
 //! Does not relax the sealed benchmark, simulate, or select flight trajectories.
 
 use std::{
@@ -26,7 +26,10 @@ use crate::{
     waypoint_v2_report::render_rich_flight,
 };
 
+mod cap_report;
 mod comparison;
+
+pub use cap_report::render_saved_cap_sweep;
 
 /// Read-only comparator shared by collection and publication. Typed native
 /// serialization authenticates proposal hashes; no simulation is constructed.
@@ -256,6 +259,7 @@ fn validate(root: &Path) -> Result<(Survey, Vec<SavedFlight>)> {
             include_str!("../../studies/terrain_profiles/survey_plan.json"),
             include_str!("../../studies/terrain_profiles/challenge_calibration_plan.json"),
             include_str!("../../studies/terrain_profiles/challenge_plan.json"),
+            include_str!("../../studies/terrain_profiles/challenge_validation_1k_plan.json"),
             include_str!("../../studies/terrain_profiles/intervention_timing_plan.json")
         ]
         .iter()
@@ -278,6 +282,8 @@ fn validate(root: &Path) -> Result<(Survey, Vec<SavedFlight>)> {
             "intervention_timing_plan.json"
         } else if phase == "calibration" {
             "challenge_calibration_plan.json"
+        } else if phase == "validation_1k" {
+            "challenge_validation_1k_plan.json"
         } else {
             "challenge_plan.json"
         };
@@ -486,6 +492,18 @@ fn validate(root: &Path) -> Result<(Survey, Vec<SavedFlight>)> {
         "survey summary differs from recorded rows"
     );
     Ok((survey, flights))
+}
+
+/// Check the same saved-evidence contract as rendering, without creating a
+/// report site, running a mission or performing a fresh physical replay.
+pub fn check_saved_survey(capture: &Path) -> Result<Value> {
+    let (survey, _) = validate(capture)?;
+    Ok(json!({
+        "verified": true,
+        "fresh_flights": 0,
+        "stopped_reason": survey.stopped_reason,
+        "summary": survey.summary,
+    }))
 }
 
 fn escape(value: &str) -> String {

@@ -279,6 +279,7 @@ pub(crate) fn replay_saved_waypoint_v2_evidence(
     result: &WaypointV2FlightResult,
 ) -> Result<BoundedRunArtifactsV1> {
     result.policy.validate().map_err(anyhow::Error::msg)?;
+    super::early_exit::validate_records(result)?;
     ensure!(
         result.input_identity == nominal_direct_flight_identity(&(request, &result.policy))?,
         "saved V2 result input identity does not match its complete request and policy"

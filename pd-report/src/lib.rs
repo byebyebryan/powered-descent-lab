@@ -729,13 +729,7 @@ fn build_preview_svg_with_handoffs(
                 })
                 .unwrap_or_default()
             };
-            (
-                trajectory,
-                reference,
-                series
-                    .manifest
-                    .map(|manifest| enum_label(&manifest.mission_outcome)),
-            )
+            (trajectory, reference, series.manifest)
         })
         .collect::<Vec<_>>();
 
@@ -873,11 +867,19 @@ fn build_preview_svg_with_handoffs(
             .iter()
             .enumerate()
             .filter_map(|(index, (trajectory, _, outcome))| {
-                let outcome = outcome.as_deref()?;
+                let manifest = (*outcome)?;
                 trajectory.last().copied().map(|(x, y)| {
                     let (px, py) = project(x, y);
                     let seed_color = preview_seed_color(index, trajectories.len());
-                    match outcome {
+                    let (outcome, label) = match (&manifest.physical_outcome, &manifest.mission_outcome) {
+                        (pd_core::PhysicalOutcome::Crashed, _) => ("crashed", "Physical crash"),
+                        (_, pd_core::MissionOutcome::Success) => ("success", "Mission success"),
+                        (pd_core::PhysicalOutcome::LandedOffTarget, _) => ("failed_off_target", "Landed off target"),
+                        (pd_core::PhysicalOutcome::Flying, pd_core::MissionOutcome::InProgress) if manifest.physics_steps == 0 => ("not_started", "Not launched: no physics steps executed"),
+                        (pd_core::PhysicalOutcome::Flying, pd_core::MissionOutcome::InProgress) => ("in_progress", "Saved airborne endpoint: mission unfinished, not a crash"),
+                        _ => ("stopped", "Other stopped outcome; see mission and physical status"),
+                    };
+                    let marker = match outcome {
                         "success" => format!(
                             r##"<circle cx="{px:.2}" cy="{py:.2}" r="{radius:.2}" fill="{fill}" stroke="#fffaf2" stroke-width="{stroke:.2}"/>"##,
                             radius = if multi_run { 2.6 } else { 3.4 },
@@ -893,15 +895,27 @@ fn build_preview_svg_with_handoffs(
                             stroke_color = if multi_run { seed_color.as_str() } else { "#fffaf2" },
                             stroke = if multi_run { 0.9 } else { 1.1 },
                         ),
-                        _ => format!(
-                            r##"<path d="M {x1:.2} {y1:.2} L {x2:.2} {y2:.2} M {x2:.2} {y1:.2} L {x1:.2} {y2:.2}" stroke="#b5542d" stroke-width="{stroke:.2}" stroke-linecap="round"/>"##,
+                        "crashed" => format!(
+                            r##"<path d="M {x1:.2} {y1:.2} L {x2:.2} {y2:.2} M {x2:.2} {y1:.2} L {x1:.2} {y2:.2}" stroke="#c92a2a" stroke-width="{stroke:.2}" stroke-linecap="round"/>"##,
                             x1 = px - if multi_run { 2.8 } else { 3.6 },
                             y1 = py - if multi_run { 2.8 } else { 3.6 },
                             x2 = px + if multi_run { 2.8 } else { 3.6 },
                             y2 = py + if multi_run { 2.8 } else { 3.6 },
                             stroke = if multi_run { 1.35 } else { 1.8 },
                         ),
-                    }
+                        "not_started" => format!(
+                            r##"<circle cx="{px:.2}" cy="{py:.2}" r="3.6" fill="#fffaf2" stroke="#68717a" stroke-width="1.8"/>"##,
+                        ),
+                        "in_progress" => format!(
+                            r##"<path d="M {x1:.2} {y1:.2} V {y2:.2} M {x2:.2} {y1:.2} V {y2:.2}" stroke="#b26b00" stroke-width="2.2" stroke-linecap="round"/>"##,
+                            x1 = px - 1.7, x2 = px + 1.7, y1 = py - 3.4, y2 = py + 3.4,
+                        ),
+                        _ => format!(
+                            r##"<rect x="{x:.2}" y="{y:.2}" width="6" height="6" fill="#fffaf2" stroke="#b26b00" stroke-width="1.8"/>"##,
+                            x = px - 3.0, y = py - 3.0,
+                        ),
+                    };
+                    format!(r#"<g class="endpoint-marker" data-outcome="{outcome}"><title>{label}</title>{marker}</g>"#)
                 })
             })
             .collect::<String>()
@@ -2386,6 +2400,48 @@ mod tests {
         assert!(!legacy_svg.contains("planner safe profile and selected centerline"));
         fs::remove_file(report_path).expect("planner report should be removable");
         fs::remove_file(legacy_path).expect("legacy report should be removable");
+    }
+
+    #[test]
+    fn preview_distinguishes_unstarted_airborne_crashed_and_completed_outcomes() {
+        let scenario = fixture_scenario();
+        let mut manifest = fixture_manifest(&scenario);
+        let positions = [scenario.initial_state.position_m];
+        let render = |manifest: &RunManifest| {
+            build_preview_svg(
+                &[PreviewRenderSeries {
+                    scenario: &scenario,
+                    manifest: Some(manifest),
+                    trajectory: PreviewTrajectory::Positions(&positions),
+                    controller_updates: None,
+                    route_plan: None,
+                }],
+                PreviewOptions::saved_flight(),
+            )
+        };
+        let not_started = render(&manifest);
+        assert!(not_started.contains("data-outcome=\"not_started\""));
+        assert!(not_started.contains("Not launched") && !not_started.contains("#c92a2a"));
+        manifest.physics_steps = 120;
+        let airborne = render(&manifest);
+        assert!(airborne.contains("data-outcome=\"in_progress\""));
+        assert!(airborne.contains("not a crash") && !airborne.contains("#c92a2a"));
+        manifest.mission_outcome = MissionOutcome::FailedTimeout;
+        manifest.physical_outcome = PhysicalOutcome::TimedOut;
+        assert!(render(&manifest).contains("data-outcome=\"stopped\""));
+        manifest.mission_outcome = MissionOutcome::FailedCrash;
+        manifest.physical_outcome = PhysicalOutcome::Crashed;
+        let crash = render(&manifest);
+        assert!(crash.contains("data-outcome=\"crashed\"") && crash.contains("#c92a2a"));
+        manifest.mission_outcome = MissionOutcome::FailedOffTarget;
+        manifest.physical_outcome = PhysicalOutcome::LandedOffTarget;
+        assert!(render(&manifest).contains("data-outcome=\"failed_off_target\""));
+        manifest.mission_outcome = MissionOutcome::Success;
+        manifest.physical_outcome = PhysicalOutcome::LandedOnTarget;
+        assert!(render(&manifest).contains("data-outcome=\"success\""));
+        // A completed waypoint-contract mission may still be airborne.
+        manifest.physical_outcome = PhysicalOutcome::Flying;
+        assert!(render(&manifest).contains("data-outcome=\"success\""));
     }
 
     #[test]

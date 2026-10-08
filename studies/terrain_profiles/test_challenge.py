@@ -24,6 +24,7 @@ class ChallengeTests(unittest.TestCase):
     def setUp(self):
         self.pilot, self.refinement, self.base = survey.load_plan(challenge.HERE / "challenge_calibration_plan.json")
         self.main, _, _ = survey.load_plan(challenge.HERE / "challenge_plan.json")
+        self.validation, _, _ = survey.load_plan(challenge.HERE / "challenge_validation_1k_plan.json")
 
     def test_populations_are_distinct_reproducible_and_all_accounted(self):
         sanity, _, _ = survey.load_plan()
@@ -79,6 +80,42 @@ class ChallengeTests(unittest.TestCase):
             changed["recipes"][0][key] = value
             with self.assertRaises(ValueError):
                 challenge.validate(changed, self.refinement, self.base)
+
+    def test_validation_1k_is_fresh_balanced_bounded_and_recipe_exact(self):
+        sanity, _, _ = survey.load_plan()
+        old = set(self.base["seeds"])
+        for plan in (sanity, self.pilot, self.main):
+            old.update(survey.seeds_for(plan))
+        fresh = survey.seeds_for(self.validation)
+        self.assertEqual(len(fresh), 1000)
+        self.assertEqual(len(set(fresh)), 1000)
+        self.assertFalse(set(fresh) & old)
+        self.assertEqual(fresh, survey.seeds_for(self.validation))
+        self.assertEqual(self.validation["recipes"], self.main["recipes"])
+        self.assertEqual(self.validation["repeat_indices"], [0, 250, 500, 750, 1])
+        waves = survey.waves_for(self.validation)
+        self.assertEqual([i for wave in waves for i in wave], list(range(1008)))
+        self.assertTrue(all(1 <= len(wave) <= 4 for wave in waves))
+        with patch("challenge.study.load_reference", return_value=FakeGenerator):
+            profiles = challenge.sample(self.validation, self.base, self.refinement, Path("synthetic"))
+            reverse = challenge.sample(self.validation, self.base, self.refinement, Path("synthetic"), True)
+        self.assertEqual(profiles, reverse)
+        self.assertEqual({p["seed"] for p in profiles}, set(fresh))
+        self.assertEqual({r["id"]:sum(p["variant"] == r["id"] for p in profiles)
+                          for r in self.main["recipes"]}, {r["id"]:250 for r in self.main["recipes"]})
+        for key, value in (("seed_count",1001), ("master_seed",2026100704), ("maximum_measured_attempts",1009)):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                challenge.validate(dict(self.validation, **{key:value}), self.refinement, self.base)
+        changed = copy.deepcopy(self.validation)
+        changed["recipes"][0]["vertical_scale"] = 5
+        with self.assertRaises(ValueError):
+            challenge.validate(changed, self.refinement, self.base)
+
+    def test_challenge_source_paths_are_explicit_and_unknown_phases_rejected(self):
+        for plan in (self.pilot, self.main, self.validation):
+            self.assertEqual(survey.load_plan(challenge.HERE / challenge.plan_filename(plan["phase"]))[0], plan)
+        with self.assertRaises(ValueError):
+            challenge.plan_filename("unknown")
 
 
 if __name__ == "__main__":

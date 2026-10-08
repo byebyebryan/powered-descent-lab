@@ -1,0 +1,20 @@
+{
+  "schema": "pd-lab.terrain-handoff-probe-plan.v1",
+  "baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-cap-sweep-20261007-v1",
+  "baseline_manifest_sha256": "33397ffe3d99187a44326ab921baf981b60d86397585c9983e49ac5edce04315",
+  "baseline_receipt_sha256": "51808ed5b564d210e27d4e971172e49a7d7f6d005cd0667adbbf25ae3635551b",
+  "maximum_probes": 19,
+  "probe_wall_limit_s": 120,
+  "campaign_wall_limit_s": 900,
+  "workers": 1,
+  "repeats": ["random-967-early", "random-983-early"],
+  "cases": [
+    {"case_id": "random-983", "role": "failure", "scenario_path": "runs/random-983/scenario.json", "scenario_sha256": "9be1909b6b9e18b974b5360170ad6f81637e08b4253da308954c774154a7fb37", "flight_path": "runs/random-983/flight.json", "flight_sha256": "623cc4ffc99a310d33883cebb7fa19265d84827f4393adbc1369c462ac9d74ee", "cycle_index": 0, "original_row_id": "fallback_1_quarters_row_25", "original_step": 3112, "early_step": 2428, "alternative_row_id": "fallback_1_quarters_row_19", "alternative_step": 3124},
+    {"case_id": "random-967", "role": "failure", "scenario_path": "runs/random-967/scenario.json", "scenario_sha256": "9d60685c31ec1f1931dd031bb260e2ff69007e59ad35e76039cda6ae29632084", "flight_path": "runs/random-967/flight.json", "flight_sha256": "949f819c6585f7901878a5e242576cc9935c7a5ad83407e52c3cdfd28e149577", "cycle_index": 0, "original_row_id": "fallback_2_quarters_row_04", "original_step": 3218, "early_step": 2882, "alternative_row_id": "fallback_2_quarters_row_13", "alternative_step": 3550},
+    {"case_id": "random-955", "role": "failure", "scenario_path": "runs/random-955/scenario.json", "scenario_sha256": "9b435cfe49f4e0dc3e4e38ed30e27a1695c45def403e793fa3bb761e26841ba0", "flight_path": "runs/random-955/flight.json", "flight_sha256": "d78b47f2cbdb1d4aff40a73865585edc23962946513fed522f4d0331f923ce6b", "cycle_index": 0, "original_row_id": "source_75_percent_row_41", "original_step": 3150, "early_step": 2964, "alternative_row_id": "source_62_5_percent_row_41", "alternative_step": 3160},
+    {"case_id": "random-024", "role": "failure", "scenario_path": "runs/random-024/scenario.json", "scenario_sha256": "f5cdac886b08e832c440bb8d8fd6fb19b008ae369e9b775207e12d57d1b9cf59", "flight_path": "runs/random-024/flight.json", "flight_sha256": "ed962b970a6987744ab8b88a4306f9116d4af2dbb627700f1442679af4cea951", "cycle_index": 0, "original_row_id": "source_75_percent_row_34", "original_step": 3062, "early_step": 2828, "alternative_row_id": "source_75_percent_row_33", "alternative_step": 3118},
+    {"case_id": "random-516", "role": "failure", "scenario_path": "runs/random-516/scenario.json", "scenario_sha256": "8636890bfd55da023ce3edba3fe24d3e5f13ffc441bf655fddca696e1e2caf6a", "flight_path": "runs/random-516/flight.json", "flight_sha256": "bc2b442d6556ce98f544f854245072cec5e51cd15dcd89ffcc60e7f439d56819", "cycle_index": 0, "original_row_id": "source_75_percent_row_40", "original_step": 2756, "early_step": 2274, "alternative_row_id": "source_62_5_percent_row_41", "alternative_step": 2756},
+    {"case_id": "random-271", "role": "control", "scenario_path": "runs/random-271/scenario.json", "scenario_sha256": "743a63b82c905a5eea51479a72d7c19044888b1c63f2fdd21d33ef6e043ee552", "flight_path": "runs/random-271/flight.json", "flight_sha256": "65a6b192b30c8ea87c49f332dee00327a00687bb0608a49b29e93cd824a05745", "cycle_index": 3, "original_row_id": "live_1_quarters_row_39", "original_step": 4226, "early_step": 4152, "alternative_row_id": "live_0_quarters_row_27", "alternative_step": 4462},
+    {"case_id": "random-000", "role": "control", "scenario_path": "runs/random-000/scenario.json", "scenario_sha256": "26223e6d0f5ffaeb2aa4b8a385f14e95d644b4d22a57a86a4d5ebdbb5a4e9014", "flight_path": "runs/random-000/flight.json", "flight_sha256": "8ef5c2c170122d75455b3167089f4c1a1e1f0aafe4c82c7b0aeceb68238304e8", "cycle_index": 0, "original_row_id": null, "original_step": 0, "early_step": null, "alternative_row_id": null, "alternative_step": null}
+  ]
+}

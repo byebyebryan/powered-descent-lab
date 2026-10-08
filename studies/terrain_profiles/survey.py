@@ -143,7 +143,8 @@ def preflight(binary, path):
 
 def prepare(args):
     plan_path = getattr(args, "plan", PLAN).resolve()
-    if plan_path not in [PLAN.resolve(), (HERE / "challenge_calibration_plan.json").resolve(), (HERE / "challenge_plan.json").resolve()]:
+    if plan_path not in [PLAN.resolve(), *((HERE / challenge.plan_filename(phase)).resolve()
+                                         for phase in ("calibration", "held_out", "validation_1k"))]:
         raise ValueError("unknown campaign plan source")
     plan, refinement, base = load_plan(plan_path)
     binary = args.binary.resolve()
@@ -162,7 +163,7 @@ def prepare(args):
     study.write_new(args.output / "plan.json", plan_path.read_bytes())
     for path in ("study.py", "refinement.py", "survey.py", "sentinel_comparison.py", "sentinel_comparison.json", "sentinel_comparison_v2.json",
                  "plan.json", "refinement_plan.json", "survey_plan.json", "scenario_template.json",
-                 "challenge.py", "challenge_calibration_plan.json", "challenge_plan.json"):
+                 "challenge.py", "challenge_calibration_plan.json", "challenge_plan.json", "challenge_validation_1k_plan.json"):
         study.write_new(args.output / "inputs/tools" / path, (HERE / path).read_bytes())
     for path in base["pylander"]["files"]:
         study.write_new(args.output / "inputs/reference" / path, (args.pylander_root / path).read_bytes())
@@ -173,7 +174,8 @@ def prepare(args):
         study.write_new(args.output / "inputs/source" / path, data)
     profiles = sample(plan, base, refinement, args.pylander_root)
     repeated = subprocess.run([sys.executable, "-B", str(HERE / "survey.py"), "sample", "--pylander-root",
-                              str(args.output / "inputs/reference"), "--plan", str(args.output / "plan.json"), "--reverse"], capture_output=True, check=True, timeout=120)
+                              str(args.output / "inputs/reference"), "--plan", str(args.output / "plan.json"), "--reverse"],
+                             capture_output=True, check=True, timeout=1200 if plan.get("phase") == "validation_1k" else 120)
     if study.encoded(profiles) != study.encoded(json.loads(repeated.stdout)):
         raise ValueError("fresh-process reversed generation differs")
     lookup = {p["seed"]: p for p in profiles}
@@ -225,7 +227,7 @@ def verify_inputs(root, binary=None):
     plan_bytes = (root / "plan.json").read_bytes()
     if plan.get("schema") == challenge.SCHEMA:
         source_path = manifest.get("plan_source_path")
-        expected_path = "studies/terrain_profiles/" + ("challenge_calibration_plan.json" if plan["phase"] == "calibration" else "challenge_plan.json")
+        expected_path = "studies/terrain_profiles/" + challenge.plan_filename(plan["phase"])
         if (source_path != expected_path or manifest["source"]["files"].get(source_path) != study.digest(plan_bytes)
                 or (root / "inputs/source" / source_path).read_bytes() != plan_bytes):
             raise ValueError("challenge plan is not bound to frozen source")

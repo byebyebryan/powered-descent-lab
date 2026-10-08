@@ -36,8 +36,26 @@ enum Commands {
     WaypointV2Flight(WaypointV2FlightArgs),
     /// Render a saved random-terrain survey using common reports; runs no flights.
     RenderTerrainSurvey(TerrainSurveyArgs),
+    /// Publish a saved experimental cap sweep with paired comparison; runs no flights.
+    RenderTerrainCapSweep(TerrainSurveyArgs),
+    /// Check a saved terrain survey without flights, replay or report writes.
+    CheckTerrainSurvey(TerrainSurveyCheckArgs),
     /// Compare saved flights under an explicit preservation contract; no flights or writes.
     CompareTerrainFlights(TerrainComparisonArgs),
+    /// Run one source-replayed counterfactual handoff probe; not a mission or publication.
+    ProbeTerrainHandoff(TerrainHandoffProbeArgs),
+}
+
+#[derive(Debug, Parser)]
+struct TerrainHandoffProbeArgs {
+    #[arg(long)]
+    scenario: PathBuf,
+    #[arg(long)]
+    baseline_flight: PathBuf,
+    #[arg(long)]
+    probe_spec: PathBuf,
+    #[arg(long)]
+    output_dir: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -58,6 +76,12 @@ struct TerrainSurveyArgs {
     output_dir: PathBuf,
     #[arg(long)]
     capture_base_href: String,
+}
+
+#[derive(Debug, Parser)]
+struct TerrainSurveyCheckArgs {
+    #[arg(long)]
+    capture_dir: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -324,6 +348,18 @@ fn main() -> Result<()> {
             )?;
             println!("{}", args.output_dir.display());
         }
+        Commands::RenderTerrainCapSweep(args) => {
+            pd_eval::terrain_survey::render_saved_cap_sweep(
+                &args.capture_dir,
+                &args.output_dir,
+                &args.capture_base_href,
+            )?;
+            println!("{}", args.output_dir.display());
+        }
+        Commands::CheckTerrainSurvey(args) => {
+            let result = pd_eval::terrain_survey::check_saved_survey(&args.capture_dir)?;
+            println!("{}", serde_json::to_string(&result)?);
+        }
         Commands::CompareTerrainFlights(args) => {
             let exceptions = pd_eval::terrain_survey::compare_saved_flights(
                 &args.actual,
@@ -331,6 +367,15 @@ fn main() -> Result<()> {
                 &args.contract_id,
             )?;
             println!("{}", serde_json::to_string(&exceptions)?);
+        }
+        Commands::ProbeTerrainHandoff(args) => {
+            let result = pd_eval::waypoint_v2::handoff_probe::run(
+                &args.scenario,
+                &args.baseline_flight,
+                &args.probe_spec,
+                &args.output_dir,
+            )?;
+            println!("{}", serde_json::to_string(&result)?);
         }
         Commands::WaypointV2Flight(args) => {
             let policy_version = args.policy_version;
@@ -585,7 +630,10 @@ mod direct_generation_cli_tests {
                 "promote-cache",
                 "waypoint-v2-flight",
                 "render-terrain-survey",
+                "render-terrain-cap-sweep",
+                "check-terrain-survey",
                 "compare-terrain-flights",
+                "probe-terrain-handoff",
             ]
         );
         for command in [
@@ -641,6 +689,48 @@ mod direct_generation_cli_tests {
             Cli::try_parse_from(args).unwrap().command,
             Commands::RenderTerrainSurvey(_)
         ));
+    }
+
+    #[test]
+    fn cap_sweep_publication_is_explicit_and_separate_from_ordinary_survey_admission() {
+        assert!(Cli::try_parse_from(["pd-eval", "render-terrain-cap-sweep"]).is_err());
+        assert!(matches!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "render-terrain-cap-sweep",
+                "--capture-dir",
+                "saved",
+                "--output-dir",
+                "new-site",
+                "--capture-base-href",
+                "/eval/planner_v2_random_terrain/saved/",
+            ])
+            .unwrap()
+            .command,
+            Commands::RenderTerrainCapSweep(_)
+        ));
+    }
+
+    #[test]
+    fn terrain_survey_checker_is_a_separate_read_only_frontdoor() {
+        assert!(Cli::try_parse_from(["pd-eval", "check-terrain-survey"]).is_err());
+        assert!(matches!(
+            Cli::try_parse_from(["pd-eval", "check-terrain-survey", "--capture-dir", "saved"])
+                .unwrap()
+                .command,
+            Commands::CheckTerrainSurvey(_)
+        ));
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "check-terrain-survey",
+                "--capture-dir",
+                "saved",
+                "--output-dir",
+                "site"
+            ])
+            .is_err()
+        );
     }
 
     #[test]
@@ -940,6 +1030,34 @@ mod tests {
         assert_eq!(
             pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::revision_2()).unwrap(),
             2
+        );
+    }
+
+    #[test]
+    fn handoff_probe_requires_explicit_inputs_and_create_only_output() {
+        assert!(Cli::try_parse_from(["pd-eval", "probe-terrain-handoff"]).is_err());
+        let Commands::ProbeTerrainHandoff(args) = Cli::try_parse_from([
+            "pd-eval",
+            "probe-terrain-handoff",
+            "--scenario",
+            "scenario.json",
+            "--baseline-flight",
+            "flight.json",
+            "--probe-spec",
+            "spec.json",
+            "--output-dir",
+            "capture",
+        ])
+        .unwrap()
+        .command
+        else {
+            panic!("wrong command");
+        };
+        assert_eq!(args.output_dir, PathBuf::from("capture"));
+        assert_eq!(args.probe_spec, PathBuf::from("spec.json"));
+        assert!(
+            Cli::try_parse_from(["pd-eval", "probe-terrain-handoff", "--policy-version", "3"])
+                .is_err()
         );
     }
 }

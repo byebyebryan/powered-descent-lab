@@ -163,6 +163,7 @@ fn correction_certificate_replay_failure_does_not_commit_proof_flags() {
         handoff_source_replay_passed: false,
         certificate_source_replay_passed: false,
         row_diagnostics: Vec::new(),
+        early_exit: None,
     };
 
     let error = flight
@@ -255,6 +256,7 @@ fn local_search_checkpoint_retains_completed_rows_after_later_error() {
         handoff_source_replay_passed: false,
         certificate_source_replay_passed: false,
         row_diagnostics: Vec::new(),
+        early_exit: None,
     };
 
     checkpoint_local_search(&mut pending_cycle, &local_search);
@@ -667,8 +669,9 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
                     selected.schedule.entry_physics_step,
                     selected.entry_state.physics_step
                 );
-                assert_eq!(selected.schedule.handoff_physics_step, handoff_physics_step);
-                assert_eq!(selected.handoff_state.physics_step, handoff_physics_step);
+                let actual = local.actual_handoff_state().unwrap();
+                assert!(selected.schedule.handoff_physics_step >= handoff_physics_step);
+                assert_eq!(actual.physics_step, handoff_physics_step);
                 assert!(selected.schedule.entry_physics_step < handoff_physics_step);
                 assert!(selected.schedule.continuation_end_physics_step <= deadline);
                 assert_eq!(result.absolute_deadline_physics_step, Some(deadline));
@@ -677,18 +680,24 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
                     cycle.current_state.physics_step as f64 / f64::from(context.sim.physics_hz)
                 );
                 assert_eq!(
-                    selected.handoff_state.sim_time_s,
+                    actual.sim_time_s,
                     handoff_physics_step as f64 / f64::from(context.sim.physics_hz)
                 );
-                assert!(selected.handoff_state.fuel_kg <= cycle.current_state.fuel_kg);
-                assert!(selected.handoff_state.fuel_kg >= 0.0);
+                assert!(actual.fuel_kg <= cycle.current_state.fuel_kg);
+                assert!(actual.fuel_kg >= 0.0);
                 saw_piece_origin_differ_from_entry |=
                     cycle.current_state.physics_step != selected.schedule.entry_physics_step;
 
                 let certificate = local.certificate_state.as_ref().unwrap();
-                assert_eq!(certificate, &selected.continuation_end_state);
+                let expected_certificate = local
+                    .early_exit
+                    .as_ref()
+                    .filter(|e| e.disposition == WaypointV2EarlyExitDisposition::Committed)
+                    .and_then(|e| e.continuation_end_state.as_ref())
+                    .unwrap_or(&selected.continuation_end_state);
+                assert_eq!(certificate, expected_certificate);
                 assert!(certificate.physics_step > handoff_physics_step);
-                assert_ne!(certificate, &selected.handoff_state);
+                assert_ne!(certificate, actual);
                 assert!(local.handoff_source_replay_passed);
                 assert!(local.certificate_source_replay_passed);
 
@@ -704,7 +713,7 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
                 );
                 assert_eq!(correction_segment.end_physics_step, handoff_physics_step);
                 assert_eq!(correction_segment.entry_state, selected.entry_state);
-                assert_eq!(correction_segment.end_state, selected.handoff_state);
+                assert_eq!(&correction_segment.end_state, actual);
                 assert_eq!(
                     correction_segment.updates.len() as u64,
                     pd_plan::waypoint_v2::command_count(
@@ -713,10 +722,7 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
                     )
                     .unwrap()
                 );
-                assert_eq!(
-                    result.segments.last().unwrap().end_state,
-                    selected.handoff_state
-                );
+                assert_eq!(&result.segments.last().unwrap().end_state, actual);
                 assert_ne!(result.segments.last().unwrap().end_state, *certificate);
                 assert!(result.segments.iter().all(|segment| {
                     segment.end_physics_step <= deadline
@@ -734,7 +740,7 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
                         .all(|segments| { segments[0].end_state == segments[1].entry_state })
                 );
 
-                previous_handoff = selected.handoff_state.clone();
+                previous_handoff = actual.clone();
                 previous_certificate = Some(certificate.clone());
                 handoff_count += 1;
             }
@@ -755,7 +761,12 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
     );
     assert_eq!(result.correction_count as usize, handoff_count);
     assert_eq!(result.absolute_deadline_physics_step, Some(deadline));
-    assert_eq!(result.planning_stop, WaypointV2Stop::Landed);
+    assert_eq!(
+        result.planning_stop,
+        WaypointV2Stop::Landed,
+        "{:?}",
+        result.reason
+    );
     assert_eq!(
         result.physical_outcome,
         Some(pd_core::PhysicalOutcome::LandedOnTarget)
@@ -766,4 +777,170 @@ fn tracked_policy3_plateau_preserves_actual_handoff_across_multiple_cycles() {
     );
     assert!(result.integrity_passed);
     assert!(result.final_source_replay_passed);
+
+    // The optional query is a single record on an already selected row, never
+    // a list of new candidate boundaries. Exercise its saved/runtime bindings
+    // on this maintained fixture, not on measured diagnostic subjects.
+    early_exit::validate_records(result).unwrap();
+    let index = result
+        .cycles
+        .iter()
+        .position(|c| {
+            c.local_search
+                .as_ref()
+                .and_then(|s| s.early_exit.as_ref())
+                .is_some_and(|e| e.disposition == WaypointV2EarlyExitDisposition::Committed)
+        })
+        .expect("fixture exercises early commit");
+    let local = result.cycles[index].local_search.as_ref().unwrap();
+    let proposal = local.selected.as_ref().unwrap();
+    let exit = local.early_exit.as_ref().unwrap();
+    assert!(exit.query_state.as_ref().unwrap().physics_step < proposal.handoff_state.physics_step);
+    let updates = ledger_updates(&result.segments);
+    let entry = execution::query_to(
+        &context,
+        &new_ordinary(&context).unwrap(),
+        &updates,
+        proposal.entry_state.physics_step,
+    )
+    .unwrap();
+    let mut no_boundary = proposal.clone();
+    no_boundary.schedule.handoff_physics_step = exit.query_state.as_ref().unwrap().physics_step;
+    let (record, ready) = early_exit::prepare(&context, &entry, &no_boundary).unwrap();
+    assert_eq!(
+        record.disposition,
+        WaypointV2EarlyExitDisposition::NoEarlierBoundary
+    );
+    assert!(ready.is_none() && record.nominal_search.is_none());
+
+    let mut insufficient_reserve = proposal.clone();
+    insufficient_reserve
+        .trajectory
+        .iter_mut()
+        .find(|s| s.state == *exit.query_state.as_ref().unwrap())
+        .unwrap()
+        .body_clearance_m = 4.0;
+    let (record, ready) = early_exit::prepare(&context, &entry, &insufficient_reserve).unwrap();
+    assert_eq!(
+        record.disposition,
+        WaypointV2EarlyExitDisposition::UnsupportedContinuation
+    );
+    assert!(ready.is_none() && record.nominal_search.is_none());
+    let mut unsupported = context.clone();
+    unsupported.target_pad.center_x_m = exit.query_state.as_ref().unwrap().position_m.x;
+    let (record, ready) = early_exit::prepare(&unsupported, &entry, proposal).unwrap();
+    assert_eq!(
+        record.disposition,
+        WaypointV2EarlyExitDisposition::UnsupportedContinuation
+    );
+    assert!(ready.is_none() && record.nominal_search.is_none());
+
+    let mut broken_trace = proposal.clone();
+    broken_trace
+        .trajectory
+        .iter_mut()
+        .find(|s| s.state == *exit.query_state.as_ref().unwrap())
+        .unwrap()
+        .state
+        .fuel_kg += 1.0;
+    assert!(early_exit::prepare(&context, &entry, &broken_trace).is_err());
+
+    let mut forged = result.clone();
+    forged.cycles[index]
+        .local_search
+        .as_mut()
+        .unwrap()
+        .early_exit
+        .as_mut()
+        .unwrap()
+        .witness_handoff_physics_step -= 2;
+    assert!(early_exit::validate_records(&forged).is_err());
+    forged = result.clone();
+    forged.cycles[index + 1].nominal_updates[0]
+        .command
+        .throttle_frac = 0.123;
+    assert!(early_exit::validate_records(&forged).is_err());
+    forged = result.clone();
+    forged.cycles[index]
+        .local_search
+        .as_mut()
+        .unwrap()
+        .early_exit
+        .as_mut()
+        .unwrap()
+        .disposition = WaypointV2EarlyExitDisposition::ClearReady;
+    assert!(early_exit::validate_records(&forged).is_err());
+    forged.integrity_passed = false;
+    early_exit::validate_records(&forged).unwrap();
+
+    let mut historical = serde_json::to_value(local).unwrap();
+    historical.as_object_mut().unwrap().remove("early_exit");
+    let old: WaypointV2LocalSearch = serde_json::from_value(historical.clone()).unwrap();
+    assert!(old.early_exit.is_none());
+    assert_eq!(serde_json::to_value(old).unwrap(), historical);
+    let mut no_nominal = result.clone();
+    let record = no_nominal.cycles[index]
+        .local_search
+        .as_mut()
+        .unwrap()
+        .early_exit
+        .as_mut()
+        .unwrap();
+    record.disposition = WaypointV2EarlyExitDisposition::NoNominal;
+    record.nominal_search.as_mut().unwrap().selected = None;
+    record.audit = None;
+    early_exit::validate_records(&no_nominal).unwrap();
+    let mut blocked = result.clone();
+    let violation = result.cycles[index]
+        .audit
+        .as_ref()
+        .unwrap()
+        .clearance_scan
+        .first_violation
+        .clone()
+        .unwrap();
+    let record = blocked.cycles[index]
+        .local_search
+        .as_mut()
+        .unwrap()
+        .early_exit
+        .as_mut()
+        .unwrap();
+    record.disposition = WaypointV2EarlyExitDisposition::TerrainBlocked;
+    let audit = record.audit.as_mut().unwrap();
+    audit.passed = false;
+    audit.clearance_scan.first_violation = Some(violation);
+    early_exit::validate_records(&blocked).unwrap();
+    blocked.cycles[index]
+        .local_search
+        .as_mut()
+        .unwrap()
+        .early_exit
+        .as_mut()
+        .unwrap()
+        .disposition = WaypointV2EarlyExitDisposition::Committed;
+    assert!(early_exit::validate_records(&blocked).is_err());
+
+    let mut mismatch = WaypointV2Session::start(request.clone(), policy).unwrap();
+    mismatch.flight.as_mut().unwrap().queued_nominal = Some(early_exit::CheckedNominal {
+        state: exit.query_state.as_ref().unwrap().clone(),
+        search: exit.nominal_search.as_ref().unwrap().clone(),
+        audit: exit.audit.as_ref().unwrap().clone(),
+    });
+    let flight = mismatch.flight.as_mut().unwrap();
+    let mut cycle = result.cycles[index + 1].clone();
+    assert!(
+        flight
+            .build_acquisition_nominal(&mut cycle)
+            .err()
+            .expect("queued origin mismatch must fail closed")
+            .to_string()
+            .contains("actual piece state/deadline")
+    );
+    let report = crate::waypoint_v2_report::project_flight(&request.scenario, result).unwrap();
+    assert!(
+        serde_json::to_string(&report)
+            .unwrap()
+            .contains("query evidence, not an executed waypoint")
+    );
 }

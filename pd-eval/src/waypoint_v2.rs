@@ -27,7 +27,9 @@ use crate::{
     preflight_nominal_direct_flight, validate_local_clearing_proposal,
 };
 
+pub(crate) mod early_exit;
 mod execution;
+pub mod handoff_probe;
 mod model;
 
 pub(crate) use execution::replay_saved_waypoint_v2_evidence;
@@ -214,6 +216,7 @@ struct FlightLoop {
     live: OrdinaryLive,
     result: WaypointV2FlightResult,
     pending_cycle: Option<WaypointV2Cycle>,
+    queued_nominal: Option<early_exit::CheckedNominal>,
 }
 
 impl FlightLoop {
@@ -313,7 +316,7 @@ impl FlightLoop {
     }
 
     fn build_nominal_program(
-        &self,
+        &mut self,
         request: &WaypointDirectNominalDirectGenerationRequest,
         cycle: &mut WaypointV2Cycle,
         initial: bool,
@@ -360,9 +363,26 @@ impl FlightLoop {
         })
     }
 
-    fn build_acquisition_nominal(&self, cycle: &mut WaypointV2Cycle) -> Result<NominalBuild> {
-        let search =
-            evaluate_airborne_acquisition_direct(&self.context, &self.live.state, self.deadline)?;
+    fn build_acquisition_nominal(&mut self, cycle: &mut WaypointV2Cycle) -> Result<NominalBuild> {
+        let (search, checked_audit) = if let Some(checked) = self.queued_nominal.take() {
+            ensure!(
+                checked.state == self.live.evidence.final_state
+                    && checked.search.incoming_state
+                        == crate::AirborneFlightStateV1::from_live(&self.live.state)
+                    && checked.search.absolute_deadline_physics_step == self.deadline,
+                "queued early nominal does not bind to actual piece state/deadline"
+            );
+            (checked.search, Some(checked.audit))
+        } else {
+            (
+                evaluate_airborne_acquisition_direct(
+                    &self.context,
+                    &self.live.state,
+                    self.deadline,
+                )?,
+                None,
+            )
+        };
         for seed in &search.seeds {
             if seed.selected_entry_index.is_none()
                 && let Some(reason) = &seed.reason
@@ -380,8 +400,17 @@ impl FlightLoop {
         let Some(proposal) = search.selected else {
             return Ok(NominalBuild::NoNominal);
         };
-        let audit =
-            audit_airborne_acquisition_proposal(&self.context, &self.live.state, &proposal, 5.0)?;
+        let audit = if let Some(audit) = checked_audit {
+            ensure!(
+                proposal.incoming_state
+                    == crate::AirborneFlightStateV1::from_live(&self.live.state)
+                    && audit.passed,
+                "queued early nominal lost its exact audited proposal"
+            );
+            audit
+        } else {
+            audit_airborne_acquisition_proposal(&self.context, &self.live.state, &proposal, 5.0)?
+        };
         retain_selected_nominal(
             cycle,
             proposal.identity,
@@ -548,6 +577,7 @@ impl FlightLoop {
             handoff_source_replay_passed: false,
             certificate_source_replay_passed: false,
             row_diagnostics: Vec::new(),
+            early_exit: None,
         };
         let templates = LocalClearingPolicyV1::default()
             .templates()
@@ -768,6 +798,27 @@ impl FlightLoop {
             prefix,
         )?;
         let entry_state = self.live.evidence.final_state.clone();
+        self.result.timings.execution_s += execute_start.elapsed().as_secs_f64();
+        let early_start = Instant::now();
+        let (record, prepared) = early_exit::prepare(&self.context, &self.live, proposal)?;
+        local.early_exit = Some(record);
+        cycle.local_search = Some(local.clone());
+        self.pending_cycle = Some(cycle.clone());
+        self.result.timings.planning_s += early_start.elapsed().as_secs_f64();
+        if let Some(prepared) = prepared {
+            return self.execute_early_exit(
+                request,
+                cycle,
+                local,
+                prepared,
+                piece_entry_physics_step,
+            );
+        }
+        let execute_start = Instant::now();
+        let proposal = local
+            .selected
+            .as_ref()
+            .context("early query lost original proposal")?;
         let updates = consumed(
             &proposal.schedule.updates,
             proposal.schedule.handoff_physics_step,
@@ -859,6 +910,84 @@ impl FlightLoop {
         Ok(())
     }
 
+    fn execute_early_exit(
+        &mut self,
+        request: &WaypointDirectNominalDirectGenerationRequest,
+        mut cycle: WaypointV2Cycle,
+        mut local: WaypointV2LocalSearch,
+        prepared: early_exit::PreparedExit,
+        piece_entry_physics_step: u64,
+    ) -> Result<PieceAdvance> {
+        let start = Instant::now();
+        let proposal = local
+            .selected
+            .as_ref()
+            .context("early exit lost original selected witness")?;
+        let entry = self.live.evidence.final_state.clone();
+        let end = prepared.live.state.physics_step;
+        let updates = consumed(&proposal.schedule.updates, end);
+        advance_ordinary(&self.context, &mut self.live, &updates, end)?;
+        ensure!(
+            self.live.evidence == prepared.live.evidence,
+            "active early exit differs from full forward query"
+        );
+        append_segment(
+            &mut self.result.segments,
+            WaypointV2SegmentKind::LocalCorrection,
+            &proposal.identity,
+            &entry,
+            &self.live,
+            updates,
+        )?;
+        let guard_updates = proposal
+            .schedule
+            .updates
+            .iter()
+            .filter(|u| {
+                u.physics_step >= end && u.physics_step < prepared.certificate.state.physics_step
+            })
+            .cloned()
+            .collect();
+        let mut certificate_segments = self.result.segments.clone();
+        append_segment(
+            &mut certificate_segments,
+            WaypointV2SegmentKind::LocalCorrection,
+            &proposal.identity,
+            &self.live.evidence.final_state,
+            &prepared.certificate,
+            guard_updates,
+        )?;
+        local.certificate_state = Some(prepared.certificate.evidence.final_state.clone());
+        self.result.timings.execution_s += start.elapsed().as_secs_f64();
+        let start = Instant::now();
+        self.prove_correction_sources(
+            request,
+            &prepared.certificate,
+            &certificate_segments,
+            &mut local,
+        )?;
+        self.result.timings.replay_s += start.elapsed().as_secs_f64();
+        ensure!(
+            self.queued_nominal.is_none(),
+            "early exit would replace another queued nominal"
+        );
+        self.queued_nominal = Some(prepared.nominal);
+        local
+            .early_exit
+            .as_mut()
+            .context("early exit missing query record")?
+            .disposition = WaypointV2EarlyExitDisposition::Committed;
+        cycle.decision = WaypointV2CycleDecision::LocalCleared;
+        cycle.local_search = Some(local);
+        self.result.cycles.push(cycle);
+        self.result.correction_count += 1;
+        Ok(PieceAdvance::Handoff {
+            piece_index: self.result.cycles.len() - 1,
+            entry_physics_step: piece_entry_physics_step,
+            handoff_physics_step: end,
+        })
+    }
+
     fn terminal_piece(&self, stop: WaypointV2Stop, entry_physics_step: u64) -> PieceAdvance {
         PieceAdvance::Terminal {
             planning_stop: stop,
@@ -946,6 +1075,7 @@ impl WaypointV2Session {
                 live,
                 result,
                 pending_cycle: None,
+                queued_nominal: None,
             }),
             preflight_result: None,
             terminal_stop: None,
@@ -1097,6 +1227,12 @@ impl WaypointV2Session {
             flight.result.physical_outcome = Some(flight.live.state.physical_outcome.clone());
             flight.result.mission_outcome = Some(flight.live.state.mission_outcome.clone());
             flight.result.ordinary_flight = Some(flight.live.evidence.clone());
+            if let Err(error) = early_exit::validate_records(&flight.result) {
+                flight.result.planning_stop = WaypointV2Stop::ImplementationError;
+                flight.result.integrity_passed = false;
+                flight.result.reason = Some(format!("early exit evidence: {error:#}"));
+                self.terminal_stop = Some(WaypointV2Stop::ImplementationError);
+            }
         }
 
         self.finalized = true;

@@ -265,6 +265,7 @@ fn validate_progress(
     progress: &WaypointV2CliProgressV1,
     result: &WaypointV2FlightResult,
 ) -> Result<()> {
+    crate::waypoint_v2::early_exit::validate_records(result)?;
     ensure!(
         progress
             .entries
@@ -319,10 +320,11 @@ fn validate_progress(
                         && correction_segment.end_physics_step == *handoff_physics_step,
                     "V2 progress handoff differs from its executed actual H segment"
                 );
-                let selected = cycle
+                let local = cycle
                     .local_search
                     .as_ref()
-                    .context("V2 progress handoff cycle is missing its local search")?
+                    .context("V2 progress handoff cycle is missing its local search")?;
+                let selected = local
                     .selected
                     .as_ref()
                     .context("V2 progress handoff cycle is missing its selected proposal")?;
@@ -338,9 +340,7 @@ fn validate_progress(
                         && selected.entry_state.physics_step
                             == correction_segment.start_physics_step
                         && selected.entry_state == correction_segment.entry_state
-                        && selected.schedule.handoff_physics_step == *handoff_physics_step
-                        && selected.handoff_state.physics_step == *handoff_physics_step
-                        && selected.handoff_state == correction_segment.end_state
+                        && local.actual_handoff_state() == Some(&correction_segment.end_state)
                         && selected.identity == correction_segment.proposal_identity
                         && correction_segment.updates == selected_handoff_updates,
                     "V2 progress correction segment differs from its selected E/H proposal"
@@ -761,6 +761,7 @@ mod tests {
             handoff_source_replay_passed: true,
             certificate_source_replay_passed: true,
             row_diagnostics: Vec::new(),
+            early_exit: None,
         };
         let cycle = crate::WaypointV2Cycle {
             cycle_index: 0,
@@ -1486,6 +1487,7 @@ mod tests {
             handoff_source_replay_passed: true,
             certificate_source_replay_passed: true,
             row_diagnostics: Vec::new(),
+            early_exit: None,
         };
         let cycle = crate::WaypointV2Cycle {
             cycle_index: 0,

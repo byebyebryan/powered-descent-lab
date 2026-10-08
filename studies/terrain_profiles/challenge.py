@@ -12,10 +12,20 @@ HERE = Path(__file__).resolve().parent
 SCHEMA = "pd-lab.terrain-challenge-plan.v1"
 
 
+def plan_filename(phase):
+    names = {"calibration": "challenge_calibration_plan.json",
+             "held_out": "challenge_plan.json",
+             "validation_1k": "challenge_validation_1k_plan.json"}
+    if phase not in names:
+        raise ValueError("unknown challenge phase")
+    return names[phase]
+
+
 def validate(plan, refinement, base):
     phase = plan.get("phase")
     expected = {"calibration": (2026100701, 24, 6, [], 27),
-                "held_out": (2026100702, 100, 25, [0, 25, 50, 75, 1], 108)}.get(phase)
+                "held_out": (2026100702, 100, 25, [0, 25, 50, 75, 1], 108),
+                "validation_1k": (2026100703, 1000, 250, [0, 250, 500, 750, 1], 1008)}.get(phase)
     if (plan.get("schema") != SCHEMA or expected is None
             or tuple(plan.get(k) for k in ("master_seed", "seed_count", "cases_per_recipe", "repeat_indices", "maximum_measured_attempts")) != expected
             or plan.get("excluded_seeds") != base["seeds"]
@@ -32,6 +42,9 @@ def validate(plan, refinement, base):
                    or not 4 <= r["vertical_scale"] <= 16
                    or not 0.6 <= r["horizontal_scale"] <= 1.5 for r in recipes)):
         raise ValueError("invalid global challenge recipes")
+    if (phase == "validation_1k"
+            and recipes != json.loads((HERE / "challenge_plan.json").read_bytes())["recipes"]):
+        raise ValueError("fresh validation must retain the original four recipes")
     return plan
 
 
@@ -49,8 +62,10 @@ def seeds(plan):
     excluded = set(plan["excluded_seeds"])
     sanity = draw(2026100601, 100, excluded)
     excluded.update(sanity)
-    if plan["phase"] == "held_out":
+    if plan["phase"] in ("held_out", "validation_1k"):
         excluded.update(draw(2026100701, 24, excluded))
+    if plan["phase"] == "validation_1k":
+        excluded.update(draw(2026100702, 100, excluded))
     return draw(plan["master_seed"], plan["seed_count"], excluded)
 
 

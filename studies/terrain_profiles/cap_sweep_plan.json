@@ -1,0 +1,16 @@
+{
+  "schema": "pd-lab.correction-cap-sweep-plan.v1",
+  "baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-validation-1k-20261007-v1",
+  "baseline_manifest_sha256": "c0a844f772f45dd2e39e362622e81e4cf5ceb04831925cdc492dd3e4989e2ee8",
+  "baseline_receipt_sha256": "0ae5032ac69f4428f3e79649deafed76dfefedeca1139dd4bbdc3e8fc5b22f21",
+  "production_executable_sha256": "fdbf20a694de3ac82b79492d119fe850e4bfea5d3c4c70a3ca854a72cfe5d2af",
+  "maximum_corrections": 24,
+  "seed_count": 1000,
+  "workers": 4,
+  "checkpoint_count": 10,
+  "repeat_indices": [0, 250, 500, 750, 1, 30, 280],
+  "maximum_measured_attempts": 1010,
+  "case_wall_limit_s": 300,
+  "campaign_wall_limit_s": 10800,
+  "build_wall_limit_s": 900
+}

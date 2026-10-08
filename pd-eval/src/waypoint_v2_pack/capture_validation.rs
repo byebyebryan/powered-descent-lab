@@ -88,6 +88,7 @@ pub(super) fn validate_full_evidence_consistency(
     result: &WaypointV2FlightResult,
     compact: &Value,
 ) -> Result<()> {
+    crate::waypoint_v2::early_exit::validate_records(result)?;
     let manifest = result
         .manifest
         .as_ref()

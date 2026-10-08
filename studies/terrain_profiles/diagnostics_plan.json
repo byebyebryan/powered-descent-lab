@@ -1,0 +1,1275 @@
+{
+  "baseline": {
+    "capture": "outputs/eval/planner_v2_random_terrain/capture-validation-1k-20261007-v1",
+    "executable_sha256": "fdbf20a694de3ac82b79492d119fe850e4bfea5d3c4c70a3ca854a72cfe5d2af",
+    "manifest_sha256": "c0a844f772f45dd2e39e362622e81e4cf5ceb04831925cdc492dd3e4989e2ee8",
+    "receipt_sha256": "0ae5032ac69f4428f3e79649deafed76dfefedeca1139dd4bbdc3e8fc5b22f21"
+  },
+  "campaign_wall_limit_s": 900,
+  "case_wall_limit_s": 120,
+  "cases": [
+    {
+      "baseline_flight_sha256": "681bc4bf87f73193fbb72f6fe7bfe69e9104b57c5b7bca675d0d785361660807",
+      "baseline_non_timing_sha256": "a4c2c0e8f8ce67e3149865c884ac0e896d097ef001ee2c1bbbb032a133f7a2f2",
+      "baseline_observations": {
+        "final_cycle_x_m": 0.0,
+        "first_conflict_x_m": 20.149201585402157,
+        "fuel_at_final_cycle_kg": 6300.0,
+        "handoffs": [],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {
+          "insufficient_progress": 18235,
+          "not_evaluated": 75600,
+          "prefix_incomplete": 27125
+        },
+        "last_local_entry_count": 8,
+        "last_local_propagated_row_count": 126,
+        "last_local_row_stop_reason_counts": {
+          "entry is not before new conflict": 168,
+          "finite_trace_bound": 10,
+          "live state is not a running airborne aligned global boundary": 42,
+          "physical_trace": 116
+        },
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 140,
+        "last_nominal_rejection_reason_counts": {
+          "nominal paired source thrust or slew limit": 21,
+          "unavailable nominal basis or source duration": 35
+        },
+        "remaining_deadline_s": 80.0,
+        "remaining_to_target_m": 1200.0
+      },
+      "baseline_result": {
+        "correction_count": 0,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "in_progress",
+        "nominal_class": "blocked",
+        "physical_outcome": "flying",
+        "planning_stop": "no_clearing",
+        "verified_landing": false
+      },
+      "case_id": "random-327",
+      "family": "departure",
+      "geometry": {
+        "endpoint_rise_m": -339.6392408426303,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 819.046318695379,
+        "maximum_slope": 6.135411275446415,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 66.93601040128692,
+            "outer_heights_m": [
+              136.10176210276072,
+              419.13468871286386
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": 249.74931811436068,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 16.741125256777224,
+            "outer_heights_m": [
+              -76.34878756220616,
+              -45.86213640804834
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": -89.88992272826958,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_8x",
+        "relief_m": 987.6551670679886,
+        "seed": 139938034,
+        "terrain_point_count": 389,
+        "variant": "mountains_8x",
+        "vertical_scale": 8
+      },
+      "recipe_id": "mountains_8x",
+      "role": "failure",
+      "scenario_id": "challenge_mountains_8x_seed_139938034",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-327.json",
+      "scenario_sha256": "47d90514ff8504b9beff4e86a8694b5295240db6d656cdcf0ea0f75ec6c16fa4",
+      "seed": 139938034
+    },
+    {
+      "baseline_flight_sha256": "3118764999823060073089d999188b11770e8f7d88d781f3f4e0a5fbee7e690e",
+      "baseline_non_timing_sha256": "8ed90e7ea39796fc74b3f31af0d80800c0449e48c917c28d4e5340e8a0f370cb",
+      "baseline_observations": {
+        "final_cycle_x_m": 0.0,
+        "first_conflict_x_m": 22.122871292282053,
+        "fuel_at_final_cycle_kg": 6300.0,
+        "handoffs": [],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {
+          "insufficient_progress": 19556,
+          "not_evaluated": 75600,
+          "prefix_incomplete": 25804
+        },
+        "last_local_entry_count": 8,
+        "last_local_propagated_row_count": 126,
+        "last_local_row_stop_reason_counts": {
+          "entry is not before new conflict": 168,
+          "finite_trace_bound": 4,
+          "live state is not a running airborne aligned global boundary": 42,
+          "physical_trace": 122
+        },
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 140,
+        "last_nominal_rejection_reason_counts": {
+          "unavailable nominal basis or source duration": 35
+        },
+        "remaining_deadline_s": 80.0,
+        "remaining_to_target_m": 1200.0
+      },
+      "baseline_result": {
+        "correction_count": 0,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "in_progress",
+        "nominal_class": "blocked",
+        "physical_outcome": "flying",
+        "planning_stop": "no_clearing",
+        "verified_landing": false
+      },
+      "case_id": "random-791",
+      "family": "departure",
+      "geometry": {
+        "endpoint_rise_m": 113.98111655333123,
+        "horizontal_scale": 0.6,
+        "maximum_height_above_endpoint_chord_m": 884.7844998796525,
+        "maximum_slope": 11.110143465313712,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 66.4128899290347,
+            "outer_heights_m": [
+              -190.96649107032084,
+              97.86058916041479
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": -118.31701050198085,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 74.50860297303468,
+            "outer_heights_m": [
+              110.84891252794054,
+              -190.15258776635432
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": -4.335893948649613,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "successive_ridges_8x",
+        "relief_m": 1015.0963361231741,
+        "seed": 899522850,
+        "terrain_point_count": 389,
+        "variant": "successive_ridges_8x",
+        "vertical_scale": 8
+      },
+      "recipe_id": "successive_ridges_8x",
+      "role": "failure",
+      "scenario_id": "challenge_successive_ridges_8x_seed_899522850",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-791.json",
+      "scenario_sha256": "89d5d43a1d9ad02e48507fc74b7ae1ba91125aeb195414edf26fed55977ae410",
+      "seed": 899522850
+    },
+    {
+      "baseline_flight_sha256": "a5dc6ff702fa7d2de516344233cb7077fc8ba56b55b71adcb448a6e036cc07ff",
+      "baseline_non_timing_sha256": "ce4a898584ff96ae33c280c34bede0e963bf5a80770993055c1ebc058c7f0fac",
+      "baseline_observations": {
+        "final_cycle_x_m": 770.1130897124132,
+        "first_conflict_x_m": 41.752819519866286,
+        "fuel_at_final_cycle_kg": 5416.3301129744505,
+        "handoffs": [
+          {
+            "braking_room_m": 1134.6743335674248,
+            "height_above_target_m": 355.3203253785199,
+            "next_conflict_after_h_s": 1.7166666666666668,
+            "physics_step": 1190,
+            "vx_mps": 10.624295428117271,
+            "vy_mps": 20.550639244254675,
+            "x_gain_from_previous_h_m": 54.655525068945586,
+            "x_m": 54.655525068945586
+          },
+          {
+            "braking_room_m": 1029.2118372955613,
+            "height_above_target_m": 604.9166557303888,
+            "next_conflict_after_h_s": 10.524999999999999,
+            "physics_step": 2202,
+            "vx_mps": 12.342801014758496,
+            "vy_mps": 44.00319472288512,
+            "x_gain_from_previous_h_m": 103.1424229862221,
+            "x_m": 157.7979480551677
+          },
+          {
+            "braking_room_m": 45.95260595278461,
+            "height_above_target_m": 661.6440679331035,
+            "next_conflict_after_h_s": null,
+            "physics_step": 3376,
+            "vx_mps": 97.06183351377409,
+            "vy_mps": -19.42612253158744,
+            "x_gain_from_previous_h_m": 612.3151416572455,
+            "x_m": 770.1130897124132
+          }
+        ],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 1,
+        "last_nominal_rejection_reason_counts": {
+          "acquisition demand exceeds 0.925 of incoming max-thrust acceleration": 4,
+          "coupled terminal thrust bound 26.749299 exceeds 0.925 incoming-mass limit 17.935474; coupled terminal thrust bound 34.680833 exceeds 0.925 incoming-mass limit 17.935474; coupled terminal thrust bound 51.491139 exceeds 0.925 incoming-mass limit 17.935474; coupled terminal thrust bound 99.913338 exceeds 0.925 incoming-mass limit 17.935474": 1,
+          "predicted acquisition end has negative forward velocity": 2,
+          "predicted terminal finish exceeds original absolute deadline; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity": 1
+        },
+        "remaining_deadline_s": 51.86666666666667,
+        "remaining_to_target_m": 429.88691028758683
+      },
+      "baseline_result": {
+        "correction_count": 3,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "success",
+        "nominal_class": "blocked",
+        "physical_outcome": "landed_on_target",
+        "planning_stop": "landed",
+        "verified_landing": true
+      },
+      "case_id": "random-258",
+      "family": "departure",
+      "geometry": {
+        "endpoint_rise_m": -228.93796514369376,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 504.25147432532526,
+        "maximum_slope": 5.087254152941668,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 55.7890880424685,
+            "outer_heights_m": [
+              -65.39694907973362,
+              94.11480695184312
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": 23.669642141106927,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 23.159260869824692,
+            "outer_heights_m": [
+              -151.85964785703567,
+              -231.0627176315631
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": -205.26832300258684,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_8x",
+        "relief_m": 828.7081951161922,
+        "seed": 2028464428,
+        "terrain_point_count": 389,
+        "variant": "mountains_8x",
+        "vertical_scale": 8
+      },
+      "recipe_id": "mountains_8x",
+      "role": "comparison",
+      "scenario_id": "challenge_mountains_8x_seed_2028464428",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-258.json",
+      "scenario_sha256": "3da2714cdfe3a470d46dd0da593ff521275f0f26e7c815566f92eead0c97473f",
+      "seed": 2028464428
+    },
+    {
+      "baseline_flight_sha256": "a03a5b82508b01b9345a588a068825ccffe4088832176d1c5c687d1301a79f4f",
+      "baseline_non_timing_sha256": "42681f0ebbdfe84c698014b6f064cbfa97f4f131158b8a0bd5dedb12e099111a",
+      "baseline_observations": {
+        "final_cycle_x_m": 905.7333612072251,
+        "first_conflict_x_m": 892.8199873830952,
+        "fuel_at_final_cycle_kg": 5616.296246036669,
+        "handoffs": [
+          {
+            "braking_room_m": 0.057484785192286836,
+            "height_above_target_m": 364.1857114174,
+            "next_conflict_after_h_s": null,
+            "physics_step": 3062,
+            "vx_mps": 83.05643391178131,
+            "vy_mps": -17.403205556949768,
+            "x_gain_from_previous_h_m": 905.7333612072251,
+            "x_m": 905.7333612072251
+          }
+        ],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 0,
+        "last_nominal_rejection_reason_counts": {
+          "acquisition demand exceeds 0.925 of incoming max-thrust acceleration": 8,
+          "coupled terminal thrust bound 23.834254 exceeds 0.925 incoming-mass limit 17.616672; coupled terminal thrust bound 30.967801 exceeds 0.925 incoming-mass limit 17.616672; coupled terminal thrust bound 45.039035 exceeds 0.925 incoming-mass limit 17.616672; coupled terminal thrust bound 90.403704 exceeds 0.925 incoming-mass limit 17.616672": 1,
+          "coupled terminal thrust bound 32.729795 exceeds 0.925 incoming-mass limit 17.598135; coupled terminal thrust bound 43.431677 exceeds 0.925 incoming-mass limit 17.598135; coupled terminal thrust bound 63.817948 exceeds 0.925 incoming-mass limit 17.598135; coupled terminal thrust bound 130.965095 exceeds 0.925 incoming-mass limit 17.598135": 1,
+          "predicted acquisition end has negative forward velocity": 2,
+          "terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity": 1
+        },
+        "remaining_deadline_s": 54.483333333333334,
+        "remaining_to_target_m": 294.26663879277487
+      },
+      "baseline_result": {
+        "correction_count": 1,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "in_progress",
+        "nominal_class": "blocked",
+        "physical_outcome": "flying",
+        "planning_stop": "no_nominal",
+        "verified_landing": false
+      },
+      "case_id": "random-024",
+      "family": "acquisition",
+      "geometry": {
+        "endpoint_rise_m": -93.26120246075936,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 242.2383080543842,
+        "maximum_slope": 3.599245303869907,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 22.705744196667837,
+            "outer_heights_m": [
+              44.38576051235465,
+              156.91366232970432
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": 93.62932457073254,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 4.188546929627151,
+            "outer_heights_m": [
+              -3.7759211489562716,
+              10.82677660712573
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": 0.3681221099731715,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_4x",
+        "relief_m": 333.987731228263,
+        "seed": 1094451653,
+        "terrain_point_count": 389,
+        "variant": "mountains_4x",
+        "vertical_scale": 4
+      },
+      "recipe_id": "mountains_4x",
+      "role": "failure",
+      "scenario_id": "challenge_mountains_4x_seed_1094451653",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-024.json",
+      "scenario_sha256": "27bd5af699b280f243c247069437bb689a8b0a6c9cfcad4808df3917ddb66ad8",
+      "seed": 1094451653
+    },
+    {
+      "baseline_flight_sha256": "6744775a04328c2fcfd1f88933cbe46f725e264f68d2adc04d56f3a1ee8e320d",
+      "baseline_non_timing_sha256": "658e02421d7ec5df0301f7cfeb91541b4a4c34fd9ed15f4d96b69b795ba064e6",
+      "baseline_observations": {
+        "final_cycle_x_m": 904.7263221485327,
+        "first_conflict_x_m": 890.8044535718908,
+        "fuel_at_final_cycle_kg": 5678.696017231319,
+        "handoffs": [
+          {
+            "braking_room_m": 3.0125102522006273,
+            "height_above_target_m": 486.3369633640023,
+            "next_conflict_after_h_s": null,
+            "physics_step": 2756,
+            "vx_mps": 82.70037531769091,
+            "vy_mps": -17.15500196191543,
+            "x_gain_from_previous_h_m": 904.7263221485327,
+            "x_m": 904.7263221485327
+          }
+        ],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 0,
+        "last_nominal_rejection_reason_counts": {
+          "acquisition demand exceeds 0.925 of incoming max-thrust acceleration": 6,
+          "predicted acquisition end has negative forward velocity": 3,
+          "terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity": 1
+        },
+        "remaining_deadline_s": 57.03333333333333,
+        "remaining_to_target_m": 295.27367785146726
+      },
+      "baseline_result": {
+        "correction_count": 1,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "in_progress",
+        "nominal_class": "blocked",
+        "physical_outcome": "flying",
+        "planning_stop": "no_nominal",
+        "verified_landing": false
+      },
+      "case_id": "random-516",
+      "family": "acquisition",
+      "geometry": {
+        "endpoint_rise_m": -189.98552387539883,
+        "horizontal_scale": 1.5,
+        "maximum_height_above_endpoint_chord_m": 364.8000816201188,
+        "maximum_slope": 4.409488225220084,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 7.30749654771607,
+            "outer_heights_m": [
+              -83.7727135046478,
+              -52.8915051245762
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": -64.24077999884123,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 4.658465975114552,
+            "outer_heights_m": [
+              -226.59804624840913,
+              -233.72202884405098
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": -254.22630387424005,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "broad_massifs_8x",
+        "relief_m": 398.9974759176906,
+        "seed": 1117161018,
+        "terrain_point_count": 389,
+        "variant": "broad_massifs_8x",
+        "vertical_scale": 8
+      },
+      "recipe_id": "broad_massifs_8x",
+      "role": "failure",
+      "scenario_id": "challenge_broad_massifs_8x_seed_1117161018",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-516.json",
+      "scenario_sha256": "fbb8a9b8dba581ec05fc2bf591fc88f5308da12a69647bf27a5b54fe823682f4",
+      "seed": 1117161018
+    },
+    {
+      "baseline_flight_sha256": "94f3eb781ea9a28aaf6f819f7c40a25cc43814d694884173db694cca9fce7c8c",
+      "baseline_non_timing_sha256": "6e2eb8aa6f5da8611d1ad6f6cad9ac96b965b7859967dfdc868bc88feda4549b",
+      "baseline_observations": {
+        "final_cycle_x_m": 1000.524028869848,
+        "first_conflict_x_m": 420.67128396331367,
+        "fuel_at_final_cycle_kg": 5389.7350855600125,
+        "handoffs": [
+          {
+            "braking_room_m": 714.6542177176553,
+            "height_above_target_m": 623.1900541598037,
+            "next_conflict_after_h_s": 3.0583333333333336,
+            "physics_step": 2600,
+            "vx_mps": 30.569206848805244,
+            "vy_mps": 13.745059783642652,
+            "x_gain_from_previous_h_m": 433.5653322877608,
+            "x_m": 433.5653322877608
+          },
+          {
+            "braking_room_m": 578.6752426007489,
+            "height_above_target_m": 620.5060467048263,
+            "next_conflict_after_h_s": 2.05833333333333,
+            "physics_step": 3004,
+            "vx_mps": 37.233987563448345,
+            "vy_mps": -7.7493175132379735,
+            "x_gain_from_previous_h_m": 106.83423944109296,
+            "x_m": 540.3995717288537
+          },
+          {
+            "braking_room_m": 471.7709565566738,
+            "height_above_target_m": 612.9023091943703,
+            "next_conflict_after_h_s": 8.841666666666665,
+            "physics_step": 3366,
+            "vx_mps": 37.85822363786146,
+            "vy_mps": 2.53643042667197,
+            "x_gain_from_previous_h_m": 114.15683463840878,
+            "x_m": 654.5564063672625
+          },
+          {
+            "braking_room_m": 21.28926159883227,
+            "height_above_target_m": 517.6397677323546,
+            "next_conflict_after_h_s": null,
+            "physics_step": 4226,
+            "vx_mps": 63.575620038758075,
+            "vy_mps": -21.276892203421404,
+            "x_gain_from_previous_h_m": 345.9676225025855,
+            "x_m": 1000.524028869848
+          }
+        ],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 1,
+        "last_nominal_rejection_reason_counts": {
+          "acquisition demand exceeds 0.925 of incoming max-thrust acceleration": 3,
+          "predicted acquisition end has negative forward velocity": 4,
+          "predicted terminal finish exceeds original absolute deadline; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity; terminal reference reverses forward horizontal velocity": 1,
+          "terminal entry has 0 coasting ticks for 120 ticks of first-thrust alignment; coupled terminal thrust bound 22.083141 exceeds 0.925 incoming-mass limit 17.854265; coupled terminal thrust bound 31.836245 exceeds 0.925 incoming-mass limit 17.854265; coupled terminal thrust bound 61.568048 exceeds 0.925 incoming-mass limit 17.854265": 1
+        },
+        "remaining_deadline_s": 44.78333333333333,
+        "remaining_to_target_m": 199.47597113015195
+      },
+      "baseline_result": {
+        "correction_count": 4,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "success",
+        "nominal_class": "blocked",
+        "physical_outcome": "landed_on_target",
+        "planning_stop": "landed",
+        "verified_landing": true
+      },
+      "case_id": "random-271",
+      "family": "acquisition",
+      "geometry": {
+        "endpoint_rise_m": -171.25555529260737,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 518.2569484046816,
+        "maximum_slope": 5.831851307385776,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 61.84634863648347,
+            "outer_heights_m": [
+              292.3030117742119,
+              20.552510873567307
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": 142.20582403742276,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 5.660267399911163,
+            "outer_heights_m": [
+              -6.08853661875888,
+              -29.360501642208817
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": -29.04973125518461,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_8x",
+        "relief_m": 698.9328284063781,
+        "seed": 226286301,
+        "terrain_point_count": 389,
+        "variant": "mountains_8x",
+        "vertical_scale": 8
+      },
+      "recipe_id": "mountains_8x",
+      "role": "comparison",
+      "scenario_id": "challenge_mountains_8x_seed_226286301",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-271.json",
+      "scenario_sha256": "921207a26a551b4a510728332c22b88395d25a58807b64051b834185744efa6d",
+      "seed": 226286301
+    },
+    {
+      "baseline_flight_sha256": "a1463d0e73a0f1e1886e0b4e9f3860add75372052a59e66d38102c9312afef45",
+      "baseline_non_timing_sha256": "112c5301dde8ce9f200f930eb1efcad8ab7564a21051e4506430da597173a978",
+      "baseline_observations": {
+        "final_cycle_x_m": 385.8691194731027,
+        "first_conflict_x_m": 182.85537752032752,
+        "fuel_at_final_cycle_kg": 5281.138833712757,
+        "handoffs": [
+          {
+            "braking_room_m": 988.3692452911956,
+            "height_above_target_m": 171.31191456888934,
+            "next_conflict_after_h_s": 2.3916666666666657,
+            "physics_step": 2008,
+            "vx_mps": 13.601606557883212,
+            "vy_mps": 26.23129307734534,
+            "x_gain_from_previous_h_m": 200.9655592972589,
+            "x_m": 200.9655592972589
+          },
+          {
+            "braking_room_m": 939.8689755673621,
+            "height_above_target_m": 247.57753158915284,
+            "next_conflict_after_h_s": 1.9083333333333314,
+            "physics_step": 2512,
+            "vx_mps": 5.983575864469506,
+            "vy_mps": 15.22227963124207,
+            "x_gain_from_previous_h_m": 56.1095317900722,
+            "x_m": 257.0750910873311
+          },
+          {
+            "braking_room_m": 912.8947672676004,
+            "height_above_target_m": 291.30724735652484,
+            "next_conflict_after_h_s": 2.0,
+            "physics_step": 2988,
+            "vx_mps": 6.296754609618944,
+            "vy_mps": 16.240762646136773,
+            "x_gain_from_previous_h_m": 24.662729482721033,
+            "x_m": 281.7378205700521
+          },
+          {
+            "braking_room_m": 885.9987103428712,
+            "height_above_target_m": 337.89061842498586,
+            "next_conflict_after_h_s": 3.4416666666666664,
+            "physics_step": 3470,
+            "vx_mps": 6.698382536673959,
+            "vy_mps": 16.755764042673654,
+            "x_gain_from_previous_h_m": 26.478782752779978,
+            "x_m": 308.2166033228321
+          },
+          {
+            "braking_room_m": 848.1039703837484,
+            "height_above_target_m": 371.8969279913726,
+            "next_conflict_after_h_s": 2.258333333333333,
+            "physics_step": 4106,
+            "vx_mps": 7.220560592913557,
+            "vy_mps": 4.661127320353875,
+            "x_gain_from_previous_h_m": 37.3354621556079,
+            "x_m": 345.55206547844
+          },
+          {
+            "braking_room_m": 780.3949561277345,
+            "height_above_target_m": 345.391929812468,
+            "next_conflict_after_h_s": null,
+            "physics_step": 4550,
+            "vx_mps": 20.542287410700617,
+            "vy_mps": -8.565968815059513,
+            "x_gain_from_previous_h_m": 40.31705399466273,
+            "x_m": 385.8691194731027
+          }
+        ],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 2,
+        "last_nominal_rejection_reason_counts": {
+          "acquisition demand exceeds 0.925 of incoming max-thrust acceleration": 6,
+          "coupled terminal thrust bound 18.275962 exceeds 0.925 incoming-mass limit 18.134951; coupled terminal thrust bound 20.860113 exceeds 0.925 incoming-mass limit 18.134951; coupled terminal thrust bound 28.428361 exceeds 0.925 incoming-mass limit 18.134951; coupled terminal thrust bound 61.323366 exceeds 0.925 incoming-mass limit 18.134951": 1,
+          "nominal shape requires at most one future apex, not dive and recover": 1
+        },
+        "remaining_deadline_s": 42.083333333333336,
+        "remaining_to_target_m": 814.1308805268973
+      },
+      "baseline_result": {
+        "correction_count": 6,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "in_progress",
+        "nominal_class": "blocked",
+        "physical_outcome": "flying",
+        "planning_stop": "correction_limit",
+        "verified_landing": false
+      },
+      "case_id": "random-030",
+      "family": "progress",
+      "geometry": {
+        "endpoint_rise_m": 107.02887848008247,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 425.2918262738459,
+        "maximum_slope": 2.4277287984432263,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 12.708818980808886,
+            "outer_heights_m": [
+              -129.75302819428782,
+              -73.51655536835663
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": -109.28755185352804,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 10.627427864529771,
+            "outer_heights_m": [
+              21.598772134381818,
+              -31.69318811663169
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": -2.258673373445575,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_4x",
+        "relief_m": 456.6869639613368,
+        "seed": 1370095446,
+        "terrain_point_count": 389,
+        "variant": "mountains_4x",
+        "vertical_scale": 4
+      },
+      "recipe_id": "mountains_4x",
+      "role": "failure",
+      "scenario_id": "challenge_mountains_4x_seed_1370095446",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-030.json",
+      "scenario_sha256": "c0d109c3f80fac6f8c4ff8b004c90bace499c15307e19511f72882ed71688923",
+      "seed": 1370095446
+    },
+    {
+      "baseline_flight_sha256": "d6d4939b41e992d546e036ffea05a429e71561b9a2b3b0327d5bdb2928fce603",
+      "baseline_non_timing_sha256": "50831f470ddb3c23520723f2a594f7473f1084dfd216e8aabcc43ef31c30db86",
+      "baseline_observations": {
+        "final_cycle_x_m": 384.3185009415398,
+        "first_conflict_x_m": 218.29593309788044,
+        "fuel_at_final_cycle_kg": 5290.738021122672,
+        "handoffs": [
+          {
+            "braking_room_m": 964.3614998303464,
+            "height_above_target_m": -53.09087822011321,
+            "next_conflict_after_h_s": 1.8916666666666657,
+            "physics_step": 2368,
+            "vx_mps": 2.428774292187382,
+            "vy_mps": 22.57328924948116,
+            "x_gain_from_previous_h_m": 234.70172084399093,
+            "x_m": 234.70172084399093
+          },
+          {
+            "braking_room_m": 936.9498178593102,
+            "height_above_target_m": 39.10299403252287,
+            "next_conflict_after_h_s": 1.0416666666666643,
+            "physics_step": 2914,
+            "vx_mps": 5.874238510378887,
+            "vy_mps": 19.61906097908442,
+            "x_gain_from_previous_h_m": 23.42620355167321,
+            "x_m": 258.12792439566414
+          },
+          {
+            "braking_room_m": 905.8681629069249,
+            "height_above_target_m": 105.75180759579979,
+            "next_conflict_after_h_s": 1.2749999999999986,
+            "physics_step": 3338,
+            "vx_mps": 8.476625228395898,
+            "vy_mps": 24.203281388760885,
+            "x_gain_from_previous_h_m": 28.162619446839813,
+            "x_m": 286.29054384250395
+          },
+          {
+            "braking_room_m": 873.4778294167868,
+            "height_above_target_m": 192.07978099820934,
+            "next_conflict_after_h_s": 1.7833333333333314,
+            "physics_step": 3738,
+            "vx_mps": 9.4777316034878,
+            "vy_mps": 31.298148440251037,
+            "x_gain_from_previous_h_m": 31.174467490650386,
+            "x_m": 317.46501133315434
+          },
+          {
+            "braking_room_m": 842.9893176981057,
+            "height_above_target_m": 258.1971702217339,
+            "next_conflict_after_h_s": 2.3999999999999986,
+            "physics_step": 4106,
+            "vx_mps": 9.963238052614045,
+            "vy_mps": 14.478927639341059,
+            "x_gain_from_previous_h_m": 29.873417602283837,
+            "x_m": 347.3384289354382
+          },
+          {
+            "braking_room_m": 795.9536882080799,
+            "height_above_target_m": 264.9084765503492,
+            "next_conflict_after_h_s": null,
+            "physics_step": 4484,
+            "vx_mps": 16.55315842737141,
+            "vy_mps": -4.850799306347576,
+            "x_gain_from_previous_h_m": 36.980072006101636,
+            "x_m": 384.3185009415398
+          }
+        ],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 2,
+        "last_nominal_rejection_reason_counts": {
+          "acquisition demand exceeds 0.925 of incoming max-thrust acceleration": 6,
+          "nominal shape requires at most one future apex, not dive and recover": 1,
+          "terminal reference reverses forward horizontal velocity; coupled terminal thrust bound 23.234897 exceeds 0.925 incoming-mass limit 18.162976; coupled terminal thrust bound 29.825230 exceeds 0.925 incoming-mass limit 18.162976; coupled terminal thrust bound 65.959127 exceeds 0.925 incoming-mass limit 18.162976": 1
+        },
+        "remaining_deadline_s": 42.63333333333333,
+        "remaining_to_target_m": 815.6814990584602
+      },
+      "baseline_result": {
+        "correction_count": 6,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "in_progress",
+        "nominal_class": "blocked",
+        "physical_outcome": "flying",
+        "planning_stop": "correction_limit",
+        "verified_landing": false
+      },
+      "case_id": "random-280",
+      "family": "progress",
+      "geometry": {
+        "endpoint_rise_m": 455.18149997180643,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 568.6512061935372,
+        "maximum_slope": 5.850494049236744,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 13.693935914171249,
+            "outer_heights_m": [
+              -133.46369209793312,
+              -65.0119842175705
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": -101.37466680867016,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 27.678573642822244,
+            "outer_heights_m": [
+              449.5987852379055,
+              313.80677735051137
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": 353.8068331631363,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_8x",
+        "relief_m": 751.4945256865105,
+        "seed": 1898135668,
+        "terrain_point_count": 389,
+        "variant": "mountains_8x",
+        "vertical_scale": 8
+      },
+      "recipe_id": "mountains_8x",
+      "role": "failure",
+      "scenario_id": "challenge_mountains_8x_seed_1898135668",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-280.json",
+      "scenario_sha256": "544b82c975da214e8e6fcce0c85db8c02d84826b97ea60e0f645e853de35549f",
+      "seed": 1898135668
+    },
+    {
+      "baseline_flight_sha256": "e19ab8ab5bc8ccbc12238cdf74c444fcd547f1d70f3ae879bc223b98c56b96a8",
+      "baseline_non_timing_sha256": "e203fcc3f972235fe733e7cdaecc5955d1c23bf07a6a6a44bdf6b2c450a1f8f1",
+      "baseline_observations": {
+        "final_cycle_x_m": 762.9721832220498,
+        "first_conflict_x_m": 383.2034464749133,
+        "fuel_at_final_cycle_kg": 4741.799991960466,
+        "handoffs": [
+          {
+            "braking_room_m": 790.852501746942,
+            "height_above_target_m": 241.07287165513702,
+            "next_conflict_after_h_s": 3.1750000000000007,
+            "physics_step": 2818,
+            "vx_mps": 7.289119159286632,
+            "vy_mps": 33.42030026679945,
+            "x_gain_from_previous_h_m": 404.994527712153,
+            "x_m": 404.994527712153
+          },
+          {
+            "braking_room_m": 722.3331183332185,
+            "height_above_target_m": 407.13459620145557,
+            "next_conflict_after_h_s": 2.0249999999999986,
+            "physics_step": 3738,
+            "vx_mps": 4.53325736725325,
+            "vy_mps": -0.9083720662577394,
+            "x_gain_from_previous_h_m": 69.09848660607992,
+            "x_m": 474.0930143182329
+          },
+          {
+            "braking_room_m": 695.0745015225162,
+            "height_above_target_m": 465.2859267076616,
+            "next_conflict_after_h_s": 2.7166666666666686,
+            "physics_step": 4460,
+            "vx_mps": 4.53325736725325,
+            "vy_mps": 19.988127933742316,
+            "x_gain_from_previous_h_m": 27.275098492967345,
+            "x_m": 501.36811281120026
+          },
+          {
+            "braking_room_m": 666.4284267469568,
+            "height_above_target_m": 538.211921591525,
+            "next_conflict_after_h_s": 1.8333333333333357,
+            "physics_step": 5104,
+            "vx_mps": 5.401169503930036,
+            "vy_mps": 20.488193943975894,
+            "x_gain_from_previous_h_m": 27.733534856742153,
+            "x_m": 529.1016476679424
+          },
+          {
+            "braking_room_m": 632.4713767050866,
+            "height_above_target_m": 637.5020158447346,
+            "next_conflict_after_h_s": 5.991666666666667,
+            "physics_step": 5640,
+            "vx_mps": 7.396799304205729,
+            "vy_mps": 29.47658648855011,
+            "x_gain_from_previous_h_m": 31.847814947625466,
+            "x_m": 560.9494626155679
+          },
+          {
+            "braking_room_m": 361.4916219133411,
+            "height_above_target_m": 692.8795225112561,
+            "next_conflict_after_h_s": null,
+            "physics_step": 6480,
+            "vx_mps": 39.64521082684775,
+            "vy_mps": 9.301741405067236,
+            "x_gain_from_previous_h_m": 202.02272060648193,
+            "x_m": 762.9721832220498
+          }
+        ],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 1,
+        "last_nominal_rejection_reason_counts": {
+          "paired throttle below minimum": 4,
+          "terminal entry is not descending above target COM + 5 m; predicted terminal finish exceeds original absolute deadline; predicted terminal finish exceeds original absolute deadline; coupled terminal thrust bound 20.330039 exceeds 0.925 incoming-mass limit 18.823523": 1
+        },
+        "remaining_deadline_s": 26.0,
+        "remaining_to_target_m": 437.0278167779502
+      },
+      "baseline_result": {
+        "correction_count": 6,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "success",
+        "nominal_class": "blocked",
+        "physical_outcome": "landed_on_target",
+        "planning_stop": "landed",
+        "verified_landing": true
+      },
+      "case_id": "random-253",
+      "family": "progress",
+      "geometry": {
+        "endpoint_rise_m": 232.77290250088996,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 774.7272595435825,
+        "maximum_slope": 5.728355872802069,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 37.685185424282636,
+            "outer_heights_m": [
+              -16.459331297324603,
+              -182.72938129113902
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": -114.2873859825834,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 40.67981456167496,
+            "outer_heights_m": [
+              67.82835587036139,
+              245.9039668879724
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": 118.48551651830655,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_8x",
+        "relief_m": 1022.2263697097866,
+        "seed": 80630958,
+        "terrain_point_count": 389,
+        "variant": "mountains_8x",
+        "vertical_scale": 8
+      },
+      "recipe_id": "mountains_8x",
+      "role": "comparison",
+      "scenario_id": "challenge_mountains_8x_seed_80630958",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-253.json",
+      "scenario_sha256": "00fa415eb0d169a62700933b32cf0d497a2830836ef4e9841e7dc3b85cc66827",
+      "seed": 80630958
+    },
+    {
+      "baseline_flight_sha256": "414382402eae4b5d2dafd6b97b1fd7118478d4a30a4e266fee897dc5e1a62568",
+      "baseline_non_timing_sha256": "a0db6d038d228bd11661e923328e34e8c58134dec42da1c789c4c426767fef3b",
+      "baseline_observations": {
+        "final_cycle_x_m": 0.0,
+        "first_conflict_x_m": null,
+        "fuel_at_final_cycle_kg": 6300.0,
+        "handoffs": [],
+        "last_local_accepted_row_count": 0,
+        "last_local_boundary_status_counts": {},
+        "last_local_entry_count": 0,
+        "last_local_propagated_row_count": 0,
+        "last_local_row_stop_reason_counts": {},
+        "last_local_supported_progress_count": 0,
+        "last_nominal_physical_attempt_count": 140,
+        "last_nominal_rejection_reason_counts": {
+          "nominal paired source thrust or slew limit": 14,
+          "unavailable nominal basis or source duration": 35
+        },
+        "remaining_deadline_s": 80.0,
+        "remaining_to_target_m": 1200.0
+      },
+      "baseline_result": {
+        "correction_count": 0,
+        "final_source_replay_passed": true,
+        "integrity_passed": true,
+        "mission_outcome": "success",
+        "nominal_class": "clear",
+        "physical_outcome": "landed_on_target",
+        "planning_stop": "landed",
+        "verified_landing": true
+      },
+      "case_id": "random-000",
+      "family": "direct",
+      "geometry": {
+        "endpoint_rise_m": -15.866269170022562,
+        "horizontal_scale": 1,
+        "maximum_height_above_endpoint_chord_m": 104.20603093142005,
+        "maximum_slope": 2.167857684922982,
+        "outside_patches_unchanged": true,
+        "patches": [
+          {
+            "center_x_m": 0,
+            "edited_interval_m": [
+              -42.0,
+              42.0
+            ],
+            "maximum_vertex_change_m": 26.837472928404807,
+            "outer_heights_m": [
+              -61.97393928995277,
+              -138.39903313574575
+            ],
+            "pad_id": "pad_source",
+            "shelf_interval_m": [
+              -18.0,
+              18.0
+            ],
+            "surface_y_m": -126.32500653589186,
+            "width_m": 36
+          },
+          {
+            "center_x_m": 1200,
+            "edited_interval_m": [
+              1158.0,
+              1242.0
+            ],
+            "maximum_vertex_change_m": 24.152609807728908,
+            "outer_heights_m": [
+              -180.59466170366218,
+              -79.47701001758072
+            ],
+            "pad_id": "pad_main",
+            "shelf_interval_m": [
+              1182.0,
+              1218.0
+            ],
+            "surface_y_m": -142.19127570591442,
+            "width_m": 36
+          }
+        ],
+        "raw_point_count": 381,
+        "recipe_id": "mountains_4x",
+        "relief_m": 230.95250647465622,
+        "seed": 1787984091,
+        "terrain_point_count": 389,
+        "variant": "mountains_4x",
+        "vertical_scale": 4
+      },
+      "recipe_id": "mountains_4x",
+      "role": "comparison",
+      "scenario_id": "challenge_mountains_4x_seed_1787984091",
+      "scenario_path": "fixtures/research/terrain_diagnostics_v1/random-000.json",
+      "scenario_sha256": "f750678a479634ad135b5f9070d732a999cd163be00d50dd2d9746c90f4ac97e",
+      "seed": 1787984091
+    }
+  ],
+  "maximum_measured_attempts": 13,
+  "policy_version": 3,
+  "repeat_case_ids": [
+    "random-327",
+    "random-024",
+    "random-030"
+  ],
+  "schema": "pd-lab.terrain-diagnostics-plan.v1",
+  "workers": 1
+}

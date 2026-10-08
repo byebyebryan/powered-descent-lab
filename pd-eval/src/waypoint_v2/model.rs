@@ -14,6 +14,32 @@ use crate::{AirborneDirectAuditV1, LocalClearingOrdinaryEvidenceV1, LocalClearin
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum WaypointV2EarlyExitDisposition {
+    NoEarlierBoundary,
+    UnsupportedContinuation,
+    NoNominal,
+    TerrainBlocked,
+    NominalRejected,
+    ClearReady,
+    Committed,
+}
+
+/// One optional query on the already selected maneuver. The original selected
+/// proposal retains its later witness H; only Committed changes the actual end.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WaypointV2EarlyExit {
+    pub witness_handoff_physics_step: u64,
+    pub query_state: Option<SimulationStateSnapshotV1>,
+    pub continuation_end_state: Option<SimulationStateSnapshotV1>,
+    pub minimum_continuation_clearance_m: Option<f64>,
+    pub disposition: WaypointV2EarlyExitDisposition,
+    pub reason: Option<String>,
+    pub nominal_search: Option<crate::AirborneAcquisitionSearchV1>,
+    pub audit: Option<AirborneDirectAuditV1>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WaypointV2SegmentKind {
     InitialNominal,
     LocalCorrection,
@@ -110,6 +136,20 @@ pub struct WaypointV2LocalSearch {
     /// Absent in historical captures; never an input to selection or proof.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub row_diagnostics: Vec<WaypointV2RowDiagnostic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub early_exit: Option<WaypointV2EarlyExit>,
+}
+
+impl WaypointV2LocalSearch {
+    /// Actual piece end, not the selected proposal's unexecuted witness H.
+    pub(crate) fn actual_handoff_state(&self) -> Option<&SimulationStateSnapshotV1> {
+        if let Some(exit) = &self.early_exit
+            && exit.disposition == WaypointV2EarlyExitDisposition::Committed
+        {
+            return exit.query_state.as_ref();
+        }
+        self.selected.as_ref().map(|p| &p.handoff_state)
+    }
 }
 
 #[cfg(test)]

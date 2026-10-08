@@ -10,7 +10,7 @@
     {
       "id": "waypoint-planning",
       "title": "Waypoint planning",
-      "description": "Start with the accepted Planner V2 batch, then the bounded timing comparison and harder-terrain challenge for development coverage. The rejected timing replacement, calibration, clear-route sanity sweep and earlier research remain separate.",
+      "description": "Start with the accepted Planner V2 batch, then the 1,000-world paired terrain sweep for the latest development coverage. The relaxed correction budget is an experiment, not the production default. Earlier challenges, diagnostics and clear-route sanity coverage remain separate.",
       "entries": [
         {
           "id": "planner-v2-current",
@@ -19,6 +19,14 @@
           "report_type": "Batch report",
           "status": "Active · default planner evaluation",
           "source": { "kind": "batch_pack", "pack_id": "planner_v2_lab_suite" }
+        },
+        {
+          "id": "planner-v2-terrain-cap-sweep-1k",
+          "title": "Planner V2 · 1,000-world terrain sweep",
+          "description": "Latest paired development check: the same 1,000 worlds under correction caps 6 and 24. 733 → 748 verified landings, all prior successes preserved; 387 clear direct and 361 blocked-route landings. Distinct unlaunched/airborne/crash markers and planning-cycle summaries separate proposed obstructions from executed flight. Rich plots, handoffs and separate controls/repeats remain intact. Production stays cap 6; not held-out reliability or the accepted benchmark.",
+          "report_type": "Batch comparison report",
+          "status": "Experimental cap 24 · 748/1000 verified landings",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-cap-sweep-20261007-v6/index.html" }
         },
         {
           "id": "planner-v2-intervention-focus",

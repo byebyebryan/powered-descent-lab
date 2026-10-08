@@ -385,7 +385,14 @@ fn corrected_tracked_scenario_cli_flight_writes_complete_bundle_and_portable_rep
     );
     assert_eq!(segment.entry_state, selected.entry_state);
     assert_eq!(segment.end_physics_step, actual_h);
-    assert_eq!(segment.end_state, selected.handoff_state);
+    let actual = search
+        .early_exit
+        .as_ref()
+        .filter(|e| e.disposition == pd_eval::WaypointV2EarlyExitDisposition::Committed)
+        .and_then(|e| e.query_state.as_ref())
+        .unwrap_or(&selected.handoff_state);
+    assert_eq!(&segment.end_state, actual);
+    assert!(actual.physics_step <= selected.handoff_state.physics_step);
     assert_eq!(segment.proposal_identity, selected.identity);
     assert_ne!(piece_origin, segment.start_physics_step);
     assert_ne!(segment.start_physics_step, segment.end_physics_step);
