@@ -157,6 +157,73 @@ workflow, not an externally driven per-tick game controller.
 
 ## Batch Eval
 
+### Random procedural-terrain survey
+
+The separate [100-case survey plan](random_terrain_survey_plan.md) uses fresh
+procedural profiles rather than altering the sealed planner benchmark. The
+[terrain runner](../studies/terrain_profiles/README.md#separate-random-terrain-flight-survey)
+documents explicit preparation, execution and saved verification. Its landing
+rate, observed nominal conflicts and completed corrections are exploratory
+coverage; sentinels and repeats keep separate denominators. It does not change
+the default pack, policy or accepted report selector.
+The [completed full sweep](random_terrain_full_sweep_results.md) verified 100/100
+random direct landings, all three controls and five exact non-timing repeats.
+All random nominal paths were clear; this is not random blocked-path coverage.
+The [repair-and-retry continuation](random_terrain_full_sweep_plan.md) supersedes
+the earlier no-retry policy without changing the frozen inputs. Each retry must
+use a new create-only source-frozen capture and preserve previous attempts.
+
+The [harder-terrain challenge](terrain_challenge_plan.md) uses separate source-bound
+calibration/held-out plans with four global physical-scale recipes and explicit
+repeat indices. Its [completed results](terrain_challenge_results.md) record
+21/64 blocked-route landings, 36/36 clear-route landings and 43 finite planning
+stops across 100 held-out cases. Calibration/control/repeat denominators remain
+separate. This is a frozen development challenge, not a changed default pack or
+accepted-benchmark promotion. Do not rerun a completed capture or select new
+seeds according to its outcomes.
+
+The completed [failure-only timing pass](intervention_fallback_results.md) reuses
+the same saved worlds, rather than generating another population. Its
+[collector](../studies/terrain_profiles/fallback_pass.py) authenticates exact input
+bytes, source snapshots, bounded query work, preserved successes and same-source
+repeats. Read-only verification, with no flights or report refresh:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/fallback_pass.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-fallback-20261007-focus
+rtk proxy python3 -B studies/terrain_profiles/fallback_pass.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-fallback-20261007-challenge
+rtk proxy target/release/pd-eval check-planner-v2 \
+  --dir outputs/eval/planner_v2_lab_suite/capture-fallback-20261007-benchmark
+```
+
+The benchmark was captured with `--no-publish`. These roots retain their actual
+source identities; saved verification does not claim that they came from later
+code. The bounded pass is closed; a new campaign or publication needs a separate
+decision, not reusing a completed root or its expired allowance.
+
+The completed [handoff-room preference pass](handoff_room_results.md) binds the
+same original inputs separately from the current fallback motion baseline.
+All 171 planned evaluations completed; 68/100 challenge landings preserve all
+65 previous successes. Its [collector](../studies/terrain_profiles/handoff_room_pass.py)
+also checks actual accepted-handoff estimates and the one-sided selection rule.
+Saved verification is read-only and does not generate another campaign:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/handoff_room_pass.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-handoff-room-20261007-challenge
+rtk proxy target/release/pd-eval check-planner-v2 \
+  --dir outputs/eval/planner_v2_lab_suite/capture-handoff-room-20261007-benchmark
+```
+
+The current benchmark was also captured with `--no-publish`; all 38 prior
+benchmark landings are complete-flight exact. These captures and the shadow
+retain distinct truthful source identities. Wall timings and additive query
+diagnostics are the only cross-source motion-comparison exclusions; same-source
+repeats retain diagnostics. The pass is closed, not a standing retry allowance.
+
+### Controller batches
+
 `pd-eval` owns scenario packs, scenario-family expansion, seed sweeps, and
 native multithreaded execution.
 

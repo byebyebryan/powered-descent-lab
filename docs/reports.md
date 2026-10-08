@@ -9,6 +9,43 @@ no accepted report site until local evidence is generated or supplied.
 
 ## Report Serving
 
+The [random-terrain survey](random_terrain_survey_plan.md) has a separate
+development collection at `/reports/eval/planner_v2_random_terrain/`, linked under
+Waypoint planning when present. It uses the common batch/detail templates, not
+the shape-only study gallery, and does not replace the accepted benchmark.
+`pd-eval render-terrain-survey --capture-dir ABSOLUTE_CAPTURE --output-dir
+ABSOLUTE_SURVEY_SITE --capture-base-href /eval/planner_v2_random_terrain/CAPTURE/`
+is an explicit create-only report publication command with no flight execution.
+The destination is the repository's exact `outputs/reports/eval/planner_v2_random_terrain`
+directory or one direct `recheck-ID` child beneath it (ASCII letters, digits,
+hyphens and underscores in ID). Existing targets and symlink ancestors are
+rejected; existing pages are never overwritten. Capture-specific rechecks retain
+the stopped collection rather than replacing it. `refresh-reports --home-only`
+can then connect the published collection to the ordinary navigation without
+rewriting flight reports or the accepted selection.
+The [completed full sweep](random_terrain_full_sweep_results.md) is at
+`/reports/eval/planner_v2_random_terrain/recheck-20261007-v4-full/`: from the
+report home choose **Waypoint planning → Full random-terrain sweep**. It contains
+100 direct random landings, separate controls with actual one/three handoffs and
+five repeats. The earlier stopped collections remain linked and unchanged.
+
+The [harder-terrain challenge results](terrain_challenge_results.md) are at
+`/reports/eval/planner_v2_random_terrain/recheck-challenge-20261007-main-v2/`:
+**Waypoint planning → Harder terrain challenge**. Coverage distinguishes 21/64
+blocked-route landings from 36/36 clear-route landings. The common tree/detail
+templates retain actual handoffs, including four- and six-handoff landings and
+finite stops after clearing. The separate 24-case calibration has its own batch;
+the earlier presentation-defect stop remains under history. For a proven finite
+stop between sampling ticks, the last plotted observation is derived from the
+exact saved endpoint and labeled display-only; the raw sample ledger is unchanged.
+
+The subsequent [handoff-room results](handoff_room_results.md) improve the reused
+challenge to 68/100, but its native captures are unpublished and do not replace
+the earlier linked challenge or accepted benchmark. Their common rich detail
+pages add accepted query H states and braking-room estimates to the collapsed
+clearing diagnostics. These are query heuristics, not executed waypoints or
+landing proofs; existing actual-handoff plots and annotations remain intact.
+
 Generated reports live under `outputs/` and can be served locally with:
 
 ```bash

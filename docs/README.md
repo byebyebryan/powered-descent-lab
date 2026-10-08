@@ -65,6 +65,51 @@ shared ridge motif is reduced and 12/12 native input-only preflights pass; no
 procedural flight or landing result is claimed. Its offline galleries remain
 separate from the accepted common-template flight report site.
 
+The [random-terrain survey plan](random_terrain_survey_plan.md) freezes 100 fresh
+cases with separate preservation controls/repeats and common rich flight reports.
+It is exploratory coverage, not a replacement for the accepted 44-case benchmark.
+The [completed full-sweep results](random_terrain_full_sweep_results.md) record
+100/100 verified random direct landings, three preserved controls (including
+one- and three-handoff landings), and five exact non-timing repeats. All random
+routes were clear: this remains the separate sanity baseline.
+The subsequent [harder-terrain coverage plan](terrain_challenge_plan.md) and
+[completed challenge results](terrain_challenge_results.md) retain a separate
+24-case calibration and independent 100-case population. The latter has 64
+blocked routes, 21 corrected landings and 36/36 clear direct landings, with 43
+honest finite stops. This exposes planner coverage limits without changing the
+accepted benchmark or rewriting the sanity sweep.
+The [intervention-timing comparison](intervention_timing_results.md) retains a
+16-case logging-only baseline and timing candidate: three versus six landings,
+but a successful control and the existing ridge CLI test regress. The replacement
+is not adopted; previous timing is restored and compact query diagnostics remain.
+The conditional full recheck was not run. This is development reuse, not a new
+held-out estimate.
+The subsequent [failure-only fallback](intervention_fallback_results.md) preserves
+all 57 prior challenge landings and adds eight, for 65/100 on the unchanged worlds.
+Its fresh benchmark passes all 36 core landings; the accepted selector/site remain
+unchanged. The current source tries extra timings only after finite primary
+search exhaustion, with unchanged guards and actual-handoff replanning.
+The completed [handoff braking-room preference](handoff_room_results.md) adds
+three landings for 68/100, preserving all 65 previous successes. It changes
+only a negative-room winner when an already accepted nonnegative-room alternative
+exists. The benchmark and accepted site remain unchanged; this is a cheap
+development heuristic, not a landing-feasibility certificate.
+The [original stopped results and diagnosis](random_terrain_survey_results.md) record three
+verified random direct landings and an initial replay-envelope roundoff failure;
+96 random cases were unattempted in that retained original capture. No
+arbitrary-terrain reliability claim is made.
+The [numerical fix and recheck plan](random_terrain_survey_recheck_plan.md)
+keep the same 100 inputs and 108-attempt ceiling. The [recheck results](random_terrain_survey_recheck_results.md)
+stop at the first preservation control: its flight/proofs pass, but one clearance
+scalar differs by 8.88e-16 m. No random flight was launched in the recheck.
+The subsequent [comparison-aware results](random_terrain_survey_comparison_results.md)
+accept the direct control but stop at the corrected control's diagnostic-derived
+proposal hash. Its maneuver/flight/proofs are unchanged; the comparator needs
+selected-trajectory/hash-binding coverage, supplied by the subsequent full sweep.
+The [full-sweep continuation](random_terrain_full_sweep_plan.md) supersedes the
+earlier stop-on-first-error/no-retry execution policy: repair routine defects,
+retain every source-frozen attempt and complete the unchanged full population.
+
 ## Research and history
 
 [Development history and archive](history.md) groups the earlier trajectory,

@@ -145,6 +145,21 @@ landing suffix or a literal terrain-feature far edge. Another correction may
 follow. Initial rest and airborne acquisition use different realization helpers
 but share this outer-loop contract.
 
+The current source adds the bounded
+[failure-only timing fallback](intervention_fallback_results.md): complete the
+existing local search first, then try at most four new conflict-relative entries
+only on finite exhaustion, skipping tested clocks. Successful primary searches
+do no fallback work. That timing extension preserved nominal construction,
+ranking and safety guards, improving its development challenge from 57/100 to
+65/100 without lost successes. The subsequent
+[handoff braking-room preference](handoff_room_results.md) preserves the stage
+admission and original rank unless its winner has negative estimated room and
+an already accepted nonnegative-room row exists; then original rank selects
+within that subset. This cheap horizontal heuristic cannot reject candidates,
+open fallback, or certify landing feasibility. Current challenge coverage is
+68/100 with all 65 prior successful flights preserved. Both fresh benchmarks
+passed without replacing the accepted site or relabeling its historical capture.
+
 The supported initial request is a route-free `LandingOnPad` mission with the
 tested vehicle, Earth gravity, 120 Hz physics / 60 Hz commands, upright rest on
 the source pad, a target to its right, and valid flat pad shelves. Airborne
@@ -166,6 +181,8 @@ V2 implementation ownership is:
 - `pd-plan/src/ballistic.rs` and its canonical-initial child: pure bridge,
   kinematic and canonical-basis math without a research feature gate.
 - `pd-plan/src/waypoint_v2.rs`: versioned finite policy, correction bounds and clocks.
+- `pd-plan/src/local_clearing.rs`: sealed template family and pure scalar
+  handoff braking-room estimate; no terrain query or physical acceptance.
 - `pd-eval/src/planner_flight/`: current request/preflight, canonical initial
   source fitting, state-derived airborne acquisition, terminal realization and
   phase/contact geometry, extracted from historical research orchestration.
