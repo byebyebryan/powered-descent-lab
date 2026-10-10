@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import time
 from pathlib import Path
@@ -46,13 +47,13 @@ def load_missions(root, role, per_family=None, usage_id=None):
     return missions
 
 
-def evaluate_summaries(model, missions, slots=16):
+def evaluate_summaries(model, missions, slots=16, env_class=ProceduralLandingEnv):
     """Exact scheduled input accounting; summaries carry no saved-command proof."""
     results, active = [], []
     cursor = 0
 
     def start(index):
-        env = ProceduralLandingEnv(fixed_missions=[missions[index]])
+        env = env_class(fixed_missions=[missions[index]])
         obs, _ = env.reset()
         return index, env, obs
 
@@ -85,7 +86,7 @@ def evaluate_summaries(model, missions, slots=16):
 
 
 class DevelopmentCallback(BaseCallback):
-    def __init__(self, output, missions, every, max_seconds):
+    def __init__(self, output, missions, every, max_seconds, env_class=ProceduralLandingEnv):
         super().__init__()
         self.output, self.missions = output, missions
         self.every, self.next_evaluation = every, every
@@ -93,6 +94,7 @@ class DevelopmentCallback(BaseCallback):
         self.started = time.monotonic()
         self.best_key, self.best = None, None
         self.evaluations = []
+        self.env_class = env_class
 
     def _on_step(self):
         return time.monotonic()-self.started < self.max_seconds
@@ -101,7 +103,7 @@ class DevelopmentCallback(BaseCallback):
         started = time.monotonic()
         checkpoint = self.output/f"checkpoint-{label}.zip"
         self.model.save(checkpoint)
-        report = evaluate_summaries(self.model, self.missions)
+        report = evaluate_summaries(self.model, self.missions, env_class=self.env_class)
         digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
         report.update(checkpoint=str(checkpoint), checkpoint_sha256=digest,
                       transitions=self.num_timesteps, optimizer_epochs=self.model._n_updates,
@@ -119,9 +121,11 @@ class DevelopmentCallback(BaseCallback):
             self.next_evaluation = self.num_timesteps+self.every
 
 
-def source_identities():
+def source_identities(module=None):
     root = Path(__file__).resolve().parent
     paths = [root/"pd_env.py", root/"train.py", root/"pyproject.toml", root/"uv.lock", *native_module_paths()]
+    if module is not None:
+        paths.append(Path(module.__file__).resolve())
     return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
@@ -134,13 +138,16 @@ def main():
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--eval-every", type=int, default=524_288)
     parser.add_argument("--max-seconds", type=int, default=7200)
+    parser.add_argument("--design", choices=["v1", "v2"], default="v1")
     args = parser.parse_args()
+    module = importlib.import_module("pd_env" if args.design == "v1" else "pd_env_"+args.design)
+    env_class, configuration = module.ProceduralLandingEnv, module.CONFIGURATION
     args.output.mkdir()
     torch.set_num_threads(1)
-    before = source_identities()
+    before = source_identities(module)
     request = {"schema_version": 1, "seed": args.seed, "requested_transitions": args.steps,
                "workers": args.workers, "max_seconds": args.max_seconds,
-               "configuration": CONFIGURATION, "source_identities": before,
+               "design": args.design, "configuration": configuration, "source_identities": before,
                "optimizer": {"algorithm": "stable-baselines3.PPO", "learning_rate": 3e-4,
                              "n_steps": 512, "batch_size": 512, "n_epochs": 5,
                              "gamma": 0.999, "gae_lambda": 0.95, "clip_range": 0.2,
@@ -149,7 +156,7 @@ def main():
                "normalization": "fixed explicit physical scales; no running observation or reward normalization",
                "evaluation_every_transitions": args.eval_every}
     write_new(args.output/"request.json", request)
-    env = DummyVecEnv([lambda i=i: ProceduralLandingEnv(worker_id=i, workers=args.workers,
+    env = DummyVecEnv([lambda i=i: env_class(worker_id=i, workers=args.workers,
                        log_path=args.output/f"worker-{i:02}.jsonl") for i in range(args.workers)])
     model = PPO("MlpPolicy", env, learning_rate=3e-4, n_steps=512, batch_size=512,
                 n_epochs=5, gamma=0.999, gae_lambda=0.95, clip_range=0.2, ent_coef=0.003,
@@ -157,11 +164,11 @@ def main():
                 seed=args.seed, device="cpu", verbose=0)
     missions = load_missions(args.cohorts, "development", 64,
                             usage_id="training-"+hashlib.sha256(str(args.output).encode()).hexdigest()[:24])
-    callback = DevelopmentCallback(args.output, missions, args.eval_every, args.max_seconds)
+    callback = DevelopmentCallback(args.output, missions, args.eval_every, args.max_seconds, env_class)
     started = time.monotonic()
     model.learn(args.steps, callback=callback, progress_bar=False)
     callback.evaluate("final")
-    after = source_identities()
+    after = source_identities(module)
     write_new(args.output/"selection.json", {
         "schema_version": 1, "requested_transitions": args.steps,
         "actual_transitions": model.num_timesteps, "elapsed_s": time.monotonic()-started,
