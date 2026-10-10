@@ -88,7 +88,8 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
     output.mkdir()
     module = importlib.import_module("pd_env" if design == "v1" else "pd_env_"+design)
     env_class = module.ProceduralLandingEnv
-    configuration = module.CONFIGURATION
+    configuration = {**module.CONFIGURATION, "policy_inference": {
+        "deterministic": True, "device": "cpu", "torch_num_threads": 1, "batch_size": 1}}
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
     descriptor = {"schema_version": 1, "implementation": "ppo-terrain-"+design,
                   "configuration": configuration, "checkpoint_sha256": digest}

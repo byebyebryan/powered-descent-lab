@@ -17,10 +17,24 @@ def verify_campaign(directory):
     schedule, attempts, rows = summary["request"]["attempt_indices"], summary["attempts"], projection["attempts"]
     if len(schedule) != len(attempts) or len(rows) != len(attempts):
         raise ValueError("campaign lost scheduled attempts")
+    manifests = [item for item in summary["evidence_before"]["input_files"]
+                 if Path(item["path"]).name == "manifest.json" and item["sha256"] == summary["request"]["manifest_sha256"]]
+    if len(manifests) != 1:
+        raise ValueError("campaign lacks its uniquely bound collection manifest")
+    manifest_path = Path(manifests[0]["path"])
+    if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != manifests[0]["sha256"]:
+        raise ValueError("original collection manifest changed")
+    manifest = json.loads(manifest_path.read_text())
+    entries = {entry["index"]: entry for entry in manifest["entries"]}
     captures, landings, unsupported = 0, 0, 0
     for index, (mission_index, attempt, row) in enumerate(zip(schedule, attempts, rows)):
         if attempt["attempt_index"] != index or attempt["mission_index"] != mission_index or row["mission_index"] != mission_index:
             raise ValueError("saved schedule differs from request")
+        entry = entries[mission_index]
+        if row["physical_sha256"] != entry["physical_sha256"]:
+            raise ValueError("projected physical input differs from scheduled collection input")
+        if hashlib.sha256((manifest_path.parent/entry["file"]).read_bytes()).hexdigest() != entry["sha256"]:
+            raise ValueError("original resolved input bytes changed")
         disposition = attempt["disposition"]
         if disposition["kind"] == "unsupported":
             if row["disposition"] != "unsupported" or row["verified_target_landing"]:
