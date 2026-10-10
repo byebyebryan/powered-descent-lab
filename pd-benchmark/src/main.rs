@@ -163,30 +163,37 @@ fn main() -> Result<(), String> {
         rows.push(row);
     }
     let usage = pd_missions::read_collection_usage(&args.collection)?;
-    let page = pd_report::campaign::CampaignPageV1 {
-        schema_version: 1,
-        title: format!(
-            "Procedural incumbent campaign · {}",
-            result.request.agent.implementation
-        ),
-        agent: result.request.agent.clone(),
-        integrity_passed: result.integrity_passed,
-        unique_scheduled_missions: result.unique_scheduled_missions,
-        manifest_sha256: result.request.manifest_sha256.clone(),
-        collection_role: format!("{:?}", manifest.request.role),
-        prior_training_or_tuning: usage.iter().any(|receipt| {
-            matches!(
-                receipt.exposure,
-                pd_missions::CollectionExposureV1::Training
-                    | pd_missions::CollectionExposureV1::Tuning
-            )
-        }),
-        recorded_input_inspection: usage
-            .iter()
-            .any(|receipt| receipt.exposure == pd_missions::CollectionExposureV1::InputInspection),
-        attempts: rows,
-        summary_href: "summary.json".into(),
-    };
+    let page =
+        pd_report::campaign::CampaignPageV1 {
+            schema_version: 1,
+            title: format!(
+                "Procedural incumbent · {:?} · {} · cap {}",
+                manifest.request.role,
+                if args.mirror_leftward {
+                    "reflected"
+                } else {
+                    "raw"
+                },
+                args.correction_cap
+            ),
+            agent: result.request.agent.clone(),
+            integrity_passed: result.integrity_passed,
+            unique_scheduled_missions: result.unique_scheduled_missions,
+            manifest_sha256: result.request.manifest_sha256.clone(),
+            collection_role: format!("{:?}", manifest.request.role),
+            prior_training_or_tuning: Some(usage.iter().any(|receipt| {
+                matches!(
+                    receipt.exposure,
+                    pd_missions::CollectionExposureV1::Training
+                        | pd_missions::CollectionExposureV1::Tuning
+                )
+            })),
+            recorded_input_inspection: Some(usage.iter().any(|receipt| {
+                receipt.exposure == pd_missions::CollectionExposureV1::InputInspection
+            })),
+            attempts: rows,
+            summary_href: "summary.json".into(),
+        };
     pd_missions::write_json_create_only(&args.output.join("report-input.json"), &page)?;
     let html = pd_report::campaign::render_campaign_page(&page)?;
     let mut file = std::fs::OpenOptions::new()

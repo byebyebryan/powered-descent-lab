@@ -42,11 +42,25 @@ pub struct CampaignPageV1 {
     pub integrity_passed: bool,
     pub unique_scheduled_missions: usize,
     pub manifest_sha256: String,
+    #[serde(default = "unrecorded_role")]
     pub collection_role: String,
-    pub prior_training_or_tuning: bool,
-    pub recorded_input_inspection: bool,
+    #[serde(default)]
+    pub prior_training_or_tuning: Option<bool>,
+    #[serde(default)]
+    pub recorded_input_inspection: Option<bool>,
     pub attempts: Vec<CampaignRowV1>,
     pub summary_href: String,
+}
+
+fn unrecorded_role() -> String {
+    "Unrecorded".into()
+}
+fn exposure(value: Option<bool>) -> &'static str {
+    match value {
+        Some(true) => "yes",
+        Some(false) => "no",
+        None => "unrecorded",
+    }
 }
 
 fn escape(value: &str) -> String {
@@ -71,6 +85,14 @@ fn verified(row: &CampaignRowV1) -> bool {
 
 fn number(value: Option<f64>) -> String {
     value.map_or_else(|| "—".into(), |n| format!("{n:.2}"))
+}
+
+fn family_label(version: &str) -> &str {
+    match version {
+        "pd-missions/value-noise-rest-v1" => "Value noise",
+        "pd-missions/layered-perlin-rest-v1" => "Layered Perlin",
+        other => other,
+    }
 }
 
 pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
@@ -122,8 +144,16 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
     for row in &page.attempts {
         groups
             .entry(format!(
-                "{} · direction {} · stratum {}",
-                row.terrain_family, row.direction, row.terrain_stratum
+                "{} · {} · stratum {}",
+                family_label(&row.terrain_family),
+                if row.direction < 0 {
+                    "left"
+                } else if row.direction > 0 {
+                    "right"
+                } else {
+                    "vertical"
+                },
+                row.terrain_stratum
             ))
             .or_default()
             .push(row);
@@ -139,7 +169,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
             0
         };
         coverage_rows.push_str(&batch::render_coverage_row(
-            &escape(label),
+            label,
             &batch::render_coverage_group_cell(
                 "coverage-cell",
                 &group,
@@ -187,8 +217,8 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
     let context = format!(
         "<section class=\"context-section\"><h2>Configuration and provenance</h2><p>Original collection role: {}. Recorded training/tuning exposure: {}. Recorded input inspection: {}.</p><p>Manifest SHA-256 <code>{}</code>. Overall campaign integrity: <strong>{}</strong>. Flight success requires the physical, mission, validity, integrity and complete native replay tuple.</p><details><summary>Effective approach descriptor</summary><pre>{config}</pre></details></section>",
         escape(&page.collection_role),
-        page.prior_training_or_tuning,
-        page.recorded_input_inspection,
+        exposure(page.prior_training_or_tuning),
+        exposure(page.recorded_input_inspection),
         escape(&page.manifest_sha256),
         page.integrity_passed
     );
@@ -203,7 +233,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
             "<span class=\"chip\"><strong>{landings}/{scheduled}</strong> verified target landings</span>"
         ),
         actions_html: &actions,
-        before_hero_html: "",
+        before_hero_html: "<style>body.procedural-campaign .coverage-table th:first-child { width: 320px; text-transform: none; }</style>",
         after_hero_html: "",
         overview_html: &overview,
         planner_html: "",
@@ -213,7 +243,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
         review_tree_html: &tree,
         comparison_html: "",
         appendix_html: "",
-        body_class: "",
+        body_class: "procedural-campaign",
         tree: batch::BatchTreeOptions {
             max_depth: 1,
             depth_by_kind: &[("group", 0)],
@@ -242,8 +272,8 @@ mod tests {
             unique_scheduled_missions: 1,
             manifest_sha256: "0".repeat(64),
             collection_role: "Development".into(),
-            prior_training_or_tuning: false,
-            recorded_input_inspection: false,
+            prior_training_or_tuning: Some(false),
+            recorded_input_inspection: Some(false),
             summary_href: "summary.json".into(),
             attempts: vec![CampaignRowV1 {
                 attempt_index: 0,
