@@ -21,6 +21,20 @@ Success means:
 
 ## 1.1 Current status
 
+### Active platform design
+
+Controller tuning is parked at the combined-safety development checkpoint. The
+reviewed [platform restructure plan](platform_restructure_plan.md) separates
+neutral execution, procedural mission management, solver implementation,
+evaluation and saved reporting so an independent RL approach can share the
+plant. Its [review record](platform_restructure_review.md) owns design validation;
+implementation is active in the [run record](platform_restructure_results.md).
+Existing guidance and accepted flight contracts
+remain current during staged migration.
+The [unattended run plan](platform_restructure_execution.md) makes accepted
+slices checkpoints within a substantial implementation goal, prioritizing the
+independent-agent path before deep legacy solver extraction.
+
 ### Active planner evaluation and reporting
 
 The accepted native V2 evaluation workflow is `planner_v2_lab_suite`: omitting
@@ -958,6 +972,20 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
+Proceed from the reviewed [platform restructure plan](platform_restructure_plan.md)
+and [unattended execution plan](platform_restructure_execution.md). The intended
+goal continues across accepted milestones while the owner is away: neutral
+runtime, procedural missions, generic evaluation/reporting and an independent
+policy adapter first, then maintained solver extraction and consolidation.
+The first controller wrapper is an integration checkpoint, not the stopping
+target. Substantial RL training follows the platform's physical and dependency
+acceptance. The [review notes](platform_restructure_review.md) record preparation;
+implementation is active in the [run record](platform_restructure_results.md).
+
+The controller-mechanics follow-up below is parked. Preserve it as context for a
+separately resumed algorithm investigation rather than treating it as the active
+task list.
+
 The latest [combined safety and fresh terrain pass](ballistic_combined_validation_results.md)
 lands **866/1000** on the original worlds versus acquisition-only's 863, and
 **824/1000** on a fresh seed-disjoint 1k versus 818: three and six gains, no losses.
@@ -967,8 +995,9 @@ Use the combined mode as the opt-in development reference, not default promotion
 The original headline is optimistic relative to this fresh sample; about 82%
 fresh coverage is the current expectation, not arbitrary-terrain reliability.
 
-Next diagnose recovery mechanics on the original development corpus: distinguish
-late warnings, insufficient response room and held-command prediction vetoes from
+The parked follow-up would diagnose recovery mechanics on the original
+development corpus: distinguish late warnings, insufficient response room and
+held-command prediction vetoes from
 a genuinely exhausted response family. Freeze a small portable panel before any
 behavior change. Fresh failures are 153 preterminal and 23 terminal; recovery
 alone accounts for 88 of 176. Preserve guards and avoid seed-specific waypoint

@@ -16,6 +16,21 @@ later code and documentation housekeeping does not create a new flight capture.
 | Identify maintained scripts and their side effects | [Tooling inventory](../scripts/README.md) |
 | Understand frozen inputs and archived pack metadata | [Fixture ownership](../fixtures/README.md) |
 
+## Active platform work
+
+The [platform restructure plan](platform_restructure_plan.md) and
+[review record](platform_restructure_review.md) define the next design direction:
+independent approaches on a shared plant, neutral execution and evaluation, and
+versioned procedural mission generation and collection management. The design
+is reviewed; implementation is active. Controller tuning is parked at the
+combined-safety checkpoint below. Current contracts and accepted evidence remain
+in force until their explicit migration stages.
+
+The [implementation run record](platform_restructure_results.md) tracks accepted
+milestones and remaining work. The [unattended execution plan](platform_restructure_execution.md) defines the
+day-scale run: deliver an independent-agent workflow first, then continue solver
+ownership and consolidation, with local checkpoints and bounded validation.
+
 ## Current contracts and ownership
 
 - [Architecture](architecture.md): plant, scenario, controller and persisted
@@ -61,9 +76,10 @@ preterminal commands remain exact. All 3,130 attempts, repeats, proof tuples and
 independent inventories verify under the [frozen plan](ballistic_combined_validation_plan.md).
 Use the combined mode as the opt-in development reference, not default promotion.
 The fresh rate is the more useful coverage expectation; 153 of its 176 remaining
-stops precede terminal control, including 88 recovery-command failures. Diagnose
-that mechanism next on the original development corpus, not by tuning fresh seeds
-or relaxing guards. The three inherited deadline losses remain explicit.
+stops precede terminal control, including 88 recovery-command failures. That
+mechanism investigation is parked while the platform restructure is reviewed;
+its original-development-corpus boundary remains recorded in the result. The
+three inherited deadline losses remain explicit.
 
 The preceding [independent acquisition and terminal-safety pass](ballistic_acquisition_safety_results.md)
 lands **863/1000 (86.3%)** with acquisition-only: 37 gains, three protected
