@@ -1610,14 +1610,28 @@ mod tests {
     #[test]
     fn latest_experiments_and_case_shortcuts_are_linked_without_rewriting_evidence() {
         let root = fixture_root();
-        let sweep = "eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/index.html";
-        let panel = "eval/planner_v2_random_terrain/capture-terminal-centering-preservation-20261009-v1/index.html";
-        let detail = "eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/runs/random-142/report.html";
+        let sweep = "eval/planner_v2_random_terrain/capture-ballistic-phase-transition-full-20261009-v2/index.html";
+        let panel = "eval/planner_v2_random_terrain/capture-ballistic-phase-transition-focus-20261009-v2/index.html";
+        let detail = "eval/planner_v2_random_terrain/capture-ballistic-phase-transition-full-20261009-v2/runs/random-080/report.html";
+        let reference = "eval/planner_v2_random_terrain/capture-ballistic-finite-correction-full-20261009-v1/index.html";
+        let centering = "eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/index.html";
+        let centering_panel = "eval/planner_v2_random_terrain/capture-terminal-centering-preservation-20261009-v1/index.html";
         let previous =
             "eval/planner_v2_random_terrain/capture-coast-terminal-sweep-20261009-v1/index.html";
         let previous_panel = "eval/planner_v2_random_terrain/capture-coast-terminal-preservation-20261009-v1/index.html";
         let accepted = "reports/eval/planner_v2_lab_suite/index.html";
-        for relative in [sweep, panel, detail, previous, previous_panel, accepted] {
+        let evidence = [
+            sweep,
+            panel,
+            detail,
+            reference,
+            centering,
+            centering_panel,
+            previous,
+            previous_panel,
+            accepted,
+        ];
+        for relative in evidence {
             let path = root.join("outputs").join(relative);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, relative).unwrap();
@@ -1634,29 +1648,40 @@ mod tests {
                 assert!(html.contains(&format!("href=\"/{relative}\"")), "{name}");
             }
             assert!(html.contains("not adopted"));
-            assert!(html.contains("592/1000") && html.contains("16 unverified"));
-            assert!(html.contains("45 former wins not reproduced"));
+            assert!(html.contains("797/1000") && html.contains("203 protected stops"));
+            assert!(html.contains("23/29 selected landings"));
             if !name.contains("library") {
                 assert!(html.contains(&format!("href=\"/{detail}\"")), "{name}");
-                assert!(html.contains("086 · new terminal stop · Unavailable"));
-                assert!(!html.contains("href=\"/eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/runs/random-086"));
+                assert!(html.contains("407 · sole paired regression · Unavailable"));
+                assert!(!html.contains("href=\"/eval/planner_v2_random_terrain/capture-ballistic-phase-transition-full-20261009-v2/runs/random-407"));
             }
             if name.contains("topics/") || name.contains("library/") {
-                for relative in [previous, previous_panel] {
+                for relative in [
+                    reference,
+                    centering,
+                    centering_panel,
+                    previous,
+                    previous_panel,
+                ] {
                     assert!(html.contains(&format!("href=\"/{relative}\"")), "{name}");
                 }
+                assert!(html.contains("592/1000") && html.contains("16 unverified"));
+                assert!(html.contains("45 former wins not reproduced"));
             }
             if name.contains("topics/") {
-                assert!(html.find(sweep).unwrap() < html.find(previous).unwrap());
+                assert!(html.find(sweep).unwrap() < html.find(reference).unwrap());
+                assert!(html.find(reference).unwrap() < html.find(centering).unwrap());
             }
         }
         let home = fs::read_to_string(root.join("outputs/index.html")).unwrap();
         assert!(home.find("id=\"latest-work\"").unwrap() < home.find("Browse by subject").unwrap());
+        assert!(!home.contains(centering));
+        assert!(!home.contains("592/1000"));
         assert_eq!(
             home,
             fs::read_to_string(root.join("outputs/reports/index.html")).unwrap()
         );
-        for relative in [sweep, panel, detail, previous, previous_panel, accepted] {
+        for relative in evidence {
             assert_eq!(
                 fs::read_to_string(root.join("outputs").join(relative)).unwrap(),
                 relative
@@ -1784,7 +1809,7 @@ mod tests {
         fs::write(outside.join("index.html"), "outside sentinel").unwrap();
         fs::write(outside.join("report.html"), "detail sentinel").unwrap();
         let sweep = root.join(
-            "outputs/eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete",
+            "outputs/eval/planner_v2_random_terrain/capture-ballistic-phase-transition-full-20261009-v2",
         );
         fs::create_dir_all(sweep.parent().unwrap()).unwrap();
         std::os::unix::fs::symlink(&outside, &sweep).unwrap();
@@ -1793,7 +1818,7 @@ mod tests {
         fs::remove_file(&sweep).unwrap();
         fs::create_dir_all(sweep.join("runs")).unwrap();
         fs::write(sweep.join("index.html"), "batch sentinel").unwrap();
-        std::os::unix::fs::symlink(&outside, sweep.join("runs/random-142")).unwrap();
+        std::os::unix::fs::symlink(&outside, sweep.join("runs/random-080")).unwrap();
         assert!(ReportSite::new(&root).refresh_home().is_err());
         assert!(!root.join("outputs/index.html").exists());
         assert_eq!(

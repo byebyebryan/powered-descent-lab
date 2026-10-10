@@ -10,28 +10,33 @@ no accepted report site until local evidence is generated or supplied.
 ## Report Serving
 
 Start at `/` or `/reports/`: **Latest planner experiment** links directly to the
-[latest frozen-centering sweep](ballistic_terminal_centering_sweep_results.md):
-the full 1,000-world batch (592 landings, 392 verified finite stops and 16
-unverified terrain-domain errors), the smaller body-centering preservation panel
-(10/16 random landings, earlier exact-flight admission failed), and mission
-shortcuts for recovered 142/974, new terminal stop 086 and deadline stop 288.
+[latest frozen phase-transition sweep](ballistic_phase_transition_results.md):
+the full 1,000-world batch (797 verified landings and 203 protected airborne
+stops), the focused diagnostic panel (23/29 selected landings versus 14), and
+mission shortcuts for recovered 080, routing regression 407, recovery stop 020,
+pad-centering stop 538 and aim-admission stop 715.
 These entries are also under **Waypoint planning** and **Browse all reports**.
 Links use the server's current host, so no long LAN URL needs copying from chat.
 
 The latest sweep is at
-`/eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/`.
-Its 75 gains are offset by 45 former wins not reproduced, including 12 unverified
-errors that the batch's recorded-only loss headline omits. Root navigation labels
-that limitation explicitly. The previous 562/1000 coast-to-terminal batch and
-8/16 panel remain linked under **Waypoint planning** and **Browse all reports**;
-they are not replaced or rewritten.
+`/eval/planner_v2_random_terrain/capture-ballistic-phase-transition-full-20261009-v2/`.
+Its twelve gains and one loss are paired against the previous ballistic candidate
+at 786/1000. All 1,005 records/repeats verify; repeats are outside the 1,000-world
+denominator. This is the frozen experimental capture, not a rerun of subsequent
+review fixes. The focused panel is at
+`/eval/planner_v2_random_terrain/capture-ballistic-phase-transition-focus-20261009-v2/`;
+its selected worlds are not an independent broad-terrain coverage estimate.
+The 786/1000 reference, earlier 592/1000 and 562/1000 batches and their panels
+remain linked under **Waypoint planning** and **Browse all reports**; they are
+not replaced or rewritten. The 592 capture retains its 16 unverified exceptions
+and the warning that its recorded-only loss headline omits twelve former wins.
 
-The newer, separately authorized
+The earlier, separately authorized
 [terminal-coordination diagnostic](ballistic_terminal_coordination_sweep_results.md)
 records 639/1000 with complete evidence. It is directly reachable at
 `/eval/planner_v2_random_terrain/capture-terminal-coordination-diagnostic-1k-20261009-v1/`.
-Root navigation still selects the 592-landings capture described above: this
-flight allowance did not authorize another root-navigation refresh. The new
+Its flight allowance did not refresh root navigation; the subsequent
+navigation-only update now selects the 797-landings capture above. The 639
 batch uses the same rich details and failure-first tree; its generic previous
 comparison is V10 (562), while the results document supplies the V12 comparison.
 

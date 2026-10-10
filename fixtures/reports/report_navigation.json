@@ -8,14 +8,14 @@
   },
   "home_highlights": {
     "title": "Latest planner experiment",
-    "description": "Ballistic aiming + terminal braking/body centering · 9 October 2026. These are the latest development results, not the accepted V2 benchmark below.",
+    "description": "Ballistic phase transitions · 9 October 2026. Latest verified development capture: 797/1000 landings. This frozen experimental result is not the accepted V2 benchmark below or a rerun of the subsequent review fixes.",
     "entry_ids": ["planner-ballistic-latest-1k", "planner-ballistic-latest-panel"]
   },
   "topics": [
     {
       "id": "waypoint-planning",
       "title": "Waypoint planning",
-      "description": "Browse the accepted V2 benchmark, the latest ballistic experiment (592/1000), or the retained policy-3 1,000-world paired terrain sweep (817/1000). Development experiments are separate from the accepted benchmark; earlier comparisons and rich mission reports remain available.",
+      "description": "Browse the accepted V2 benchmark, the latest ballistic experiment (797/1000), or the retained policy-3 1,000-world paired terrain sweep (817/1000). Development experiments are separate from the accepted benchmark; earlier comparisons and rich mission reports remain available.",
       "entries": [
         {
           "id": "planner-v2-current",
@@ -28,9 +28,40 @@
         {
           "id": "planner-ballistic-latest-1k",
           "title": "Latest 1,000-world ballistic batch",
-          "description": "592/1000 verified landings, versus 562: 75 gains and 45 former wins not reproduced (33 verified stops and 12 unverified errors). Overall, 392 verified airborne stops and 16 unverified terrain-domain errors remain. The batch's recorded-only loss headline omits those 12 former wins. Start with the mission shortcuts below; the retained policy-3 sweep still lands 817/1000 and no replacement is accepted.",
+          "description": "797/1000 verified landings versus the previous ballistic candidate's 786: twelve gains and one loss (407). The 203 remaining failures are protected airborne stops, not actual crashes; recovery is the largest group. 433 landings follow waypoint handoffs. Start with the mission shortcuts below. All 1,005 records/repeats verify; the retained policy-3 sweep still lands 817/1000 and no replacement is accepted.",
           "report_type": "Experimental batch report",
-          "status": "9 Oct · 592 landed · 392 finite stops · 16 unverified · not adopted",
+          "status": "9 Oct · 797 landed · 203 protected stops · not adopted",
+          "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-ballistic-phase-transition-full-20261009-v2/index.html" },
+          "review_links": [
+            { "title": "080 · recovered terminal landing", "path": "runs/random-080/report.html" },
+            { "title": "407 · sole paired regression", "path": "runs/random-407/report.html" },
+            { "title": "020 · remaining recovery stop", "path": "runs/random-020/report.html" },
+            { "title": "538 · remaining pad-centering stop", "path": "runs/random-538/report.html" },
+            { "title": "715 · remaining aim-admission stop", "path": "runs/random-715/report.html" }
+          ]
+        },
+        {
+          "id": "planner-ballistic-latest-panel",
+          "title": "Latest focused diagnostic panel · phase transitions",
+          "description": "23/29 selected diagnostic worlds land, versus 14 in the previous ballistic candidate: nine gains and no losses. Actual-rotation coast checks, configured terminal takeover and a guarded pad-lift adapter are combined here. All 32 records/repeats verify; repeats are outside the 29-world denominator. This selected panel is not a broad terrain landing rate.",
+          "report_type": "Experimental batch report",
+          "status": "9 Oct · 23/29 selected landings · nine gains · no losses · not adopted",
+          "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-ballistic-phase-transition-focus-20261009-v2/index.html" }
+        },
+        {
+          "id": "planner-ballistic-finite-correction-1k",
+          "title": "Previous ballistic batch · finite correction · 786/1000",
+          "description": "Immediate paired reference for the phase-transition experiment: 786/1000 verified landings versus 706, with 109 gains and 29 losses. All records/repeats verify. Retained unchanged for comparison; not the accepted benchmark.",
+          "report_type": "Experimental batch report",
+          "status": "9 Oct · previous baseline · 786/1000 landed · not adopted",
+          "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-ballistic-finite-correction-full-20261009-v1/index.html" }
+        },
+        {
+          "id": "planner-ballistic-terminal-centering-1k",
+          "title": "Earlier ballistic batch · terminal centering · 592/1000",
+          "description": "Formerly featured full batch: 592/1000 verified landings versus 562, with 75 gains and 45 former wins not reproduced (33 verified stops and 12 unverified errors). Overall, 392 verified airborne stops and 16 unverified terrain-domain errors remain. Its recorded-only loss headline omits those 12 former wins. Preserved history, not the latest result or accepted benchmark.",
+          "report_type": "Experimental batch report",
+          "status": "9 Oct · earlier capture · 592 landed · 392 finite stops · 16 unverified · not adopted",
           "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/index.html" },
           "review_links": [
             { "title": "142 · recovered terminal landing", "path": "runs/random-142/report.html" },
@@ -40,17 +71,17 @@
           ]
         },
         {
-          "id": "planner-ballistic-latest-panel",
-          "title": "Latest preservation panel",
-          "description": "The smaller body-centering comparison: 10/16 random landings versus 8, gaining 142/715 without losing prior candidate landings. All three direct controls land, but changed terminal commands fail the earlier exact-flight admission. The full sweep uses a separate outcome-based contract; controls and repeats stay outside the random denominator.",
+          "id": "planner-ballistic-terminal-centering-panel",
+          "title": "Earlier preservation panel · terminal centering · 10/16",
+          "description": "Earlier body-centering comparison: 10/16 random landings versus 8, gaining 142/715 without losing prior candidate landings. All three direct controls land, but changed terminal commands fail the earlier exact-flight admission. The separate full sweep uses an outcome-based contract; controls and repeats stay outside the random denominator.",
           "report_type": "Experimental batch report",
-          "status": "9 Oct · 10/16 random landings · exact-flight admission failed",
+          "status": "9 Oct · earlier panel · 10/16 random landings · exact-flight admission failed",
           "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-terminal-centering-preservation-20261009-v1/index.html" }
         },
         {
           "id": "planner-ballistic-coast-terminal-1k",
           "title": "Previous ballistic batch · coast-to-terminal · 562/1000",
-          "description": "Previous full ballistic comparison: 562/1000 verified landings versus 401, with 200 gains and 39 losses; 438 verified airborne finite stops. Retained unchanged as the immediate baseline for the latest terminal-centering sweep, not the accepted benchmark.",
+          "description": "Earlier full ballistic comparison: 562/1000 verified landings versus 401, with 200 gains and 39 losses; 438 verified airborne finite stops. Retained unchanged as the baseline for the historical terminal-centering sweep, not the accepted benchmark.",
           "report_type": "Experimental batch report",
           "status": "9 Oct · previous baseline · 562/1000 landed · not adopted",
           "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-coast-terminal-sweep-20261009-v1/index.html" },
