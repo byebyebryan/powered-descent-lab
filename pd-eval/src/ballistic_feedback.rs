@@ -74,6 +74,7 @@ pub enum WaypointExperiment {
     RecoveryConsistency,
     AcquisitionGate,
     TerminalSafetyFallback,
+    AcquisitionTerminalSafety,
 }
 
 impl WaypointExperiment {
@@ -113,6 +114,7 @@ impl WaypointExperiment {
             Self::RecoveryConsistency => "ballistic_feedback_v17_recovery_consistency",
             Self::AcquisitionGate => "ballistic_feedback_v18_acquisition_gate",
             Self::TerminalSafetyFallback => "ballistic_feedback_v18_terminal_safety_fallback",
+            Self::AcquisitionTerminalSafety => "ballistic_feedback_v19_acquisition_terminal_safety",
         }
     }
 
@@ -160,6 +162,7 @@ impl WaypointExperiment {
                 | Self::RecoveryConsistency
                 | Self::AcquisitionGate
                 | Self::TerminalSafetyFallback
+                | Self::AcquisitionTerminalSafety
         )
     }
 
@@ -184,22 +187,32 @@ impl WaypointExperiment {
                 | Self::RecoveryConsistency
                 | Self::AcquisitionGate
                 | Self::TerminalSafetyFallback
+                | Self::AcquisitionTerminalSafety
         )
     }
 
     fn queued_recovery(self) -> bool {
         matches!(
             self,
-            Self::RecoveryConsistency | Self::AcquisitionGate | Self::TerminalSafetyFallback
+            Self::RecoveryConsistency
+                | Self::AcquisitionGate
+                | Self::TerminalSafetyFallback
+                | Self::AcquisitionTerminalSafety
         )
     }
 
     fn open_destination_acquisition(self) -> bool {
-        self == Self::AcquisitionGate
+        matches!(
+            self,
+            Self::AcquisitionGate | Self::AcquisitionTerminalSafety
+        )
     }
 
     fn terminal_safety_fallback(self) -> bool {
-        self == Self::TerminalSafetyFallback
+        matches!(
+            self,
+            Self::TerminalSafetyFallback | Self::AcquisitionTerminalSafety
+        )
     }
 
     fn piecewise_early_target(self) -> bool {

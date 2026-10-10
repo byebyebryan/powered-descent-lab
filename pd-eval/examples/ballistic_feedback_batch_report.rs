@@ -73,11 +73,27 @@ fn leaf(root: &Path, row: &Value, parent: &str) -> Result<String> {
         escape(&id)
     };
     let baseline = &row["baseline_result"];
+    let baseline_text = if baseline.is_null() {
+        "No paired baseline".into()
+    } else {
+        let cohort = baseline
+            .get("nominal_class")
+            .or_else(|| baseline.get("initial_candidate_arc"))
+            .map_or_else(
+                || "unclassified".into(),
+                |v| escape(v.as_str().unwrap_or("unclassified")),
+            );
+        format!(
+            "{} · baseline {}",
+            cohort,
+            text(baseline, "verified_landing")
+        )
+    };
     Ok(batch::render_row(
         Some("seed-row mission-row current-row"),
         &format!("data-parent=\"{parent}\" data-case-id=\"{id}\" data-depth=\"2\" hidden"),
         &format!(
-            "<td class=\"tree-label\" style=\"--depth:2\"><div class=\"preview-cell\">{label}<span class=\"row-note\">seed {} · {}</span>{preview}</div></td><td>{}<span class=\"row-note\">{}</span></td><td>{}</td><td>{}</td><td>{}</td><td>{} · baseline {}</td><td>{}</td>",
+            "<td class=\"tree-label\" style=\"--depth:2\"><div class=\"preview-cell\">{label}<span class=\"row-note\">seed {} · {}</span>{preview}</div></td><td>{}<span class=\"row-note\">{}</span></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
             escape(&text(row, "seed")),
             escape(&text(&row["geometry"], "recipe_id")),
             escape(&text(result, "physical_outcome")),
@@ -85,8 +101,7 @@ fn leaf(root: &Path, row: &Value, parent: &str) -> Result<String> {
             escape(&text(result, "planning_stop")),
             text(result, "handoffs"),
             text(result, "sim_time_s"),
-            escape(&text(baseline, "nominal_class")),
-            text(baseline, "verified_landing"),
+            baseline_text,
             escape(&text(result, "initial_candidate_arc")),
         ),
     ))
@@ -157,15 +172,30 @@ fn render(root: &Path, report: &Value) -> Result<String> {
     );
     let stats = &report["summary"];
     let denominator = text(stats, "primary_count");
+    let baseline_chip = if stats["baseline_landings"].is_null() {
+        "No paired baseline".into()
+    } else {
+        format!(
+            "Baseline {}/{denominator}",
+            text(stats, "baseline_landings")
+        )
+    };
     let chips = format!(
-        "<span class=\"chip\">Diagnostic candidate — NOT accepted</span><span class=\"chip\">{}/{} verified landings</span><span class=\"chip\">Baseline {}/{denominator}</span><span class=\"chip\">Cap 24 · unchanged inputs</span>",
+        "<span class=\"chip\">Diagnostic candidate — NOT accepted</span><span class=\"chip\">{}/{} verified landings</span><span class=\"chip\">{baseline_chip}</span><span class=\"chip\">Cap 24 · unchanged inputs</span>",
         text(stats, "verified_landings"),
         text(stats, "primary_count"),
-        text(stats, "baseline_landings")
     );
     let candidate_comparison = if let Some(previous) = stats.get("previous_candidate_landings") {
+        let older = if report.get("diagnostic_context").is_none() {
+            format!(
+                " This is separate from the older policy-3 baseline of {}/{denominator};",
+                text(stats, "baseline_landings")
+            )
+        } else {
+            String::new()
+        };
         format!(
-            "<section class=\"panel\"><h2>Compared with the previous ballistic candidate</h2><p>Previous: {}/{denominator} verified landings. This revision gains {} and loses {}. This is separate from the older policy-3 baseline of {}/{denominator}; inspect the results JSON for every paired case ID.</p></section>",
+            "<section class=\"panel\"><h2>Compared with the previous ballistic candidate</h2><p>Previous: {}/{denominator} verified landings. This revision gains {} and loses {}.{older} inspect the results JSON for every paired case ID.</p></section>",
             escape(&previous.to_string()),
             stats["gained_previous_candidate_landings"]
                 .as_array()
@@ -173,7 +203,25 @@ fn render(root: &Path, report: &Value) -> Result<String> {
             stats["lost_previous_candidate_landings"]
                 .as_array()
                 .map_or(0, Vec::len),
-            text(stats, "baseline_landings")
+        )
+    } else if report.get("diagnostic_context").is_some()
+        && stats["baseline_landings"].is_number()
+        && stats["gained_landings"].is_array()
+    {
+        format!(
+            "<section class=\"panel\"><h2>Same-world paired comparison</h2><p>Acquisition-only: {}/{denominator} verified landings. Combined gains {} and loses {}. Inspect the results JSON for every paired case ID.</p></section>",
+            text(stats, "baseline_landings"),
+            stats["gained_landings"].as_array().map_or(0, Vec::len),
+            stats["lost_landings"].as_array().map_or(0, Vec::len),
+        )
+    } else {
+        String::new()
+    };
+    let context = if let Some(context) = report.get("diagnostic_context") {
+        format!(
+            "<section class=\"panel\"><h2>Population and comparison</h2><p>{}</p><p>{}</p></section>",
+            escape(&text(context, "population")),
+            escape(&text(context, "comparison")),
         )
     } else {
         String::new()
@@ -188,15 +236,21 @@ fn render(root: &Path, report: &Value) -> Result<String> {
         escape(&serde_json::to_string_pretty(&stats["planning_stops"])?),
         escape(&serde_json::to_string_pretty(&stats["per_recipe"])?)
     );
-    let title = format!("Ballistic feedback — paired {denominator}-world diagnostic");
+    let title = report["diagnostic_context"]["title"].as_str().map_or_else(
+        || format!("Ballistic feedback — paired {denominator}-world diagnostic"),
+        str::to_owned,
+    );
+    let subtitle = report["diagnostic_context"]["population"].as_str().unwrap_or(
+        "Original procedural worlds; frozen diagnostic candidate; failures first. Maintained policy 3 and accepted reports remain unchanged."
+    );
     Ok(batch::render_batch_page(BatchPage {
         title: &title,
-        subtitle: "Original procedural worlds; frozen diagnostic candidate; failures first. Maintained policy 3 and accepted reports remain unchanged.",
+        subtitle,
         chips_html: &chips,
         actions_html: "<a href=\"ballistic-feedback-sweep.json\">Results / all case IDs</a><a href=\"manifest.json\">Frozen manifest</a><a href=\"plan.json\">Collection plan</a><a href=\"receipt.json\">Receipt</a>",
         before_hero_html: "",
         after_hero_html: "",
-        overview_html: &summary,
+        overview_html: &format!("{context}{summary}"),
         planner_html: "",
         coverage_html: "",
         context_html: "",
@@ -257,5 +311,19 @@ mod tests {
         let mut unsafe_report = report;
         unsafe_report["rows"][0]["attempt_id"] = "../escape".into();
         assert!(render(Path::new("unused"), &unsafe_report).is_err());
+    }
+
+    #[test]
+    fn fresh_unpaired_reports_do_not_invent_a_baseline() {
+        let report = serde_json::json!({
+            "rows": [], "summary": {"primary_count":1000, "baseline_landings":null},
+            "diagnostic_context":{"population":"Fresh seed-disjoint worlds <test>",
+                                  "comparison":"Acquisition-only; no previous same-world outcome"}
+        });
+        let html = render(Path::new("unused"), &report).unwrap();
+        assert!(html.contains("No paired baseline"));
+        assert!(!html.contains("Baseline null"));
+        assert!(html.contains("Fresh seed-disjoint worlds &lt;test&gt;"));
+        assert!(html.contains("data-batch-template=\"common-v1\""));
     }
 }

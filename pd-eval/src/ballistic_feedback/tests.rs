@@ -1,6 +1,31 @@
 use super::*;
 
 #[test]
+fn combined_safety_is_explicit_and_only_composes_the_two_existing_changes() {
+    let mode = WaypointExperiment::AcquisitionTerminalSafety;
+    let parent = WaypointExperiment::AcquisitionGate;
+    assert!(mode.open_destination_acquisition() && mode.terminal_safety_fallback());
+    assert!(mode.phase_queries() && mode.finite_correction() && mode.queued_recovery());
+    assert!(mode.coast_transition() && mode.terminal_takeover() && mode.pad_clearance());
+    assert_eq!(mode.effort(), parent.effort());
+    assert_eq!(mode.recovery(), parent.recovery());
+    assert_eq!(mode.local_height(), parent.local_height());
+    assert_eq!(mode.early_target(), parent.early_target());
+    assert_eq!(mode.terminal_coordination(), parent.terminal_coordination());
+    assert_eq!(WaypointExperiment::default(), WaypointExperiment::Ridge);
+    let (request, ctx, state) = acquisition_gate_input();
+    let (combined, combined_preview) =
+        finite_correction::preview_for(&request, &ctx, &state, 120, 10800, mode).unwrap();
+    let (acquisition, acquisition_preview) =
+        finite_correction::preview_for(&request, &ctx, &state, 120, 10800, parent).unwrap();
+    assert_eq!(combined, acquisition);
+    assert_eq!(
+        combined_preview.unwrap().goal,
+        acquisition_preview.unwrap().goal
+    );
+}
+
+#[test]
 fn acquisition_and_terminal_ablations_are_independent_recovery_children() {
     let parent = WaypointExperiment::RecoveryConsistency;
     for mode in [
