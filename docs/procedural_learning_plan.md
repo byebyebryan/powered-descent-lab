@@ -158,6 +158,9 @@ primitive. These choices are not universal platform task requirements.
 For each seed, select its best checkpoint using the declared 128-input
 development ordering. Broad development uses all 1,024 inputs; validation uses
 512. Those are diagnostic confirmations, not another checkpoint-ranking search.
+The existing `target_distance_m` selection field is absolute horizontal target
+offset. Preserve that declared secondary ordering for this run; it does not
+measure vertical clearance or establish proximity suitable for landing.
 Freeze all three selected checkpoints before the held-out campaign. Evaluate
 each on the same 2,048 held-out inputs with native captures and command replay.
 Report each seed separately and distinguish repeated algorithm attempts from

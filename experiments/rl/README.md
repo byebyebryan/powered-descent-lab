@@ -83,6 +83,19 @@ proof. Final claims require separate frozen-checkpoint captures and exact native
 replay. All scheduled failures remain in denominators. The held-out collection
 is not opened by training or checkpoint selection.
 
+The existing `target_distance_m` summary is absolute horizontal target offset;
+it does not include vertical separation. This remains the declared secondary
+ordering for the current experiment. Native landing proof covers contact speed,
+attitude, footprint and mission outcome independently of that selection metric.
+
+After all declared allocations finish, `freeze.py --run RUN --output NEW_FREEZE`
+checks the three seeds and checkpoint bytes, compares the selected development
+panels and copies the winning checkpoints with training receipts. Use
+`confirm.py --freeze FREEZE_JSON --cohorts COHORT_ROOT --output NEW_CONFIRMATION`
+for the broad development and validation summary confirmations. It never
+re-ranks checkpoints. `analyze.py` audits consumed training identities against
+reserved cohorts and keeps repeated exposure separate from total unique inputs.
+
 `NativeEpisode.save_capture()` uses the common evaluation schema, immutable seal
 and rich report template. Composition supplies before/after evidence bindings,
 including the actual loaded native module, policy source, checkpoint and selected

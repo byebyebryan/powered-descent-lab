@@ -15,7 +15,7 @@ def read(path):
     return json.loads(Path(path).read_text())
 
 
-def training_audit(directory, forbidden_inputs):
+def training_audit(directory, forbidden_inputs, identity_sink=None):
     directory = Path(directory)
     selection = read(directory/"selection.json")
     if not selection["source_identity_unchanged"]:
@@ -51,6 +51,8 @@ def training_audit(directory, forbidden_inputs):
                         reward_parts.setdefault(key, []).append(value)
     if overlap:
         raise ValueError("consumed training inputs overlap reserved cohorts")
+    if identity_sink is not None:
+        identity_sink.update(unique)
     return {
         "directory": str(directory), "request": read(directory/"request.json"),
         "actual_transitions": selection["actual_transitions"], "elapsed_s": selection["elapsed_s"],
@@ -63,6 +65,8 @@ def training_audit(directory, forbidden_inputs):
         "completed_native_stops": dict(stops),
         "median_completed_sim_time_s": statistics.median(simulation_times) if simulation_times else None,
         "mean_reward_components": {key: statistics.mean(values) for key, values in reward_parts.items()},
+        "worker_receipts": {str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                            for path in sorted(directory.glob("worker-*.jsonl"))},
     }
 
 
@@ -130,8 +134,10 @@ def main():
     for family in ["value-noise", "layered"]:
         for role in ["development", "validation", "held-out"]:
             reserved.update(entry["physical_sha256"] for entry in read(args.cohorts/f"{family}-{role}"/"manifest.json")["entries"])
-    result = {"schema_version": 1, "training": [training_audit(path, reserved) for path in args.training],
+    consumed = set()
+    result = {"schema_version": 1, "training": [training_audit(path, reserved, consumed) for path in args.training],
               "campaigns": [campaign_audit(path) for path in args.campaign]}
+    result["overall_unique_consumed_training_inputs"] = len(consumed)
     write_new(args.output, result)
 
 

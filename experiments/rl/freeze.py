@@ -38,6 +38,7 @@ def development_selection(root, design):
                       "selection_sha256": hashlib.sha256((directory/"selection.json").read_bytes()).hexdigest(),
                       "training_source_identities": request["source_identities"]})
     return {"design": design, "seeds": seeds, "development_attempts": len(attempts),
+            "development_physical_inputs": [item["physical_sha256"] for item in attempts],
             "development_native_summary_successes": sum(item["mission_outcome"] == "success" for item in attempts),
             "median_development_final_target_distance_m": statistics.median(item["target_distance_m"] for item in attempts)}
 
@@ -49,6 +50,8 @@ def main():
     parser.add_argument("--designs", nargs="+", choices=["v1", "v2"], default=["v1", "v2"])
     args = parser.parse_args()
     designs = [development_selection(args.run, design) for design in args.designs]
+    if any(design["development_physical_inputs"] != designs[0]["development_physical_inputs"] for design in designs):
+        raise ValueError("design comparison used different development panels")
     winner = max(enumerate(designs), key=lambda item: (
         item[1]["development_native_summary_successes"],
         -item[1]["median_development_final_target_distance_m"], -item[0]))[1]

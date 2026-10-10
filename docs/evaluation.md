@@ -46,6 +46,15 @@ report. They do not refresh indexes, publish or change accepted selectors.
 An early solver stop preserves its finite executed prefix; it does not become a
 complete landing or extend the original scenario horizon.
 
+Frozen PPO campaigns use `experiments/rl/evaluate.py` and the same saved native
+evidence schema. Its [workflow](../experiments/rl/README.md) separates training
+selection, broad summary confirmations and native capture/replay. Common saved
+campaigns can be combined through `pd-report::comparison`: it checks identical
+physical input inventories and repeat counts across approaches, keeps unsupported
+inputs in the denominator, and links the rich campaign/individual reports.
+The create-only `pd-report` example `comparison` accepts a comparison projection
+and a new HTML path. It performs no evaluation or publication.
+
 ## Planner Evaluation (V2 Default)
 
 The latest opt-in [combined safety checkpoint](ballistic_combined_validation_results.md)
