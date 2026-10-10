@@ -3,6 +3,7 @@
 
 mod collection;
 mod generator;
+mod layered;
 pub use collection::*;
 pub use generator::*;
 

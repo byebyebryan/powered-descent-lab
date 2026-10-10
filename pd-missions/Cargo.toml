@@ -8,6 +8,7 @@ pd-core = { path = "../pd-core" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+fastnoise-lite = { version = "=1.1.1", features = ["f64", "std"] }
 
 [dev-dependencies]
 clap.workspace = true

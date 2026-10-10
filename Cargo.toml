@@ -3,6 +3,7 @@ members = [
   "pd-core",
   "pd-run",
   "pd-missions",
+  "pd-python",
   "pd-plan",
   "pd-planner",
   "pd-control",

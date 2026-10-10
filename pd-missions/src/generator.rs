@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{physical_identity, sha256};
 
 pub const GENERATOR_VERSION: &str = "pd-missions/value-noise-rest-v1";
+pub const LAYERED_GENERATOR_VERSION: &str = "pd-missions/layered-perlin-rest-v1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -124,8 +125,19 @@ impl Default for MissionRecipeV1 {
 }
 
 impl MissionRecipeV1 {
+    /// The layered family shares the physical distribution, not the noise primitive.
+    pub fn layered() -> Self {
+        Self {
+            generator_version: LAYERED_GENERATOR_VERSION.to_owned(),
+            ..Self::default()
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_version != 1 || self.generator_version != GENERATOR_VERSION {
+        if self.schema_version != 1
+            || ![GENERATOR_VERSION, LAYERED_GENERATOR_VERSION]
+                .contains(&self.generator_version.as_str())
+        {
             return Err("unsupported mission recipe/generator version".to_owned());
         }
         self.sim.validate()?;
@@ -338,6 +350,8 @@ fn propose(
     let amplitude = recipe.terrain_amplitude_strata_m[stratum].draw(&mut rng);
     let wavelength = recipe.terrain_wavelength_m.draw(&mut rng);
     let terrain_seed = rng.next();
+    let layered = (recipe.generator_version == LAYERED_GENERATOR_VERSION)
+        .then(|| crate::layered::LayeredTerrain::new(terrain_seed, amplitude, wavelength));
     let spacing = recipe.terrain_spacing_m;
     let left = ((source_x.min(target_x) - recipe.domain_margin_m) / spacing).floor() as i64;
     let right = ((source_x.max(target_x) + recipe.domain_margin_m) / spacing).ceil() as i64;
@@ -345,7 +359,11 @@ fn propose(
         points_m: (left..=right)
             .map(|cell| {
                 let x = cell as f64 * spacing;
-                Vec2::new(x, terrain_height(terrain_seed, x, amplitude, wavelength))
+                let height = match &layered {
+                    Some(sampler) => quantize(sampler.height(x)),
+                    None => terrain_height(terrain_seed, x, amplitude, wavelength),
+                };
+                Vec2::new(x, height)
             })
             .collect(),
     };
@@ -377,7 +395,7 @@ fn propose(
         seed: proposal.seed,
         tags: vec!["procedural".to_owned(), "source_rest".to_owned()],
         metadata: BTreeMap::from([
-            ("generator".to_owned(), GENERATOR_VERSION.to_owned()),
+            ("generator".to_owned(), recipe.generator_version.clone()),
             ("stratum".to_owned(), stratum.to_string()),
         ]),
         sim: recipe.sim.clone(),
@@ -501,6 +519,40 @@ fn terrain_height(seed: u64, x: f64, amplitude: f64, wavelength: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn existing_generator_retains_its_pinned_input_identity() {
+        let result = generate_mission(&MissionRecipeV1::default(), 987, 7).unwrap();
+        let mission = result.mission.unwrap();
+        assert_eq!(
+            mission.physical_sha256,
+            "39bad3e709064eca98e09e4357afb74843b8ea865bcd7061f7865161026abf63"
+        );
+        assert_eq!(
+            crate::sha256(&crate::json_bytes(&mission).unwrap()),
+            "05220c9c1958b2a51bd4401d3edcd595f13e47038bc50b04a07acbef52e88f7d"
+        );
+    }
+
+    #[test]
+    fn layered_family_is_deterministic_and_physically_distinct() {
+        let recipe = MissionRecipeV1::layered();
+        for index in 0..16 {
+            let first = generate_mission(&recipe, 991, index).unwrap();
+            let second = generate_mission(&recipe, 991, index).unwrap();
+            assert_eq!(
+                crate::json_bytes(&first).unwrap(),
+                crate::json_bytes(&second).unwrap()
+            );
+            let mission = first.mission.unwrap();
+            mission.validate().unwrap();
+            let old = generate_mission(&MissionRecipeV1::default(), 991, index)
+                .unwrap()
+                .mission
+                .unwrap();
+            assert_ne!(mission.physical_sha256, old.physical_sha256);
+        }
+    }
 
     #[test]
     fn pad_preparation_preserves_every_point_outside_pad_intervals() {

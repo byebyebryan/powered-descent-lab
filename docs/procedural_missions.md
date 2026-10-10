@@ -33,6 +33,30 @@ is structural only and has a finite declared proposal allowance. It does not
 promise solvability. Rejected proposals and exhausted requests remain visible;
 no controller result can admit or remove a mission.
 
+## Layered family: `pd-missions/layered-perlin-rest-v1`
+
+The second family keeps the physical distribution above and changes terrain
+composition. Pinned FastNoiseLite 1.1.1 Perlin primitives produce macro relief,
+three weighted regular/ridged octaves, domain warp and sparse pits, mesas and
+depressions. Constants and seed arithmetic belong to this generator version;
+the recipe's amplitude and wavelength scale the components. It is a native,
+self-contained port of the earlier layered composition, with a distinct noise
+backend identity. It does not claim exact Pylander noise equivalence.
+
+Independent samples from the earlier input-only FastNoise study were recorded
+before implementing this family. Negative and positive coordinate samples match
+within 1e-10 metres before millimetre quantization. Ordinary tests use the new
+recorded reference; generation never needs the study binary or a Pylander checkout.
+The existing value-noise version retains a pinned resolved-byte/physical identity.
+
+The October 10 learning launch characterized 25,000 requests per family and
+repeated every result in reverse order. Both produced 25,000 distinct inputs,
+zero exhausted requests and identical repeated receipts; value-noise had four
+structural retries and layered terrain had six. Eight seed-disjoint collections
+contain 4,096 unique physical inputs with no duplicates across cohorts. These
+checks establish input reproducibility and separation, not flight feasibility.
+The launch records are under `outputs/procedural-learning/run-20261010T190900Z/`.
+
 ## Collection contract
 
 Collections contain resolved mission bytes, their SHA-256 identities, recipe
@@ -66,6 +90,8 @@ rtk proxy cargo run --release -p pd-missions --example missions -- characterize 
 `--recipe PATH` accepts a complete serialized `MissionRecipeV1` in generation
 and characterization. Collection manifests retain that recipe. Verification
 reads the resolved bytes and receipts; it never reruns generation or flights.
+`--family layered` selects the second default family; `--family value-noise`
+selects the original. A family selector and a recipe file are mutually exclusive.
 
 The first input characterization used seed `1723102026`. It produced 10,000
 distinct physical inputs, zero exhausted requests and one structural retry,

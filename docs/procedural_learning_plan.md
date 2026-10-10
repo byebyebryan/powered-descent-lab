@@ -133,3 +133,33 @@ checks must run from declared inputs without the old studies or Pylander checkou
 Validate wrapper/core and captured/summary physical equivalence, termination
 semantics, normalization/checkpoint identity and tamper rejection. After passed
 checks, repeat only for relevant changes or unresolved failures.
+
+## Accepted input and training-interface milestone
+
+The two-family 50,000-request characterization and 4,096-input disjoint cohort
+check passed. The thin native bridge and independent Gymnasium package passed
+three environment contract tests, including physical equality between captured
+and summary execution, exact saved-command replay, and byte-tamper rejection.
+The maintained 18-check development gate passed on this milestone.
+
+A 65,536-transition timing pilot, seed 701, completed in 17.25 seconds including
+two 128-input development evaluations (about 5.76 seconds each). It was a real
+optimizer pilot, not final competence evidence. Both development checks found
+zero native summary target successes. Its first development exposure receipts
+are explicitly retrospective because collection binding was added afterward.
+
+The initial experiment allocation is now fixed: seeds 801, 802 and 803, each
+8,000,000 requested PPO transitions, at most 7,200 wall seconds, with recurring
+development every 524,288 transitions. All runs and checkpoints are retained.
+Native action recording remains 60 Hz; this approach makes a decision every six
+updates and declares the upright first 90 physics steps as its own launch
+primitive. These choices are not universal platform task requirements.
+
+For each seed, select its best checkpoint using the declared 128-input
+development ordering. Broad development uses all 1,024 inputs; validation uses
+512. Those are diagnostic confirmations, not another checkpoint-ranking search.
+Freeze all three selected checkpoints before the held-out campaign. Evaluate
+each on the same 2,048 held-out inputs with native captures and command replay.
+Report each seed separately and distinguish repeated algorithm attempts from
+unique mission coverage. The raw incumbent comparison keeps unsupported inputs
+in its full denominator; any mirrored adapter is named and scored separately.

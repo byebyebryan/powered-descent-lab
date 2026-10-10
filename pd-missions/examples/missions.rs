@@ -25,6 +25,8 @@ enum Operation {
         role: String,
         #[arg(long)]
         recipe: Option<PathBuf>,
+        #[arg(long)]
+        family: Option<String>,
     },
     Verify {
         collection: PathBuf,
@@ -47,14 +49,23 @@ enum Operation {
         count: u64,
         #[arg(long)]
         recipe: Option<PathBuf>,
+        #[arg(long)]
+        family: Option<String>,
     },
 }
 
-fn recipe(path: Option<PathBuf>) -> Result<MissionRecipeV1, String> {
+fn recipe(path: Option<PathBuf>, family: Option<String>) -> Result<MissionRecipeV1, String> {
+    if path.is_some() && family.is_some() {
+        return Err("choose a recipe file or a family, not both".to_owned());
+    }
     let recipe = match path {
         Some(path) => serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?,
-        None => MissionRecipeV1::default(),
+        None => match family.as_deref().unwrap_or("value-noise") {
+            "value-noise" => MissionRecipeV1::default(),
+            "layered" => MissionRecipeV1::layered(),
+            _ => return Err("family must be value-noise or layered".to_owned()),
+        },
     };
     recipe.validate()?;
     Ok(recipe)
@@ -213,6 +224,7 @@ fn main() -> Result<(), String> {
             count,
             role,
             recipe: path,
+            family,
         } => {
             if count == 0 || count > 100_000 {
                 return Err("collection count must be 1..100,000".to_owned());
@@ -233,7 +245,7 @@ fn main() -> Result<(), String> {
                 CollectionRequestV1 {
                     schema_version: 1,
                     role,
-                    recipe: recipe(path)?,
+                    recipe: recipe(path, family)?,
                     seed,
                     indices: (0..count).collect(),
                 },
@@ -285,7 +297,8 @@ fn main() -> Result<(), String> {
             seed,
             count,
             recipe: path,
-        } => characterize(recipe(path)?, seed, count, output)?,
+            family,
+        } => characterize(recipe(path, family)?, seed, count, output)?,
     }
     Ok(())
 }

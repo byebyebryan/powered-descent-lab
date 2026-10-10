@@ -44,6 +44,18 @@ pub fn evaluate_agent(
     let execution = run_agent(&ctx, agent, limits).map_err(|e| e.to_string())?;
     let descriptor_unchanged = execution.descriptor == agent.descriptor();
     let after = evidence.snapshot()?;
+    assess_execution(scenario, execution, before, after, descriptor_unchanged)
+}
+
+/// Assess an externally driven ordinary episode using the same authoritative
+/// proof contract. Composition owns execution and its explicit evidence scope.
+pub fn assess_execution(
+    scenario: &ScenarioSpec,
+    execution: BoundedAgentRunArtifactsV1,
+    before: EvidenceSnapshotV1,
+    after: EvidenceSnapshotV1,
+    descriptor_unchanged: bool,
+) -> Result<EpisodeEvaluationV1, String> {
     let replay = verify_execution(scenario, &execution)?;
     let integrity_passed = before == after && descriptor_unchanged;
     let mut evaluation = EpisodeEvaluationV1 {
