@@ -64,8 +64,8 @@ def main_state():
     files = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
                            cwd=survey.REPO, capture_output=True, check=True, text=True).stdout.splitlines()
     selected = sorted({p for p in files if p in ("Cargo.toml", "Cargo.lock")
-                       or (p.startswith(("pd-core/", "pd-plan/", "pd-planner/", "pd-control/", "pd-report/", "pd-eval/", "pd-eval-cli/", "pd-run/", "pd-missions/", "pd-cli/", "fixtures/", "studies/terrain_profiles/"))
-                           and p.endswith((".rs", ".toml", ".lock", ".css", ".json", ".py")))})
+                       or (p.startswith(("pd-core/", "pd-plan/", "pd-planner/", "pd-control/", "pd-report/", "pd-eval/", "pd-eval-cli/", "pd-run/", "pd-missions/", "pd-cli/", "examples/checkpoint-policy/", "fixtures/", "studies/terrain_profiles/"))
+                           and p.endswith((".rs", ".toml", ".lock", ".css", ".js", ".json", ".py")))})
     return {"files": {p: study.digest(d.safe_file(survey.REPO, p).read_bytes()) for p in selected},
             "production_executable_sha256": study.digest((survey.REPO / "target/release/pd-eval").read_bytes())}
 
@@ -226,7 +226,8 @@ def build_variant(root, cap, source, plan, build_target):
         if relative == POLICY_PATH:
             data = transformed_policy(data, cap)
         study.write_new(stage / "source" / relative, data)
-    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval-cli",
+    package = "pd-eval-cli" if (stage / "source/pd-eval-cli/Cargo.toml").is_file() else "pd-eval"
+    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", package,
                "--manifest-path", str(stage / "source/Cargo.toml"), "--target-dir", str(build_target), "--jobs", "4"]
     study.write_new(stage / "build-command.json", study.encoded(command))
     log = stage / "build.log"

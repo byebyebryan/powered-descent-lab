@@ -25,11 +25,11 @@ lifecycle, handoff contract, continuation viability, and final-waypoint entry
 into terminal guidance. It is terrain-blind: waypoint placement and arrival
 envelopes must already encode a terrain-valid route.
 
-The maintained planner is currently an application-owned outer loop:
-`pd-eval-cli` constructs a
+The maintained planner is a solver-owned outer loop:
+`pd-planner` constructs a
 terrain-blind nominal flight, audits the fixed program against actual terrain,
 applies local correction, and replans from the actual handoff state. This
-evaluator-owned outer loop is not a `pd-control` controller or a per-tick
+solver-owned outer loop is not a `pd-control` controller or a per-tick
 runtime planner. It does not convert its corrections into the authored-route
 controller's preplanned waypoint list. Flight execution, handoff proof and final
 source replay—not a geometric proposal alone—establish its flown result.
@@ -633,3 +633,24 @@ route geometry, phase transition conditions, or artifact contracts. Schema
 `34` was added later for explicit terminal-recovery evidence. Future structural
 cleanup follows the same rule; behavioral changes require a separate controller
 change with fresh evaluation evidence.
+
+## Independent approaches and effective configuration
+
+The platform boundary now lives in `pd-run`, `pd-missions`, `pd-eval` and
+`pd-report`. These crates accept supplied agents and neutral records without
+importing feedback or solver implementations. `pd-control` owns feedback;
+`pd-plan` owns pure planning math; `pd-planner` owns maintained solver execution.
+`pd-eval-cli` composes built-in strategies, authored packs, saved evidence and
+publication frontdoors. Its compatibility exports contain no duplicate solver.
+See [independent agents](independent_agents.md) for the reset/step interface and
+[procedural missions](procedural_missions.md) for versioned mission collections.
+
+New callers can record `TerminalPdgResolvedConfigV1`,
+`Policy3ResolvedConfigV1` and `BallisticFeedbackConfigV1`. These expose the
+complete effective adapter flags and supported profile choices. Legacy tuning,
+controller specifications, IDs and flight encodings retain their historical
+shape. Ballistic captures record a separate effective configuration file;
+configured execution validates its frozen profile before starting. Shared core
+physics/contact, source-replay proof, original clocks and existing guards remain
+the acceptance boundary. Constructor configuration contains no restorable plan
+or airborne state.

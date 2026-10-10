@@ -61,7 +61,7 @@ Legacy authored family expansion remains in the `pd-eval-cli` composition packag
 ### Current platform ownership
 
 The [active restructure](platform_restructure_results.md) has established these
-boundaries; solver extraction is still underway.
+boundaries; the maintained solver extraction is complete.
 
 | Owner | Responsibility | Normal internal dependencies |
 | --- | --- | --- |
@@ -72,8 +72,8 @@ boundaries; solver extraction is still underway.
 | `pd-report` | Rich saved-artifact projections, navigation and common templates | Core, runtime |
 | `pd-control` | Maintained feedback implementations and legacy specification registry | Core, runtime |
 | `pd-plan` | Pure planning mathematics and geometry | Core |
-| `pd-planner` | Maintained Policy 3 session, nominal realization, clearing and source proof | Core, runtime, planning math, feedback |
-| `pd-eval-cli` | Installed `pd-eval` application, existing packs/readers and temporarily owned ballistic orchestration | Concrete strategies and reports |
+| `pd-planner` | Policy 3 and ballistic execution, effective configuration and source proof | Core, runtime, planning math, feedback |
+| `pd-eval-cli` | Installed `pd-eval` application, built-in composition, authored packs and saved evidence workflows | Concrete strategies and reports |
 
 Reusable platform crates have no executable controller/planner dependency,
 including with all features. Agents receive physical inputs through `MissionView`;
@@ -1104,7 +1104,9 @@ Output-path stance:
 Recommended ownership split:
 
 - `pd-core` runs one resolved concrete scenario
-- `pd-eval` expands family plus seed specifications into concrete runs
+- `pd-missions` expands versioned procedural recipes and manages resolved collections
+- `pd-eval-cli` retains authored family/seed expansion for existing packs
+- `pd-eval` accounts for supplied agents on resolved inputs
 - artifacts record both family identity and the resolved seed/parameters used for
   that run
 
@@ -1116,9 +1118,11 @@ Scenario families stay narrow and high-value:
 - experimental terrain diagnostics outside maintained guidance gates
 - small pinned bug reproductions
 
-Do not start with a giant parameter cross-product or random fuzz catalog.
-Start with the curated scenario shapes that proved useful in `pylander`, then
-re-author them in the new data model.
+Maintained authored families supply regression and mechanism controls. The
+self-contained procedural generator supplies broader source-to-target terrain
+coverage directly, with versioned recipes and structural rejection receipts.
+Collections retain their input roles and exposure history; successful execution
+by a particular solver is never an input admission condition.
 
 ## 10. Telemetry Model
 

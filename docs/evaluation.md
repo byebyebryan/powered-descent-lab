@@ -8,6 +8,19 @@ its frozen acceptance contract; controller packs use cache and baseline comparis
 Commands that run missions create local evidence and may update report indexes.
 Use the saved-capture checks for read-only inspection.
 
+## Independent agents on procedural missions
+
+The [independent-agent workflow](independent_agents.md) runs supplied approach
+factories through neutral `pd-eval`, using [immutable procedural collections](procedural_missions.md).
+It records every scheduled attempt, initialization/execution/capture failure,
+repeat and input exposure. Summary execution supports an external training loop;
+captured execution supplies saved commands, integrity and native replay.
+`pd-report` renders the maintained rich template from those neutral artifacts.
+The [checkpoint example](../examples/checkpoint-policy/README.md) exercises the
+complete path without importing the current controller or planner. Its supplied
+weights are an untrained integration fixture. Authored packs and the already
+observed 1k sets below retain their separate regression roles.
+
 ## Planner Evaluation (V2 Default)
 
 The latest opt-in [combined safety checkpoint](ballistic_combined_validation_results.md)
@@ -272,7 +285,7 @@ rich `report.html` with actual waypoint handoffs. Unsupported and invalid reques
 are rejected before simulator execution; a finite planning stop is not a landing
 or an impossibility proof. Output roots are create-only. The old standalone
 nominal-direct command is retired; its live realization helpers now belong to
-the transitional `pd_eval_cli::planner_flight` implementation.
+the `pd_planner::planner_flight` implementation (also re-exported by the application).
 
 ### Optional V2 session CLI
 

@@ -2,9 +2,9 @@
 
 [Plan](platform_restructure_plan.md) · [Execution contract](platform_restructure_execution.md) · [Review](platform_restructure_review.md)
 
-Status: active implementation goal, started October 10, 2026. The full restructure
-is not complete. Accepted milestones are recorded below; work continues through
-the remaining conditions in the execution contract.
+Status: complete, October 10, 2026. All six completion conditions in the
+execution contract are met. Accepted implementation, workflow closure and final
+integration/preservation checks are recorded below.
 
 ## Baseline and ownership
 
@@ -122,12 +122,14 @@ are preserved. New validation artifacts stay under the unique run directory.
   checks including five independent dependency trees and exact retained 44-case
   parity (`policy-gate.log`). Added instrumentation passed strict Clippy separately.
 
-## Remaining work
+## Scope after this run
 
-- F: maintained solver ownership and exact preservation with complete configuration.
-- G: execution-path consolidation, dependency gates and current workflow docs.
-
-No flight performance improvement or trained policy is claimed by this record.
+No required migration item remains in the accepted execution contract. Reward,
+training backend, learned weights and flight-performance improvement belong to
+the next explicitly scoped experiment. Legacy authored pack adapters and
+compatibility exports are intentional application services, rather than partial
+migrations. Existing report navigation/server changes remain the other writer's
+uncommitted work. No flight-performance improvement or trained policy is claimed.
 
 ## F1: Policy 3 solver ownership
 
@@ -220,3 +222,63 @@ historical policies, changed effective flags, mismatched requests and invalid
 origins. Early compile diagnostics from the ownership/import split and test field
 names are retained; they were corrected without changing numerical inputs or
 comparison rules. Final workflow consolidation and current documentation remain.
+
+## G: Workflow consolidation and final acceptance
+
+The ownership map and current guidance/development/evaluation instructions now
+point to implementation owners. The installed native binary remains `pd-eval`;
+its Cargo package is `pd-eval-cli`. The concrete solver has its own module/API
+map in [pd-planner](../pd-planner/README.md). Compatibility exports contain no
+algorithm copies. The generic runtime/evaluation/report path uses open agents
+and opaque configuration, with no concrete-strategy dependency.
+
+The source staging audit found two omissions: the new example workspace member
+and embedded report JavaScript. The maintained source inventory now includes
+both; copied-source build selectors inspect their own manifest layout rather
+than assuming the current package name. A create-only 354-file staged snapshot
+resolved Cargo metadata and passed an offline locked check of the built-in
+application (`source-staging-check/`, `source-staging-metadata.json`,
+`source-staging-build.log`). No research campaign or publication was run.
+The archived departure executor remains explicitly retired; saved evidence
+verification is retained. Frozen protocol/fixture inputs were not rewritten.
+
+Final validation also exercises the independent checkpoint consumer after solver
+extraction, including read-only replay of earlier sealed evidence. The demo is
+kept untrained; its crash outcomes remain integration records. The current
+roadmap points to a separate reward/training experiment on declared procedural
+collections, with observed sets treated as regressions rather than fresh tests.
+
+Final acceptance passed all 18 maintained development checks and the explicit
+44-case exact retained comparison (`final-gate.log`), plus all 207 pure/synthetic
+terrain Python tests (`final-python-tests.log`). Final independent integration
+repeated 66 attempts on 64 unique inputs: 66 stable-integrity captures, 66 complete
+native replays and rich reports, and two exact repeats after excluding measured
+compute/performance timing (`final-independent-validation.json`). All retain
+crashed/failed mission outcomes; none is labeled a verified landing. A read-only
+replay of the earlier sealed capture succeeds under the current binary
+(`final-old-capture-replay-v2.log`). The first replay command pointed at a
+nonexistent nested capture directory and failed without reading or changing
+retained evidence; its diagnostic log is preserved.
+
+`final-preservation.json` confirms all ten initially dirty/protected paths retain
+starting bytes plus explicitly declared package/path/ownership-table edits.
+The shared README was staged from transformed clean HEAD content, retaining the
+other writer's hunks unstaged. All 81 frozen JSON fixtures and the original
+common rich template match starting byte identities. Historical outputs,
+selectors, receipts and publication state were not rewritten or cleaned. No
+server lifecycle, push or publication operation was performed.
+
+| Completion condition | Accepted evidence |
+| --- | --- |
+| Independent generate/execute/capture/replay/rich report | Neutral integration tests, checkpoint package, final 66-attempt integration and dependency gate |
+| Self-contained generation/collections without solver feedback | Seven generator/collection tests, 10k deterministic structural characterization and immutable receipt verification |
+| Shared online/prepared host, reset/step and summary equivalence | Native-boundary parity tests, captured/summary episode tests and sustained held-command measurement |
+| Solver ownership and complete configuration | Policy 3/ballistic extraction, configured constructors, 64 terminal builder combinations and solver dependency gate |
+| Existing workflows/serde/proof/report preservation | Full maintained gate, retained 44-case numerical parity, exact 13-attempt ballistic panel and ten identical rich reports |
+| Current docs and an explained checkout | Ownership/workflow docs, this run record, protected-file checks and scoped milestone commits |
+
+The completion check concerns the usable platform and preservation scope above.
+Generator coverage is input characterization. The policy checkpoint is an
+untrained consumer. Summary outcomes support training but do not carry saved
+command landing proof. Sustained trace timing describes this local synthetic
+workload and is not a trained-policy throughput prediction.

@@ -223,7 +223,8 @@ def run(args):
     manifest = {"schema": "pd-lab.departure-probe-inputs.v1", "source": source, "protected": protected,
                 "baseline_flight_hashes": hashes}
     study.write_new(root / "manifest.json", study.encoded(manifest))
-    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval-cli",
+    package = "pd-eval-cli" if (root / "variant/source/pd-eval-cli/Cargo.toml").is_file() else "pd-eval"
+    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", package,
                "--features", plan["feature"], "--manifest-path", str(root / "variant/source/Cargo.toml"),
                "--target-dir", str(args.build_target.resolve()), "--jobs", "4"]
     study.write_new(root / "variant/build-command.json", study.encoded(command))

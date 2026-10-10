@@ -96,8 +96,8 @@ decisions. Summary mode retains zero trace records throughout.
 
 The [independent checkpoint example](../examples/checkpoint-policy/README.md)
 provides a runnable workflow with explicit observation/action mapping. Its
-hand-written weights demonstrate the interface; no trained RL competence or
-completed solver migration is claimed.
+hand-written weights demonstrate the interface; no trained RL competence is
+claimed. Maintained solver execution is now separately owned by `pd-planner`.
 
 The launch integration produced 66 saved attempts/reports on 64 procedural
 missions, with complete integrity/replay and exact timing-excluded repeats.

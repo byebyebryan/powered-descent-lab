@@ -18,20 +18,23 @@ later code and documentation housekeeping does not create a new flight capture.
 | Generate independent procedural inputs and immutable collections | [Procedural missions](procedural_missions.md) |
 | Implement an independent agent and verify its saved commands | [Independent agents](independent_agents.md) |
 
-## Active platform work
+## Independent approach platform
 
 The [platform restructure plan](platform_restructure_plan.md) and
-[review record](platform_restructure_review.md) define the next design direction:
-independent approaches on a shared plant, neutral execution and evaluation, and
-versioned procedural mission generation and collection management. The design
-is reviewed; implementation is active. Controller tuning is parked at the
-combined-safety checkpoint below. Current contracts and accepted evidence remain
-in force until their explicit migration stages.
+[review record](platform_restructure_review.md) established the direction:
+independent approaches on a shared plant, neutral execution/evaluation/reporting,
+and versioned procedural mission generation and collection management.
+The implementation is complete and validated; controller tuning remains parked
+at the combined-safety checkpoint below. Accepted physical and evidence
+contracts remain in force.
 
-The [implementation run record](platform_restructure_results.md) tracks accepted
-milestones and remaining work. The [unattended execution plan](platform_restructure_execution.md) defines the
-day-scale run: deliver an independent-agent workflow first, then continue solver
-ownership and consolidation, with local checkpoints and bounded validation.
+The [implementation run record](platform_restructure_results.md) records the
+completed migration slices and their preservation checks. The
+[execution contract](platform_restructure_execution.md) retains the run scope and
+acceptance conditions. [Independent agents](independent_agents.md) and
+[procedural missions](procedural_missions.md) provide the runnable new workflow.
+The checkpoint example demonstrates integration; training/reward experiments
+are the next product decision.
 
 ## Current contracts and ownership
 

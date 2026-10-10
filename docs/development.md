@@ -91,7 +91,8 @@ rtk proxy cargo run -p pd-cli --features planner-v2 -- --help
 The default-off normal dependency tree must not include evaluation or planning
 packages. The independent platform crates (`pd-run`, `pd-missions`, `pd-eval`
 and `pd-report`) must not import concrete strategies, including with all features.
-The gate enforces both boundaries. The accepted
+The gate enforces both boundaries and prevents `pd-planner` from importing
+evaluation, rendering or collection management. The accepted
 V2 adapter is synchronous session execution, not externally driven per-tick
 control or arbitrary airborne snapshot restart.
 
@@ -123,3 +124,22 @@ status and ownership before removal; stale registrations for missing temporary
 directories are separate from existing worktrees. Do not turn repository hygiene
 into blanket `git clean`, worktree pruning or deletion of ignored evidence.
 Licensing and external CI are owner decisions, not inferred housekeeping changes.
+
+## Adding an approach
+
+Use the open `pd-run::Agent` interface or own a `pd-run::Episode` reset/step
+loop. Keep observation/action mapping, reward, training and checkpoint handling
+in the approach package. Declare procedural recipes and input collections with
+`pd-missions`, then pass an agent factory and explicit evidence scope to neutral
+`pd-eval`. Its saved-command assessment and `pd-report` render the captured
+records. No edit to the built-in controller registry or maintained planner is
+needed. The runnable [checkpoint example](../examples/checkpoint-policy/README.md)
+and [independent-agent workflow](independent_agents.md) cover this path.
+
+Concrete solver maintenance belongs in [pd-planner](../pd-planner/README.md),
+feedback in `pd-control`, pure calculations in `pd-plan`, and CLI/capture/site
+composition in `pd-eval-cli`. Existing application exports are compatibility
+adapters; add behavior to its implementation owner. Current Cargo selectors use
+`-p pd-eval-cli` for the installed `pd-eval` binary. Frozen copied-source builds
+select the package present in their own source tree, and saved receipts keep the
+original build command and identity.

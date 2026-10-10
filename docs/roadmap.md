@@ -21,19 +21,18 @@ Success means:
 
 ## 1.1 Current status
 
-### Active platform design
+### Independent approach platform
 
-Controller tuning is parked at the combined-safety development checkpoint. The
-reviewed [platform restructure plan](platform_restructure_plan.md) separates
-neutral execution, procedural mission management, solver implementation,
-evaluation and saved reporting so an independent RL approach can share the
-plant. Its [review record](platform_restructure_review.md) owns design validation;
-implementation is active in the [run record](platform_restructure_results.md).
-Existing guidance and accepted flight contracts
-remain current during staged migration.
-The [unattended run plan](platform_restructure_execution.md) makes accepted
-slices checkpoints within a substantial implementation goal, prioritizing the
-independent-agent path before deep legacy solver extraction.
+Controller tuning is parked at the combined-safety development checkpoint.
+The reviewed [platform restructure](platform_restructure_plan.md) now separates
+neutral runtime, procedural mission management, evaluation/reporting, feedback,
+pure planning math and maintained solver execution. An independent checkpoint
+policy runs on procedural missions without importing the existing controller
+or planner. The [run record](platform_restructure_results.md) records accepted
+milestones and completed integration/preservation validation.
+Existing guidance and accepted flight contracts remain current.
+The [execution contract](platform_restructure_execution.md) records the full run
+scope and completion conditions.
 
 ### Active planner evaluation and reporting
 
@@ -972,15 +971,20 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Proceed from the reviewed [platform restructure plan](platform_restructure_plan.md)
-and [unattended execution plan](platform_restructure_execution.md). The intended
-goal continues across accepted milestones while the owner is away: neutral
-runtime, procedural missions, generic evaluation/reporting and an independent
-policy adapter first, then maintained solver extraction and consolidation.
-The first controller wrapper is an integration checkpoint, not the stopping
-target. Substantial RL training follows the platform's physical and dependency
-acceptance. The [review notes](platform_restructure_review.md) record preparation;
-implementation is active in the [run record](platform_restructure_results.md).
+Use the [independent-agent workflow](independent_agents.md) and
+[procedural mission collections](procedural_missions.md) as the entry point for
+training experiments. The platform restructure is complete, with solver ownership extracted and
+defaults/evidence contracts preserved in the
+[run record](platform_restructure_results.md).
+
+The next experiment needs an explicit observation/action interface, externally
+owned reward and training backend, and predeclared training/development/validation
+collections with physical identity checks. Reserve an unexposed held-out
+collection for a stated evaluation decision; observed inputs become regression
+or development evidence. Use summary mode for training and save complete native
+captures/replay for final comparisons. The example checkpoint is untrained and
+its integration failures are retained. No solver tuning or reward choice is
+implied by the restructure acceptance.
 
 The controller-mechanics follow-up below is parked. Preserve it as context for a
 separately resumed algorithm investigation rather than treating it as the active
