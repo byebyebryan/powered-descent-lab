@@ -537,7 +537,27 @@ decision. No source or historical outcome is rewritten by saved verification.
 
 ## Ballistic feedback paired diagnostic
 
-The completed [independent acquisition/safety pass](../../docs/ballistic_acquisition_safety_results.md)
+The latest [combined safety and fresh terrain pass](../../docs/ballistic_combined_validation_results.md)
+lands **866/1000** on the original worlds versus acquisition-only's 863, and
+**824/1000** on fresh seed-disjoint worlds versus 818: three and six gains, no
+losses. All prior successful flights and paired preterminal command prefixes
+remain exact. The [frozen collector](ballistic_combined_validation.py) runs one
+112-attempt exact control, one original combined sweep with eight repeats, and
+two paired fresh sweeps with five repeats each: 3,130 attempts. All frozen inputs,
+inventories, source/protocol bindings, repeats and proof tuples verify. This
+[pass](../../docs/ballistic_combined_validation_plan.md) is complete, not promoted;
+`run` needs new authority and rejects an existing capture root. No tuning,
+additional time, historical report rewriting or server change is included.
+
+Read-only saved checks:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/ballistic_combined_validation.py verify original-combined
+rtk proxy python3 -B studies/terrain_profiles/ballistic_combined_validation.py verify heldout-acquisition
+rtk proxy python3 -B studies/terrain_profiles/ballistic_combined_validation.py verify heldout-combined
+```
+
+The preceding [independent acquisition/safety pass](../../docs/ballistic_acquisition_safety_results.md)
 records acquisition-only **863/1000** versus 829 (37 gains, three deadline losses)
 and terminal-only **833/1000** (four gains, no losses). Its
 [frozen collector](ballistic_acquisition_safety_panel.py) runs one exact V17

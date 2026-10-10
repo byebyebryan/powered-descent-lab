@@ -53,17 +53,28 @@ For current developer validation, use the development workflow above.
 
 ## Terrain source study
 
-The latest [independent acquisition and terminal-safety pass](ballistic_acquisition_safety_results.md)
+The latest [combined safety and fresh terrain pass](ballistic_combined_validation_results.md)
+lands **866/1000 (86.6%)** on the original worlds versus acquisition-only's 863,
+and **824/1000 (82.4%)** on fresh seed-disjoint worlds versus 818: three and six
+gains respectively, with no losses. Every prior successful flight and all paired
+preterminal commands remain exact. All 3,130 attempts, repeats, proof tuples and
+independent inventories verify under the [frozen plan](ballistic_combined_validation_plan.md).
+Use the combined mode as the opt-in development reference, not default promotion.
+The fresh rate is the more useful coverage expectation; 153 of its 176 remaining
+stops precede terminal control, including 88 recovery-command failures. Diagnose
+that mechanism next on the original development corpus, not by tuning fresh seeds
+or relaxing guards. The three inherited deadline losses remain explicit.
+
+The preceding [independent acquisition and terminal-safety pass](ballistic_acquisition_safety_results.md)
 lands **863/1000 (86.3%)** with acquisition-only: 37 gains, three protected
 deadline losses and every recipe improved versus 829. Terminal-only lands
 **833/1000**, with four gains and no losses. All 2,328 records, exact controls,
 repeats, overlaps and independent full inventories verify. The ordinary developer
 gate and later-source 44-case exact parity pass; the older published-capture
 clearance discrepancy stays explicit. The [frozen pass](ballistic_acquisition_safety_plan.md)
-is complete, not promoted or combined. Use acquisition-only as the opt-in
-development reference; review deadline accounting and the unchanged 69 recovery
-stops before another tuning pass. A combination and held-out test need a separate
-decision. Existing navigation work and server lifecycle remain unchanged.
+is complete, not promoted. Its separately authorized combination and fresh
+validation are completed above. Acquisition-only remains the paired comparator;
+existing navigation work and server lifecycle remain unchanged.
 
 The preceding [bounded recovery probe, controls and paired 1k](ballistic_recovery_consistency_results.md)
 lands **829/1000 (82.9%)**, versus 797: 33 gains and one loss (138), with every

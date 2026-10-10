@@ -32,6 +32,13 @@ default and sole executable planner. V1 search and policy-1/2 selectors are
 retired; saved contracts/known identities remain readable. The ordinary
 `pd-cli run --controller baseline` default is unchanged.
 
+The separate [ballistic combined-safety development reference](ballistic_combined_validation_results.md)
+lands 866/1000 on the original terrain and 824/1000 on fresh seed-disjoint terrain,
+with no losses against acquisition-only in either paired comparison. It is not
+accepted or promoted. See [the current next step](#7-recommended-immediate-next-step)
+for remaining recovery failures and the boundary between development evidence
+and default integration.
+
 The accepted 44-case capture has 36/36 core target landings (11 direct, 25
 corrected) and eight separate diagnostics (two landed, four zero-command and
 zero-step `NoClearing` stops before departure, and two unsupported). All 44
@@ -951,25 +958,41 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-The latest [independent acquisition/safety pass](ballistic_acquisition_safety_results.md)
+The latest [combined safety and fresh terrain pass](ballistic_combined_validation_results.md)
+lands **866/1000** on the original worlds versus acquisition-only's 863, and
+**824/1000** on a fresh seed-disjoint 1k versus 818: three and six gains, no losses.
+All prior successful flights, paired preterminal commands and terminal entry
+clocks stay exact; all 3,130 attempts and independent inventories verify.
+Use the combined mode as the opt-in development reference, not default promotion.
+The original headline is optimistic relative to this fresh sample; about 82%
+fresh coverage is the current expectation, not arbitrary-terrain reliability.
+
+Next diagnose recovery mechanics on the original development corpus: distinguish
+late warnings, insufficient response room and held-command prediction vetoes from
+a genuinely exhausted response family. Freeze a small portable panel before any
+behavior change. Fresh failures are 153 preterminal and 23 terminal; recovery
+alone accounts for 88 of 176. Preserve guards and avoid seed-specific waypoint
+rules, more arc profiles or tuning against the now-observed fresh regression set.
+The three inherited deadline losses remain explicit. Default/CLI/session integration
+and a ballistic-candidate benchmark need separate readiness work and authorization.
+
+The preceding [independent acquisition/safety pass](ballistic_acquisition_safety_results.md)
 lands **863/1000** with acquisition-only versus 829: 37 gains, three protected
 deadline losses and every terrain recipe improved. Terminal-only lands **833/1000**
 with four gains and no losses, preserving all preterminal prefixes and old
 successful flights. All 2,328 records, repeats, focused/full overlap and independent
 full inventories verify. The ordinary gate and later-source 44-case parity pass;
 the older published-source exact-clearance discrepancy remains explicit.
-Use acquisition-only as the opt-in development reference, not default promotion.
-Next choose a separate combination/preservation and held-out validation pass.
-Review the three deadline regressions and reserve accounting; the unchanged
-69 recovery failures and 21 waypoint misses need separate mechanical diagnosis,
-not more arc profiles or a shortened guard. No combined result is established.
+Its separately authorized combination/preservation and fresh validation pass is
+completed above. Acquisition-only remains the paired comparator. Deadline
+accounting is diagnosed, not relaxed; recovery still needs mechanical work.
 
 The preceding [bounded recovery pass](ballistic_recovery_consistency_results.md)
 lands **829/1000**, versus 797: 33 gains, one loss (138), and all recipes improve.
 All 1,107 records, repeats, focused/full overlap and rich report data verify;
 the ordinary developer gate passes. Keep the independently reproduced untouched-HEAD
 exact retained-parity discrepancy explicit rather than declaring that gate green.
-Use this as the next opt-in development reference, not default promotion.
+This preceding opt-in reference is not default promotion.
 Its native destination-acquisition investigation and independent implementation
 pass are completed above. Preserve guards and distinguish mathematical fits from
 safe powered/coast prefixes. 407, 715 and minor resume churn remain separate;

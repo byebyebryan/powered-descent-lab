@@ -293,11 +293,18 @@ with an open native destination-acquisition check during waypoint coast, versus
 829: 37 gains and three protected deadline losses, every recipe improved.
 Its separate terminal-only upright fallback lands 833/1000 with four gains and
 no losses, preserving all preterminal command prefixes. These are independent
-opt-ins, not a combined or accepted planner. All records/repeats verify; the
-69 recovery failures and 21 waypoint misses remain unchanged. Use acquisition-only
-as the development reference, with held-out validation and default promotion
-still separate. The nominal constructor, waypoint placement, controller setup,
-reserves and original budgets remain unchanged.
+opt-ins, not an accepted planner. All records/repeats verify; the
+69 recovery failures and 21 waypoint misses remain unchanged in that pass.
+
+The latest [combined safety validation](ballistic_combined_validation_results.md)
+composes those two changes and lands 866/1000 on the original worlds versus 863,
+and 824/1000 on fresh seed-disjoint worlds versus 818: three and six gains, no
+losses. All previous successful flights and paired preterminal commands stay
+exact. Use this as the opt-in development reference; default promotion remains
+separate. Of 176 fresh stops, 153 precede terminal control and 88 exhaust recovery
+commands. Diagnose the original recovery corpus before more tuning. The nominal
+constructor, waypoint placement, controller setup, reserves and original budgets
+remain unchanged; the three inherited deadline losses are not repaired here.
 
 The current source adds the bounded
 [failure-only timing fallback](intervention_fallback_results.md): complete the

@@ -10,15 +10,19 @@ Use the saved-capture checks for read-only inspection.
 
 ## Planner Evaluation (V2 Default)
 
-The latest opt-in [acquisition/safety checkpoint](ballistic_acquisition_safety_results.md)
-records acquisition-only 863/1000 versus 829 (37 gains, three deadline losses)
-and terminal-only 833/1000 (four gains, no losses). Both full paired sweeps,
-focused controls, exact repeats and proofs verify. These are separate development
-experiments, not a combined candidate or the default planner used by commands
-below. Their [frozen plan](ballistic_acquisition_safety_plan.md) is complete;
+The latest opt-in [combined safety checkpoint](ballistic_combined_validation_results.md)
+records 866/1000 on the original worlds versus acquisition-only's 863, and
+824/1000 on a fresh seed-disjoint 1k versus 818: three and six gains, no losses.
+All prior successful flights and paired preterminal commands remain exact;
+all 3,130 attempts, repeats and proofs verify. It composes the preceding
+[independent changes](ballistic_acquisition_safety_results.md), without new
+trajectory logic, guards or time allowance. This is a development reference,
+not the default planner used by commands below. Its
+[frozen plan](ballistic_combined_validation_plan.md) is complete;
 read-only checks are listed in the results and
 [terrain tooling workflow](../studies/terrain_profiles/README.md#ballistic-feedback-paired-diagnostic).
-New measured runs, a combination and held-out validation need a separate decision.
+New measured runs and default promotion need a separate decision. The now-observed
+fresh population is a locked regression set, not an untouched future test.
 
 The [ballistic aim and correction plan](ballistic_aim_correction_plan.md) proposes
 a feedback planning revision and full paired regression: the maintained 44-case
