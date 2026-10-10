@@ -12,7 +12,8 @@ report/navigation/server paths.
 Current status: the two terrain families, common campaigns/reports and independent
 PPO interface are implemented. All nine training allocations and broad
 confirmations are complete. The selected v2 checkpoints were frozen before
-held-out evaluation, which is running. Final comparison and independent inventory
+held-out evaluation; all six policy campaigns completed with zero landings.
+Incumbent campaigns are running, and final comparison/independent inventory
 verification remain pending. No learned landing competence is established.
 
 ## Accepted platform and inputs
@@ -118,6 +119,26 @@ after extracting the shared reward hook. A real 65,536-transition pilot passed
 source/native and installed-SDK integrity checks before the full allocation.
 
 ## Evaluation and preservation
+
+All six frozen-policy held-out campaigns completed. Each seed received the same
+2,048 physical inputs, 1,024 per family. The 6,144 attempts are three repeated
+policy evaluations of that common population, not 6,144 unique missions.
+
+| Seed | Family | Verified target landings | Native timeouts | Native crashes |
+| --- | --- | --- | --- | --- |
+| 801 | Value noise | 0 / 1024 | 982 | 42 |
+| 801 | Layered | 0 / 1024 | 921 | 103 |
+| 802 | Value noise | 0 / 1024 | 950 | 74 |
+| 802 | Layered | 0 / 1024 | 884 | 140 |
+| 803 | Value noise | 0 / 1024 | 963 | 61 |
+| 803 | Layered | 0 / 1024 | 902 | 122 |
+
+Every attempt has a native capture and rich report; campaign integrity and each
+capture's physical-prefix/complete-episode replay checks passed. There are no
+missing attempts or initialization/execution/capture failures in these six
+campaigns. The incumbent comparison and the fresh-process verification of the
+full paired inventory remain pending. Endpoint diagnostics will be reported
+from that independent replay rather than inferred from horizontal selection.
 
 Common campaigns bind immutable collection inputs once across a run and bind
 each selected input per episode. Append-only exposure receipts are recorded
