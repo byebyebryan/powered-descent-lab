@@ -91,6 +91,7 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
     configuration = {**module.CONFIGURATION, "policy_inference": {
         "deterministic": True, "device": "cpu", "torch_num_threads": 1, "batch_size": 1}}
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    retained_training_inputs = []
     descriptor = {"schema_version": 1, "implementation": "ppo-terrain-"+design,
                   "configuration": configuration, "checkpoint_sha256": digest}
     if freeze_receipt is not None:
@@ -98,6 +99,11 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
         selected = [item for item in frozen["selected"] if item["checkpoint_sha256"] == digest]
         if frozen["design"] != design or len(selected) != 1:
             raise ValueError("checkpoint/design is absent from the predeclared selection freeze")
+        for binding in selected[0]["retained_training_sources"]:
+            path = Path(binding["retained_path"])
+            if hashlib.sha256(path.read_bytes()).hexdigest() != binding["sha256"]:
+                raise ValueError("retained training source/native-module bytes changed")
+            retained_training_inputs.append(str(path.resolve()))
         descriptor["configuration"] = {**configuration, "training_seed": selected[0]["seed"],
             "training_transitions": selected[0]["actual_transitions"],
             "selection_receipt_sha256": hashlib.sha256(Path(freeze_receipt).read_bytes()).hexdigest()}
@@ -125,6 +131,7 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
                     *map(str, native_module_paths())]
     if freeze_receipt is not None:
         fixed_inputs.append(str(Path(freeze_receipt).resolve()))
+        fixed_inputs.extend(retained_training_inputs)
     immutable_inputs = [str((collection/name).resolve()) for name in ["manifest.json", "request.json"]]
     immutable_inputs.extend(str((collection/entry["file"]).resolve()) for entry in manifest["entries"])
     # Initial exposure records are rechecked; later appends remain a journal.
