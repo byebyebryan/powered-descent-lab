@@ -1011,6 +1011,20 @@ pub struct WaypointV2Session {
 }
 
 impl WaypointV2Session {
+    /// Explicit effective configuration frontdoor. The original scenario and
+    /// generation policy remain bound; no live or serialized state is accepted.
+    pub fn start_configured(
+        request: WaypointDirectNominalDirectGenerationRequest,
+        configuration: &crate::Policy3ResolvedConfigV1,
+    ) -> Result<Self> {
+        configuration.validate()?;
+        ensure!(
+            request.policy == configuration.generation,
+            "Policy 3 generation configuration differs from request"
+        );
+        Self::start(request, configuration.policy.clone())
+    }
+
     /// Run input-only preflight and create the owned live simulation only for
     /// supported requests. A rejected preflight remains a typed terminal
     /// session with no simulation evidence.

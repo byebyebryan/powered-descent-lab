@@ -3,7 +3,7 @@
 use super::*;
 
 // Upward roundoff allowance, not a reduction of the physical clearance reserve.
-pub(super) const NUMERIC_HEIGHT_MARGIN_M: f64 = 1e-6;
+pub const NUMERIC_HEIGHT_MARGIN_M: f64 = 1e-6;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WaypointHeightRepair {

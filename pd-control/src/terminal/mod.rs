@@ -10,7 +10,7 @@ mod planning;
 mod state;
 mod terrain;
 
-pub use config::TerminalPdgControllerConfig;
+pub use config::{TerminalPdgControllerConfig, TerminalPdgResolvedConfigV1};
 use planning::*;
 use state::*;
 pub(crate) use state::{
@@ -124,6 +124,40 @@ impl Default for TerminalPdgController {
 }
 
 impl TerminalPdgController {
+    pub fn resolved_configuration(&self) -> TerminalPdgResolvedConfigV1 {
+        TerminalPdgResolvedConfigV1 {
+            schema_version: 1,
+            tuning: self.config.clone(),
+            guidance_plan_retention_enabled: self.guidance_plan_retention_enabled,
+            ballistic_landing_duration_fallback_enabled: self
+                .ballistic_landing_duration_fallback_enabled,
+            ballistic_landing_countdown_enabled: self.ballistic_landing_countdown_enabled,
+            ballistic_landing_braking_guard_enabled: self.ballistic_landing_braking_guard_enabled,
+            ballistic_landing_body_centering_enabled: self.ballistic_landing_body_centering_enabled,
+            ballistic_terminal_coordination_enabled: self.ballistic_terminal_coordination_enabled,
+        }
+    }
+
+    /// Construct a fresh controller from the complete effective configuration.
+    /// Runtime plan state is deliberately excluded and is never restored here.
+    pub fn from_resolved_configuration(
+        config: &TerminalPdgResolvedConfigV1,
+    ) -> Result<Self, String> {
+        config.validate()?;
+        let mut controller = Self::new(config.tuning.clone());
+        controller.guidance_plan_retention_enabled = config.guidance_plan_retention_enabled;
+        controller.ballistic_landing_duration_fallback_enabled =
+            config.ballistic_landing_duration_fallback_enabled;
+        controller.ballistic_landing_countdown_enabled = config.ballistic_landing_countdown_enabled;
+        controller.ballistic_landing_braking_guard_enabled =
+            config.ballistic_landing_braking_guard_enabled;
+        controller.ballistic_landing_body_centering_enabled =
+            config.ballistic_landing_body_centering_enabled;
+        controller.ballistic_terminal_coordination_enabled =
+            config.ballistic_terminal_coordination_enabled;
+        Ok(controller)
+    }
+
     /// Keep nominal lateral acceleration when adding early vertical braking,
     /// and remove inherited trim for body-contained low-energy touchdown.
     /// Explicit experimental adapter only; ordinary defaults remain unchanged.

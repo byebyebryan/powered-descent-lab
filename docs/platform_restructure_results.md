@@ -169,3 +169,54 @@ variable and failed before any mission execution (`policy3-extraction-parity.log
 The gate supplies the pinned path explicitly; its accepted result is the rerun
 above. A preservation probe initially included the migrated fixtures README as
 a frozen input; the actual JSON input identity check passed without edits.
+
+## F2: Ballistic execution and complete configurations
+
+Ballistic acquisition, correction, recovery, clearance, phase transition,
+coast/terminal composition and the saved-prefix capability computations now
+belong to `pd-planner`. The application retains file frontdoors, provenance,
+create-only artifacts and rich report adaptation. All legacy experiment names
+remain selectable; ridge remains the default and cap 6 remains the default.
+The v18 acquisition comparator and v19 combined-safety reference stay opt-in.
+No guard, ranking, deadline, correction cap or controller tuning changed.
+
+Public ballistic execution takes an opaque `BallisticOriginV1`, constructed
+only from the original scenario plus an optional source-replayed retained
+prefix. Callers cannot supply a restored snapshot/live plant. The origin binds
+its request, rejects changed inputs and disallows a fresh terrain-neutral
+mission. Existing diagnostic queries remain distinct from mission execution.
+
+`TerminalPdgResolvedConfigV1` records tuning and all six constructor adapter
+flags, including countdown's duration effect and coordination's braking/body
+centering effects. A fresh constructor consumes that configuration and excludes
+runtime plan state. Tests cover all 64 builder combinations and exact command
+frames after reset. Legacy `ControllerSpec` and tuning JSON are unchanged.
+`BallisticFeedbackConfigV1` records 24 effective switches, actual terminal and
+standalone configurations, relevant numerical/effort limits and the existing
+60-second wall guard. It validates the frozen supported profiles before execution.
+The application consumes it and writes a separate `configuration-v1.json`;
+no historical hashed descriptor receives additional fields.
+`Policy3ResolvedConfigV1` binds the supported policy, generation and terminal
+profile; the optional CLI uses its explicit configured session constructor.
+
+The predeclared ballistic preservation panel ran before and after extraction:
+13 attempts, including three procedural diagnostic inputs across ridge/v18/v19,
+a cap-6 default control and three unsupported terminal inputs. All ten complete
+captures and three typed rejections retain identical outcomes. All 53 physical,
+proof and result files match exact bytes with **no fields excluded**. All ten
+rich HTML reports also match exact bytes. Every completed capture has integrity,
+source replay and reproduced-decision evidence. These inputs were already
+exposed diagnostics; this is extraction preservation, not generalization evidence.
+The request, raw attempts and comparisons are retained in
+`ballistic-panel-request.json`, `ballistic-before/`, `ballistic-after/`,
+`ballistic-preservation.json` and `ballistic-rich-preservation.json` under the run
+root. Each proof capture held source and binary identities stable.
+
+The complete maintained gate passed all 18 checks, including all 44 retained
+Policy 3 comparisons (`solver-final-gate.log`). The migrated controller and solver
+suites passed; strict workspace Clippy passed. Focused new configuration checks
+also compare configured Policy 3 execution with the legacy path and reject
+historical policies, changed effective flags, mismatched requests and invalid
+origins. Early compile diagnostics from the ownership/import split and test field
+names are retained; they were corrected without changing numerical inputs or
+comparison rules. Final workflow consolidation and current documentation remain.

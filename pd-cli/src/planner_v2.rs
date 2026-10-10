@@ -110,7 +110,10 @@ pub(super) fn flight(args: WaypointV2FlightArgs) -> Result<()> {
         .context("--output-dir is required unless --preflight-only is selected")?;
     reserve_waypoint_v2_flight_output(output_dir)?;
     let total_started = Instant::now();
-    let mut session = WaypointV2Session::start(request.clone(), policy.clone())?;
+    let mut session = WaypointV2Session::start_configured(
+        request.clone(),
+        &pd_planner::Policy3ResolvedConfigV1::from_legacy(policy.clone(), request.policy.clone())?,
+    )?;
     let mut entries = Vec::new();
     loop {
         let step_started = Instant::now();

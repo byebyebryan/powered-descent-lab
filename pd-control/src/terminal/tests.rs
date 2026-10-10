@@ -981,3 +981,52 @@ fn vertical_authority_requires_upright_thrust_when_fully_saturated() {
     assert_eq!(vertical_authority_tilt_limit_rad(12.0, 12.0, 0.8), 0.0);
     assert_eq!(vertical_authority_tilt_limit_rad(14.0, 12.0, 0.8), 0.0);
 }
+
+#[test]
+fn complete_constructor_roundtrip_preserves_coupled_flags_and_commands() {
+    let (ctx, observation) = ballistic_duration_query_fixture();
+    for bits in 0_u32..64 {
+        let mut legacy = TerminalPdgController::default();
+        if bits & 1 != 0 {
+            legacy = legacy.with_waypoint_guidance_plan_retention();
+        }
+        if bits & 2 != 0 {
+            legacy = legacy.with_ballistic_landing_duration_fallback();
+        }
+        if bits & 4 != 0 {
+            legacy = legacy.with_ballistic_landing_countdown();
+        }
+        if bits & 8 != 0 {
+            legacy = legacy.with_ballistic_landing_braking_guard();
+        }
+        if bits & 16 != 0 {
+            legacy = legacy.with_ballistic_landing_body_centering();
+        }
+        if bits & 32 != 0 {
+            legacy = legacy.with_ballistic_terminal_coordination();
+        }
+        let config = legacy.resolved_configuration();
+        let bytes = serde_json::to_vec(&config).unwrap();
+        let decoded: TerminalPdgResolvedConfigV1 = serde_json::from_slice(&bytes).unwrap();
+        let mut restored = TerminalPdgController::from_resolved_configuration(&decoded).unwrap();
+        assert_eq!(restored.resolved_configuration(), config);
+        legacy.reset(&ctx);
+        restored.reset(&ctx);
+        for update in 0..12 {
+            let mut obs = observation.clone();
+            obs.sim_time_s += update as f64 / 60.0;
+            obs.physics_step += update * 2;
+            assert_eq!(
+                legacy.update(&ctx, &obs),
+                restored.update(&ctx, &obs),
+                "constructor bits {bits}"
+            );
+        }
+    }
+    let mut invalid = TerminalPdgController::default().resolved_configuration();
+    invalid.ballistic_landing_countdown_enabled = true;
+    assert!(TerminalPdgController::from_resolved_configuration(&invalid).is_err());
+    invalid = TerminalPdgController::default().resolved_configuration();
+    invalid.tuning.max_tilt_rad = f64::NAN;
+    assert!(TerminalPdgController::from_resolved_configuration(&invalid).is_err());
+}

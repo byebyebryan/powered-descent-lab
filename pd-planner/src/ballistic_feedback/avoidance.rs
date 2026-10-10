@@ -1,9 +1,9 @@
 //! Local command protection, not waypoint placement or terminal guidance.
 use super::*;
 
-pub(super) const MAX_COMMANDS: usize = 4;
-pub(super) const MAX_RECOVERY_TICKS: u64 = 600;
-pub(super) const BRAKING_TILT: f64 = std::f64::consts::PI / 6.0;
+pub const MAX_COMMANDS: usize = 4;
+pub const MAX_RECOVERY_TICKS: u64 = 600;
+pub const BRAKING_TILT: f64 = std::f64::consts::PI / 6.0;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerrainCorrection {

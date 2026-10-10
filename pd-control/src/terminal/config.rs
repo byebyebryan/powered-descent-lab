@@ -1,5 +1,98 @@
 use serde::{Deserialize, Serialize};
 
+/// Complete constructor configuration, including opt-in adapters whose coupled
+/// effects are absent from the historical `ControllerSpec` payload. This is a
+/// separate versioned contract; the historical tuning encoding stays intact.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalPdgResolvedConfigV1 {
+    pub schema_version: u32,
+    pub tuning: TerminalPdgControllerConfig,
+    pub guidance_plan_retention_enabled: bool,
+    pub ballistic_landing_duration_fallback_enabled: bool,
+    pub ballistic_landing_countdown_enabled: bool,
+    pub ballistic_landing_braking_guard_enabled: bool,
+    pub ballistic_landing_body_centering_enabled: bool,
+    pub ballistic_terminal_coordination_enabled: bool,
+}
+
+impl TerminalPdgResolvedConfigV1 {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != 1 {
+            return Err("unsupported terminal constructor configuration version".into());
+        }
+        if self.ballistic_landing_countdown_enabled
+            && !self.ballistic_landing_duration_fallback_enabled
+        {
+            return Err("landing countdown requires duration fallback".into());
+        }
+        if self.ballistic_terminal_coordination_enabled
+            && !(self.ballistic_landing_braking_guard_enabled
+                && self.ballistic_landing_body_centering_enabled)
+        {
+            return Err("terminal coordination requires braking guard and body centering".into());
+        }
+        // JSON cannot represent nonfinite tuning. Check before accepting an
+        // in-memory constructor so its recorded payload is also complete.
+        if [
+            self.tuning.max_tilt_rad,
+            self.tuning.terminal_dynamic_tilt_max_rad,
+            self.tuning.max_tilt_low_alt_rad,
+            self.tuning.max_tilt_low_alt_far_rad,
+            self.tuning.low_alt_tilt_alt_m,
+            self.tuning.low_alt_tilt_dx_m,
+            self.tuning.low_alt_tilt_vx_mps,
+            self.tuning.braking_alt_margin_m,
+            self.tuning.braking_tilt_scale,
+            self.tuning.braking_accel_safety,
+            self.tuning.braking_min_speed_mps,
+            self.tuning.braking_max_speed_mps,
+            self.tuning.braking_target_ratio,
+            self.tuning.vy_low_alt_cap_alt_m,
+            self.tuning.vy_low_alt_cap_mps,
+            self.tuning.vy_touch_cap_alt_m,
+            self.tuning.vy_touch_cap_mps,
+            self.tuning.lateral_hold_alt_m,
+            self.tuning.lateral_hold_vx_min_mps,
+            self.tuning.lateral_hold_time_ratio_start,
+            self.tuning.lateral_hold_time_ratio_full,
+            self.tuning.lateral_hold_vy_cap_mps,
+            self.tuning.touchdown_idle_clearance_m,
+            self.tuning.touchdown_zero_vx_mps,
+            self.tuning.touchdown_zero_vy_mps,
+            self.tuning.touchdown_low_clearance_trigger_m,
+            self.tuning.touchdown_rescue_clearance_m,
+            self.tuning.touchdown_rescue_vy_ratio,
+            self.tuning.touchdown_rescue_tilt_rad,
+            self.tuning.touchdown_rescue_vx_full_tilt_mps,
+            self.tuning.touchdown_rescue_vx_margin_mps,
+            self.tuning.touchdown_rescue_alt_floor_m,
+            self.tuning.terminal_gate_nominal_ratio,
+            self.tuning.terminal_gate_nominal_min_up_accel_mps2,
+            self.tuning.terminal_gate_nominal_buffer_s,
+            self.tuning.terminal_gate_burn_time_min_s,
+            self.tuning.terminal_gate_burn_time_max_s,
+            self.tuning.terminal_gate_burn_time_offset_short_s,
+            self.tuning.terminal_gate_burn_time_offset_long_s,
+            self.tuning.terminal_gate_latest_safe_buffer_s,
+            self.tuning.terminal_gate_latest_safe_release_buffer_s,
+            self.tuning.terminal_gate_latest_safe_aggressive_dx_abs_m,
+            self.tuning.terminal_gate_latest_safe_aggressive_dx_ratio,
+            self.tuning.terminal_overshoot_tilt_altitude_min_m,
+            self.tuning.terminal_overshoot_tilt_projected_dx_abs_m,
+            self.tuning.terminal_overshoot_tilt_projected_dx_ratio,
+            self.tuning.terminal_overshoot_tilt_vx_min_mps,
+            self.tuning.terminal_overshoot_tilt_max_rad,
+        ]
+        .iter()
+        .any(|value| !value.is_finite())
+        {
+            return Err("terminal tuning must be finite".into());
+        }
+        Ok(())
+    }
+}
+
 fn default_terrain_clearance_enabled() -> bool {
     true
 }

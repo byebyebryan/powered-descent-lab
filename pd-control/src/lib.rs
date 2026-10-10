@@ -12,7 +12,9 @@ pub use controllers::{
     TransferPdgControllerConfig, built_in_controller_spec,
 };
 pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, standard_marker};
-pub use terminal::{TerminalPdgController, TerminalPdgControllerConfig};
+pub use terminal::{
+    TerminalPdgController, TerminalPdgControllerConfig, TerminalPdgResolvedConfigV1,
+};
 
 pub trait Controller {
     fn id(&self) -> &str;

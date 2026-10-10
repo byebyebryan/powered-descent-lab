@@ -3,7 +3,7 @@
 use super::*;
 use pd_control::TelemetryValue;
 
-pub(super) const MAX_COAST_TICKS: u64 = 4 * CONTINUATION_TICKS;
+pub const MAX_COAST_TICKS: u64 = 4 * CONTINUATION_TICKS;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryPreview {

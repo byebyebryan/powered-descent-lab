@@ -1,5 +1,6 @@
 //! Concrete maintained solver implementation. Neutral runtime and evaluation
 //! packages do not depend on this crate.
+pub mod ballistic_feedback;
 pub mod planner_flight;
 pub use planner_flight::*;
 pub mod local_clearing;
@@ -25,3 +26,6 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 }
 #[cfg(test)]
 mod test_inputs;
+
+mod configuration;
+pub use configuration::*;

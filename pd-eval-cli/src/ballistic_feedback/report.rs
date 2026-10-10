@@ -1,8 +1,12 @@
 //! Display-only adaptation to the maintained rich report. Origins are replayed
 //! from source actions, never restored from serialized snapshots.
 use super::*;
+use anyhow::Context;
 use pd_control::{ControllerFrame, ControllerUpdateRecord};
 use pd_core::RunManifest;
+use pd_core::{FlightProgramUpdateV1, SimulationState, SimulationStateSnapshotV1, Vec2};
+use pd_plan::ballistic::{KinematicStateV2, aim};
+use pd_planner::local_clearing::new_ordinary;
 use pd_report::{
     flight_annotations::{
         AnnotationNavigation, ExecutedCorrection, FlightAnnotations, FlightBoundary, NavigationLink,
