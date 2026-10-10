@@ -1,14 +1,15 @@
 use std::time::Instant;
 
 use pd_core::{
-    AllowAllBoundedRunGuard, BoundedGuardFailureDispositionV1, BoundedGuardFailureV1,
-    BoundedRunArtifactsV1, BoundedRunGuard, BoundedRunLimitsV1, Command, IncomingContactV1,
-    LandingPadSpec, MissionSpec, Observation, RunContext, SimConfig, SimulationError,
-    SimulationState, VehicleInitialState, VehicleSpec, WorldSpec, run_simulation_bounded,
+    BoundedGuardFailureDispositionV1, BoundedGuardFailureV1, BoundedRunArtifactsV1,
+    BoundedRunGuard, BoundedRunLimitsV1, Command, IncomingContactV1, LandingPadSpec, MissionSpec,
+    Observation, RunContext, SimConfig, SimulationError, SimulationState, VehicleInitialState,
+    VehicleSpec, WorldSpec, run_simulation_bounded,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{AgentFrame, AgentUpdateRecord, RunPerformanceStats, current_thread_cpu_time_us};
+use crate::{CaptureModeV1, Episode, EpisodeResultV1};
 
 /// Serializable identity, independent of the application's built-in registry.
 /// Configuration and checkpoint identity are recorded before execution.
@@ -88,7 +89,66 @@ pub fn run_agent(
     agent: &mut dyn Agent,
     limits: BoundedRunLimitsV1,
 ) -> Result<BoundedAgentRunArtifactsV1, SimulationError> {
-    run_agent_guarded(ctx, agent, limits, &mut AllowAllBoundedRunGuard)
+    let result = run_agent_with_capture_mode(ctx, agent, limits, CaptureModeV1::Captured)?;
+    Ok(BoundedAgentRunArtifactsV1 {
+        descriptor: result.descriptor,
+        episode: result.episode.capture.expect("captured mode"),
+        controller_updates: result.episode.agent_updates.expect("captured mode"),
+        performance: result.performance,
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentEpisodeResultV1 {
+    pub descriptor: AgentDescriptorV1,
+    pub episode: EpisodeResultV1,
+    pub performance: RunPerformanceStats,
+}
+
+pub fn run_agent_with_capture_mode(
+    ctx: &RunContext,
+    agent: &mut dyn Agent,
+    limits: BoundedRunLimitsV1,
+    mode: CaptureModeV1,
+) -> Result<AgentEpisodeResultV1, SimulationError> {
+    let descriptor = agent.descriptor();
+    descriptor
+        .validate()
+        .map_err(SimulationError::InvalidContext)?;
+    let reset_failure = agent.reset(ctx.into()).err();
+    let wall_started_at = Instant::now();
+    let cpu_started = current_thread_cpu_time_us();
+    let mut episode = Episode::from_context(ctx, &descriptor.implementation, limits, mode)?;
+    if let Some(reason) = reset_failure {
+        episode.reset_failed(format!("agent reset failed: {reason}"));
+    }
+    while episode.stop().is_none() {
+        let started = Instant::now();
+        match agent.update(episode.mission(), &episode.observation()) {
+            Ok(frame) => {
+                episode.step_frame(
+                    frame,
+                    Some(started.elapsed().as_micros().min(u128::from(u64::MAX)) as u64),
+                )?;
+            }
+            Err(reason) => {
+                episode.decision_failed(reason)?;
+            }
+        }
+    }
+    Ok(AgentEpisodeResultV1 {
+        descriptor,
+        episode: episode.finish()?,
+        performance: RunPerformanceStats {
+            wall_time_us: wall_started_at
+                .elapsed()
+                .as_micros()
+                .min(u128::from(u64::MAX)) as u64,
+            thread_cpu_time_us: current_thread_cpu_time_us()
+                .zip(cpu_started)
+                .map(|(end, start)| end.saturating_sub(start)),
+        },
+    })
 }
 
 /// Caller-owned guards can impose capability restrictions; the host does not
@@ -118,6 +178,7 @@ pub fn run_agent_guarded(
         |ctx, observation| {
             let started_at = Instant::now();
             let frame = agent.update(ctx.into(), observation)?;
+            frame.validate_recordable()?;
             // The core validates finite commands before admitting a transition.
             // Record only admitted finite decisions, including a truthful prefix.
             if !frame.command.throttle_frac.is_finite()

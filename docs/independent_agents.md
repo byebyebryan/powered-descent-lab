@@ -73,6 +73,44 @@ serialize their unchanged `ControllerSpec` at the rendering boundary. Historical
 configuration decoding therefore does not import executable controllers into
 the renderer.
 
-The independent checkpoint-backed runnable example, reset/step API and measured
-throughput are the next integration milestone. This page describes implemented
-APIs; it does not claim a trained RL policy or completed solver migration.
+## Reset/step and capture modes
+
+`pd_run::Episode::reset` constructs state from a resolved scenario.
+`Episode::step` advances one held action to the next control boundary, stopping
+earlier at actual contact/progress, a numeric failure or a finite endpoint.
+State cannot be replaced by an arbitrary snapshot. Completed episodes require
+an explicit reset, and the runtime emits no reward.
+
+`CaptureModeV1::Summary` retains final state, manifest and stop disposition without
+action, event, sample or update vectors. It supplies physical/mission outcomes
+for an external training loop, not saved-command landing proof. Captured mode
+retains native records. Both modes use the same incremental host, ordinary core
+transitions and core artifact projections. The existing guarded bounded core
+backend remains an explicit capability seam, with its own guard ownership.
+
+`run_agent_with_capture_mode` drives an open agent through this host; the regular
+`run_agent` and prepared-program runner use captured mode. Tests compare both
+modes at every decision boundary against the direct ordinary core path, including
+zero/odd endpoints, contact, mission checkpoints, scenario timeout and failed
+decisions. Summary mode retains zero trace records throughout.
+
+The [independent checkpoint example](../examples/checkpoint-policy/README.md)
+provides a runnable workflow with explicit observation/action mapping. Its
+hand-written weights demonstrate the interface; no trained RL competence or
+completed solver migration is claimed.
+
+The launch integration produced 66 saved attempts/reports on 64 procedural
+missions, with complete integrity/replay and exact timing-excluded repeats.
+The demo rotates while resting on its source pad and crashes on the first tick;
+the example preserves those failed outcomes and has not been tuned after them.
+Its timing sample measures early-stop overhead. A separate fixed airborne trace
+exercises sustained reset/step execution and capture cost:
+
+```sh
+rtk proxy cargo run --release -p pd-run --example held-trace-benchmark -- outputs/my-held-trace.json
+```
+
+This instrumentation derives a synthetic input without modifying its fixture.
+It records actual ticks, endpoint, summary/capture equivalence, exact native
+replay, serialization and process RSS. The [run record](platform_restructure_results.md)
+keeps its measurements separate from procedural input coverage and policy ability.

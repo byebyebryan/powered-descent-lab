@@ -9,6 +9,7 @@ members = [
   "pd-cli",
   "pd-eval",
   "pd-eval-cli",
+  "examples/checkpoint-policy",
 ]
 resolver = "2"
 

@@ -8,8 +8,10 @@ use pd_core::{Observation, RunArtifacts, RunContext, SimulationError, run_simula
 use serde::{Deserialize, Serialize};
 
 mod agent;
+mod episode;
 mod prepared;
 pub use agent::*;
+pub use episode::*;
 pub use prepared::*;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -73,6 +75,21 @@ pub struct AgentFrame {
 }
 
 impl AgentFrame {
+    pub fn validate_recordable(&self) -> Result<(), String> {
+        let finite = |value: &TelemetryValue| !matches!(value, TelemetryValue::Float(value) if !value.is_finite());
+        if self.metrics.values().any(|value| !finite(value))
+            || self.markers.iter().any(|marker| {
+                marker.x_m.is_some_and(|x| !x.is_finite())
+                    || marker.y_m.is_some_and(|y| !y.is_finite())
+                    || marker.metadata.values().any(|value| !finite(value))
+            })
+        {
+            return Err(
+                "agent telemetry must be finite to preserve exact capture encoding".to_owned(),
+            );
+        }
+        Ok(())
+    }
     pub fn command_only(command: pd_core::Command) -> Self {
         Self {
             command,

@@ -305,6 +305,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pd-policy-example"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "pd-core",
+ "pd-eval",
+ "pd-missions",
+ "pd-report",
+ "pd-run",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pd-report"
 version = "0.1.0"
 dependencies = [

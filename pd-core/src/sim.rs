@@ -823,7 +823,7 @@ pub fn replay_simulation_bounded(
     Ok(result)
 }
 
-fn validate_bounded_limits(
+pub fn validate_bounded_limits(
     ctx: &RunContext,
     limits: BoundedRunLimitsV1,
 ) -> Result<(), SimulationError> {
@@ -851,7 +851,7 @@ fn validate_bounded_limits(
     Ok(())
 }
 
-fn bounded_stop_at_state(
+pub fn bounded_stop_at_state(
     state: &SimulationState,
     limits: BoundedRunLimitsV1,
 ) -> Option<BoundedRunStopCauseV1> {
@@ -980,7 +980,7 @@ fn validate_bounded_action(
     invalid_bounded_command(action.command).map_or(Ok(()), Err)
 }
 
-fn invalid_bounded_command(command: Command) -> Option<String> {
+pub fn invalid_bounded_command(command: Command) -> Option<String> {
     if !command.throttle_frac.is_finite() || !command.target_attitude_rad.is_finite() {
         return Some("bounded command values must be finite".to_owned());
     }
@@ -993,7 +993,7 @@ fn invalid_bounded_command(command: Command) -> Option<String> {
     None
 }
 
-fn nonfinite_command_failure(
+pub fn nonfinite_command_failure(
     command: Command,
     stage: BoundedRunFailureStageV1,
     boundary_physics_step: u64,
@@ -1029,7 +1029,7 @@ fn nonfinite_value_failure(
     ))
 }
 
-fn first_nonfinite_transition_failure(
+pub fn first_nonfinite_transition_failure(
     ctx: &RunContext,
     state: &SimulationState,
     transition: &SimulationStepReportV1,
@@ -1052,7 +1052,7 @@ fn first_nonfinite_transition_failure(
     })
 }
 
-fn first_nonfinite_artifact_projection_failure(
+pub fn first_nonfinite_artifact_projection_failure(
     ctx: &RunContext,
     state: &SimulationState,
     stage: BoundedRunFailureStageV1,
@@ -1379,7 +1379,7 @@ fn consume_replay_action(
     Ok(())
 }
 
-fn build_manifest(
+pub fn build_manifest(
     ctx: &RunContext,
     controller_id: &str,
     state: &SimulationState,
@@ -1523,7 +1523,7 @@ fn build_waypoint_sequence_run_summary(
     })
 }
 
-fn maybe_push_sample(
+pub fn maybe_push_sample(
     samples: &mut Vec<SampleRecord>,
     state: &SimulationState,
     ctx: &RunContext,

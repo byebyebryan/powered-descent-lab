@@ -90,9 +90,40 @@ are preserved. New validation artifacts stay under the unique run directory.
   launcher's new build selector is inside an original uncommitted hunk and
   remains with that hunk; it cannot be committed alone against clean HEAD.
 
+- E: `pd-run::Episode` provides explicit mission reset and incremental ordinary
+  steps. Online agents and prepared programs use its captured mode. Summary mode
+  retains no trace vectors; rewards and training stay external. Eight existing
+  core projection/validation helpers became public without changing their bodies.
+  Direct core comparisons pass at every tested control boundary, including zero,
+  odd endpoints, contact, checkpoint, horizon and failed decisions. Numeric or
+  unserializable telemetry is rejected before a command is recorded. Caller-owned
+  guarded execution retains the original bounded core backend.
+  The independent `pd-policy-example` package has complete checkpoint, feature
+  scaling, clipping and action mapping; its all-features normal tree contains no
+  maintained controller/planner. Its demo weights remain fixed and untrained.
+  The 64-mission development collection plus two declared repeats produced 66
+  captures and 66 maintained rich detail reports, with 66/66 stable integrity and
+  complete native replay. Both repeats matched exact execution after excluding
+  measured update/performance timing. All demo episodes crashed on tick one;
+  this validates integration and honest outcome accounting, not landing ability.
+  Collection-wide evidence freeze is recorded as well as each episode's binding.
+  `policy-integration/` retains all attempts; native replay was also exercised
+  through the read-only example command. `policy-throughput.json` records 32
+  summary and 32 captured early-stop runs plus eight full proof assessments;
+  those timings mainly measure initialization and evidence cost.
+  A separate predeclared synthetic held airborne trace measures sustained
+  runtime: eight summary and eight captured runs each advanced 11,232 aggregate
+  physics ticks (1,404 each) and 5,616 control updates. Every physical summary
+  matched, and all eight captures replayed exactly. Aggregate execution was
+  3.56 ms summary / 4.41 ms captured; replay 4.08 ms, serialization 1.64 ms for
+  2.05 MB, process peak RSS 4,232 KiB. This simple local trace has no forecasting
+  or trained inference and ended at actual contact before its 30-second cap.
+  See `runtime-held-trace.json` for complete inputs/counts. The gate passed 17
+  checks including five independent dependency trees and exact retained 44-case
+  parity (`policy-gate.log`). Added instrumentation passed strict Clippy separately.
+
 ## Remaining work
 
-- E: reset/step, capture modes, independent checkpoint adapter and measurements.
 - F: maintained solver ownership and exact preservation with complete configuration.
 - G: execution-path consolidation, dependency gates and current workflow docs.
 

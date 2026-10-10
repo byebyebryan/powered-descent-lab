@@ -122,7 +122,7 @@ export function buildPlannerDevelopmentSteps({
 
   // These are reusable platform crates, including their complete public feature
   // surfaces. Concrete strategy registration belongs to composition packages.
-  for (const packageName of ['pd-run', 'pd-missions', 'pd-eval', 'pd-report']) {
+  for (const packageName of ['pd-run', 'pd-missions', 'pd-eval', 'pd-report', 'pd-policy-example']) {
     steps.push(step(root, `${packageName} independent normal dependency tree`, [
       'cargo', 'tree', '-p', packageName, '--all-features', '--edges', 'normal',
     ], {

@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use pd_core::{BoundedRunLimitsV1, BoundedRunStopCauseV1, MissionOutcome, PhysicalOutcome};
+use pd_core::{BoundedRunStopCauseV1, MissionOutcome, PhysicalOutcome};
 use pd_missions::{
     CollectionExposureV1, load_collection_mission, read_collection_manifest,
     record_collection_usage, sha256, write_json_create_only,
@@ -64,6 +64,9 @@ pub struct CollectionEvaluationV1 {
     pub request: CollectionEvaluationRequestV1,
     pub unique_scheduled_missions: usize,
     pub attempts: Vec<CollectionAttemptV1>,
+    pub evidence_before: crate::EvidenceSnapshotV1,
+    pub evidence_after: crate::EvidenceSnapshotV1,
+    pub integrity_passed: bool,
 }
 
 /// Composition provides fresh implementations through an open factory. Mission
@@ -107,6 +110,7 @@ pub fn evaluate_collection(
         CollectionExposureV1::Evaluation,
         "Consumed scheduled development/evaluation inputs; consult capture request for attempts",
     )?;
+    let evidence_before = evidence.snapshot()?;
     let mut evaluation = CollectionEvaluationV1 {
         schema_version: 1,
         unique_scheduled_missions: request
@@ -116,6 +120,9 @@ pub fn evaluate_collection(
             .len(),
         request,
         attempts: Vec::new(),
+        evidence_after: evidence_before.clone(),
+        evidence_before,
+        integrity_passed: false,
     };
     for (position, &index) in evaluation.request.attempt_indices.iter().enumerate() {
         let entry = manifest
@@ -133,16 +140,14 @@ pub fn evaluate_collection(
                     }
                 }
                 Ok(mut agent) => {
-                    let horizon = (mission.scenario.sim.max_time_s
-                        * f64::from(mission.scenario.sim.physics_hz))
-                    .ceil() as u64;
-                    let interval = mission.scenario.sim.control_interval_steps();
-                    let coverage = horizon.div_ceil(interval) * interval;
-                    let limits = BoundedRunLimitsV1 {
-                        command_coverage_end_physics_step: coverage,
-                        hard_end_physics_step: horizon,
-                    };
-                    match evaluate_agent(&mission.scenario, agent.as_mut(), limits, evidence) {
+                    let execution = pd_core::RunContext::from_scenario(&mission.scenario)
+                        .and_then(|ctx| {
+                            pd_run::scenario_horizon_limits(&ctx).map_err(|e| e.to_string())
+                        })
+                        .and_then(|limits| {
+                            evaluate_agent(&mission.scenario, agent.as_mut(), limits, evidence)
+                        });
+                    match execution {
                         Err(detail) => AttemptDispositionV1::ExecutionFailed { detail },
                         Ok(result) => {
                             let capture = format!("attempt-{position:06}");
@@ -189,6 +194,8 @@ pub fn evaluate_collection(
         )?;
         evaluation.attempts.push(attempt);
     }
+    evaluation.evidence_after = evidence.snapshot()?;
+    evaluation.integrity_passed = evaluation.evidence_before == evaluation.evidence_after;
     write_json_create_only(&output.join("summary.json"), &evaluation)?;
     Ok(evaluation)
 }
