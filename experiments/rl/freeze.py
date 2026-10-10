@@ -47,7 +47,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--designs", nargs="+", choices=["v1", "v2"], default=["v1", "v2"])
+    parser.add_argument("--designs", nargs="+", choices=["v1", "v2", "v3"], default=["v1", "v2"])
     args = parser.parse_args()
     designs = [development_selection(args.run, design) for design in args.designs]
     if any(design["development_physical_inputs"] != designs[0]["development_physical_inputs"] for design in designs):

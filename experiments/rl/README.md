@@ -67,6 +67,20 @@ It changes reward only and starts a fresh optimizer. The source and native
 module are bound before and after each allocation. Preserve their bytes until
 the allocation finishes; commit changes to unrelated components independently.
 
+`--design v3` keeps that potential, aligns its discount with PPO's 0.999 decision
+discount, and sets potential to zero at every native terminal. Its discounted
+shaping sum is constant for all finite trajectories from the same initial state.
+The terminal/resource/time base rewards remain unchanged. The three designs
+share features, action mapping, complete mission sampling and native physics.
+The reward hook owns no command or stopping decision. An archived-source check
+also confirms that extracting the hook preserves the original v1 rewards and
+native command/result trace under identical actions.
+
+New allocations additionally save before/after hashes of the installed learning
+library code/binaries and their loaded version strings. Earlier v1/v2 allocations
+retain their original source/native-module checks and dependency lock. Final
+native campaigns bind the installed library bytes regardless of training design.
+
 PPO uses separate 128-by-128 actor/critic MLPs, 512 steps per environment,
 512-sample minibatches, five epochs, learning rate 0.0003, gamma 0.999, GAE 0.95,
 clip 0.2, entropy 0.003 and initial log standard deviation -0.7. Runs persist
@@ -88,7 +102,8 @@ it does not include vertical separation. This remains the declared secondary
 ordering for the current experiment. Native landing proof covers contact speed,
 attitude, footprint and mission outcome independently of that selection metric.
 
-After all declared allocations finish, `freeze.py --run RUN --output NEW_FREEZE`
+After all declared allocations finish, `freeze.py --run RUN --output NEW_FREEZE
+--designs v1 v2 v3`
 checks the three seeds and checkpoint bytes, compares the selected development
 panels and copies the winning checkpoints with training receipts. Use
 `confirm.py --freeze FREEZE_JSON --cohorts COHORT_ROOT --output NEW_CONFIRMATION`

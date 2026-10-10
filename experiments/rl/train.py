@@ -15,7 +15,8 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-from pd_env import CONFIGURATION, FAMILIES, ProceduralLandingEnv, native_module_paths
+from pd_env import FAMILIES, ProceduralLandingEnv, native_module_paths
+from provenance import backend_paths, backend_versions
 
 
 def write_new(path, value):
@@ -102,7 +103,8 @@ class DevelopmentCallback(BaseCallback):
     def evaluate(self, label):
         started = time.monotonic()
         checkpoint = self.output/f"checkpoint-{label}.zip"
-        self.model.save(checkpoint)
+        with checkpoint.open("xb") as stream:
+            self.model.save(stream)
         report = evaluate_summaries(self.model, self.missions, env_class=self.env_class)
         digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
         report.update(checkpoint=str(checkpoint), checkpoint_sha256=digest,
@@ -123,9 +125,11 @@ class DevelopmentCallback(BaseCallback):
 
 def source_identities(module=None):
     root = Path(__file__).resolve().parent
-    paths = [root/"pd_env.py", root/"train.py", root/"pyproject.toml", root/"uv.lock", *native_module_paths()]
+    paths = [root/"pd_env.py", root/"train.py", root/"provenance.py", root/"pyproject.toml", root/"uv.lock", *native_module_paths()]
     if module is not None:
         paths.append(Path(module.__file__).resolve())
+        if module.__name__ == "pd_env_v3":
+            paths.append(root/"pd_env_v2.py")
     return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
@@ -138,16 +142,22 @@ def main():
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--eval-every", type=int, default=524_288)
     parser.add_argument("--max-seconds", type=int, default=7200)
-    parser.add_argument("--design", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--design", choices=["v1", "v2", "v3"], default="v1")
     args = parser.parse_args()
+    if args.steps <= 0 or not 1 <= args.workers <= 128 or args.eval_every <= 0 or args.max_seconds <= 0:
+        parser.error("steps, evaluation interval and wall allocation must be positive; workers must be 1..128")
     module = importlib.import_module("pd_env" if args.design == "v1" else "pd_env_"+args.design)
     env_class, configuration = module.ProceduralLandingEnv, module.CONFIGURATION
     args.output.mkdir()
     torch.set_num_threads(1)
     before = source_identities(module)
+    sdk_sources, sdk_binaries = backend_paths()
+    sdk_before = pd_native.evidence_snapshot(sdk_sources, sdk_binaries)
+    write_new(args.output/"sdk-before.json", json.loads(sdk_before))
     request = {"schema_version": 1, "seed": args.seed, "requested_transitions": args.steps,
                "workers": args.workers, "max_seconds": args.max_seconds,
                "design": args.design, "configuration": configuration, "source_identities": before,
+               "installed_backend_versions": backend_versions(),
                "optimizer": {"algorithm": "stable-baselines3.PPO", "learning_rate": 3e-4,
                              "n_steps": 512, "batch_size": 512, "n_epochs": 5,
                              "gamma": 0.999, "gae_lambda": 0.95, "clip_range": 0.2,
@@ -169,15 +179,18 @@ def main():
     model.learn(args.steps, callback=callback, progress_bar=False)
     callback.evaluate("final")
     after = source_identities(module)
+    sdk_after = pd_native.evidence_snapshot(sdk_sources, sdk_binaries)
+    write_new(args.output/"sdk-after.json", json.loads(sdk_after))
     write_new(args.output/"selection.json", {
         "schema_version": 1, "requested_transitions": args.steps,
         "actual_transitions": model.num_timesteps, "elapsed_s": time.monotonic()-started,
         "source_identity_unchanged": before == after, "source_identities_after": after,
+        "installed_sdk_identity_unchanged": json.loads(sdk_before) == json.loads(sdk_after),
         "best": {key: value for key, value in callback.best.items() if key != "attempts"},
         "evaluations": callback.evaluations,
     })
     env.close()
-    if before != after:
+    if before != after or json.loads(sdk_before) != json.loads(sdk_after):
         raise RuntimeError("training source or loaded native binary changed during optimization")
 
 

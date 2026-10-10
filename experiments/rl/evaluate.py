@@ -80,7 +80,7 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
     manifest = json.loads(manifest_payload)
     if count is not None and not 1 <= count <= len(manifest["entries"]):
         raise ValueError("count must be within the declared collection size")
-    if design not in ["v1", "v2"]:
+    if design not in ["v1", "v2", "v3"]:
         raise ValueError("unknown reward design")
     entries = manifest["entries"][:count] if count is not None else manifest["entries"]
     if not entries:
@@ -115,6 +115,8 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
                     str(Path(__file__).with_name("pyproject.toml").resolve()),
                     str(Path(__file__).with_name("uv.lock").resolve()),
                     *[str(Path(item["retained_path"]).resolve()) for item in receipt["sources"]]]
+    if design == "v3":
+        source_files.append(str(Path(__file__).with_name("pd_env_v2.py").resolve()))
     for item in receipt["sources"]:
         if hashlib.sha256(Path(item["retained_path"]).read_bytes()).hexdigest() != item["sha256"]:
             raise RuntimeError("retained compiled-source bytes changed")
@@ -205,7 +207,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--native-receipt", required=True, type=Path)
     parser.add_argument("--count", type=int)
-    parser.add_argument("--design", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--design", choices=["v1", "v2", "v3"], default="v1")
     parser.add_argument("--freeze-receipt", type=Path)
     args = parser.parse_args()
     campaign(args.collection, args.checkpoint, args.output, args.native_receipt, args.count,

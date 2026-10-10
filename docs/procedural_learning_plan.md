@@ -228,3 +228,13 @@ requested transitions per seed, with the same wall bound and checkpoint rule.
 Rank all attempted designs using the previously declared three-panel rule,
 keeping the earlier design on an exact tie. There are no further revisions in
 this loop. Freeze the winner before broad confirmation and held-out execution.
+
+All three v2 allocations completed 8,003,584 transitions with unchanged source
+identities and zero selected development target successes, triggering v3.
+The v3 reward contract passes discounted telescoping and three-design identical
+command/clock/physical-result checks. Extracting the shared reward hook also
+matches the archived v1 source's observations, rewards, info and complete native
+capture under the same actions. A 65,536-transition optimizer pilot completed;
+its source/native and installed-SDK before/after checks passed. This is integration
+validation, not final landing evidence. The declared three-seed v3 allocation
+is now launched, with all prior runs and receipts retained.

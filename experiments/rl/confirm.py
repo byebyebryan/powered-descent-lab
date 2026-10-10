@@ -28,6 +28,8 @@ def main():
     sources = [str(Path(__file__).resolve()), str(Path(module.__file__).resolve()),
                str(Path(__file__).with_name("train.py").resolve()),
                str(Path(__file__).with_name("pd_env.py").resolve())]
+    if frozen["design"] == "v3":
+        sources.append(str(Path(__file__).with_name("pd_env_v2.py").resolve()))
     inputs = [str(args.freeze.resolve()), *map(str, native_module_paths())]
     missions_by_role = {}
     for role in ["development", "validation"]:

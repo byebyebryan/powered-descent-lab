@@ -124,6 +124,19 @@ class ProceduralLandingEnv(gym.Env):
     def _potential(self, o):
         return -math.hypot(o[11]/1500, (o[12]-self.base_offset)/500)
 
+    def _reward_components(self, old, physical, mission, done):
+        elapsed = self.raw[0]-old[0]
+        discount = CONFIGURATION["potential_discount"] ** (elapsed/0.1)
+        potential = self._potential(self.raw)
+        shaping = 100.0*(discount*potential-self.potential)
+        self.potential = potential
+        fuel = -2.0*(old[9]-self.raw[9])/self.initial_fuel
+        time = -0.01*elapsed
+        terminal_reward = 0.0
+        if done:
+            terminal_reward = 100.0 if mission == "success" else (-20.0 if physical == "crashed" else -15.0)
+        return {"potential": shaping, "fuel": fuel, "time": time, "terminal": terminal_reward}
+
     def step(self, action):
         if self.terminal:
             raise RuntimeError("reset explicitly before stepping a completed mission")
@@ -141,18 +154,8 @@ class ProceduralLandingEnv(gym.Env):
             total_advanced += advanced
             if done:
                 break
-        elapsed = self.raw[0]-old[0]
-        discount = CONFIGURATION["potential_discount"] ** (elapsed/0.1)
-        potential = self._potential(self.raw)
-        shaping = 100.0*(discount*potential-self.potential)
-        self.potential = potential
-        fuel = -2.0*(old[9]-self.raw[9])/self.initial_fuel
-        time = -0.01*elapsed
         physical, mission = json.loads(physical), json.loads(mission)
-        terminal_reward = 0.0
-        if done:
-            terminal_reward = 100.0 if mission == "success" else (-20.0 if physical == "crashed" else -15.0)
-        parts = {"potential": shaping, "fuel": fuel, "time": time, "terminal": terminal_reward}
+        parts = self._reward_components(old, physical, mission, done)
         for name, value in parts.items():
             self.reward_totals[name] += value
         self.steps += 1
