@@ -196,3 +196,32 @@ distance across all 384 development attempts. Keep the earlier design on an
 exact tie. Freeze the winning design and its three checkpoints before final
 held-out evaluation. Broad development and validation remain confirmations,
 not another ranking search. At most one further declared revision is available.
+
+## Conditional final revision: terminal reward accounting
+
+The completed v1 sampler audit found 40,894, 40,945 and 40,114 unique consumed
+inputs, with no reserved-cohort overlap and no training landings. Mean distance
+potential reward was about 63–79 per completed episode, while a crash cost only
+20. The potential's discount was also 1.0 while PPO used 0.999. Approaching the
+target rapidly and crashing can therefore receive substantial positive reward.
+
+If all three v2 selected development panels still have zero target successes,
+use the final revision allowance for v3. Keep v2's state potential and all
+physical/action/observation/sampler/optimizer controls. Compute shaping as
+`100*(0.999*next_potential - previous_potential)` for ongoing decisions, and
+`-100*previous_potential` for every intrinsic native terminal. The terminal
+potential is zero irrespective of landing, crash or horizon stop. Terminal,
+fuel and time base rewards remain unchanged. This aligns shaping with PPO's
+decision discount and removes final-distance payoff from failed episodes.
+
+For a finite episode, the discounted shaping sum telescopes to the same
+`-100*initial_potential` for any trajectory from that initial state. Verify this
+identity for different lengths and endpoints, and verify unchanged native
+commands/outcomes under identical actions. This corrects the learning objective;
+it does not guarantee exploration will discover a landing.
+
+The v3 allocation, if triggered, is the same three fresh seeds and eight million
+requested transitions per seed, with the same wall bound and checkpoint rule.
+Rank all attempted designs using the previously declared three-panel rule,
+keeping the earlier design on an exact tie. There are no further revisions in
+this loop. Freeze the winner before broad confirmation and held-out execution.

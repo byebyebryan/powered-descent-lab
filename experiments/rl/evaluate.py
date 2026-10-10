@@ -92,7 +92,7 @@ def execute_attempt(model, env_class, mission, descriptor, output, capture,
         return {"kind": stage, "detail": repr(error)}, None, None, wall_us
 
 
-def campaign(collection, checkpoint, output, native_receipt, count=None, report=True, design="v1"):
+def campaign(collection, checkpoint, output, native_receipt, count=None, report=True, design="v1", freeze_receipt=None):
     output, collection = Path(output), Path(collection)
     checkpoint, native_receipt = Path(checkpoint), Path(native_receipt)
     manifest_payload = (collection/"manifest.json").read_bytes()
@@ -111,6 +111,14 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
     digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
     descriptor = {"schema_version": 1, "implementation": "ppo-terrain-"+design,
                   "configuration": configuration, "checkpoint_sha256": digest}
+    if freeze_receipt is not None:
+        frozen = json.loads(Path(freeze_receipt).read_text())
+        selected = [item for item in frozen["selected"] if item["checkpoint_sha256"] == digest]
+        if frozen["design"] != design or len(selected) != 1:
+            raise ValueError("checkpoint/design is absent from the predeclared selection freeze")
+        descriptor["configuration"] = {**configuration, "training_seed": selected[0]["seed"],
+            "training_transitions": selected[0]["actual_transitions"],
+            "selection_receipt_sha256": hashlib.sha256(Path(freeze_receipt).read_bytes()).hexdigest()}
     request = {"schema_version": 1, "manifest_sha256": hashlib.sha256(manifest_payload).hexdigest(),
                "agent": descriptor, "attempt_indices": [entry["index"] for entry in entries]}
     write_new(output/"request.json", request)
@@ -131,6 +139,8 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
             raise RuntimeError("retained compiled-source bytes changed")
     fixed_inputs = [str(checkpoint.resolve()), str(native_receipt.resolve()),
                     *map(str, native_module_paths())]
+    if freeze_receipt is not None:
+        fixed_inputs.append(str(Path(freeze_receipt).resolve()))
     immutable_inputs = [str((collection/name).resolve()) for name in ["manifest.json", "request.json"]]
     immutable_inputs.extend(str((collection/entry["file"]).resolve()) for entry in manifest["entries"])
     # Initial exposure records are rechecked; later appends remain a journal.
@@ -169,8 +179,8 @@ def campaign(collection, checkpoint, output, native_receipt, count=None, report=
         row = {"attempt_index": position, "mission_index": entry["index"],
                "physical_sha256": entry["physical_sha256"],
                "terrain_family": manifest["request"]["recipe"]["generator_version"],
-               "direction": (mission or {}).get("direction", 0),
-               "terrain_stratum": (mission or {}).get("terrain_stratum", 0),
+               "direction": (mission or {}).get("direction", 1 if (entry["index"]//4)%2 == 0 else -1),
+               "terrain_stratum": (mission or {}).get("terrain_stratum", entry["index"]%4),
                "disposition": disposition["kind"], "detail": detail, "stop": None,
                "physical_outcome": None, "mission_outcome": None, "execution_valid": False,
                "integrity_passed": False, "physical_replay_verified": False,
@@ -215,8 +225,10 @@ def main():
     parser.add_argument("--native-receipt", required=True, type=Path)
     parser.add_argument("--count", type=int)
     parser.add_argument("--design", choices=["v1", "v2"], default="v1")
+    parser.add_argument("--freeze-receipt", type=Path)
     args = parser.parse_args()
-    campaign(args.collection, args.checkpoint, args.output, args.native_receipt, args.count, design=args.design)
+    campaign(args.collection, args.checkpoint, args.output, args.native_receipt, args.count,
+             design=args.design, freeze_receipt=args.freeze_receipt)
 
 
 if __name__ == "__main__":
