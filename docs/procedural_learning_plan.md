@@ -163,3 +163,36 @@ each on the same 2,048 held-out inputs with native captures and command replay.
 Report each seed separately and distinguish repeated algorithm attempts from
 unique mission coverage. The raw incumbent comparison keeps unsupported inputs
 in its full denominator; any mirrored adapter is named and scored separately.
+
+## First bounded revision: braking and contact shaping
+
+Revision v2 changes the reward potential only. The v1 observations, action
+mapping, launch primitive, mission sampler, native physics/fuel/contact/clocks
+and PPO optimizer remain the comparison controls. There is no mission-ID rule,
+new authored task ladder or incumbent fallback.
+
+Seed 801 completed 8,003,584 transitions in 746.7 seconds; its best recurring
+development checkpoint had zero target successes and median final target
+distance 24.85 metres. All 128 inputs crashed at that checkpoint. Two independent
+native captures replay exactly and show impacts around 80 m/s, with unsuitable
+angular rate. This motivates a general hypothesis: distance-progress shaping
+can favor approaching the target quickly without making braking or stable
+contact visible soon enough for learning.
+
+The new potential subtracts a bounded kinetic cost
+`2*tanh(0.25*speed_squared/(6*target_distance + safe_speed_squared))`,
+where safe speed squared uses the vehicle's normal/tangential touchdown limits.
+It also subtracts a bounded attitude/angular-rate cost near terrain:
+`0.5*exp(-max(hull_clearance,0)/30)*tanh(normalized_angular_error_squared)`.
+The vehicle's existing attitude/angular-rate limits normalize that error.
+The success/crash/timeout rewards and resource/time terms remain unchanged.
+These are global learning costs, not safety guards or physics alterations.
+
+The allocation remains three seeds (801/802/803), eight million requested
+transitions and at most 7,200 seconds per seed. Checkpoint selection uses the
+same development ordering. Compare designs by the sum of native development
+successes across their three selected checkpoints, then the median endpoint
+distance across all 384 development attempts. Keep the earlier design on an
+exact tie. Freeze the winning design and its three checkpoints before final
+held-out evaluation. Broad development and validation remain confirmations,
+not another ranking search. At most one further declared revision is available.
