@@ -63,7 +63,7 @@ fn exposure(value: Option<bool>) -> &'static str {
     }
 }
 
-fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -72,7 +72,7 @@ fn escape(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn verified(row: &CampaignRowV1) -> bool {
+pub(crate) fn verified(row: &CampaignRowV1) -> bool {
     row.verified_target_landing
         && row.execution_valid
         && row.integrity_passed
@@ -87,7 +87,7 @@ fn number(value: Option<f64>) -> String {
     value.map_or_else(|| "—".into(), |n| format!("{n:.2}"))
 }
 
-fn family_label(version: &str) -> &str {
+pub(crate) fn family_label(version: &str) -> &str {
     match version {
         "pd-missions/value-noise-rest-v1" => "Value noise",
         "pd-missions/layered-perlin-rest-v1" => "Layered Perlin",
@@ -95,7 +95,7 @@ fn family_label(version: &str) -> &str {
     }
 }
 
-pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
+pub(crate) fn validate_campaign_page(page: &CampaignPageV1) -> Result<(), String> {
     page.agent.validate()?;
     if page.schema_version != 1
         || page.attempts.is_empty()
@@ -107,6 +107,11 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
     {
         return Err("invalid common campaign projection or incomplete landing tuple".into());
     }
+    Ok(())
+}
+
+pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
+    validate_campaign_page(page)?;
     let scheduled = page.attempts.len();
     let landings = if page.integrity_passed {
         page.attempts.iter().filter(|r| verified(r)).count()
