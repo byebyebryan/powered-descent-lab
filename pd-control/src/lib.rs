@@ -1,8 +1,4 @@
-use std::collections::BTreeMap;
-use std::time::Instant;
-
-use pd_core::{Observation, RunArtifacts, RunContext, SimulationError, run_simulation};
-use serde::{Deserialize, Serialize};
+use pd_core::{Observation, RunContext, SimulationError};
 
 mod controllers;
 mod guidance;
@@ -26,106 +22,11 @@ pub trait Controller {
     fn update(&mut self, ctx: &RunContext, observation: &Observation) -> ControllerFrame;
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum TelemetryValue {
-    Float(f64),
-    Integer(i64),
-    Bool(bool),
-    Text(String),
-}
-
-impl From<f64> for TelemetryValue {
-    fn from(value: f64) -> Self {
-        Self::Float(value)
-    }
-}
-
-impl From<i64> for TelemetryValue {
-    fn from(value: i64) -> Self {
-        Self::Integer(value)
-    }
-}
-
-impl From<bool> for TelemetryValue {
-    fn from(value: bool) -> Self {
-        Self::Bool(value)
-    }
-}
-
-impl From<String> for TelemetryValue {
-    fn from(value: String) -> Self {
-        Self::Text(value)
-    }
-}
-
-impl From<&str> for TelemetryValue {
-    fn from(value: &str) -> Self {
-        Self::Text(value.to_owned())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ControllerMarker {
-    pub id: String,
-    pub label: String,
-    pub x_m: Option<f64>,
-    pub y_m: Option<f64>,
-    #[serde(default)]
-    pub metadata: BTreeMap<String, TelemetryValue>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ControllerFrame {
-    pub command: pd_core::Command,
-    pub status: String,
-    pub phase: Option<String>,
-    #[serde(default)]
-    pub metrics: BTreeMap<String, TelemetryValue>,
-    #[serde(default)]
-    pub markers: Vec<ControllerMarker>,
-}
-
-impl ControllerFrame {
-    pub fn command_only(command: pd_core::Command) -> Self {
-        Self {
-            command,
-            status: String::new(),
-            phase: None,
-            metrics: BTreeMap::new(),
-            markers: Vec::new(),
-        }
-    }
-
-    pub fn clamped(mut self) -> Self {
-        self.command = self.command.clamped();
-        self
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ControllerUpdateRecord {
-    pub sim_time_s: f64,
-    pub physics_step: u64,
-    pub controller_update_index: u64,
-    #[serde(default)]
-    pub compute_time_us: Option<u64>,
-    pub frame: ControllerFrame,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RunPerformanceStats {
-    pub wall_time_us: u64,
-    #[serde(default)]
-    pub thread_cpu_time_us: Option<u64>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ControlledRunArtifacts {
-    pub run: RunArtifacts,
-    pub controller_updates: Vec<ControllerUpdateRecord>,
-    pub performance: RunPerformanceStats,
-}
+pub use pd_run::{
+    AgentFrame as ControllerFrame, AgentMarker as ControllerMarker,
+    AgentRunArtifacts as ControlledRunArtifacts, AgentUpdateRecord as ControllerUpdateRecord,
+    RunPerformanceStats, TelemetryValue,
+};
 
 pub fn run_controller(
     ctx: &RunContext,
@@ -133,56 +34,9 @@ pub fn run_controller(
 ) -> Result<ControlledRunArtifacts, SimulationError> {
     controller.reset(ctx);
     let controller_id = controller.id().to_owned();
-    let mut controller_updates = Vec::new();
-    let wall_started_at = Instant::now();
-    let thread_cpu_started_at = current_thread_cpu_time_us();
-    let run = run_simulation(ctx, &controller_id, |ctx, observation| {
-        let started_at = Instant::now();
-        let frame = controller.update(ctx, observation).clamped();
-        let compute_time_us = started_at.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
-        controller_updates.push(ControllerUpdateRecord {
-            sim_time_s: observation.sim_time_s,
-            physics_step: observation.physics_step,
-            controller_update_index: controller_updates.len() as u64,
-            compute_time_us: Some(compute_time_us),
-            frame: frame.clone(),
-        });
-        frame.command
-    })?;
-
-    Ok(ControlledRunArtifacts {
-        run,
-        controller_updates,
-        performance: RunPerformanceStats {
-            wall_time_us: wall_started_at
-                .elapsed()
-                .as_micros()
-                .min(u128::from(u64::MAX)) as u64,
-            thread_cpu_time_us: current_thread_cpu_time_us()
-                .zip(thread_cpu_started_at)
-                .map(|(finished, started)| finished.saturating_sub(started)),
-        },
+    pd_run::run_frames(ctx, &controller_id, |ctx, observation| {
+        controller.update(ctx, observation)
     })
-}
-
-#[cfg(unix)]
-fn current_thread_cpu_time_us() -> Option<u64> {
-    let mut spec = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut spec) };
-    if rc != 0 || spec.tv_sec < 0 || spec.tv_nsec < 0 {
-        return None;
-    }
-    let secs = spec.tv_sec as u128;
-    let nanos = spec.tv_nsec as u128;
-    Some(((secs * 1_000_000) + (nanos / 1_000)).min(u128::from(u64::MAX)) as u64)
-}
-
-#[cfg(not(unix))]
-fn current_thread_cpu_time_us() -> Option<u64> {
-    None
 }
 
 pub fn run_controller_spec(
@@ -290,6 +144,50 @@ mod tests {
         match frame.metrics.get(key) {
             Some(TelemetryValue::Float(value)) => *value,
             other => panic!("expected float metric {key}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn neutral_runtime_preserves_direct_core_commands_frames_and_artifacts() {
+        // The independent oracle uses the pre-extraction core callback path,
+        // with another fresh implementation instance and identical reset order.
+        let ctx = RunContext::from_scenario(&flat_scenario()).unwrap();
+        for spec in [
+            ControllerSpec::BaselineV1 {
+                config: BaselineControllerConfig::default(),
+            },
+            ControllerSpec::StagedDescentV1 {
+                config: StagedDescentControllerConfig::default(),
+            },
+            ControllerSpec::TerminalPdgV1 {
+                config: TerminalPdgControllerConfig::default(),
+            },
+        ] {
+            let mut controller = spec.instantiate().unwrap();
+            controller.reset(&ctx);
+            let id = controller.id().to_owned();
+            let mut frames = Vec::new();
+            let expected = pd_core::run_simulation(&ctx, &id, |ctx, observation| {
+                let frame = controller.update(ctx, observation).clamped();
+                frames.push((
+                    observation.physics_step,
+                    observation.sim_time_s,
+                    frame.clone(),
+                ));
+                frame.command
+            })
+            .unwrap();
+            let actual = run_controller_spec(&ctx, &spec).unwrap();
+            assert_eq!(actual.run, expected, "{spec:?}");
+            assert_eq!(
+                actual
+                    .controller_updates
+                    .iter()
+                    .map(|update| (update.physics_step, update.sim_time_s, update.frame.clone()))
+                    .collect::<Vec<_>>(),
+                frames,
+                "{spec:?}"
+            );
         }
     }
 

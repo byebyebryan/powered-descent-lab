@@ -32,10 +32,24 @@ are preserved. New validation artifacts stay under the unique run directory.
 - A: starting ownership and source inventory captured; baseline gate passed.
   The owner explicitly authorized commits during implementation. No push or
   publication is included.
+- B: `pd-run` owns neutral frames, telemetry, update records, performance and
+  online/prepared execution. `pd-control` re-exports the unchanged serialized
+  record shapes and adapts its existing reset/update interface. The open `Agent`
+  interface receives physical inputs without scenario labels, seeds or tags.
+  Three maintained controllers were compared with fresh instances using the
+  direct core callback oracle: exact commands, frames, events, samples and full
+  manifests matched. Four independent runtime tests cover complete replay,
+  prepared binding/cadence, odd hard endpoints, zero commands, failed decisions
+  and membership-independent actions. Reset failures retain a typed zero-step
+  stop. Incremental reset/step and capture allocation checks remain in E.
+  `runtime-tests.log` records 176 controller and four independent tests passing.
+  The full maintained gate is recorded in `runtime-gate-v2.log`; the first
+  attempt caught a constructor naming error before execution and is retained.
+  The all-features normal `pd-run` tree contains only core and utility crates.
+  All ten unrelated starting dirty files remain byte-for-byte preserved.
 
 ## Remaining work
 
-- B: neutral runtime records, online/prepared execution and paired boundaries.
 - C: self-contained procedural missions, immutable collections and input coverage.
 - D: neutral evaluation/rendering and explicit application composition.
 - E: reset/step, capture modes, independent checkpoint adapter and measurements.

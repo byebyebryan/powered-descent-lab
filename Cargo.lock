@@ -189,8 +189,8 @@ dependencies = [
 name = "pd-control"
 version = "0.1.0"
 dependencies = [
- "libc",
  "pd-core",
+ "pd-run",
  "serde",
  "serde_json",
 ]
@@ -233,6 +233,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "pd-control",
+ "pd-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pd-run"
+version = "0.1.0"
+dependencies = [
+ "libc",
  "pd-core",
  "serde",
  "serde_json",
