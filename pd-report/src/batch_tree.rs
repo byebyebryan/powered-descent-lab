@@ -345,6 +345,14 @@ a:hover { text-decoration: underline; }
 }
 .run-preview img, .run-preview svg { display: block; width: 100%; height: auto; background: #fbf7ee; }
 .lane-preview { width: 148px; }
+/* Opt-in preview-first layout: keep the plot with the sticky mission link,
+   rather than beyond long comparison columns. Other batch layouts stay intact. */
+.mission-preview-batch .scenario-table { table-layout: fixed; min-width: 1200px; }
+.mission-preview-batch .scenario-table th,
+.mission-preview-batch .scenario-table td { white-space: normal; overflow-wrap: anywhere; }
+.mission-preview-batch .scenario-table .tree-label { width: 220px; }
+.mission-preview-batch .mission-row .tree-label { padding-left: 12px; }
+.mission-preview-batch .row-note { display: block; margin-top: 4px; }
 .scenario-table.baseline-hidden .baseline-row { display: none; }
 .review-tree-root.diff-only .scenario-table tr.unchanged { display: none; }
 .baseline-row { color: var(--muted); }
@@ -494,6 +502,26 @@ window.PdBatchTree = (() => {
         });
       });
     };
+    // Focus a review subset without expanding unrelated successful missions.
+    // Validate the target before changing visibility so stale links are inert.
+    const focusGroup = (group) => {
+      const target = summaryRows().find((row) => row.dataset.group === group);
+      if (!target) return null;
+      collapseGroups(0);
+      expandPath(group);
+      const table = target.closest("table");
+      const open = (row, visited = new Set()) => {
+        if (!row.dataset.group || visited.has(row.dataset.group)) return;
+        visited.add(row.dataset.group);
+        row.setAttribute("aria-expanded", "true");
+        childRows(table, row.dataset.group).forEach((child) => {
+          child.hidden = false;
+          if (child.matches(summarySelector)) open(child, visited);
+        });
+      };
+      open(target);
+      return target;
+    };
     const collapseLeaves = () => {
       tables.forEach((table) => {
         const depth = asDepth(table.dataset.targetDepth, defaultExpansion);
@@ -572,6 +600,7 @@ window.PdBatchTree = (() => {
       expandGroups,
       collapseGroups,
       expandPath,
+      focusGroup,
       expandLeaves,
       collapseLeaves,
     };

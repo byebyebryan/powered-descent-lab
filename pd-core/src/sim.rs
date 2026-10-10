@@ -385,7 +385,8 @@ impl SimulationState {
             .fold(f64::INFINITY, f64::min)
     }
 
-    fn build_run_summary(&self, ctx: &RunContext) -> RunSummary {
+    /// Read-only projection for owned flight sessions and their report adapters.
+    pub fn build_run_summary(&self, ctx: &RunContext) -> RunSummary {
         let landing_snapshot = self.landing_snapshot(ctx);
         let landing = build_landing_run_summary(ctx, &landing_snapshot);
         let checkpoint = build_checkpoint_run_summary(ctx, self);

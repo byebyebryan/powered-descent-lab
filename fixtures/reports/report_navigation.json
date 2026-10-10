@@ -6,11 +6,16 @@
     "report_type": "Flight report collection",
     "status": "Historical presentation"
   },
+  "home_highlights": {
+    "title": "Latest planner experiment",
+    "description": "Ballistic aiming + terminal braking/body centering · 9 October 2026. These are the latest development results, not the accepted V2 benchmark below.",
+    "entry_ids": ["planner-ballistic-latest-1k", "planner-ballistic-latest-panel"]
+  },
   "topics": [
     {
       "id": "waypoint-planning",
       "title": "Waypoint planning",
-      "description": "Start with the accepted Planner V2 batch, then the 1,000-world paired terrain sweep for the latest development coverage. The relaxed correction budget is an experiment, not the production default. Earlier challenges, diagnostics and clear-route sanity coverage remain separate.",
+      "description": "Browse the accepted V2 benchmark, the latest ballistic experiment (592/1000), or the retained policy-3 1,000-world paired terrain sweep (817/1000). Development experiments are separate from the accepted benchmark; earlier comparisons and rich mission reports remain available.",
       "entries": [
         {
           "id": "planner-v2-current",
@@ -21,9 +26,60 @@
           "source": { "kind": "batch_pack", "pack_id": "planner_v2_lab_suite" }
         },
         {
+          "id": "planner-ballistic-latest-1k",
+          "title": "Latest 1,000-world ballistic batch",
+          "description": "592/1000 verified landings, versus 562: 75 gains and 45 former wins not reproduced (33 verified stops and 12 unverified errors). Overall, 392 verified airborne stops and 16 unverified terrain-domain errors remain. The batch's recorded-only loss headline omits those 12 former wins. Start with the mission shortcuts below; the retained policy-3 sweep still lands 817/1000 and no replacement is accepted.",
+          "report_type": "Experimental batch report",
+          "status": "9 Oct · 592 landed · 392 finite stops · 16 unverified · not adopted",
+          "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/index.html" },
+          "review_links": [
+            { "title": "142 · recovered terminal landing", "path": "runs/random-142/report.html" },
+            { "title": "974 · recovered terminal landing", "path": "runs/random-974/report.html" },
+            { "title": "086 · new terminal stop", "path": "runs/random-086/report.html" },
+            { "title": "288 · new deadline stop", "path": "runs/random-288/report.html" }
+          ]
+        },
+        {
+          "id": "planner-ballistic-latest-panel",
+          "title": "Latest preservation panel",
+          "description": "The smaller body-centering comparison: 10/16 random landings versus 8, gaining 142/715 without losing prior candidate landings. All three direct controls land, but changed terminal commands fail the earlier exact-flight admission. The full sweep uses a separate outcome-based contract; controls and repeats stay outside the random denominator.",
+          "report_type": "Experimental batch report",
+          "status": "9 Oct · 10/16 random landings · exact-flight admission failed",
+          "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-terminal-centering-preservation-20261009-v1/index.html" }
+        },
+        {
+          "id": "planner-ballistic-coast-terminal-1k",
+          "title": "Previous ballistic batch · coast-to-terminal · 562/1000",
+          "description": "Previous full ballistic comparison: 562/1000 verified landings versus 401, with 200 gains and 39 losses; 438 verified airborne finite stops. Retained unchanged as the immediate baseline for the latest terminal-centering sweep, not the accepted benchmark.",
+          "report_type": "Experimental batch report",
+          "status": "9 Oct · previous baseline · 562/1000 landed · not adopted",
+          "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-coast-terminal-sweep-20261009-v1/index.html" },
+          "review_links": [
+            { "title": "084 · coast-to-terminal landing", "path": "runs/random-084/report.html" },
+            { "title": "900 · later terrain stop", "path": "runs/random-900/report.html" },
+            { "title": "142 · earlier terminal stop", "path": "runs/random-142/report.html" }
+          ]
+        },
+        {
+          "id": "planner-ballistic-coast-terminal-panel",
+          "title": "Previous preservation panel · coast-to-terminal · 8/16",
+          "description": "Previous 16-world comparison: eight landings versus seven, with 084 gained and no lost landings. Direct controls and repeats are separate. Preserved unchanged alongside the newer body-centering panel.",
+          "report_type": "Experimental batch report",
+          "status": "9 Oct · previous panel · 8/16 random landings · controls preserved",
+          "source": { "kind": "capture_page", "path": "eval/planner_v2_random_terrain/capture-coast-terminal-preservation-20261009-v1/index.html" }
+        },
+        {
+          "id": "planner-v2-terrain-early-exit-1k",
+          "title": "Planner V2 · retained policy-3 1,000-world sweep · failure review",
+          "description": "Retained paired early-exit run: 748 → 817 verified landings on the same worlds, cap 24 in both runs. Review 183 remaining stops: 65 not launched, 83 after handoffs, 35 without a next trajectory. Each rich detail shows recorded state-aware proposals at launch and each actual H, proposed conflicts, correction state changes and saved give-up reasons. Start with 715, then 280/983. Group navigation and all rich views remain. Diagnostic reconstruction only; no changed flights or held-out reliability claim.",
+          "report_type": "Batch comparison report",
+          "status": "Experimental cap 24 · 817/1000 landed · 183 stops to review",
+          "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-early-exit-20261008-cycles-v5/index.html" }
+        },
+        {
           "id": "planner-v2-terrain-cap-sweep-1k",
-          "title": "Planner V2 · 1,000-world terrain sweep",
-          "description": "Latest paired development check: the same 1,000 worlds under correction caps 6 and 24. 733 → 748 verified landings, all prior successes preserved; 387 clear direct and 361 blocked-route landings. Distinct unlaunched/airborne/crash markers and planning-cycle summaries separate proposed obstructions from executed flight. Rich plots, handoffs and separate controls/repeats remain intact. Production stays cap 6; not held-out reliability or the accepted benchmark.",
+          "title": "Planner V2 · previous 1,000-world terrain sweep · cap comparison",
+          "description": "Previous paired development check: the same 1,000 worlds under correction caps 6 and 24. 733 → 748 verified landings, all prior successes preserved; 387 clear direct and 361 blocked-route landings. Use the retained policy-3 early-exit sweep above for its 817-landed / 183-stopped review. This retained report keeps rich plots, handoffs and separate controls/repeats. Production stays cap 6; not held-out reliability or the accepted benchmark.",
           "report_type": "Batch comparison report",
           "status": "Experimental cap 24 · 748/1000 verified landings",
           "source": { "kind": "report_page", "path": "eval/planner_v2_random_terrain/recheck-cap-sweep-20261007-v6/index.html" }

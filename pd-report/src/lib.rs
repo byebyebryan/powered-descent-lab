@@ -18,6 +18,7 @@ use serde::Serialize;
 pub mod batch;
 pub mod batch_tree;
 pub mod flight_annotations;
+pub mod planning_cycles;
 pub mod report_navigation;
 mod rich_template;
 pub mod site;

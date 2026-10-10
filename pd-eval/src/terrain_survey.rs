@@ -1,5 +1,6 @@
 //! Saved-evidence validation and presentation for a frozen procedural survey.
-//! Does not relax the sealed benchmark, simulate, or select flight trajectories.
+//! Does not relax the sealed benchmark or select flight trajectories. The
+//! explicit planning-cycle lane reenacts recorded programs for diagnostics.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -29,7 +30,10 @@ use crate::{
 mod cap_report;
 mod comparison;
 
-pub use cap_report::render_saved_cap_sweep;
+pub use cap_report::{
+    render_saved_cap_sweep, render_saved_early_exit_sweep,
+    render_saved_early_exit_sweep_with_cycles,
+};
 
 /// Read-only comparator shared by collection and publication. Typed native
 /// serialization authenticates proposal hashes; no simulation is constructed.

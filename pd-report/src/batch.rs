@@ -365,6 +365,23 @@ fn render_page_script(tree: &BatchTreeOptions<'_>, coverage_tree_jump: bool) -> 
   if (!root || !page || !window.PdBatchTree) return;
   const tree = window.PdBatchTree.init(root, {config});
   if (!tree) return;
+  const focusHash = () => {{
+    if (!window.location.hash.startsWith('#tree-')) return;
+    const target = tree.focusGroup(window.location.hash.slice(6));
+    if (!target) return;
+    target.scrollIntoView({{block: "start"}});
+    target.focus({{preventScroll: true}});
+  }};
+  page.querySelectorAll("[data-tree-focus]").forEach((link) => {{
+    link.addEventListener("click", (event) => {{
+      event.preventDefault();
+      const hash = '#tree-' + link.dataset.treeFocus;
+      if (window.location.hash === hash) focusHash();
+      else window.location.hash = hash;
+    }});
+  }});
+  window.addEventListener("hashchange", focusHash);
+  focusHash();
   {coverage}
 }})();"#,
         tree_script = batch_tree::SCRIPT,
