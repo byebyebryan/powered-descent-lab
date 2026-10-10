@@ -35,7 +35,7 @@ and baseline observations live in the separate study contract.
 
 Eleven old V1/generated-route, comparison-scorer, dogleg and late-bend packs
 remain archived metadata. The evaluator's
-[admission rules](../pd-eval/src/resolution.rs) reject their execution, including
+[admission rules](../pd-eval-cli/src/resolution.rs) reject their execution, including
 retired profiles/controllers reused through renamed packs. Keeping metadata
 allows old descriptors and reports to remain intelligible without restoring
 failed experiments. Ordinary terminal, direct-transfer and authored-waypoint

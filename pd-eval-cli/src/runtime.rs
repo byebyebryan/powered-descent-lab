@@ -59,7 +59,7 @@ pub(crate) fn write_artifact_bundle(
     pd_report::write_run_report_with_plan_context_and_compute(
         &path.join("report.html"),
         scenario,
-        Some(controller_spec),
+        Some(&serde_json::to_value(controller_spec)?),
         &artifacts.run.manifest,
         &artifacts.run.events,
         &artifacts.run.samples,

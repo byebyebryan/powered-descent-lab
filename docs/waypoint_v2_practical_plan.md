@@ -195,7 +195,7 @@ validated progress binding is instead ImplementationError.
 
 ## Architecture and execution rules
 
-Use a new additive `pd-eval/src/waypoint_v2.rs` runner and
+Use a new additive `pd-eval-cli/src/waypoint_v2.rs` runner and
 `pd-plan/src/waypoint_v2.rs` pure policy/entry/budget contracts. Keep plant-dependent
 generation and auditing in pd-eval for this version. Do not force timed V2
 segments through V1's chord-based RoutePlan/all-leg validator or introduce an
@@ -207,7 +207,7 @@ adding the experimental mode must not change default Planner::plan dispatch.
 Extract only the reusable local row search, validation and ordinary segment
 execution helpers with narrow crate visibility. Keep all current canary wrappers,
 input seals and selection semantics intact. If useful, put shared active-state
-and log ownership in `pd-eval/src/segmented_flight.rs`; it calls existing core
+and log ownership in `pd-eval-cli/src/segmented_flight.rs`; it calls existing core
 transitions and adds no integrator, restore API or contact policy.
 
 The segment ledger records initial nominal prefix, local correction, later

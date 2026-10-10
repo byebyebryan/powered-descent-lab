@@ -172,7 +172,7 @@ the accumulated source/official replay proof for complete and partial flights.
 ## Implementation responsibilities
 
 The primary owns the live-constructor facade/shared realization seam, new
-command-program audit and `pd-eval/src/waypoint_v2.rs` integration. Keep the
+command-program audit and `pd-eval-cli/src/waypoint_v2.rs` integration. Keep the
 canonical initial branch and existing local search/rank unchanged. Any helper
 visibility/extraction in the body-aware terminal/characterization modules must
 be narrow and behavior-preserving; no unrelated core or controller refactor.

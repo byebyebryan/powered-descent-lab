@@ -160,11 +160,11 @@ comparison headings wrap; all numerical columns remain available to the right.
 Its explicit create-only publication command is:
 
 ```sh
-rtk proxy cargo run -p pd-eval -- render-terrain-early-exit-sweep \
+rtk proxy cargo run -p pd-eval-cli -- render-terrain-early-exit-sweep \
   --capture-dir /ABSOLUTE/outputs/eval/planner_v2_random_terrain/CAPTURE \
   --output-dir /ABSOLUTE/outputs/reports/eval/planner_v2_random_terrain/recheck-ID \
   --capture-base-href /eval/planner_v2_random_terrain/CAPTURE/
-rtk proxy cargo run -p pd-eval -- refresh-reports --home-only
+rtk proxy cargo run -p pd-eval-cli -- refresh-reports --home-only
 ```
 
 The early-exit command uses that study's separate read-only verifier and binds
@@ -221,11 +221,11 @@ This is an explicitly isolated cap-24 experiment, not the production default or
 accepted benchmark. Its dedicated create-only publication command is:
 
 ```sh
-rtk proxy cargo run -p pd-eval -- render-terrain-cap-sweep \
+rtk proxy cargo run -p pd-eval-cli -- render-terrain-cap-sweep \
   --capture-dir /ABSOLUTE/outputs/eval/planner_v2_random_terrain/CAPTURE \
   --output-dir /ABSOLUTE/outputs/reports/eval/planner_v2_random_terrain/recheck-ID \
   --capture-base-href /eval/planner_v2_random_terrain/CAPTURE/
-rtk proxy cargo run -p pd-eval -- refresh-reports --home-only
+rtk proxy cargo run -p pd-eval-cli -- refresh-reports --home-only
 ```
 
 It requires Python 3 for the study's existing read-only saved-evidence verifier
@@ -358,22 +358,22 @@ To apply the current report templates to existing captures without running
 simulations:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- refresh-reports
-rtk proxy cargo run -p pd-eval -- refresh-reports --all
+rtk proxy cargo run -p pd-eval-cli -- refresh-reports
+rtk proxy cargo run -p pd-eval-cli -- refresh-reports --all
 ```
 
 To refresh navigation and maintained scorecard indexes without rewriting
 detailed report bodies, flight captures or outcome summaries:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- refresh-navigation
+rtk proxy cargo run -p pd-eval-cli -- refresh-navigation
 ```
 
 The narrower home-navigation refresh also regenerates configured topic, library,
 history and raw-data indexes, but does not regenerate maintained scorecards:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- refresh-reports --home-only
+rtk proxy cargo run -p pd-eval-cli -- refresh-reports --home-only
 ```
 
 `fixtures/reports/report_navigation.json` describes the explicit topic map.
@@ -409,7 +409,7 @@ or rerun missions. Both leave raw capture and `summary.json` evidence unchanged.
 To deliberately select an accepted saved native capture rather than run missions:
 
 ```sh
-rtk proxy cargo run --release -p pd-eval -- publish-planner-v2 --dir CAPTURE_DIRECTORY
+rtk proxy cargo run --release -p pd-eval-cli -- publish-planner-v2 --dir CAPTURE_DIRECTORY
 ```
 
 This is a publication command: it checks acceptance and updates the current

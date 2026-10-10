@@ -19,7 +19,7 @@ new architecture investigation.
 named helpers for nominal generation and audit, fixed consumed-prefix proof,
 direct execution, local clearing search, and actual E-to-H execution with a
 private continuation certificate. The helpers remain internal to
-`pd-eval/src/waypoint_v2.rs`; this pass does not introduce a planner framework
+`pd-eval-cli/src/waypoint_v2.rs`; this pass does not introduce a planner framework
 or move an intact mixed-responsibility method to another file.
 
 Initial, policy-3 airborne and historical policy-1/2 nominal generation remain

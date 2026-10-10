@@ -189,7 +189,7 @@ def verify(root):
 
 def run(args):
     plan = contract()
-    if 'departure-clearing-probe = ' not in (survey.REPO / "pd-eval/Cargo.toml").read_text():
+    if 'departure-clearing-probe = ' not in (survey.REPO / "pd-eval-cli/Cargo.toml").read_text():
         raise ValueError("departure runtime retired after the negative probe; use verify on the retained source-sealed capture")
     checkpoint = survey.REPO / plan["fresh_capture"]
     if study.digest((checkpoint / "receipt.json").read_bytes()) != plan["fresh_receipt_sha256"]:
@@ -223,7 +223,7 @@ def run(args):
     manifest = {"schema": "pd-lab.departure-probe-inputs.v1", "source": source, "protected": protected,
                 "baseline_flight_hashes": hashes}
     study.write_new(root / "manifest.json", study.encoded(manifest))
-    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval",
+    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval-cli",
                "--features", plan["feature"], "--manifest-path", str(root / "variant/source/Cargo.toml"),
                "--target-dir", str(args.build_target.resolve()), "--jobs", "4"]
     study.write_new(root / "variant/build-command.json", study.encoded(command))

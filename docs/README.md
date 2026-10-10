@@ -16,6 +16,7 @@ later code and documentation housekeeping does not create a new flight capture.
 | Identify maintained scripts and their side effects | [Tooling inventory](../scripts/README.md) |
 | Understand frozen inputs and archived pack metadata | [Fixture ownership](../fixtures/README.md) |
 | Generate independent procedural inputs and immutable collections | [Procedural missions](procedural_missions.md) |
+| Implement an independent agent and verify its saved commands | [Independent agents](independent_agents.md) |
 
 ## Active platform work
 

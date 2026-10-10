@@ -1,6 +1,6 @@
 //! Explicit capability diagnostic; no maintained planner/default changes.
 use clap::Parser;
-use pd_eval::ballistic_feedback::terminal_coast_diagnostic::{self, TerminalSetup};
+use pd_eval_cli::ballistic_feedback::terminal_coast_diagnostic::{self, TerminalSetup};
 use std::path::PathBuf;
 
 #[derive(Parser)]

@@ -60,7 +60,16 @@ fn append_rust_files(dir: &Path, repo: &Path, bytes: &mut Vec<u8>) -> Result<()>
 
 pub(crate) fn capture_source_state(repo: &Path) -> Result<WaypointV2SourceState> {
     let mut tree_bytes = Vec::new();
-    for crate_name in ["pd-eval", "pd-core", "pd-plan", "pd-report", "pd-control"] {
+    for crate_name in [
+        "pd-eval-cli",
+        "pd-eval",
+        "pd-core",
+        "pd-run",
+        "pd-missions",
+        "pd-plan",
+        "pd-report",
+        "pd-control",
+    ] {
         let src = repo.join(crate_name).join("src");
         if src.is_dir() {
             append_rust_files(&src, repo, &mut tree_bytes)?;
@@ -69,8 +78,11 @@ pub(crate) fn capture_source_state(repo: &Path) -> Result<WaypointV2SourceState>
     for relative in [
         "Cargo.toml",
         "Cargo.lock",
+        "pd-eval-cli/Cargo.toml",
         "pd-eval/Cargo.toml",
         "pd-core/Cargo.toml",
+        "pd-run/Cargo.toml",
+        "pd-missions/Cargo.toml",
         "pd-plan/Cargo.toml",
         "pd-report/Cargo.toml",
         "pd-control/Cargo.toml",

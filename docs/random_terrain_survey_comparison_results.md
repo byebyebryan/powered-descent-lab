@@ -58,7 +58,7 @@ Entry/powered-end/handoff/continuation steps remain 1272/1992/2234/2474.
 Actual handoff position remains (-605.9442976371221, 340.4203888346855) m.
 
 The identity calculation in
-[`proposal_identity`](../pd-eval/src/local_clearing.rs) clears the proposal's
+[`proposal_identity`](../pd-eval-cli/src/local_clearing.rs) clears the proposal's
 identity field, serializes the entire proposal and hashes it with FNV1a64.
 The proposal includes every selected trajectory's `body_clearance_m`, so the
 seven changed diagnostic values necessarily affect that content identity.

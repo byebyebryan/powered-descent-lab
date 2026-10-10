@@ -63,7 +63,7 @@ rtk proxy node scripts/check-planner-development.mjs
 Run the current planner pack:
 
 ```sh
-rtk proxy cargo run --release -p pd-eval -- run-pack --workers 4 --enforce-regression-policy
+rtk proxy cargo run --release -p pd-eval-cli -- run-pack --workers 4 --enforce-regression-policy
 ```
 
 This creates a new capture and publishes the current report only if acceptance
@@ -71,7 +71,7 @@ passes. A completed capture or successful collection exit is not itself a landin
 For read-only inspection of already-saved evidence:
 
 ```sh
-rtk proxy cargo build --release -p pd-eval
+rtk proxy cargo build --release -p pd-eval-cli
 rtk proxy node scripts/check-planner-v2-workflow.mjs
 ```
 
@@ -97,9 +97,12 @@ See [report operations](docs/reports.md) before refreshing or publishing pages.
 | Area | Responsibility |
 | --- | --- |
 | `pd-core` | Deterministic plant, missions, terrain queries and neutral persisted contracts |
+| `pd-run` | Open agents, neutral records and ordinary episode execution |
+| `pd-missions` | Procedural missions and immutable collection management |
 | `pd-plan` | Pure current ballistic and local-clearing calculations |
 | `pd-control` | Terminal, direct-transfer and authored-waypoint guidance |
-| `pd-eval` | Owned V2 session, pack expansion, acceptance, evidence and batch reporting |
+| `pd-eval` | Independent evaluation, capture integrity and authoritative command replay |
+| `pd-eval-cli` | Built-in `pd-eval` application and transitional legacy solver/evidence workflows |
 | `pd-cli` | Ordinary run/replay/report and feature-gated V2 flight/replay adapters |
 | `pd-report` | Common rich detail and batch templates, annotations and report navigation |
 | [fixtures](fixtures/README.md) | Maintained inputs, frozen research data and deliberately retained archive metadata |

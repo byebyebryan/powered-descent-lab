@@ -28,7 +28,7 @@ uncovered observations or authorize its last-command hold.
   controller identity `flight_program_operational_v1`. Both derive coverage
   from the complete validated program, not the observed log. Existing strict
   `run_flight_program`, `FlightProgramV1` and default controllers are unchanged.
-- [The evaluator](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval/src/nominal_direct_operational.rs) independently
+- [The evaluator](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval-cli/src/nominal_direct_operational.rs) independently
   admits the unchanged full nominal witness/program before motion. Its fixed
   `body_aware_operational_validity_v1` guard audits initial source support,
   every transition's actual held-command fuel budget, airborne phase-aware

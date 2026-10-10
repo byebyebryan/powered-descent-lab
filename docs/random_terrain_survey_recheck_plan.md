@@ -28,7 +28,7 @@ change to nominal/correction selection policy. Current vehicle, Earth gravity,
 
 ## Implemented numerical fix
 
-[`body_aabb_from_pose`](../pd-eval/src/planner_flight/geometry.rs) now rotates the
+[`body_aabb_from_pose`](../pd-eval-cli/src/planner_flight/geometry.rs) now rotates the
 local feet/hull first and computes conservative symmetric extents from those
 local coordinates. Translation is applied only for world-space pad containment.
 The vehicle's size therefore does not change with its position. At the exact
@@ -41,8 +41,8 @@ still have a microscopic negative result in that arithmetic, with minimum
 -3.55e-15 m. This was an arithmetic-only inspection, not 100 new flight checks.
 
 The existing 1e-9 m source-rest admission/flat-pad tolerance is now a shared
-[`PAD_REST_TOLERANCE_M`](../pd-eval/src/planner_flight/input.rs).
-[`FlightGuard`](../pd-eval/src/waypoint_v2/execution.rs) uses it only when:
+[`PAD_REST_TOLERANCE_M`](../pd-eval-cli/src/planner_flight/input.rs).
+[`FlightGuard`](../pd-eval-cli/src/waypoint_v2/execution.rs) uses it only when:
 
 - the global physics step is zero;
 - the existing flat source-pad corridor makes required clearance zero; and

@@ -114,9 +114,9 @@ The early user-review gate still applies before the second slice.
   preplanned waypoint guidance and planner-generated routes. Keep those evidence
   distinctions; V2 opt-in captures must not silently enter their scorecards.
 
-Source pointers are `pd-report/src/site.rs`, `pd-eval/src/report_catalog.rs`,
-`fixtures/reports/guidance_catalog.json`, `pd-eval/src/waypoint_v2_report.rs`,
-`pd-eval/src/waypoint_v2_output.rs` and the reporting contract in
+Source pointers are `pd-report/src/site.rs`, `pd-eval-cli/src/report_catalog.rs`,
+`fixtures/reports/guidance_catalog.json`, `pd-eval-cli/src/waypoint_v2_report.rs`,
+`pd-eval-cli/src/waypoint_v2_output.rs` and the reporting contract in
 `docs/architecture.md` under `pd-report` and the static report viewer.
 
 ## Navigation design
@@ -272,7 +272,7 @@ their actual endpoint.
   to the existing generic renderer. It must not depend on `pd-eval`, plan a
   flight or fabricate controller updates. Preserve existing writer APIs with
   an empty-annotation path; do not migrate every caller.
-- `pd-eval/src/waypoint_v2_report.rs` keeps the strict retained reader, identity,
+- `pd-eval-cli/src/waypoint_v2_report.rs` keeps the strict retained reader, identity,
   ownership, continuity, numeric and path checks. Reuse its proven extraction
   and reason logic, but pass the full original scenario/manifest/samples/events
   to the rich renderer rather than treating the lean display DTO as the flight.
@@ -281,7 +281,7 @@ their actual endpoint.
   writer against retained source paths. Keep `waypoint-v2-report` report-only,
   fresh-root and optionally single-case; generic refresh must not scan arbitrary
   research roots or execute missions.
-- `pd-eval/src/waypoint_v2_output.rs` switches back to the rich renderer with the
+- `pd-eval-cli/src/waypoint_v2_output.rs` switches back to the rich renderer with the
   same annotations only after the preview is accepted. The full future and
   retained paths must share the adapter; summary schemas and flight policy stay
   unchanged.

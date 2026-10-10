@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fs, io::Write, path::Path};
 
 use anyhow::{Context, Result, ensure};
 use pd_core::{ScenarioSpec, Vec2};
-use pd_eval::ballistic_feedback::FeedbackResult;
+use pd_eval_cli::ballistic_feedback::FeedbackResult;
 use pd_report::batch::{self, BatchPage, BatchTreeOptions};
 use serde_json::Value;
 

@@ -251,10 +251,10 @@ planner work is needed, not generate another open-ended research loop.
 ## Evidence used for this plan
 
 The analysis reads the current
-[flight command](../pd-eval/src/main.rs),
-[V2 loop](../pd-eval/src/waypoint_v2.rs),
-[capture writer](../pd-eval/src/waypoint_v2_output.rs),
-[input preflight](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval/src/nominal_direct_flight.rs),
+[flight command](../pd-eval-cli/src/main.rs),
+[V2 loop](../pd-eval-cli/src/waypoint_v2.rs),
+[capture writer](../pd-eval-cli/src/waypoint_v2_output.rs),
+[input preflight](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval-cli/src/nominal_direct_flight.rs),
 [existing suite runner](https://github.com/byebyebryan/powered-descent-lab/blob/5ab3d84281d1ff78fdd73425881e96aa86ebd9ac/scripts/run_waypoint_v2_practical_suite.mjs),
 [suite recipes](../fixtures/research/waypoint_v2_practical_suite_plan_v1.json)
 and [accepted results](waypoint_v2_airborne_integration_results.md).

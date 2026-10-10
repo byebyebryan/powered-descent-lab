@@ -217,7 +217,7 @@ def run(args):
     for path in source["files"]:
         data = (root / "inputs/source" / path).read_bytes()
         study.write_new(stage / "source" / path, transform(data, plan) if path == cap.POLICY_PATH else data)
-    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval", "--manifest-path", str(stage / "source/Cargo.toml"), "--target-dir", str(args.build_target), "--jobs", "4"]
+    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval-cli", "--manifest-path", str(stage / "source/Cargo.toml"), "--target-dir", str(args.build_target), "--jobs", "4"]
     study.write_new(stage / "build-command.json", study.encoded(command))
     with (stage / "build.log").open("xb") as log:
         built = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=plan["build_wall_limit_s"])

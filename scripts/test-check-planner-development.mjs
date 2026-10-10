@@ -64,6 +64,15 @@ test('ordinary and explicit parity plans preserve feature and test discovery bou
     assert(find('feature-enabled CLI help').validateOutput);
     assert(find('default-off normal dependency tree').args.includes('--edges'));
     assert(find('default-off normal dependency tree').validateOutput);
+    for (const packageName of ['pd-run', 'pd-missions', 'pd-eval', 'pd-report']) {
+      const boundary = find(`${packageName} independent normal dependency tree`);
+      assert(boundary.args.includes('--all-features'));
+      assert.throws(() => boundary.validateOutput(`${packageName} v0.1.0\n└── pd-control v0.1.0`),
+        /must not import concrete strategies/);
+      assert.throws(() => boundary.validateOutput(`${packageName} v0.1.0\n└── pd-eval-cli v0.1.0`),
+        /must not import concrete strategies/);
+      assert.doesNotThrow(() => boundary.validateOutput(`${packageName} v0.1.0\n└── pd-run v0.1.0`));
+    }
     assert(find('maintained JavaScript tests').args.includes('scripts/test-a.mjs'));
     assert(find('maintained JavaScript tests').args.includes('scripts/test-z.mjs'));
     assert.deepEqual(find('local documentation links').args, [
@@ -140,7 +149,7 @@ test('default-off leaks and command spawn errors fail before later steps', () =>
     {
       label: 'default-off normal dependency tree',
       result: {status: 0, stdout: 'pd-cli v0.1.0\n└── pd-eval v0.1.0', stderr: ''},
-      message: /pd-eval must stay out of the default-off normal dependency tree/,
+      message: /evaluation and planning must stay out of the default-off normal dependency tree/,
     },
     {
       label: 'workspace all-features tests',

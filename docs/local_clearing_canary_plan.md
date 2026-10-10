@@ -302,13 +302,13 @@ not an archived route, old winning row or target-landing reference.
 Full live-state and snapshot envelopes remain in `pd-eval`; do not introduce
 an evaluator-type dependency into `pd-plan`.
 
-Add `pd-eval/src/local_clearing.rs` for real prefix collection, held-pair plant
+Add `pd-eval-cli/src/local_clearing.rs` for real prefix collection, held-pair plant
 propagation, strict terrain audit, bounded coast-window selection and selected
 live-state execution. Reuse existing throttle/body-query math with minimal
 visibility changes; do not fork those equations or change their semantics.
 Keep proposal math and actual-terrain validation visibly separate.
 
-Add `pd-eval/src/local_clearing_canary.rs` for create-only evidence, gates and
+Add `pd-eval-cli/src/local_clearing_canary.rs` for create-only evidence, gates and
 repeatability. Register an additive `local-clearing-canary --output-dir NEW_ROOT`
 command with no promotion flag or per-case tuning switches. Reuse the core
 bounded executor/replay, not a new simulation API. Finish the integrated harness

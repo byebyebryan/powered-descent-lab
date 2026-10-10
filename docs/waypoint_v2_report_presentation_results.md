@@ -60,11 +60,11 @@ The implementation is split across:
 
 - `pd-report/src/waypoint_v2.rs` and its `data.rs`: display-only HTML/SVG and
   small selection JavaScript, with no framework or CDN.
-- `pd-eval/src/waypoint_v2_report.rs`: exact endpoint projection, consistency
+- `pd-eval-cli/src/waypoint_v2_report.rs`: exact endpoint projection, consistency
   guards, retained reader, create-only output and render provenance.
-- `pd-eval/src/waypoint_v2_output.rs`: future V2 captures use the same adapter
+- `pd-eval-cli/src/waypoint_v2_output.rs`: future V2 captures use the same adapter
   and renderer; non-V2 report APIs are unchanged.
-- `pd-eval/src/main.rs`: explicit `waypoint-v2-report`, with an optional `--case`
+- `pd-eval-cli/src/main.rs`: explicit `waypoint-v2-report`, with an optional `--case`
   for staged review. It does not plan or simulate.
 - `pd-report/src/site.rs`: independent opt-in presentation navigation; staged
   single-case reviews are not advertised as complete suites.
@@ -136,7 +136,7 @@ unsupported indexing. CLI and normal-navigation tests pass in the workspace
 gate. Format, whitespace and browser-script syntax checks pass on final source.
 
 Strict Clippy reports only the unchanged `single_element_loop` baseline at
-`pd-eval/src/route_capability.rs:274`. The final workspace/all-target Clippy gate
+`pd-eval-cli/src/route_capability.rs:274`. The final workspace/all-target Clippy gate
 passes with that lint alone allowed and all other warnings denied.
 
 Chrome 154 was available at `/opt/google/chrome/chrome`, despite not being on

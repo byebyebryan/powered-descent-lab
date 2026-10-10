@@ -26,11 +26,11 @@ historical input and outcome. It does not repeat the numerical flight audits.
 | --- | --- |
 | [Cargo evaluation dependencies](../pd-eval/Cargo.toml) include controller, planner and report implementations | Generic evaluation and built-in application registration must be separate packages |
 | [Report dependencies](../pd-report/Cargo.toml) and [renderer inputs](../pd-report/src/lib.rs) include executable controller types | Extract neutral trace contracts and saved descriptor decoding before claiming independent reporting |
-| [Controller execution](../pd-control/src/lib.rs) already accepts `dyn Controller`, but [resolved run descriptors](../pd-eval/src/model.rs) require `ControllerSpec` | The algorithm interface is partly open; the registry and persisted execution descriptor still constrain the evaluator |
-| [V2 sessions](../pd-eval/src/waypoint_v2.rs) own live state and execute complete pieces synchronously | Support session/program execution alongside online policies; a per-tick trait alone is insufficient |
-| [Ballistic execution](../pd-eval/src/ballistic_feedback.rs) mixes acquisition, recovery, terminal composition, disk capture, repeat verification and rendering | Extract solver execution from orchestration of evidence; training must not call the experiment frontdoor |
+| [Controller execution](../pd-control/src/lib.rs) already accepts `dyn Controller`, but [resolved run descriptors](../pd-eval-cli/src/model.rs) require `ControllerSpec` | The algorithm interface is partly open; the registry and persisted execution descriptor still constrain the evaluator |
+| [V2 sessions](../pd-eval-cli/src/waypoint_v2.rs) own live state and execute complete pieces synchronously | Support session/program execution alongside online policies; a per-tick trait alone is insufficient |
+| [Ballistic execution](../pd-eval-cli/src/ballistic_feedback.rs) mixes acquisition, recovery, terminal composition, disk capture, repeat verification and rendering | Extract solver execution from orchestration of evidence; training must not call the experiment frontdoor |
 | [Core stepping](../pd-core/src/sim.rs) distinguishes ordinary stepping from physics-only contact classification | Actual training and evaluation episodes need ordinary mission/contact/timeout semantics |
-| [Ordinary clearing execution](../pd-eval/src/local_clearing.rs) uses global two-tick command boundaries | Preserve global command order and existing cadence during host extraction |
+| [Ordinary clearing execution](../pd-eval-cli/src/local_clearing.rs) uses global two-tick command boundaries | Preserve global command order and existing cadence during host extraction |
 | [Terminal builders](../pd-control/src/terminal/mod.rs) change coupled private switches outside the [serialized configuration](../pd-control/src/terminal/config.rs) | Complete new approach configuration must record resolved effects while historical descriptors retain their original identity |
 | [Terrain source loading](../studies/terrain_profiles/study.py) extracts hash-bound classes from an external checkout; [refinement](../studies/terrain_profiles/refinement.py) fixes pads and templates | Add a self-contained versioned generator; do not rewrite historical study recipes |
 | [Challenge generation](../studies/terrain_profiles/challenge.py) already avoids solver feedback and corridor clearing | Preserve this property while widening complete mission dimensions |
@@ -58,7 +58,7 @@ waypoint contract for every independent agent.
 5. **Planning reserve:** the 90-second terrain mission's 80-second planning bound
    and short-query allowance remain algorithm policy, not a shared environment
    deadline. The source defaults are in
-   [planner input](../pd-eval/src/planner_flight/input.rs), with
+   [planner input](../pd-eval-cli/src/planner_flight/input.rs), with
    [deadline calculation](../pd-plan/src/waypoint_v2.rs).
 6. **Generation rejection:** use declared structural checks, finite deterministic
    rejection and typed generation failures. Never substitute another input

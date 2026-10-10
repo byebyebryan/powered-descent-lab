@@ -25,7 +25,8 @@ lifecycle, handoff contract, continuation viability, and final-waypoint entry
 into terminal guidance. It is terrain-blind: waypoint placement and arrival
 envelopes must already encode a terrain-valid route.
 
-The maintained planner is an evaluator-owned outer loop: `pd-eval` constructs a
+The maintained planner is currently an application-owned outer loop:
+`pd-eval-cli` constructs a
 terrain-blind nominal flight, audits the fixed program against actual terrain,
 applies local correction, and replans from the actual handoff state. This
 evaluator-owned outer loop is not a `pd-control` controller or a per-tick
@@ -106,10 +107,10 @@ The current `pd-control` layout follows those ownership boundaries:
   changing their access to module-private fixtures
 
 The controller evaluator follows the same separation. Persisted batch/report DTOs live in
-`pd-eval/src/model.rs`; pack validation and expansion live in `resolution.rs`;
+`pd-eval-cli/src/model.rs`; pack validation and expansion live in `resolution.rs`;
 execution, artifact/cache support, comparison, and review derivation live in
 their named modules. The batch report shell delegates overview, diagnostics,
-review-tree, and comparison rendering to `pd-eval/src/report/` modules. Current
+review-tree, and comparison rendering to `pd-eval-cli/src/report/` modules. Current
 entrypoints and persisted schema paths remain stable. Obsolete research
 Rust APIs are deliberately removed, rather than retained as compatibility shims.
 
@@ -412,15 +413,15 @@ V2 implementation ownership is:
 - `pd-plan/src/waypoint_v2.rs`: versioned finite policy, correction bounds and clocks.
 - `pd-plan/src/local_clearing.rs`: sealed template family and pure scalar
   handoff braking-room estimate; no terrain query or physical acceptance.
-- `pd-eval/src/planner_flight/`: current request/preflight, canonical initial
+- `pd-eval-cli/src/planner_flight/`: current request/preflight, canonical initial
   source fitting, state-derived airborne acquisition, terminal realization and
   phase/contact geometry, extracted from historical research orchestration.
-- `pd-eval/src/waypoint_v2.rs`: input preflight, the owned session lifecycle and
+- `pd-eval-cli/src/waypoint_v2.rs`: input preflight, the owned session lifecycle and
   named phases for nominal generation/audit, fixed-prefix proof, direct
   execution, local clearing search and actual E-to-H/certificate execution.
-- `pd-eval/src/waypoint_v2/model.rs`: persisted flight records and additive
+- `pd-eval-cli/src/waypoint_v2/model.rs`: persisted flight records and additive
   session progress, re-exported through the unchanged public paths.
-- `pd-eval/src/waypoint_v2/execution.rs`: forward queries, exclusive segment
+- `pd-eval-cli/src/waypoint_v2/execution.rs`: forward queries, exclusive segment
   ownership, phase-aware guards and original-source replay proofs.
 - `waypoint_v2_output.rs` and `waypoint_v2_bundle.rs`: create-only evidence,
   progress/receipt validation and saved-source CLI replay.
@@ -470,7 +471,7 @@ new final-source acceptance/publication matrix:
 
 ```sh
 rtk proxy env PD_V2_PARITY_CAPTURE=outputs/eval/planner_v2_lab_suite/capture-session-repair-20261005-native \
-  cargo test --release -p pd-eval --lib retained_capture_numerical_parity -- --ignored --nocapture
+  cargo test --release -p pd-eval-cli --lib retained_capture_numerical_parity -- --ignored --nocapture
 ```
 
 The maintained ordinary gate includes workspace/default-off/feature CLI tests,
@@ -549,7 +550,7 @@ The former optional-runtime design is now implemented at the bounded session
 and CLI scope below. The legacy anchor is retained for historical document links.
 
 The [accepted session and CLI replacement](waypoint_v2_session_repair_results.md)
-provides `pd-eval::WaypointV2Session` and a default-off `pd-cli` feature
+currently provides `pd_eval_cli::WaypointV2Session` and a default-off `pd-cli` feature
 `planner-v2`. Native, real CLI and CLI-repeat matrices each pass the 44-case
 gate, with exact retained-baseline, evaluator/CLI and repeat flight/report
 parity. All 42 supported saved flights also replay through the real CLI.

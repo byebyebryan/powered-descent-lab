@@ -1296,7 +1296,7 @@
 ### F5b source-controlled held-out seal
 
 - F5b is complete. The evaluator-owned module
-  `pd-eval/src/conservative_ballistic_f5_seal.rs` seals the two ordered raw
+  `pd-eval-cli/src/conservative_ballistic_f5_seal.rs` seals the two ordered raw
   inputs in
   `fixtures/manifests/conservative_ballistic_ridge_f5_inputs_v1.json` and the
   corresponding qualitative predictions in

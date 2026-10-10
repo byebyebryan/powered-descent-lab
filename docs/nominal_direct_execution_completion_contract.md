@@ -294,7 +294,7 @@ failed flights. A partial-run report must consume the bounded envelope.
   frame, not a stop decision. [Strict playback](https://github.com/byebyebryan/powered-descent-lab/blob/d7b7075f6c6a3e3ee3603fce3bb88114be7e648c/pd-control/src/flight_program.rs)
   records failure and returns idle at a missing callback, then reports the error
   after `run_controller`; its exact postconditions intentionally remain strict.
-- [Nominal adapter](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval/src/nominal_direct_flight.rs):
+- [Nominal adapter](https://github.com/byebyebryan/powered-descent-lab/blob/d5517c4794046864712695718ac71dd4b93bf55b/pd-eval-cli/src/nominal_direct_flight.rs):
   `execute_nominal_direct_flight_program` independently verifies the witness and
   exact conversion, then requires command/contact/fuel/action-replay parity.
 

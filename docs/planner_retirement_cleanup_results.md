@@ -19,11 +19,11 @@ source `561b6e5`, not the cleanup source.
 | --- | --- |
 | Pure discrete bridge/coast and canonical-initial math | `pd-plan/src/ballistic.rs` and its child |
 | Sealed current policy, correction bounds and clocks | `pd-plan/src/waypoint_v2.rs`, `local_clearing.rs` |
-| Request/preflight, initial source fitting, state-derived airborne acquisition, terminal realization and contact geometry | `pd-eval/src/planner_flight/` |
-| Owned piecewise session, live execution, records and source/prefix/certificate proofs | `pd-eval/src/waypoint_v2/` |
-| Current local-clearing proposal, admission, execution and evidence helpers | `pd-eval/src/local_clearing.rs` |
-| Exact-byte hashing and create-only output reservation/writing | `pd-eval/src/evidence_io.rs` |
-| Native pack models, expansion, aggregation, capture validation, provenance and presentation | `pd-eval/src/waypoint_v2_pack/`, with its existing facade |
+| Request/preflight, initial source fitting, state-derived airborne acquisition, terminal realization and contact geometry | `pd-eval-cli/src/planner_flight/` |
+| Owned piecewise session, live execution, records and source/prefix/certificate proofs | `pd-eval-cli/src/waypoint_v2/` |
+| Current local-clearing proposal, admission, execution and evidence helpers | `pd-eval-cli/src/local_clearing.rs` |
+| Exact-byte hashing and create-only output reservation/writing | `pd-eval-cli/src/evidence_io.rs` |
+| Native pack models, expansion, aggregation, capture validation, provenance and presentation | `pd-eval-cli/src/waypoint_v2_pack/`, with its existing facade |
 | Common batch/tree and rich-detail presentation | `pd-report`, current evaluator report adapters |
 | Current report/browser checks shared by maintained workflows | `scripts/planner-v2-report-checks.mjs`, `planner-v2-browser-helpers.mjs` |
 | Ordinary and explicit retained-baseline developer gates | `scripts/check-planner-development.mjs` |

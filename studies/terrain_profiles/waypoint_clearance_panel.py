@@ -134,7 +134,7 @@ def finish(root):
     before = manifest["source"]
     changed = {name for name in set(after["files"]) | set(before["files"])
                if after["files"].get(name) != before["files"].get(name)}
-    allowed = {"pd-eval/examples/ballistic_feedback_batch_report.rs",
+    allowed = {"pd-eval-cli/examples/ballistic_feedback_batch_report.rs",
                "studies/terrain_profiles/waypoint_clearance_panel.py",
                "studies/terrain_profiles/test_ballistic_feedback_sweep.py"}
     if (changed != allowed or after["executable_sha256"] != before["executable_sha256"]

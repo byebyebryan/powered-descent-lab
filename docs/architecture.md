@@ -55,7 +55,31 @@ The lab should distinguish between:
 - scenario families, which define a curated perturbation space plus seed policy
 
 `pd-core` should consume only resolved concrete scenarios. Seed expansion,
-scenario-family expansion, and randomized coverage belong in `pd-eval`.
+procedural expansion and immutable collection management belong in `pd-missions`.
+Legacy authored family expansion remains in the `pd-eval-cli` composition package.
+
+### Current platform ownership
+
+The [active restructure](platform_restructure_results.md) has established these
+boundaries; solver extraction is still underway.
+
+| Owner | Responsibility | Normal internal dependencies |
+| --- | --- | --- |
+| `pd-core` | Authoritative physics, contact, mission progress, native replay | None |
+| `pd-run` | Open agent interface, physical mission view, frames and execution | `pd-core` |
+| `pd-missions` | Declared procedural recipes, resolved inputs and collection receipts | `pd-core` |
+| `pd-eval` | Generic execution accounting, capture, integrity and replay assessment | Core, runtime, missions |
+| `pd-report` | Rich saved-artifact projections, navigation and common templates | Core, runtime |
+| `pd-control` | Maintained feedback implementations and legacy specification registry | Core, runtime |
+| `pd-plan` | Pure planning mathematics and geometry | Core |
+| `pd-eval-cli` | Installed `pd-eval` application, existing packs/readers and temporarily owned solver orchestration | Concrete strategies and reports |
+
+Reusable platform crates have no executable controller/planner dependency,
+including with all features. Agents receive physical inputs through `MissionView`;
+scenario labels, collection membership and seeds stay in orchestration. Config
+snapshots and optional telemetry are opaque to evaluation and rendering.
+The developer gate checks these dependency boundaries. The historical record
+shapes re-exported by `pd-control` retain their previous JSON encoding.
 
 ### Concrete v1 stack
 
@@ -64,7 +88,7 @@ The implemented stack is:
 - Rust cargo workspace
 - `clap` for native CLI entry points
 - `serde` for scenario, replay, trace, and report artifacts
-- `rayon` for bounded batch parallelism in `pd-eval`, not as a core simulation
+- `rayon` for bounded legacy batch parallelism in `pd-eval-cli`, not as a core simulation
   contract assumption
 
 There is no frontend framework decision in v1 because there is no interactive
@@ -189,8 +213,8 @@ native V2 evaluator constructs a terrain-blind nominal transfer, audits the fixe
 program against actual heightfield terrain, applies local correction where
 possible, and replans from the actual handoff state. This offline loop may hand
 off at useful safe progress before a feature's far edge; it does not require a
-landing suffix. It is evaluator-owned, not a `pd-control` update-loop
-capability. The earlier chord-based V1 setup search is retired; saved route
+landing suffix. During solver migration it is owned by the `pd-eval-cli`
+application; its final destination is `pd-planner`. The earlier chord-based V1 setup search is retired; saved route
 contracts remain readable. See the [current V2 evaluation status](waypoint_planning.md#current-v2-evaluation-status-2026-10-04).
 
 Waypoint guidance assumes the waypoint list is already planned, follows the

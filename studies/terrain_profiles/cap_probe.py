@@ -226,7 +226,7 @@ def build_variant(root, cap, source, plan, build_target):
         if relative == POLICY_PATH:
             data = transformed_policy(data, cap)
         study.write_new(stage / "source" / relative, data)
-    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval",
+    command = ["rtk", "proxy", "cargo", "build", "--release", "--locked", "--offline", "-p", "pd-eval-cli",
                "--manifest-path", str(stage / "source/Cargo.toml"), "--target-dir", str(build_target), "--jobs", "4"]
     study.write_new(stage / "build-command.json", study.encoded(command))
     log = stage / "build.log"

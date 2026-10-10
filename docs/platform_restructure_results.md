@@ -64,9 +64,34 @@ are preserved. New validation artifacts stay under the unique run directory.
   44 cases (`pre-composition-parity.log`); timing exclusions remain the three
   original wall-time fields. Retained inputs and artifacts were read-only.
 
+- D: the old application moved to `pd-eval-cli`, retaining the installed binary
+  name `pd-eval`. Neutral `pd-eval` now owns open-agent evaluation, complete
+  scheduled attempt accounting, create-only capture seals, explicit source/input
+  integrity and native command replay. Physical prefix verification remains
+  distinct from complete episode verification and the verified landing tuple.
+  `pd-report` consumes neutral records and opaque configuration JSON; its common
+  rich template is preserved. A generic report projection includes proof/stop
+  disposition, capture navigation and display-only unsampled endpoints.
+  Three independent evaluation tests cover capture/replay/rendering, source
+  drift, failed decisions, capture tampering, factory failures and explicit repeats.
+  Source fingerprint scopes and current package callers follow the moved code;
+  historical binary names, receipts, inputs and outcome records are unchanged.
+  The installed command's application registration and legacy solver modules are
+  transitional exceptions mapped in the [application inventory](../pd-eval-cli/README.md).
+  They still require milestone F; this relocation is not solver extraction.
+  The integrated gate passed 16 checks, including four all-features normal-tree
+  boundaries and exact retained 44-case parity (`composition-gate.log`). All 207
+  terrain pure/synthetic Python tests passed (`composition-python-tests.log`).
+  Current docs/source links and Cargo package examples were migrated together.
+  Three initially dirty files needed narrow integration edits (root README,
+  reports doc and server launcher); their starting navigation/
+  server hunks are preserved and excluded from commits. Only this goal's changes
+  relative to their clean HEAD versions were staged for those paths. The server
+  launcher's new build selector is inside an original uncommitted hunk and
+  remains with that hunk; it cannot be committed alone against clean HEAD.
+
 ## Remaining work
 
-- D: neutral evaluation/rendering and explicit application composition.
 - E: reset/step, capture modes, independent checkpoint adapter and measurements.
 - F: maintained solver ownership and exact preservation with complete configuration.
 - G: execution-path consolidation, dependency gates and current workflow docs.

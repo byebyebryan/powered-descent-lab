@@ -1,15 +1,14 @@
 [package]
 name = "pd-eval"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-anyhow.workspace = true
-clap.workspace = true
-pd-control = { path = "../pd-control" }
 pd-core = { path = "../pd-core" }
-pd-plan = { path = "../pd-plan" }
-pd-report = { path = "../pd-report" }
-rayon.workspace = true
+pd-run = { path = "../pd-run" }
+pd-missions = { path = "../pd-missions" }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+pd-report = { path = "../pd-report" }

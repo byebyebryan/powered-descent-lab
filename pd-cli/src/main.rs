@@ -167,7 +167,12 @@ fn render_report(args: ReportArgs) -> Result<()> {
     write_run_report(
         &output,
         &bundle.scenario,
-        bundle.controller_spec.as_ref(),
+        bundle
+            .controller_spec
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()?
+            .as_ref(),
         &bundle.manifest,
         &bundle.events,
         &bundle.samples,
@@ -300,7 +305,10 @@ fn write_artifact_bundle(
         write_run_report(
             &path.join("report.html"),
             scenario,
-            controller_spec,
+            controller_spec
+                .map(serde_json::to_value)
+                .transpose()?
+                .as_ref(),
             &artifacts.manifest,
             &artifacts.events,
             &artifacts.samples,
@@ -318,7 +326,10 @@ fn write_artifact_bundle(
             write_run_report(
                 &report_site_output,
                 scenario,
-                controller_spec,
+                controller_spec
+                    .map(serde_json::to_value)
+                    .transpose()?
+                    .as_ref(),
                 &artifacts.manifest,
                 &artifacts.events,
                 &artifacts.samples,

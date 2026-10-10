@@ -30,7 +30,7 @@ It contains all 32 case entries, with 30 actual complete/partial flights and two
 unsupported preflight results. Keep this source pinned rather than choosing a
 different repeat or following a mutable latest link.
 
-The current V2 writer in `pd-eval/src/waypoint_v2_output.rs` sends samples and
+The current V2 writer in `pd-eval-cli/src/waypoint_v2_output.rs` sends samples and
 events to the generic run report with no controller update records. It does not
 send the V2 cycles, correction programs or segment boundaries. The generic
 renderer obtains waypoint positions from an authored transfer route or
@@ -158,7 +158,7 @@ Keep ownership and dependency direction simple:
 - `pd-report` owns a small `waypoint_v2` presentation module consuming that
   payload. It must not depend on `pd-eval`, invoke a planner or create simulation
   state. Share existing escaping and display helpers without a broad refactor.
-- `pd-eval/src/waypoint_v2_output.rs` uses the same renderer for future captures;
+- `pd-eval-cli/src/waypoint_v2_output.rs` uses the same renderer for future captures;
   existing report APIs and non-V2 pages remain unchanged.
 - Expose one explicit report-only CLI taking a retained suite root and a fresh
   output directory. Validate case paths remain inside that root and match its

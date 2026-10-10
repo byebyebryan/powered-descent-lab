@@ -10,7 +10,7 @@ use std::{
 };
 
 use pd_core::{MissionOutcome, PhysicalOutcome};
-use pd_eval::{
+use pd_eval_cli::{
     LocalClearingOrdinaryEvidenceV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointV2CliProgressEntryV1, WaypointV2CliProgressV1, WaypointV2Cycle,
     WaypointV2CycleDecision, WaypointV2FlightResult, WaypointV2Policy, WaypointV2SessionProgress,
@@ -56,15 +56,16 @@ fn supported_request() -> WaypointDirectNominalDirectGenerationRequest {
 
 fn tracked_pack_request(case_id: &str) -> WaypointDirectNominalDirectGenerationRequest {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let pack_path = repository.join(pd_eval::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH);
-    let input = pd_eval::waypoint_v2_pack::load_waypoint_v2_pack_case_input(&pack_path, case_id)
-        .expect("tracked V2 pack input");
+    let pack_path = repository.join(pd_eval_cli::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH);
+    let input =
+        pd_eval_cli::waypoint_v2_pack::load_waypoint_v2_pack_case_input(&pack_path, case_id)
+            .expect("tracked V2 pack input");
     WaypointDirectNominalDirectGenerationRequest {
         probe_id: input.scenario.id.clone(),
         scenario: input.scenario,
         source_pad_id: input.source_pad_id,
         target_pad_id: input.target_pad_id,
-        policy: pd_eval::WaypointDirectNominalDirectGenerationPolicyV1::default(),
+        policy: pd_eval_cli::WaypointDirectNominalDirectGenerationPolicyV1::default(),
     }
 }
 
@@ -370,7 +371,7 @@ fn corrected_tracked_scenario_cli_flight_writes_complete_bundle_and_portable_rep
     let segment = saved_flight
         .segments
         .iter()
-        .filter(|segment| segment.kind == pd_eval::WaypointV2SegmentKind::LocalCorrection)
+        .filter(|segment| segment.kind == pd_eval_cli::WaypointV2SegmentKind::LocalCorrection)
         .nth(piece_index)
         .unwrap();
     let selected = cycle
@@ -388,7 +389,7 @@ fn corrected_tracked_scenario_cli_flight_writes_complete_bundle_and_portable_rep
     let actual = search
         .early_exit
         .as_ref()
-        .filter(|e| e.disposition == pd_eval::WaypointV2EarlyExitDisposition::Committed)
+        .filter(|e| e.disposition == pd_eval_cli::WaypointV2EarlyExitDisposition::Committed)
         .and_then(|e| e.query_state.as_ref())
         .unwrap_or(&selected.handoff_state);
     assert_eq!(&segment.end_state, actual);
@@ -538,7 +539,7 @@ fn zero_command_finite_bundle_replays_in_cli_without_claiming_landing() {
     let capture = root.path().join("zero-bundle");
     reserve_waypoint_v2_flight_output(&capture).unwrap();
     let progress = WaypointV2CliProgressV1 {
-        schema_id: pd_eval::waypoint_v2_bundle::WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID.into(),
+        schema_id: pd_eval_cli::waypoint_v2_bundle::WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID.into(),
         entries: vec![WaypointV2CliProgressEntryV1 {
             elapsed_s: 0.0,
             progress: WaypointV2SessionProgress::Terminal {

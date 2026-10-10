@@ -829,7 +829,7 @@ planner wiring.
 
 ##### F5b source-controlled seal (complete)
 
-F5b is sealed by `pd-eval/src/conservative_ballistic_f5_seal.rs` and the
+F5b is sealed by `pd-eval-cli/src/conservative_ballistic_f5_seal.rs` and the
 source-controlled fixtures
 `fixtures/manifests/conservative_ballistic_ridge_f5_inputs_v1.json` and
 `fixtures/manifests/conservative_ballistic_ridge_f5_predictions_v1.json`.
@@ -883,7 +883,7 @@ F5d reveal and F5e decision are recorded below.
 
 ##### F5d controller reveal and F5e decision (complete: NARROW)
 
-F5d is implemented by `pd-eval/src/conservative_ballistic_f5_controller.rs`
+F5d is implemented by `pd-eval-cli/src/conservative_ballistic_f5_controller.rs`
 and the display-only report module
 `pd-report/src/conservative_ballistic_f5_controller.rs`. Regenerate the
 identity-bound evidence with:

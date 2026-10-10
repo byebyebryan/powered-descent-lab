@@ -107,8 +107,8 @@ export function buildPlannerDevelopmentSteps({
       'cargo', 'tree', '-p', 'pd-cli', '--no-default-features', '--edges', 'normal',
     ], {
       captureOutput: true,
-      validateOutput: output => assert.doesNotMatch(output, /\bpd-eval v\d/,
-        'pd-eval must stay out of the default-off normal dependency tree'),
+      validateOutput: output => assert.doesNotMatch(output, /\bpd-(?:eval(?:-cli)?|planner|plan) v\d/,
+        'evaluation and planning must stay out of the default-off normal dependency tree'),
     }),
     step(root, 'Rust formatting', ['cargo', 'fmt', '--all', '--', '--check']),
     step(root, 'diff whitespace', ['git', 'diff', '--check']),
@@ -120,12 +120,25 @@ export function buildPlannerDevelopmentSteps({
     step(root, 'local documentation links', ['node', 'scripts/check-docs.mjs']),
   ];
 
+  // These are reusable platform crates, including their complete public feature
+  // surfaces. Concrete strategy registration belongs to composition packages.
+  for (const packageName of ['pd-run', 'pd-missions', 'pd-eval', 'pd-report']) {
+    steps.push(step(root, `${packageName} independent normal dependency tree`, [
+      'cargo', 'tree', '-p', packageName, '--all-features', '--edges', 'normal',
+    ], {
+      captureOutput: true,
+      validateOutput: output => assert.doesNotMatch(output,
+        /\bpd-(?:control|plan|planner|eval-cli) v\d/,
+        `${packageName} must not import concrete strategies through normal dependencies`),
+    }));
+  }
+
   if (parityCapture !== undefined) {
     const capture = isAbsolute(parityCapture)
       ? resolve(parityCapture)
       : resolve(root, parityCapture);
     steps.push(step(root, 'retained 44-case numerical parity', [
-      'cargo', 'test', '--release', '-p', 'pd-eval', '--lib',
+      'cargo', 'test', '--release', '-p', 'pd-eval-cli', '--lib',
       'waypoint_v2::tests::retained_capture_numerical_parity', '--', '--ignored', '--nocapture',
     ], {
       env: {PD_V2_PARITY_CAPTURE: capture},

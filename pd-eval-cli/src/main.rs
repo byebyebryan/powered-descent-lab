@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use pd_eval::{
+use pd_eval_cli::{
     BatchRegressionPolicyStatus, MissingComparePolicy,
     WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
     compare_batch_reports, load_batch_report, preflight_waypoint_v2_flight, promote_pack_cache,
@@ -64,7 +64,7 @@ struct BallisticFeedbackArgs {
     correction_cap: usize,
     /// Opt-in waypoint acquisition ablation; the existing ridge mode is default.
     #[arg(long, value_enum, default_value = "ridge")]
-    waypoint_experiment: pd_eval::ballistic_feedback::WaypointExperiment,
+    waypoint_experiment: pd_eval_cli::ballistic_feedback::WaypointExperiment,
     #[arg(long)]
     output_dir: PathBuf,
 }
@@ -240,7 +240,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::BallisticFeedbackFlight(args) => {
-            let result = pd_eval::ballistic_feedback::run(
+            let result = pd_eval_cli::ballistic_feedback::run(
                 &args.scenario,
                 args.baseline_flight.as_deref(),
                 args.cycle_index,
@@ -265,9 +265,9 @@ fn main() -> Result<()> {
         }
         Commands::RunPack(args) => {
             let pack = args.pack.clone().unwrap_or_else(|| {
-                repo_root().join(pd_eval::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH)
+                repo_root().join(pd_eval_cli::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH)
             });
-            if pd_eval::waypoint_v2_pack::is_waypoint_v2_pack(&pack)? {
+            if pd_eval_cli::waypoint_v2_pack::is_waypoint_v2_pack(&pack)? {
                 validate_native_planner_options(&args)?;
                 let value: serde_json::Value = serde_json::from_slice(&std::fs::read(&pack)?)?;
                 let pack_id = value["id"]
@@ -275,7 +275,7 @@ fn main() -> Result<()> {
                     .ok_or_else(|| anyhow::anyhow!("planner pack has no identity"))?;
                 let capture_dir = match args.output_dir {
                     Some(dir) => dir,
-                    None => pd_eval::planner_eval_site::default_planner_capture_dir(
+                    None => pd_eval_cli::planner_eval_site::default_planner_capture_dir(
                         &repo_root(),
                         pack_id,
                     )?,
@@ -283,19 +283,23 @@ fn main() -> Result<()> {
                 eprintln!(
                     "Planner V2 runs use fresh captures; Git-ref cache/baseline comparison is not applied."
                 );
-                let report = pd_eval::waypoint_v2_pack::run_waypoint_v2_pack(
+                let report = pd_eval_cli::waypoint_v2_pack::run_waypoint_v2_pack(
                     &pack,
                     &capture_dir,
                     args.workers.unwrap_or_else(default_worker_count),
                 )?;
-                let acceptance =
-                    pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&capture_dir)?;
+                let acceptance = pd_eval_cli::waypoint_v2_acceptance::check_waypoint_v2_acceptance(
+                    &capture_dir,
+                )?;
                 eprintln!("Planner acceptance: {}", acceptance.status.label());
                 let published = if args.no_publish {
                     eprintln!("Publication deferred; the current accepted report is unchanged.");
                     None
                 } else {
-                    pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &capture_dir)?
+                    pd_eval_cli::planner_eval_site::publish_planner_batch(
+                        &repo_root(),
+                        &capture_dir,
+                    )?
                 };
                 println!("{}", serde_json::to_string_pretty(&report.summary)?);
                 eprintln!(
@@ -349,16 +353,16 @@ fn main() -> Result<()> {
         }
         Commands::CheckPlannerV2(args) => {
             let acceptance =
-                pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&args.dir)?;
+                pd_eval_cli::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&args.dir)?;
             println!("{}", serde_json::to_string_pretty(&acceptance)?);
             enforce_native_planner_acceptance(&acceptance, true)?;
         }
         Commands::PublishPlannerV2(args) => {
             let acceptance =
-                pd_eval::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&args.dir)?;
+                pd_eval_cli::waypoint_v2_acceptance::check_waypoint_v2_acceptance(&args.dir)?;
             enforce_native_planner_acceptance(&acceptance, true)?;
             let published = require_native_planner_publication(
-                pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?,
+                pd_eval_cli::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?,
             )?;
             println!(
                 "{}",
@@ -383,7 +387,7 @@ fn main() -> Result<()> {
             }
         }
         Commands::RefreshNavigation => {
-            pd_eval::report_catalog::write_report_catalog(&repo_root())?;
+            pd_eval_cli::report_catalog::write_report_catalog(&repo_root())?;
             println!(
                 "Refreshed report navigation and maintained scorecard indexes; no report bodies or flights"
             );
@@ -397,7 +401,7 @@ fn main() -> Result<()> {
             println!("{}", promoted_dir.display());
         }
         Commands::RenderTerrainSurvey(args) => {
-            pd_eval::terrain_survey::render_saved_survey(
+            pd_eval_cli::terrain_survey::render_saved_survey(
                 &args.capture_dir,
                 &args.output_dir,
                 &args.capture_base_href,
@@ -405,7 +409,7 @@ fn main() -> Result<()> {
             println!("{}", args.output_dir.display());
         }
         Commands::RenderTerrainCapSweep(args) => {
-            pd_eval::terrain_survey::render_saved_cap_sweep(
+            pd_eval_cli::terrain_survey::render_saved_cap_sweep(
                 &args.capture_dir,
                 &args.output_dir,
                 &args.capture_base_href,
@@ -414,9 +418,9 @@ fn main() -> Result<()> {
         }
         Commands::RenderTerrainEarlyExitSweep(args) => {
             let render = if args.planning_cycles {
-                pd_eval::terrain_survey::render_saved_early_exit_sweep_with_cycles
+                pd_eval_cli::terrain_survey::render_saved_early_exit_sweep_with_cycles
             } else {
-                pd_eval::terrain_survey::render_saved_early_exit_sweep
+                pd_eval_cli::terrain_survey::render_saved_early_exit_sweep
             };
             render(
                 &args.saved.capture_dir,
@@ -426,11 +430,11 @@ fn main() -> Result<()> {
             println!("{}", args.saved.output_dir.display());
         }
         Commands::CheckTerrainSurvey(args) => {
-            let result = pd_eval::terrain_survey::check_saved_survey(&args.capture_dir)?;
+            let result = pd_eval_cli::terrain_survey::check_saved_survey(&args.capture_dir)?;
             println!("{}", serde_json::to_string(&result)?);
         }
         Commands::CompareTerrainFlights(args) => {
-            let exceptions = pd_eval::terrain_survey::compare_saved_flights(
+            let exceptions = pd_eval_cli::terrain_survey::compare_saved_flights(
                 &args.actual,
                 &args.baseline,
                 &args.contract_id,
@@ -438,7 +442,7 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string(&exceptions)?);
         }
         Commands::ProbeTerrainHandoff(args) => {
-            let result = pd_eval::waypoint_v2::handoff_probe::run(
+            let result = pd_eval_cli::waypoint_v2::handoff_probe::run(
                 &args.scenario,
                 &args.baseline_flight,
                 &args.probe_spec,
@@ -508,28 +512,28 @@ fn main() -> Result<()> {
 fn render_report(args: ReportArgs) -> Result<()> {
     let saved: serde_json::Value =
         serde_json::from_slice(&std::fs::read(args.dir.join("summary.json"))?)?;
-    if saved["schema_id"] == pd_eval::waypoint_v2_pack::WAYPOINT_V2_BATCH_SCHEMA_ID {
+    if saved["schema_id"] == pd_eval_cli::waypoint_v2_pack::WAYPOINT_V2_BATCH_SCHEMA_ID {
         if args.baseline_dir.is_some() {
             bail!("native Planner V2 reports do not support legacy controller batch baselines");
         }
         if let Some(preview_dir) = args.preview_dir {
-            let page = pd_eval::waypoint_v2_pack::render_waypoint_v2_batch_preview(
+            let page = pd_eval_cli::waypoint_v2_pack::render_waypoint_v2_batch_preview(
                 &args.dir,
                 &preview_dir,
             )?;
             println!("{}", page.display());
             return Ok(());
         }
-        let report = pd_eval::waypoint_v2_pack::validated_waypoint_v2_batch(&args.dir)?;
-        if pd_eval::planner_eval_site::current_planner_capture(&repo_root(), &report.pack_id)?
+        let report = pd_eval_cli::waypoint_v2_pack::validated_waypoint_v2_batch(&args.dir)?;
+        if pd_eval_cli::planner_eval_site::current_planner_capture(&repo_root(), &report.pack_id)?
             .is_some_and(|current| args.dir.canonicalize().is_ok_and(|dir| dir == current))
             && let Some(page) =
-                pd_eval::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?
+                pd_eval_cli::planner_eval_site::publish_planner_batch(&repo_root(), &args.dir)?
         {
             println!("{}", page.display());
             return Ok(());
         }
-        pd_eval::waypoint_v2_pack::render_waypoint_v2_batch(&args.dir)?;
+        pd_eval_cli::waypoint_v2_pack::render_waypoint_v2_batch(&args.dir)?;
         println!("{}", args.dir.join("index.html").display());
         return Ok(());
     }
@@ -580,7 +584,7 @@ fn require_native_planner_publication(published: Option<PathBuf>) -> Result<Path
 }
 
 fn enforce_native_planner_acceptance(
-    acceptance: &pd_eval::waypoint_v2_acceptance::WaypointV2AcceptanceV1,
+    acceptance: &pd_eval_cli::waypoint_v2_acceptance::WaypointV2AcceptanceV1,
     enforce: bool,
 ) -> Result<()> {
     if !enforce || acceptance.passed {
@@ -1120,7 +1124,7 @@ mod tests {
 
     #[test]
     fn native_planner_acceptance_enforcement_is_opt_in_for_outcomes() {
-        use pd_eval::waypoint_v2_acceptance::{
+        use pd_eval_cli::waypoint_v2_acceptance::{
             WaypointV2AcceptanceIssue, WaypointV2AcceptanceStatus, WaypointV2AcceptanceTotals,
             WaypointV2AcceptanceV1,
         };
@@ -1171,7 +1175,7 @@ mod tests {
         };
         assert_eq!(parsed.policy_version, 3);
         assert_eq!(
-            pd_eval::waypoint_v2_report::policy_version(&waypoint_v2_policy_for_version(
+            pd_eval_cli::waypoint_v2_report::policy_version(&waypoint_v2_policy_for_version(
                 parsed.policy_version
             ))
             .unwrap(),
@@ -1184,15 +1188,17 @@ mod tests {
         }
         // Saved identities do not depend on the current executable default.
         assert_eq!(
-            pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::default()).unwrap(),
+            pd_eval_cli::waypoint_v2_report::policy_version(&WaypointV2Policy::default()).unwrap(),
             3
         );
         assert_eq!(
-            pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::revision_1()).unwrap(),
+            pd_eval_cli::waypoint_v2_report::policy_version(&WaypointV2Policy::revision_1())
+                .unwrap(),
             1
         );
         assert_eq!(
-            pd_eval::waypoint_v2_report::policy_version(&WaypointV2Policy::revision_2()).unwrap(),
+            pd_eval_cli::waypoint_v2_report::policy_version(&WaypointV2Policy::revision_2())
+                .unwrap(),
             2
         );
     }

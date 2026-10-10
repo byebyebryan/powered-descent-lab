@@ -99,7 +99,7 @@ presentation-preview test was run explicitly in a separate create-only output.
 The final release evaluator build, formatting and diff whitespace checks pass.
 Normal workspace
 Clippy passes with the pre-existing `single_element_loop` warning at
-`pd-eval/src/route_capability.rs:274`; strict `-D warnings` fails on that unchanged
+`pd-eval-cli/src/route_capability.rs:274`; strict `-D warnings` fails on that unchanged
 warning. No unrelated lint fix was made.
 
 An earlier full Rust run caught two legacy tests that asserted the old JavaScript

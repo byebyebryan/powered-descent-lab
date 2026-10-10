@@ -384,10 +384,10 @@ The current raw simulation path provides most of the first extractor input:
   [`pd-control/src/transfer/telemetry.rs`](../pd-control/src/transfer/telemetry.rs)
   are useful corroboration, but are controller-specific and incomplete for a
   neutral transition boundary.
-- [`pd-eval/src/runtime.rs`](../pd-eval/src/runtime.rs) writes
+- [`pd-eval-cli/src/runtime.rs`](../pd-eval-cli/src/runtime.rs) writes
   `samples.json`, `actions.json`, `events.json`, `manifest.json`, and controller
-  update artifacts. [`pd-eval/src/review.rs`](../pd-eval/src/review.rs) and
-  [`pd-eval/src/model.rs`](../pd-eval/src/model.rs) derive current review and
+  update artifacts. [`pd-eval-cli/src/review.rs`](../pd-eval-cli/src/review.rs) and
+  [`pd-eval-cli/src/model.rs`](../pd-eval-cli/src/model.rs) derive current review and
   planner-provenance views, not the new neutral capability.
 
 The repository's [`.gitignore`](../.gitignore) ignores `/outputs`, and
@@ -1227,9 +1227,9 @@ work stops and returns to convex-feasibility versus paired-reachability design.
 - [`pd-core` sample capture and physics authority](../pd-core/src/sim.rs)
 - [`pd-core` terrain envelopes and exact clearance queries](../pd-core/src/terrain.rs)
 - [`pd-plan` deterministic bounded planner](../pd-plan/src/lib.rs)
-- [`pd-eval` bundle writer](../pd-eval/src/runtime.rs)
-- [`pd-eval` review and comparison models](../pd-eval/src/review.rs)
-- [`pd-eval` resolved run/provenance models](../pd-eval/src/model.rs)
+- [`pd-eval` bundle writer](../pd-eval-cli/src/runtime.rs)
+- [`pd-eval` review and comparison models](../pd-eval-cli/src/review.rs)
+- [`pd-eval` resolved run/provenance models](../pd-eval-cli/src/model.rs)
 - [`pd-control` run/update artifact boundary](../pd-control/src/lib.rs)
 - [`pd-control` waypoint markers](../pd-control/src/transfer/telemetry.rs)
 - [`.gitignore`](../.gitignore)

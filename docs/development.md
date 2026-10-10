@@ -88,7 +88,10 @@ rtk proxy cargo run -p pd-cli --no-default-features -- --help
 rtk proxy cargo run -p pd-cli --features planner-v2 -- --help
 ```
 
-The default-off normal dependency tree must not include `pd-eval`. The accepted
+The default-off normal dependency tree must not include evaluation or planning
+packages. The independent platform crates (`pd-run`, `pd-missions`, `pd-eval`
+and `pd-report`) must not import concrete strategies, including with all features.
+The gate enforces both boundaries. The accepted
 V2 adapter is synchronous session execution, not externally driven per-tick
 control or arbitrary airborne snapshot restart.
 

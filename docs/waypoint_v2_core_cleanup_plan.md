@@ -10,7 +10,7 @@ to inspect and maintain before broader terrain evaluation.
 
 The primary owns phase boundaries, integration, acceptance and checkpoint
 commits. One Luna Max worker owns implementation in
-`pd-eval/src/waypoint_v2.rs`, its internal child modules and focused tests.
+`pd-eval-cli/src/waypoint_v2.rs`, its internal child modules and focused tests.
 The primary maintains this plan and the final results.
 
 The large pack/report split is a separate follow-up. No new solver, standalone

@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf, time::Instant};
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
 use pd_core::{MissionOutcome, PhysicalOutcome, ScenarioSpec};
-use pd_eval::{
+use pd_eval_cli::{
     WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
     WaypointV2CliProgressEntryV1, WaypointV2CliProgressV1, WaypointV2FlightResult,
     WaypointV2Policy, WaypointV2Session, WaypointV2SessionProgress, WaypointV2Stop,
@@ -132,7 +132,7 @@ pub(super) fn flight(args: WaypointV2FlightArgs) -> Result<()> {
         *planning_stop = result.planning_stop;
     }
     let progress = WaypointV2CliProgressV1 {
-        schema_id: pd_eval::waypoint_v2_bundle::WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID.into(),
+        schema_id: pd_eval_cli::waypoint_v2_bundle::WAYPOINT_V2_CLI_PROGRESS_SCHEMA_ID.into(),
         entries,
         finalization_elapsed_s,
     };

@@ -1397,7 +1397,7 @@ and derived identities are intentionally not frozen.
 F5b seals those inputs and predictions in
 `fixtures/manifests/conservative_ballistic_ridge_f5_inputs_v1.json` and
 `fixtures/manifests/conservative_ballistic_ridge_f5_predictions_v1.json`,
-validated by `pd-eval/src/conservative_ballistic_f5_seal.rs`. The ordered raw
+validated by `pd-eval-cli/src/conservative_ballistic_f5_seal.rs`. The ordered raw
 input identities are `fnv1a64:1685aab304642342` and
 `fnv1a64:b0dcdcbefac383b6`; the input-manifest identity is
 `5a654dd8762a1438`, and the prediction-manifest identity is

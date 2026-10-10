@@ -92,7 +92,7 @@ tests pass 32 with one ignored, native pack tests pass eight with one ignored,
 shared batch tests pass five, and the saved-batch presentation test passes
 explicitly in `legacy_final/`. Final normal all-target workspace Clippy passes
 with only the pre-existing `single_element_loop` warning at
-`pd-eval/src/route_capability.rs:274`; strict `-D warnings` fails on that unchanged
+`pd-eval-cli/src/route_capability.rs:274`; strict `-D warnings` fails on that unchanged
 warning. No unrelated lint fix was made.
 
 The first checker attempt (`check_a`) failed because its new display-format

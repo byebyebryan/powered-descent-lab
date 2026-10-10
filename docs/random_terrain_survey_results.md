@@ -65,7 +65,7 @@ final_source_replay_passed: false
 The source pad is flat at 23.206565037797983 m. The upright vehicle center is
 28.206565037797983 m, with a 5 m foot offset and 10 m hull height. Direct foot
 clearance is exactly zero. Reproducing the arithmetic of
-[`body_aabb_from_pose`](../pd-eval/src/planner_flight/geometry.rs) on that saved
+[`body_aabb_from_pose`](../pd-eval-cli/src/planner_flight/geometry.rs) on that saved
 input, without simulation or replay, gives:
 
 | Calculation | Result (m) |
@@ -81,7 +81,7 @@ the center from that rounded top produces a slightly oversized upper extent.
 The symmetric envelope uses that extent below the center too, inventing the
 microscopic penetration. [`exact_point_clearance`](../pd-core/src/terrain.rs)
 returns the negative reserve, and
-[`FlightGuard`](../pd-eval/src/waypoint_v2/execution.rs) strictly rejects
+[`FlightGuard`](../pd-eval-cli/src/waypoint_v2/execution.rs) strictly rejects
 `clearance < required`, with required reserve zero in the source pad corridor.
 The reproduced value matches the recorded failure exactly.
 

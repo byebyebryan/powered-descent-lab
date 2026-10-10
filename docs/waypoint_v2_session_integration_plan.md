@@ -21,7 +21,7 @@ record two accepted 44-case captures: 36/36 mandatory landings each, comprising
 remain separate: two landed, four stopped before departure and two were
 unsupported. Integrity is 44/44 and supported source replay is 42/42.
 
-The existing `FlightLoop` in `pd-eval/src/waypoint_v2.rs` already owns the live
+The existing `FlightLoop` in `pd-eval-cli/src/waypoint_v2.rs` already owns the live
 plant, original deadline, accumulated commands and correction count. Its `run`
 method currently performs all planning/execution cycles before returning.
 Nominal generation and admission helpers span evaluator research modules.

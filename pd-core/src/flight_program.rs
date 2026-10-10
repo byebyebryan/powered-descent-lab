@@ -1,6 +1,6 @@
 //! Current timed-command updates and read-only historical complete-program DTOs.
 //! Decoding a binding/program does not admit execution. Current V2 execution and
-//! replay validate their owned schedules and proofs in `pd-eval`.
+//! replay validate their owned schedules and proofs in `pd-planner` after migration; the transitional application is `pd-eval-cli`.
 
 use serde::{Deserialize, Serialize};
 

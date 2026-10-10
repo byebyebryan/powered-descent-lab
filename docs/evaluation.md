@@ -157,7 +157,7 @@ absent; it is not a supported ordinary planner command.
 Run the current planner lab suite with the normal batch entrypoint:
 
 ```bash
-rtk proxy cargo run --release -p pd-eval -- run-pack --workers 4 --enforce-regression-policy
+rtk proxy cargo run --release -p pd-eval-cli -- run-pack --workers 4 --enforce-regression-policy
 ```
 
 Omitting the pack selects
@@ -189,8 +189,8 @@ create-only capture; it is not a read-only check.
 Check a saved capture without running missions or changing reports:
 
 ```bash
-rtk proxy cargo run --release -p pd-eval -- check-planner-v2 --dir CAPTURE_DIRECTORY
-rtk proxy cargo build --release -p pd-eval
+rtk proxy cargo run --release -p pd-eval-cli -- check-planner-v2 --dir CAPTURE_DIRECTORY
+rtk proxy cargo build --release -p pd-eval-cli
 rtk proxy node scripts/check-planner-v2-workflow.mjs
 ```
 
@@ -260,7 +260,7 @@ clearing where feasible and replanning at actual H. Supply exact pad
 IDs from that scenario and a new output directory:
 
 ```bash
-rtk proxy cargo run --release -p pd-eval -- waypoint-v2-flight \
+rtk proxy cargo run --release -p pd-eval-cli -- waypoint-v2-flight \
   --scenario SCENARIO.json --source-pad-id SOURCE_PAD_ID \
   --target-pad-id TARGET_PAD_ID --output-dir NEW_FLIGHT_ROOT
 ```
@@ -272,7 +272,7 @@ rich `report.html` with actual waypoint handoffs. Unsupported and invalid reques
 are rejected before simulator execution; a finite planning stop is not a landing
 or an impossibility proof. Output roots are create-only. The old standalone
 nominal-direct command is retired; its live realization helpers now belong to
-`pd-eval::planner_flight`.
+the transitional `pd_eval_cli::planner_flight` implementation.
 
 ### Optional V2 session CLI
 
@@ -471,7 +471,7 @@ For an explicitly authorized capture, build the diagnostic evaluator into an
 isolated target directory, leaving the ordinary release binary unchanged:
 
 ```sh
-rtk proxy cargo build --release --locked -p pd-eval \
+rtk proxy cargo build --release --locked -p pd-eval-cli \
   --target-dir target/handoff-probe-20261007-v1
 rtk proxy python3 -B studies/terrain_profiles/handoff_probe.py run \
   --binary target/handoff-probe-20261007-v1/release/pd-eval \
@@ -577,13 +577,13 @@ rtk proxy target/release/pd-eval check-terrain-survey \
 
 ### Controller batches
 
-`pd-eval` owns scenario packs, scenario-family expansion, seed sweeps, and
+The `pd-eval-cli` application owns legacy scenario packs, authored family expansion, seed sweeps, and
 native multithreaded execution.
 
 Example:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 4
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 4
 ```
 
 `run-pack` now writes stable review output to `outputs/eval/<pack>/`, but stores
@@ -607,62 +607,62 @@ After a dirty run becomes the new checkpoint, promote it into the clean commit
 key:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- promote-cache fixtures/packs/terminal_bot_lab_suite.json
+rtk proxy cargo run -p pd-eval-cli -- promote-cache fixtures/packs/terminal_bot_lab_suite.json
 ```
 
 Run the same matrix with the full seed tier:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/terminal_bot_lab_full.json --workers 8
 ```
 
 Run the trajectory-error matrix:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/terminal_traj_err_suite.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/terminal_traj_err_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/terminal_traj_err_suite.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/terminal_traj_err_full.json --workers 8
 ```
 
 Run the experimental terrain backstop diagnostics:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/experimental_terrain_backstop_suite.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/experimental_terrain_backstop_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/experimental_terrain_backstop_suite.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/experimental_terrain_backstop_full.json --workers 8
 ```
 
 Run the first transfer-guidance smoke matrix:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_bot_lab_suite.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_bot_lab_suite.json --workers 8
 ```
 
 Run the nominal-radius route-angle diagnostic matrix:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_suite.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_route_angle_suite.json --workers 8
 ```
 
 Run the transfer radius-tier diagnostics:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_radius_tier_suite.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_radius_suite.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_radius_tier_suite.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_route_angle_radius_suite.json --workers 8
 ```
 
 Run the full-seed transfer reliability and frontier packs:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_radius_full_solved.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_route_angle_radius_frontier_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_route_angle_radius_full_solved.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_route_angle_radius_frontier_full.json --workers 8
 ```
 
 Run the route-wide waypoint landing and contract packs:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_smoke.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_smoke.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_smoke.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_smoke.json --workers 8
 ```
 
 The two legacy `planner_generated_route_*_smoke` packs are retained archive
@@ -672,20 +672,20 @@ evaluation; authored waypoint-guidance packs below remain supported.
 Run the full-seed nominal and all-radius waypoint closure packs:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_full.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_full.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_full.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_full.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_radius_smoke.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_radius_smoke.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_radius_smoke.json --workers 8
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_radius_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_full.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_turn_route_angle_radius_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_turn_contract_route_angle_radius_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_sequence_route_angle_radius_smoke.json --workers 8
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/transfer_waypoint_sequence_contract_route_angle_radius_smoke.json --workers 8
 ```
 
 Force a rerun and skip cache reuse if needed:
 
 ```bash
-rtk proxy cargo run -p pd-eval -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 8 --no-reuse
+rtk proxy cargo run -p pd-eval-cli -- run-pack fixtures/packs/terminal_bot_lab_suite.json --workers 8 --no-reuse
 ```
 
 Use `terminal_bot_lab_suite` as the primary controller workbench. It is the

@@ -6,16 +6,16 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use pd_control::{
-    ControllerSpec, ControllerUpdateRecord, RunPerformanceStats, TelemetryValue, metric,
-};
 use pd_core::{
     EvaluationGoal, EventKind, EventRecord, PlannerComputeEvidence, RoutePlan, RunManifest,
     SampleRecord, ScenarioSpec, Vec2,
 };
+use pd_run::{AgentUpdateRecord as ControllerUpdateRecord, RunPerformanceStats, TelemetryValue};
 use serde::Serialize;
 
+pub mod agent;
 pub mod batch;
+pub use agent::{AgentReportEvidenceV1, agent_capture_navigation, render_agent_run_report};
 pub mod batch_tree;
 pub mod flight_annotations;
 pub mod planning_cycles;
@@ -40,7 +40,7 @@ pub struct RunReportContext {
 pub fn write_run_report(
     path: &Path,
     scenario: &ScenarioSpec,
-    controller_spec: Option<&ControllerSpec>,
+    controller_spec: Option<&serde_json::Value>,
     manifest: &RunManifest,
     events: &[EventRecord],
     samples: &[SampleRecord],
@@ -64,7 +64,7 @@ pub fn write_run_report(
 pub fn write_run_report_with_context(
     path: &Path,
     scenario: &ScenarioSpec,
-    controller_spec: Option<&ControllerSpec>,
+    controller_spec: Option<&serde_json::Value>,
     manifest: &RunManifest,
     events: &[EventRecord],
     samples: &[SampleRecord],
@@ -90,7 +90,7 @@ pub fn write_run_report_with_context(
 pub fn write_run_report_with_plan_context(
     path: &Path,
     scenario: &ScenarioSpec,
-    controller_spec: Option<&ControllerSpec>,
+    controller_spec: Option<&serde_json::Value>,
     manifest: &RunManifest,
     events: &[EventRecord],
     samples: &[SampleRecord],
@@ -118,7 +118,7 @@ pub fn write_run_report_with_plan_context(
 pub fn write_run_report_with_plan_context_and_compute(
     path: &Path,
     scenario: &ScenarioSpec,
-    controller_spec: Option<&ControllerSpec>,
+    controller_spec: Option<&serde_json::Value>,
     manifest: &RunManifest,
     events: &[EventRecord],
     samples: &[SampleRecord],
@@ -159,7 +159,7 @@ pub fn write_run_report_with_plan_context_and_compute(
 #[allow(clippy::too_many_arguments)]
 pub fn render_run_report_with_flight_annotations(
     scenario: &ScenarioSpec,
-    controller_spec: Option<&ControllerSpec>,
+    controller_spec: Option<&serde_json::Value>,
     manifest: &RunManifest,
     events: &[EventRecord],
     samples: &[SampleRecord],
@@ -371,7 +371,7 @@ pub fn build_saved_flight_preview_svg(
 #[allow(clippy::too_many_arguments)]
 fn build_report_data(
     scenario: &ScenarioSpec,
-    controller_spec: Option<&ControllerSpec>,
+    controller_spec: Option<&serde_json::Value>,
     manifest: &RunManifest,
     events: &[EventRecord],
     samples: &[SampleRecord],
@@ -1143,9 +1143,9 @@ fn transfer_preview_reference_curve(
     let PreviewTrajectory::Samples(samples) = series.trajectory else {
         return None;
     };
-    let first_boost = controller_updates.iter().find(|update| {
-        telemetry_text(&update.frame.metrics, metric::TRANSFER_PHASE) == Some("boost")
-    })?;
+    let first_boost = controller_updates
+        .iter()
+        .find(|update| telemetry_text(&update.frame.metrics, "transfer.phase") == Some("boost"))?;
     let start_sample = samples
         .iter()
         .find(|sample| sample.physics_step >= first_boost.physics_step)
@@ -1835,7 +1835,7 @@ struct ReportData {
     scenario_id: String,
     scenario_name: String,
     controller_id: String,
-    controller_spec: Option<ControllerSpec>,
+    controller_spec: Option<serde_json::Value>,
     manifest: ReportManifest,
     run_performance: ReportRunPerformance,
     terrain: Vec<ReportVec2>,

@@ -192,7 +192,7 @@ rendering-executable match describe that checkpoint, not later CLI builds.
   Screenshots were inspected, including an additional mobile correction view.
 - Format, JavaScript syntax and whitespace checks pass. All-target Clippy passes
   with only the unchanged `clippy::single_element_loop` baseline lint allowed.
-  Strict Clippy still reports that baseline in `pd-eval/src/route_capability.rs:274`;
+  Strict Clippy still reports that baseline in `pd-eval-cli/src/route_capability.rs:274`;
   strict-baseline cleanliness is not claimed.
 - All **235 monitored existing output HTML/JSON files** are byte-identical.
   This includes all 159 JSON/HTML files under the pinned capture, its 30 original

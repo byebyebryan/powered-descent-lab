@@ -233,7 +233,7 @@ dependencies = [
  "clap",
  "pd-control",
  "pd-core",
- "pd-eval",
+ "pd-eval-cli",
  "pd-report",
  "serde",
  "serde_json",
@@ -259,6 +259,18 @@ dependencies = [
 
 [[package]]
 name = "pd-eval"
+version = "0.1.0"
+dependencies = [
+ "pd-core",
+ "pd-missions",
+ "pd-report",
+ "pd-run",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pd-eval-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -297,8 +309,8 @@ name = "pd-report"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "pd-control",
  "pd-core",
+ "pd-run",
  "serde",
  "serde_json",
 ]

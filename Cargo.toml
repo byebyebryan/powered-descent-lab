@@ -8,6 +8,7 @@ members = [
   "pd-report",
   "pd-cli",
   "pd-eval",
+  "pd-eval-cli",
 ]
 resolver = "2"
 

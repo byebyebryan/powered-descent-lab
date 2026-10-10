@@ -73,7 +73,7 @@ platform contract is established.
 ## Transitional ownership
 
 The current `pd-eval` library and binary both depend on concrete strategies;
-the [existing binary](../pd-eval/src/main.rs) registers them directly. Neutral
+the [existing binary](../pd-eval-cli/src/main.rs) registers them directly. Neutral
 evaluation cannot depend on the old application to gain compatibility.
 
 At milestone D, move the built-in application and any not-yet-extracted solver
