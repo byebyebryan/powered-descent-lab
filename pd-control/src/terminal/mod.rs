@@ -97,7 +97,7 @@ fn vertical_authority_tilt_limit_rad(
         .min(configured_tilt_limit_rad.max(0.0))
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TerminalPdgController {
     config: TerminalPdgControllerConfig,
     last_phase: Option<String>,
@@ -110,6 +110,11 @@ pub struct TerminalPdgController {
     guidance_plan_completed: bool,
     guidance_plan: Option<TerminalGuidancePlan>,
     guidance_replan_count: u32,
+    ballistic_landing_duration_fallback_enabled: bool,
+    ballistic_landing_countdown_enabled: bool,
+    ballistic_landing_braking_guard_enabled: bool,
+    ballistic_landing_body_centering_enabled: bool,
+    ballistic_terminal_coordination_enabled: bool,
 }
 
 impl Default for TerminalPdgController {
@@ -119,6 +124,84 @@ impl Default for TerminalPdgController {
 }
 
 impl TerminalPdgController {
+    /// Keep nominal lateral acceleration when adding early vertical braking,
+    /// and remove inherited trim for body-contained low-energy touchdown.
+    /// Explicit experimental adapter only; ordinary defaults remain unchanged.
+    pub fn with_ballistic_terminal_coordination(mut self) -> Self {
+        self.ballistic_terminal_coordination_enabled = true;
+        self.ballistic_landing_braking_guard_enabled = true;
+        self.ballistic_landing_body_centering_enabled = true;
+        self
+    }
+
+    /// Opt-in rescue centering uses the full rotated hull/feet pad footprint.
+    /// It does not change nominal guidance, braking authority or entry policy.
+    pub fn with_ballistic_landing_body_centering(mut self) -> Self {
+        self.ballistic_landing_body_centering_enabled = true;
+        self
+    }
+
+    /// Experimental ballistic fallback descent only. Reuse touchdown rescue
+    /// before its final-height trigger when the nominal command spends the
+    /// existing braking envelope. Ordinary terminal/transfer defaults stay off.
+    pub fn with_ballistic_landing_braking_guard(mut self) -> Self {
+        self.ballistic_landing_braking_guard_enabled = true;
+        self
+    }
+
+    /// Explicitly reuse the maintained final-waypoint plan lifecycle. This
+    /// enables retention only; callers still own entry timing and terrain proof.
+    pub fn with_waypoint_guidance_plan_retention(mut self) -> Self {
+        self.set_guidance_plan_retention_enabled(true);
+        self
+    }
+
+    /// Opt-in countdown for the first selected ballistic duration fallback.
+    /// Revalidate its remaining fit every update; release once on expiry or
+    /// infeasibility. Ordinary and authored-waypoint retention stay unchanged.
+    pub fn with_ballistic_landing_countdown(mut self) -> Self {
+        self.ballistic_landing_duration_fallback_enabled = true;
+        self.ballistic_landing_countdown_enabled = true;
+        self
+    }
+
+    /// Experimental ballistic adapter and live descent share one failure-only
+    /// state-derived horizon. Ordinary constructors leave this disabled.
+    pub fn with_ballistic_landing_duration_fallback(mut self) -> Self {
+        self.ballistic_landing_duration_fallback_enabled = true;
+        self
+    }
+
+    /// Opt-in planner adapter. The caller must already establish a target-directed
+    /// ballistic approach; this assessment does not certify a transfer or terrain.
+    /// Controller defaults and the existing transfer entry policy are unchanged.
+    pub fn ballistic_entry_ready(
+        &self,
+        ctx: &RunContext,
+        observation: &Observation,
+        projected_lateral_miss_m: f64,
+        ready_ticks: &mut u32,
+    ) -> bool {
+        if observation.velocity_mps.y >= 0.0
+            || observation.height_above_target_m <= ctx.vehicle.geometry.touchdown_base_offset_m
+            || !projected_lateral_miss_m.is_finite()
+        {
+            *ready_ticks = 0;
+            return false;
+        }
+        let gate = self.assess_terminal_entry(
+            ctx,
+            observation,
+            TerminalEntryRequest {
+                lateral_dx_m: projected_lateral_miss_m,
+                ready_ticks: *ready_ticks,
+                terrain_policy: TerminalEntryTerrainPolicy::Ignore,
+            },
+        );
+        *ready_ticks = gate.ready_ticks;
+        gate.is_ready() && gate.required_accel_ratio.is_finite() && gate.required_accel_ratio <= 1.0
+    }
+
     pub fn new(config: TerminalPdgControllerConfig) -> Self {
         Self {
             config,
@@ -132,6 +215,11 @@ impl TerminalPdgController {
             guidance_plan_completed: false,
             guidance_plan: None,
             guidance_replan_count: 0,
+            ballistic_landing_duration_fallback_enabled: false,
+            ballistic_landing_countdown_enabled: false,
+            ballistic_landing_braking_guard_enabled: false,
+            ballistic_landing_body_centering_enabled: false,
+            ballistic_terminal_coordination_enabled: false,
         }
     }
 
@@ -146,7 +234,10 @@ impl TerminalPdgController {
         {
             let mut dynamics_config = self.config.clone();
             dynamics_config.terrain_clearance_enabled = false;
-            return Self::new(dynamics_config).assess_terminal_entry(ctx, observation, request);
+            let mut dynamics = Self::new(dynamics_config);
+            dynamics.ballistic_landing_duration_fallback_enabled =
+                self.ballistic_landing_duration_fallback_enabled;
+            return dynamics.assess_terminal_entry(ctx, observation, request);
         }
 
         let view = ControllerView::new(ctx, observation);
@@ -351,7 +442,7 @@ impl TerminalPdgController {
             max_thrust_accel_mps2,
             gravity_mps2,
         );
-        let plan_release_reason = if self.guidance_plan_retention_enabled
+        let mut plan_release_reason = if self.guidance_plan_retention_enabled
             && self.guidance_plan_admitted
             && !self.guidance_plan_completed
         {
@@ -373,7 +464,7 @@ impl TerminalPdgController {
         let guidance_plan_active = self.guidance_plan_retention_enabled
             && self.guidance_plan_admitted
             && !self.guidance_plan_completed;
-        let (active_candidate, plan_arrival_time_s) = if guidance_plan_active {
+        let (mut active_candidate, mut plan_arrival_time_s) = if guidance_plan_active {
             let replacement_candidate = self.evaluate_candidate(
                 view,
                 dx_m,
@@ -440,6 +531,55 @@ impl TerminalPdgController {
         } else {
             (selected_candidate, None)
         };
+
+        if self.ballistic_landing_countdown_enabled && !self.guidance_plan_retention_enabled {
+            if !self.guidance_plan_admitted
+                && !self.guidance_plan_completed
+                && guidance_mode == GuidanceMode::LatestSafe
+                && latest_safe.ballistic_duration_fallback
+            {
+                self.guidance_plan_admitted = true;
+                self.maintain_guidance_plan(
+                    view.observation.sim_time_s,
+                    candidate_burn_time_s,
+                    true,
+                    false,
+                );
+            }
+            if let Some(plan) = self.guidance_plan {
+                let remaining_s = plan.arrival_time_s - view.observation.sim_time_s;
+                let retained = self.evaluate_candidate(
+                    view,
+                    dx_m,
+                    dy_m,
+                    false,
+                    vx_mps,
+                    vy_up_mps,
+                    remaining_s.max(TERMINAL_GUIDANCE_TIME_FLOOR_S),
+                    desired_vertical_speed_mps,
+                    max_tilt_rad,
+                    max_thrust_accel_mps2,
+                    1.0,
+                    0.0,
+                    gravity_mps2,
+                );
+                let release = if remaining_s <= 0.0 {
+                    Some(GuidancePlanReleaseReason::BallisticCountdownExpired)
+                } else if !retained.ready {
+                    Some(GuidancePlanReleaseReason::BallisticCountdownInfeasible)
+                } else {
+                    None
+                };
+                if let Some(reason) = release {
+                    self.guidance_plan_completed = true;
+                    self.guidance_plan = None;
+                    plan_release_reason = Some(reason);
+                } else {
+                    active_candidate = retained;
+                    plan_arrival_time_s = Some(plan.arrival_time_s);
+                }
+            }
+        }
         let guidance_dy_m = if guidance_plan_active {
             dy_m + view.ctx.vehicle.geometry.touchdown_base_offset_m
         } else {
@@ -1124,7 +1264,7 @@ impl TerminalPdgController {
             .collect();
         let base_candidate =
             self.select_latest_safe_candidate(&mut candidates, lateral_dx_m, target_half_width_m);
-        let best_candidate = if self.latest_safe_long_capture_needed(
+        let mut best_candidate = if self.latest_safe_long_capture_needed(
             base_candidate,
             altitude_m,
             dx_m,
@@ -1149,11 +1289,64 @@ impl TerminalPdgController {
             base_candidate
         };
 
+        // Preserve every existing successful choice, including long capture.
+        // This is one additional query, not a wider duration search or a
+        // relaxation of thrust, tilt, upward-direction or terrain constraints.
+        let mut ballistic_duration_fallback = false;
+        if self.ballistic_landing_duration_fallback_enabled
+            && !candidates.iter().any(|candidate| candidate.ready)
+            && let Some(burn_time_s) =
+                self.ballistic_landing_duration_s(dy_m, vy_up_mps, target_vy_up)
+        {
+            let fallback = self.evaluate_candidate(
+                view,
+                dx_m,
+                dy_m,
+                false,
+                vx_mps,
+                vy_up_mps,
+                burn_time_s,
+                target_vy_up,
+                max_tilt,
+                max_thrust_accel_mps2,
+                1.0,
+                0.0,
+                gravity_mps2,
+            );
+            if fallback.ready {
+                best_candidate = fallback;
+                ballistic_duration_fallback = true;
+            }
+        }
+
         LatestSafeState {
             latest_safe_margin_s: time_to_impact
                 - (t_brake_v.max(t_brake_x) + self.config.terminal_gate_latest_safe_buffer_s),
             best_candidate,
+            ballistic_duration_fallback,
         }
+    }
+
+    fn ballistic_landing_duration_s(
+        &self,
+        dy_m: f64,
+        vy_up_mps: f64,
+        target_vy_up_mps: f64,
+    ) -> Option<f64> {
+        if ![dy_m, vy_up_mps, target_vy_up_mps]
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return None;
+        }
+        // Existing coupled PDG: ay = 6*dy/T^2 - (4*vy+2*target_vy)/T + g.
+        // Solve ay=g (zero initial net vertical acceleration, not hover).
+        let duration_s = 6.0 * dy_m / (4.0 * vy_up_mps + 2.0 * target_vy_up_mps);
+        (duration_s.is_finite()
+            && duration_s > 0.0
+            && duration_s >= self.config.terminal_gate_burn_time_min_s
+            && duration_s <= self.config.terminal_gate_burn_time_max_s)
+            .then_some(duration_s)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1353,6 +1546,109 @@ impl TerminalPdgController {
             .max(self.config.touchdown_zero_vy_mps)
     }
 
+    fn ballistic_braking_guard_active(
+        &self,
+        view: &ControllerView<'_>,
+        current_state: &TerminalCommandState,
+    ) -> bool {
+        let height = view.touchdown_clearance_m();
+        if !self.ballistic_landing_braking_guard_enabled
+            || height <= self.config.touchdown_rescue_clearance_m
+        {
+            return false;
+        }
+        let down_speed = (-view.observation.velocity_mps.y).max(0.0);
+        let max_accel = view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(0.5);
+        let speed_limit = self.braking_speed_limit(
+            height,
+            max_accel,
+            current_state.max_tilt_rad,
+            view.observation.gravity_mps2,
+        );
+        if down_speed <= speed_limit {
+            return false;
+        }
+        let required_ay = view.observation.gravity_mps2
+            + required_braking_accel_mps2(
+                down_speed,
+                self.config.vy_touch_cap_mps,
+                (height - self.config.touchdown_idle_clearance_m)
+                    .max(self.config.touchdown_rescue_alt_floor_m),
+            );
+        let raw = current_state.throttle_frac.clamp(0.0, 1.0);
+        let applied = if raw == 0.0 {
+            0.0
+        } else {
+            let minimum = view.ctx.vehicle.min_throttle_frac.clamp(0.0, 1.0);
+            minimum + raw * (1.0 - minimum)
+        };
+        let nominal_ay = max_accel * applied * current_state.target_attitude_rad.cos();
+        nominal_ay < required_ay
+    }
+
+    fn rescue_inside_pad(&self, view: &ControllerView<'_>) -> bool {
+        let half_width = view.observation.target_pad_half_width_m;
+        if !self.ballistic_landing_body_centering_enabled {
+            return view.target_dx_m().abs() <= half_width;
+        }
+        let geometry = &view.ctx.vehicle.geometry;
+        let half_w = geometry.hull_width_m * 0.5;
+        let half_h = geometry.hull_height_m * 0.5;
+        let extent = [
+            pd_core::Vec2::new(-half_w, -half_h),
+            pd_core::Vec2::new(half_w, -half_h),
+            pd_core::Vec2::new(half_w, half_h),
+            pd_core::Vec2::new(-half_w, half_h),
+            pd_core::Vec2::new(
+                -geometry.touchdown_half_span_m,
+                -geometry.touchdown_base_offset_m,
+            ),
+            pd_core::Vec2::new(
+                geometry.touchdown_half_span_m,
+                -geometry.touchdown_base_offset_m,
+            ),
+        ]
+        .into_iter()
+        .map(|point| point.rotated(view.observation.attitude_rad).x.abs())
+        .fold(0.0_f64, f64::max);
+        view.target_dx_m().abs() + extent <= half_width
+    }
+
+    fn coordinated_braking_command(
+        &self,
+        view: &ControllerView<'_>,
+        current_state: &TerminalCommandState,
+    ) -> Command {
+        let max_accel = view.ctx.vehicle.max_thrust_n / view.observation.mass_kg.max(0.5);
+        let raw = current_state.throttle_frac.clamp(0.0, 1.0);
+        let applied = if raw == 0.0 {
+            0.0
+        } else {
+            let minimum = view.ctx.vehicle.min_throttle_frac.clamp(0.0, 1.0);
+            minimum + raw * (1.0 - minimum)
+        };
+        let nominal_ax = max_accel * applied * current_state.target_attitude_rad.sin();
+        let required_ay = view.observation.gravity_mps2
+            + required_braking_accel_mps2(
+                (-view.vertical_speed_mps()).max(0.0),
+                self.config.vy_touch_cap_mps,
+                (view.touchdown_clearance_m() - self.config.touchdown_idle_clearance_m)
+                    .max(self.config.touchdown_rescue_alt_floor_m),
+            );
+        let ay = required_ay.min(max_accel);
+        let available_ax = (max_accel * max_accel - ay * ay).max(0.0).sqrt();
+        let tilt_ax = ay * current_state.max_tilt_rad.max(0.0).tan();
+        let ax_limit = available_ax.min(tilt_ax.max(0.0));
+        let ax = nominal_ax.clamp(-ax_limit, ax_limit);
+        Command {
+            throttle_frac: command_throttle_for_applied_throttle(
+                ax.hypot(ay) / max_accel.max(1e-6),
+                view.ctx.vehicle.min_throttle_frac,
+            ),
+            target_attitude_rad: ax.atan2(ay),
+        }
+    }
+
     fn touchdown_cut_command(
         &mut self,
         view: &ControllerView<'_>,
@@ -1363,7 +1659,7 @@ impl TerminalPdgController {
         let vx_mps = view.observation.velocity_mps.x;
         let vy_up_mps = view.observation.velocity_mps.y;
         let down_speed = (-vy_up_mps).max(0.0);
-        let on_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
+        let on_pad = self.rescue_inside_pad(view);
         let safe_touchdown_vx_mps = view
             .ctx
             .vehicle
@@ -1378,6 +1674,16 @@ impl TerminalPdgController {
             && on_pad
             && vx_mps.abs() <= safe_touchdown_vx_mps
             && down_speed <= self.config.vy_touch_cap_mps;
+        if self.ballistic_terminal_coordination_enabled
+            && attitude_settle_region
+            && vx_mps.abs() <= self.config.touchdown_zero_vx_mps
+        {
+            // Safe attitude alone does not ensure two-foot contact. Start the
+            // existing upright settle before an inherited small trim reaches
+            // the ground; do not relax the simulator's contact geometry.
+            self.touchdown_settle_active = true;
+            return Some(self.touchdown_settle_command(view));
+        }
         if self.touchdown_settle_active {
             if attitude_settle_region {
                 return Some(self.touchdown_settle_command(view));
@@ -1451,16 +1757,28 @@ impl TerminalPdgController {
         let touchdown_center_limit_m = (view.observation.target_pad_half_width_m
             - view.ctx.vehicle.geometry.touchdown_half_span_m)
             .max(0.0);
-        let outside_touchdown_center = dx_m.abs() > touchdown_center_limit_m;
+        let body_centering_needed = self.ballistic_landing_body_centering_enabled && !on_pad;
+        let outside_touchdown_center =
+            body_centering_needed || dx_m.abs() > touchdown_center_limit_m;
         let early_lateral_rescue = touchdown_clearance_m <= self.config.lateral_hold_alt_m
-            && lateral_touchdown_unsafe
+            && (lateral_touchdown_unsafe || body_centering_needed)
             && (outside_touchdown_center
                 || lateral_closing_too_fast
                 || vx_mps.abs() > safe_touchdown_vx_mps);
         let vertical_rescue = touchdown_clearance_m <= self.config.touchdown_rescue_clearance_m
             && (down_speed > (self.config.touchdown_rescue_vy_ratio * rescue_limit)
                 || low_clearance_trigger);
-        if vertical_rescue || early_lateral_rescue {
+        if self.ballistic_terminal_coordination_enabled
+            && !vertical_rescue
+            && !early_lateral_rescue
+            && self.ballistic_braking_guard_active(view, current_state)
+        {
+            return Some(self.coordinated_braking_command(view, current_state));
+        }
+        if vertical_rescue
+            || early_lateral_rescue
+            || self.ballistic_braking_guard_active(view, current_state)
+        {
             let inside_pad_safe_vx_mps =
                 (safe_touchdown_vx_mps - self.config.touchdown_rescue_vx_margin_mps).max(0.0);
             let early_rescue_tilt_rad =
@@ -1473,14 +1791,13 @@ impl TerminalPdgController {
                 self.config.touchdown_rescue_tilt_rad
             };
             let rescue_tilt_limit = current_state.max_tilt_rad.min(rescue_tilt_cap_rad).max(0.0);
-            let inside_pad = dx_m.abs() <= view.observation.target_pad_half_width_m;
             let outside_closing_target_mps = (lateral_closing_speed_limit_mps
                 - self.config.touchdown_rescue_vx_margin_mps)
                 .max(0.0);
             let lateral_target = touchdown_rescue_lateral_target(
                 dx_m,
                 vx_mps,
-                inside_pad,
+                on_pad,
                 outside_closing_target_mps,
                 inside_pad_safe_vx_mps,
                 self.config.touchdown_rescue_vx_full_tilt_mps,
@@ -1871,6 +2188,13 @@ impl Controller for TerminalPdgController {
             )
             .metric(metric::LATERAL_ERROR_MPS, -view.observation.velocity_mps.x)
             .metric(metric::HOVER_THROTTLE, view.hover_throttle_frac());
+
+        if self.ballistic_landing_braking_guard_enabled {
+            builder = builder.metric(
+                "guidance.ballistic_braking_guard_active",
+                self.ballistic_braking_guard_active(&view, &command_state),
+            );
+        }
 
         if self.last_mode != Some(command_state.mode) {
             builder = builder.marker(standard_marker(

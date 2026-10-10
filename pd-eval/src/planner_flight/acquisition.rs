@@ -433,7 +433,7 @@ fn target_kinematics(_context: &RunContext, live: &SimulationState) -> Kinematic
     }
 }
 
-pub(super) fn turn_ticks_for(
+pub(crate) fn turn_ticks_for(
     context: &RunContext,
     current_attitude_rad: f64,
     target_acceleration_mps2: Vec2,

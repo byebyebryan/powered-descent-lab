@@ -21,6 +21,7 @@ pub use input::{
 
 pub(crate) use acquisition::MAX_THRUST_FRACTION;
 pub use acquisition::runtime::*;
+pub(crate) use acquisition::turn_ticks_for;
 pub use airborne::{AirborneDirectAuditV1, AirborneFlightStateV1};
 pub use canonical_initial::*;
 pub use geometry::{

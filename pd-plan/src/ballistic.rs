@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use pd_core::Vec2;
 use serde::{Deserialize, Serialize};
 
+pub mod aim;
 pub mod canonical_initial;
 pub use canonical_initial::*;
 

@@ -60,6 +60,8 @@ use execution::*;
 pub mod planner_flight;
 pub use planner_flight::*;
 
+pub mod ballistic_feedback;
+
 pub mod local_clearing;
 pub use local_clearing::*;
 

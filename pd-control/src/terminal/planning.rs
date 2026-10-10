@@ -4,6 +4,7 @@ use super::*;
 pub(super) struct LatestSafeState {
     pub(super) latest_safe_margin_s: f64,
     pub(super) best_candidate: TerminalGateCandidate,
+    pub(super) ballistic_duration_fallback: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

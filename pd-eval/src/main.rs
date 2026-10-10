@@ -38,12 +38,35 @@ enum Commands {
     RenderTerrainSurvey(TerrainSurveyArgs),
     /// Publish a saved experimental cap sweep with paired comparison; runs no flights.
     RenderTerrainCapSweep(TerrainSurveyArgs),
+    /// Publish a saved paired early-exit sweep with failure-first review; runs no flights.
+    RenderTerrainEarlyExitSweep(TerrainEarlyExitArgs),
     /// Check a saved terrain survey without flights, replay or report writes.
     CheckTerrainSurvey(TerrainSurveyCheckArgs),
     /// Compare saved flights under an explicit preservation contract; no flights or writes.
     CompareTerrainFlights(TerrainComparisonArgs),
     /// Run one source-replayed counterfactual handoff probe; not a mission or publication.
     ProbeTerrainHandoff(TerrainHandoffProbeArgs),
+    /// Run the opt-in ballistic feedback candidate; never publishes or changes policy 3.
+    BallisticFeedbackFlight(BallisticFeedbackArgs),
+}
+
+#[derive(Debug, Parser)]
+struct BallisticFeedbackArgs {
+    #[arg(long)]
+    scenario: PathBuf,
+    #[arg(long)]
+    baseline_flight: Option<PathBuf>,
+    #[arg(long, default_value_t = 1, requires = "baseline_flight")]
+    cycle_index: usize,
+    #[arg(long, requires = "baseline_flight")]
+    terrain_neutral: bool,
+    #[arg(long, default_value_t = 6)]
+    correction_cap: usize,
+    /// Opt-in waypoint acquisition ablation; the existing ridge mode is default.
+    #[arg(long, value_enum, default_value = "ridge")]
+    waypoint_experiment: pd_eval::ballistic_feedback::WaypointExperiment,
+    #[arg(long)]
+    output_dir: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -76,6 +99,15 @@ struct TerrainSurveyArgs {
     output_dir: PathBuf,
     #[arg(long)]
     capture_base_href: String,
+}
+
+#[derive(Debug, Parser)]
+struct TerrainEarlyExitArgs {
+    #[command(flatten)]
+    saved: TerrainSurveyArgs,
+    /// Reenact recorded programs for per-cycle diagnostics; no new route searches or mission flights.
+    #[arg(long)]
+    planning_cycles: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -207,6 +239,30 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::BallisticFeedbackFlight(args) => {
+            let result = pd_eval::ballistic_feedback::run(
+                &args.scenario,
+                args.baseline_flight.as_deref(),
+                args.cycle_index,
+                args.terrain_neutral,
+                args.correction_cap,
+                args.waypoint_experiment,
+                &args.output_dir,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "candidate_id": result.candidate_id, "stop": result.stop,
+                    "physical_outcome": result.final_state.physical_outcome,
+                    "mission_outcome": result.final_state.mission_outcome,
+                    "physics_step": result.final_state.physics_step,
+                    "refreshes": result.refreshes.len(), "handoffs": result.handoffs.len(),
+                    "source_replay_passed": result.source_replay_passed,
+                    "integrity_passed": result.integrity_passed,
+                    "decisions_reproduced": result.decisions_reproduced,
+                }))?
+            );
+        }
         Commands::RunPack(args) => {
             let pack = args.pack.clone().unwrap_or_else(|| {
                 repo_root().join(pd_eval::waypoint_v2_pack::DEFAULT_PLANNER_PACK_PATH)
@@ -355,6 +411,19 @@ fn main() -> Result<()> {
                 &args.capture_base_href,
             )?;
             println!("{}", args.output_dir.display());
+        }
+        Commands::RenderTerrainEarlyExitSweep(args) => {
+            let render = if args.planning_cycles {
+                pd_eval::terrain_survey::render_saved_early_exit_sweep_with_cycles
+            } else {
+                pd_eval::terrain_survey::render_saved_early_exit_sweep
+            };
+            render(
+                &args.saved.capture_dir,
+                &args.saved.output_dir,
+                &args.saved.capture_base_href,
+            )?;
+            println!("{}", args.saved.output_dir.display());
         }
         Commands::CheckTerrainSurvey(args) => {
             let result = pd_eval::terrain_survey::check_saved_survey(&args.capture_dir)?;
@@ -631,9 +700,11 @@ mod direct_generation_cli_tests {
                 "waypoint-v2-flight",
                 "render-terrain-survey",
                 "render-terrain-cap-sweep",
+                "render-terrain-early-exit-sweep",
                 "check-terrain-survey",
                 "compare-terrain-flights",
                 "probe-terrain-handoff",
+                "ballistic-feedback-flight",
             ]
         );
         for command in [
@@ -668,6 +739,40 @@ mod direct_generation_cli_tests {
                 "--preflight-only"
             ])
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn ballistic_candidate_is_explicit_and_neutral_requires_proven_prefix() {
+        let source = [
+            "pd-eval",
+            "ballistic-feedback-flight",
+            "--scenario",
+            "scenario.json",
+            "--output-dir",
+            "new-root",
+        ];
+        assert!(matches!(
+            Cli::try_parse_from(source).unwrap().command,
+            Commands::BallisticFeedbackFlight(BallisticFeedbackArgs {
+                baseline_flight: None,
+                terrain_neutral: false,
+                ..
+            })
+        ));
+        let mut neutral = source.to_vec();
+        neutral.push("--terrain-neutral");
+        assert!(Cli::try_parse_from(&neutral).is_err());
+        neutral.extend(["--baseline-flight", "verified-flight.json"]);
+        assert!(Cli::try_parse_from(&neutral).is_ok());
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "ballistic-feedback-flight",
+                "--scenario",
+                "scenario.json"
+            ])
+            .is_err()
         );
     }
 
@@ -709,6 +814,65 @@ mod direct_generation_cli_tests {
             .command,
             Commands::RenderTerrainCapSweep(_)
         ));
+    }
+
+    #[test]
+    fn early_exit_sweep_publication_requires_explicit_capture_site_and_url() {
+        assert!(Cli::try_parse_from(["pd-eval", "render-terrain-early-exit-sweep"]).is_err());
+        assert!(matches!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "render-terrain-early-exit-sweep",
+                "--capture-dir",
+                "saved",
+                "--output-dir",
+                "new-site",
+                "--capture-base-href",
+                "/eval/planner_v2_random_terrain/saved/",
+            ])
+            .unwrap()
+            .command,
+            Commands::RenderTerrainEarlyExitSweep(_)
+        ));
+    }
+
+    #[test]
+    fn cycle_reconstruction_is_opt_in_and_only_on_early_exit_publication() {
+        for command in [
+            "render-terrain-survey",
+            "render-terrain-cap-sweep",
+            "render-terrain-early-exit-sweep",
+        ] {
+            let mut args = vec![
+                "pd-eval",
+                command,
+                "--capture-dir",
+                "saved",
+                "--output-dir",
+                "new-site",
+                "--capture-base-href",
+                "/eval/planner_v2_random_terrain/saved/",
+            ];
+            if command == "render-terrain-early-exit-sweep" {
+                let Commands::RenderTerrainEarlyExitSweep(default) =
+                    Cli::try_parse_from(&args).unwrap().command
+                else {
+                    panic!("wrong command")
+                };
+                assert!(!default.planning_cycles);
+            }
+            args.push("--planning-cycles");
+            let parsed = Cli::try_parse_from(args);
+            if command == "render-terrain-early-exit-sweep" {
+                let Commands::RenderTerrainEarlyExitSweep(explicit) = parsed.unwrap().command
+                else {
+                    panic!("wrong command")
+                };
+                assert!(explicit.planning_cycles);
+            } else {
+                assert!(parsed.is_err());
+            }
+        }
     }
 
     #[test]

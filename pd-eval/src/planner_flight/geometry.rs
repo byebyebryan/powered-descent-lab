@@ -1,5 +1,5 @@
 //! Current planner geometry; no research orchestration.
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use pd_core::{ContactClassification, CorridorEnvelope, RunContext, SimulationState, Vec2};
 use pd_plan::ballistic::PadInputV2;
 use serde::{Deserialize, Serialize};
@@ -156,7 +156,10 @@ pub(super) fn body_clearance(
         .world
         .terrain
         .exact_point_clearance(state.position_m, envelope)
-        .map_err(|error| anyhow!("exact body-envelope terrain query failed: {error}"))?;
+        .map_err(|error| {
+            let message = format!("exact body-envelope terrain query failed: {error}");
+            anyhow::Error::new(error).context(message)
+        })?;
     if !clearance.minimum_clearance_m.is_finite() {
         bail!("exact body-envelope clearance is non-finite");
     }

@@ -86,6 +86,8 @@ pub(super) struct TerminalGuidancePlan {
 pub(super) enum GuidancePlanReleaseReason {
     CapturedBrakingBoundary,
     VerticalBrakingMargin,
+    BallisticCountdownInfeasible,
+    BallisticCountdownExpired,
 }
 
 impl GuidancePlanReleaseReason {
@@ -93,6 +95,8 @@ impl GuidancePlanReleaseReason {
         match self {
             Self::CapturedBrakingBoundary => "captured_braking_boundary",
             Self::VerticalBrakingMargin => "vertical_braking_margin",
+            Self::BallisticCountdownInfeasible => "ballistic_countdown_infeasible",
+            Self::BallisticCountdownExpired => "ballistic_countdown_expired",
         }
     }
 }
