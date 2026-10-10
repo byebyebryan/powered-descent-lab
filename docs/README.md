@@ -36,6 +36,15 @@ acceptance conditions. [Independent agents](independent_agents.md) and
 The checkpoint example demonstrates integration; training/reward experiments
 are the next product decision.
 
+## Procedural learning
+
+The owner launched the [procedural learning loop](procedural_learning_plan.md)
+on October 10. Complete procedural missions are the primary experiment;
+terminal/simple-transfer tasks remain synthetic diagnostics and authored
+waypoint/planner probes remain approach-specific. The loop includes native
+mission families, common comparisons, actual independent RL training and frozen
+checkpoint evaluation. Controller tuning remains parked.
+
 ## Current contracts and ownership
 
 - [Architecture](architecture.md): plant, scenario, controller and persisted

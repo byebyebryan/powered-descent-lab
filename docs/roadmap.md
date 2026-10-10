@@ -971,20 +971,13 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Use the [independent-agent workflow](independent_agents.md) and
-[procedural mission collections](procedural_missions.md) as the entry point for
-training experiments. The platform restructure is complete, with solver ownership extracted and
-defaults/evidence contracts preserved in the
-[run record](platform_restructure_results.md).
-
-The next experiment needs an explicit observation/action interface, externally
-owned reward and training backend, and predeclared training/development/validation
-collections with physical identity checks. Reserve an unexposed held-out
-collection for a stated evaluation decision; observed inputs become regression
-or development evidence. Use summary mode for training and save complete native
-captures/replay for final comparisons. The example checkpoint is untrained and
-its integration failures are retained. No solver tuning or reward choice is
-implied by the restructure acceptance.
+Execute the launched [procedural learning contract](procedural_learning_plan.md):
+complete procedural landing tasks, two native terrain families, common
+comparisons, independently owned RL training and frozen native checkpoint
+evaluation. Terminal/simple-transfer cases are synthetic diagnostics; authored
+waypoint/planner probes constrain only the approaches that use those contracts.
+The platform extraction is complete. Preserve its neutral dependencies and
+existing flight/evidence contracts while extending the experiment.
 
 The controller-mechanics follow-up below is parked. Preserve it as context for a
 separately resumed algorithm investigation rather than treating it as the active
