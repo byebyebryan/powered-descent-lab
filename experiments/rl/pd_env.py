@@ -27,6 +27,15 @@ CONFIGURATION = {
 }
 
 
+def native_module_paths():
+    """Bind both maturin's Python wrapper and the extension actually executing."""
+    module = Path(pd_native.__file__).resolve()
+    binaries = [module] if module.suffix == ".so" else sorted(module.parent.glob("*.so"))
+    if len(binaries) != 1:
+        raise RuntimeError("cannot identify the unique loaded native episode extension")
+    return sorted(set([module, *binaries]))
+
+
 class ProceduralLandingEnv(gym.Env):
     """Complete source-rest missions. No snapshot resets or incumbent calls.
 

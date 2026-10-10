@@ -14,7 +14,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
-from pd_env import CONFIGURATION, FAMILIES, ProceduralLandingEnv
+from pd_env import CONFIGURATION, FAMILIES, ProceduralLandingEnv, native_module_paths
 
 
 def write_new(path, value):
@@ -121,7 +121,7 @@ class DevelopmentCallback(BaseCallback):
 
 def source_identities():
     root = Path(__file__).resolve().parent
-    paths = [root/"pd_env.py", root/"train.py", root/"pyproject.toml", root/"uv.lock", Path(pd_native.__file__)]
+    paths = [root/"pd_env.py", root/"train.py", root/"pyproject.toml", root/"uv.lock", *native_module_paths()]
     return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 

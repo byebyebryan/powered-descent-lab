@@ -7,7 +7,7 @@ import numpy as np
 import pd_native
 from gymnasium.utils.env_checker import check_env
 
-from pd_env import ProceduralLandingEnv
+from pd_env import ProceduralLandingEnv, native_module_paths
 
 
 def mission():
@@ -36,7 +36,7 @@ class EnvironmentContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="pd-rl-test-") as temp:
             input_path = Path(temp)/"mission.json"
             input_path.write_text(json.dumps(fixed))
-            evidence = pd_native.evidence_snapshot([__file__], [str(input_path), pd_native.__file__])
+            evidence = pd_native.evidence_snapshot([__file__], [str(input_path), *map(str,native_module_paths())])
             done = False
             for _ in range(1000):
                 action = np.array([0.0, 0.0], dtype=np.float32)
