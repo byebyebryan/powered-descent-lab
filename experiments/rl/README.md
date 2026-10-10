@@ -105,8 +105,10 @@ attitude, footprint and mission outcome independently of that selection metric.
 After all declared allocations finish, `freeze.py --run RUN --output NEW_FREEZE
 --designs v1 v2 v3`
 checks the three seeds and checkpoint bytes, compares the selected development
-panels and copies the winning checkpoints with training receipts. Use
-`confirm.py --freeze FREEZE_JSON --cohorts COHORT_ROOT --output NEW_CONFIRMATION`
+panels and copies the winning checkpoints with training receipts.
+The freeze also retains the exact source/native-module bytes used by the selected
+training allocations, checking current bytes or the declared run archives by SHA.
+Use `confirm.py --freeze FREEZE_JSON --cohorts COHORT_ROOT --output NEW_CONFIRMATION`
 for the broad development and validation summary confirmations. It never
 re-ranks checkpoints. `analyze.py` audits consumed training identities against
 reserved cohorts and keeps repeated exposure separate from total unique inputs.

@@ -20,6 +20,8 @@ def development_selection(root, design):
         selection = json.loads((directory/"selection.json").read_text())
         if request["seed"] != seed or not selection["source_identity_unchanged"]:
             raise ValueError("training seed or source identity is invalid")
+        if selection.get("installed_sdk_identity_unchanged") is False:
+            raise ValueError("installed learning SDK changed during allocation")
         if selection["actual_transitions"] < request["requested_transitions"]:
             raise ValueError("declared transition allocation has not completed")
         best = selection["best"]
@@ -68,7 +70,24 @@ def main():
         retained.mkdir()
         for name in ["request.json", "selection.json"]:
             shutil.copy2(directory/name, retained/name)
-        selected.append({**item, "original_checkpoint": item["checkpoint"], "checkpoint": str(destination.resolve())})
+        sources = retained/"sources"
+        sources.mkdir()
+        bindings = []
+        for original, digest in item["training_source_identities"].items():
+            candidates = [Path(original), args.run/f'{winner["design"]}-training-source'/Path(original).name]
+            source = next((path for path in candidates if path.is_file()
+                           and hashlib.sha256(path.read_bytes()).hexdigest() == digest), None)
+            if source is None:
+                raise ValueError("original training source bytes are unavailable")
+            target = sources/Path(original).name
+            with target.open("xb") as stream:
+                stream.write(source.read_bytes())
+            bindings.append({"original_path": original, "retained_path": str(target.resolve()), "sha256": digest})
+        for name in ["sdk-before.json", "sdk-after.json"]:
+            if (directory/name).exists():
+                shutil.copy2(directory/name, retained/name)
+        selected.append({**item, "original_checkpoint": item["checkpoint"],
+                         "checkpoint": str(destination.resolve()), "retained_training_sources": bindings})
     write_new(args.output/"freeze.json", {
         "schema_version": 1, "frozen_at_utc": datetime.now(timezone.utc).isoformat(),
         "selection_rule": "sum of three selected development success counts; median of 384 endpoint distances; earlier design on exact tie",
