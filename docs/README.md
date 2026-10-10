@@ -44,6 +44,8 @@ terminal/simple-transfer tasks remain synthetic diagnostics and authored
 waypoint/planner probes remain approach-specific. The loop includes native
 mission families, common comparisons, actual independent RL training and frozen
 checkpoint evaluation. Controller tuning remains parked.
+The [run record](procedural_learning_results.md) distinguishes completed input,
+training and integration milestones from the pending final comparison.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.
