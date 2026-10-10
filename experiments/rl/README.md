@@ -18,6 +18,7 @@ rtk proxy uv sync --project experiments/rl --python 3.12 --locked
 rtk proxy uv run --project experiments/rl maturin develop --release --manifest-path pd-python/Cargo.toml
 rtk proxy uv run --project experiments/rl python experiments/rl/test_environment.py
 rtk proxy uv run --project experiments/rl python experiments/rl/train.py --output outputs/my-training-seed --cohorts outputs/my-cohorts --seed 801 --steps 8000000 --max-seconds 7200
+rtk proxy uv run --project experiments/rl python -m unittest discover -s experiments/rl -p 'test_*.py'
 ```
 
 The cohort root contains `value-noise-development` and `layered-development`.
@@ -61,6 +62,11 @@ The original finite mission horizon is an intrinsic task terminal; there is no
 collector timeout, snapshot reset, fabricated truncation or hidden autoreset.
 Stable-Baselines3's vector wrapper explicitly resets completed episodes.
 
+`--design v2` selects the declared kinetic/attitude potential in `pd_env_v2.py`.
+It changes reward only and starts a fresh optimizer. The source and native
+module are bound before and after each allocation. Preserve their bytes until
+the allocation finishes; commit changes to unrelated components independently.
+
 PPO uses separate 128-by-128 actor/critic MLPs, 512 steps per environment,
 512-sample minibatches, five epochs, learning rate 0.0003, gamma 0.999, GAE 0.95,
 clip 0.2, entropy 0.003 and initial log standard deviation -0.7. Runs persist
@@ -82,4 +88,21 @@ and rich report template. Composition supplies before/after evidence bindings,
 including the actual loaded native module, policy source, checkpoint and selected
 mission bytes. Replay runs commands through core without loading PPO. Summary
 mode retains no action/event/sample/update arrays and cannot later invent proof.
+
+`evaluate.py --collection COLLECTION --checkpoint CHECKPOINT --output NEW_DIRECTORY
+--native-receipt BUILD_RECEIPT --design v1` evaluates a frozen policy on original
+resolved native inputs. The build receipt binds the actual installed extension
+and retained compiled source bytes. Installed learning-library code and binary
+files are bound across the campaign, while every episode binds its own input,
+policy source and checkpoint. Policy loading is inside that evidence boundary.
+
+Every scheduled input receives a disposition, including invalid input,
+initialization, execution and capture failures. A failed bulk input read is
+subdivided to isolate bad inputs while preserving the order and denominator.
+Captured attempts receive independent native saved-command verification and
+rich individual reports. The aggregate uses the common `pd-report` campaign
+projection and requires campaign integrity before counting verified landings.
+Its report exporter must be built with
+`rtk proxy cargo build --release -p pd-report --example campaign`.
+These commands create local evidence and never publish it.
 
