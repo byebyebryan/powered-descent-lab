@@ -20,7 +20,23 @@ the task. Another long uniform run of the same setup needs a new hypothesis.
 Horizontal offset is also a weak secondary selection metric: an agent can be
 near the pad horizontally while remaining above it until timeout.
 
+Final checkpoint-free native replay confirms zero held-out landings for each
+selected seed. Across the six policy campaigns, timed-out subsets have median
+endpoint heights about 56–64 metres above upright target touchdown and speeds
+about 0.47–1.74 m/s. The incumbent succeeds on most inputs in the same declared
+population. This supports investigating learning discovery and control rather
+than treating distance progress as competence; the full scope and denominators
+remain in the run record.
+
 ## Proposed work order
+
+First review physical distribution coverage against the procedural mission
+sources the lab intends to represent: relief, slopes, source/target elevation
+difference, transfer length, pad width and resource envelope. A high incumbent
+rate on these two recipes would establish performance on those recipes. It
+would not establish coverage of another generator or a wider game envelope.
+Declare any broader recipe or new generator version before flight outcomes;
+keep this input characterization separate from solvability and controller scores.
 
 1. Establish a learning diagnostic before another large allocation. Inspect
    reward components, actual commanded throttle/attitude, touchdown separation,

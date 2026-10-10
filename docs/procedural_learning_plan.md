@@ -2,6 +2,11 @@
 
 [Documentation home](README.md) · [Platform](architecture.md) · [Mission collections](procedural_missions.md)
 
+Status: complete, October 10, 2026. This is the retained execution contract and
+chronological milestone record. See the [results](procedural_learning_results.md)
+for the final comparison and the [next recommendation](procedural_learning_next.md)
+for proposed work outside this closed allocation.
+
 The owner launched this loop on October 10 with “go for a goal loop, commit as
 you go.” Work remains in the shared checkout. The platform extraction is complete;
 this loop must reach actual training and independent native evaluation.
@@ -238,3 +243,26 @@ capture under the same actions. A 65,536-transition optimizer pilot completed;
 its source/native and installed-SDK before/after checks passed. This is integration
 validation, not final landing evidence. The declared three-seed v3 allocation
 is now launched, with all prior runs and receipts retained.
+
+## Completed allocation and final validation
+
+All nine allocations completed 8,003,584 transitions each, totaling 72,032,256.
+All three designs' selected development panels had zero native successes;
+the predeclared horizontal tie-break selected v2. Its three checkpoint copies
+and exact training source/native bytes were frozen before held-out exposure.
+Broad development/validation confirmations did not change that selection.
+
+Each frozen seed landed 0/2,048 held-out missions. On the same physical inputs,
+the explicit raw incumbent landed 984/2,048 with 1,024 unsupported inputs;
+the global reflection adapter landed 1,973/2,048. All ten campaigns and 10,240
+scheduled attempts passed final inventory accounting; all 9,216 executed
+captures passed independent checkpoint-free replay. Rich reports, browser layout, local links,
+rightward adapter preservation and protected-byte checks passed.
+
+The negative learning result is diagnosed in the run record: v1 favored fast
+crashes, v2 mostly stopped slowly well above the pad at the horizon, and v3's
+corrected objective still did not discover landing under the declared budget.
+The input families, ownership boundaries and actual training/evaluation pipeline
+are accepted implementation milestones. Learned landing competence, default
+promotion and game-host integration are not established. No required work
+remains in this execution contract.

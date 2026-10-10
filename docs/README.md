@@ -44,8 +44,12 @@ terminal/simple-transfer tasks remain synthetic diagnostics and authored
 waypoint/planner probes remain approach-specific. The loop includes native
 mission families, common comparisons, actual independent RL training and frozen
 checkpoint evaluation. Controller tuning remains parked.
-The [run record](procedural_learning_results.md) distinguishes completed input,
-training and integration milestones from the pending final comparison.
+The [completed run record](procedural_learning_results.md) reports nine actual
+training allocations, frozen held-out comparison and independent native replay:
+each selected PPO seed lands 0/2,048; the reflected incumbent lands 1,973/2,048.
+The [next experiment recommendation](procedural_learning_next.md) separates a
+physical coverage audit, complete-mission curriculum and control-interface
+investigation; it is not another launched allocation.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.

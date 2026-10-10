@@ -9,12 +9,13 @@ planner are parked, unchanged comparators. The shared checkout is retained;
 validated owned milestones are committed separately from the ten pre-existing
 report/navigation/server paths.
 
-Current status: the two terrain families, common campaigns/reports and independent
-PPO interface are implemented. All nine training allocations and broad
-confirmations are complete. The selected v2 checkpoints were frozen before
-held-out evaluation; all six policy campaigns completed with zero landings.
-Incumbent campaigns are running, and final comparison/independent inventory
-verification remain pending. No learned landing competence is established.
+Status: complete, October 10, 2026. Two terrain families, common campaigns/reports
+and an independent PPO interface are implemented. All nine training allocations,
+broad confirmations, frozen held-out comparisons and independent inventory replay
+completed. Each selected v2 seed landed **0/2,048** held-out missions; the
+reflected incumbent landed **1,973/2,048 (96.3%)** under explicit experimental
+cap 24. The platform works; this learning setup has not established landing
+competence. No current controller or default is replaced.
 
 ## Accepted platform and inputs
 
@@ -57,7 +58,7 @@ is retained. The nine completed allocations together consumed 41,000 unique
 physical missions, rather than the sum of the overlapping per-run counts.
 No consumed training identity overlaps development, validation or held-out.
 
-## Learning evidence so far
+## Learning evidence
 
 Each design uses fresh seeds 801, 802 and 803, eight million requested transitions
 per seed, and the same PPO architecture/optimizer. Each completed allocation
@@ -74,7 +75,7 @@ landing proof. The horizontal secondary metric omits vertical separation.
 | v2: added kinetic/contact potential | 24,010,752 | 0 / 384 | 23.28 m |
 | v3: aligned discount and zero terminal potential | 24,010,752 | 0 / 384 | 206.08 m |
 
-Total optimization is 72,032,256 transitions across nine independent allocations.
+The full allocations total 72,032,256 transitions across nine independent runs.
 The final reward revision corrects terminal accounting but did not improve the
 declared development score. Its selected first-seed panel timed out on all 128
 inputs; four supplementary native captures also timed out and replay exactly.
@@ -133,12 +134,47 @@ policy evaluations of that common population, not 6,144 unique missions.
 | 803 | Value noise | 0 / 1024 | 963 | 61 |
 | 803 | Layered | 0 / 1024 | 902 | 122 |
 
-Every attempt has a native capture and rich report; campaign integrity and each
-capture's physical-prefix/complete-episode replay checks passed. There are no
-missing attempts or initialization/execution/capture failures in these six
-campaigns. The incumbent comparison and the fresh-process verification of the
-full paired inventory remain pending. Endpoint diagnostics will be reported
-from that independent replay rather than inferred from horizontal selection.
+Every policy attempt has a native capture and rich report. A fresh process,
+importing no learning library and loading no checkpoint, independently verified
+all 9,216 executed captures across the ten policy/incumbent campaigns. Integrity,
+physical-prefix replay, complete bounded-episode replay, original input identity,
+descriptor and ledger/report projection checks passed. The 1,024 unsupported
+raw-incumbent attempts remain visible; all 10,240 scheduled attempts are
+accounted for, with no preparation/execution/capture failures.
+
+| Approach | Verified landings / scheduled | Unsupported | Independently replayed / executed |
+| --- | --- | --- | --- |
+| PPO v2, seed 801 | 0 / 2048 | 0 | 2048 / 2048 |
+| PPO v2, seed 802 | 0 / 2048 | 0 | 2048 / 2048 |
+| PPO v2, seed 803 | 0 / 2048 | 0 | 2048 / 2048 |
+| Incumbent raw | 984 / 2048 | 1024 | 1024 / 1024 |
+| Incumbent reflection | 1973 / 2048 | 0 | 2048 / 2048 |
+
+Raw support is the rightward slice: 490/512 value-noise and 494/512 layered,
+or 984/1,024 (96.1%) on that explicitly labeled subset. Reflection lands 989/1,024
+value-noise and 984/1,024 layered. All 1,024 rightward missions preserve raw
+projected native outcomes, stop reason, execution validity, flight time and fuel
+exactly under the reflection adapter. Its 75 non-landings are finite solver
+stops while still flying, with valid bounded native replay; they are not landing
+proof or native horizon completions. Neither incumbent campaign has a crash.
+
+Independent replay also measures the policy's actual timeout endpoints:
+
+| Seed / family | Timeout endpoints | Median horizontal offset | Median height above upright target touchdown | Median speed |
+| --- | --- | --- | --- | --- |
+| 801 / value noise | 982 | 30.45 m | 63.87 m | 0.51 m/s |
+| 801 / layered | 921 | 32.58 m | 63.05 m | 0.47 m/s |
+| 802 / value noise | 950 | 22.89 m | 56.09 m | 0.77 m/s |
+| 802 / layered | 884 | 24.55 m | 55.56 m | 0.76 m/s |
+| 803 / value noise | 963 | 19.57 m | 60.02 m | 1.74 m/s |
+| 803 / layered | 902 | 21.64 m | 59.99 m | 1.67 m/s |
+
+These are medians within each campaign's native timed-out subset, not averages
+over crashes or a new checkpoint-selection metric. Height is final reference
+position minus pad surface minus the vehicle's upright touchdown-base offset;
+it is not an attitude-dependent hull-clearance measurement. In total, 5,602
+policy flights timed out and 542 crashed. The slow, elevated endpoints explain
+why horizontal selection progress did not imply touchdown readiness.
 
 Common campaigns bind immutable collection inputs once across a run and bind
 each selected input per episode. Append-only exposure receipts are recorded
@@ -163,16 +199,19 @@ Common individual reports retain the rich native template. Typed campaign and
 paired-comparison views use the common batch shell and evidence navigation.
 The comparison rejects different physical inventories or repeat counts, includes
 unsupported inputs and gates combined landing counts on campaign integrity.
-Browser layout review passed on saved local development reports. An independent
-process also replayed sixteen pilot captures without importing a learning library
-or loading a checkpoint. This is native/static report evidence; no game-host
-deployment or human flight acceptance is claimed.
+Browser layout review passed on development reports and the final five-approach
+comparison. All 9,267 local aggregate/report links resolve and all 9,216 executed
+attempts have rich detail reports. Final inventory replay is independent of the
+policy, rather than only the earlier sixteen-capture pilot. This is native/static
+report evidence; no game-host deployment or human flight acceptance is claimed.
 
 The maintained 18-check development gate and thirteen Python contract tests pass
-on the final reward source milestone. All starting core, runtime, controller,
-planning-math and solver source bytes, all 84 starting fixture files and the ten
-other-writer paths remain unchanged. No historical evidence is rewritten, and no
-report refresh/publication, server lifecycle change or default promotion occurs.
+on the final reward source milestone. The final preservation receipt checks all
+120 starting source files across core, runtime, controller, planning math, solver
+and the two existing applications, all 84 starting fixture files and the ten
+other-writer paths. Their bytes remain unchanged. No historical evidence is
+rewritten, and no existing report refresh/publication, server lifecycle change
+or default promotion occurs.
 
 ## Retained evidence
 
@@ -180,19 +219,35 @@ The create-only run root is
 `outputs/procedural-learning/run-20261010T190900Z/`. Important records include
 `baseline.json`, `cohorts-plan.json`, `cohort-validation.json`,
 `native-build-receipt.json`, retained native-build sources and installed extension,
-all training directories/checkpoints/worker logs, `audit-through-v2.json`,
+all training directories/checkpoints/worker logs, `final-audit.json`,
 `reward-extraction-equivalence.json`, `independent-pilot-verification.json` and
 the maintained gate logs. The retained launcher scripts record actual commands
 and exit/timing results. The experiment workflow documents reproduction from
 source and new inputs; ordinary checks never require this output archive.
 
-Final evaluation will use the winning design's three frozen checkpoints on the
-same 2,048 held-out inputs, alongside raw and reflected incumbent campaigns.
-Broad development/validation are confirmations after freezing, never another
-selection search. Further reward revisions are outside this run's declared
-allocation. Final results and the next experimental recommendation will replace
-the pending status only after those campaigns and independent replay finish.
+- [Final paired report](../outputs/procedural-learning/run-20261010T190900Z/held-out-evaluation/report.html): all five approaches and family/direction/relief coverage, with campaign and flight navigation.
+- [Independent verification](../outputs/procedural-learning/run-20261010T190900Z/held-out-evaluation/independent-verification.json): replayed inventory and native endpoint diagnostics; no checkpoint loaded.
+- [Final audit and preservation receipt](../outputs/procedural-learning/run-20261010T190900Z/final-preservation-and-comparison.json): matched physical inventories, attempt accounting and original source/fixture/other-writer hashes.
+
+`report-link-inventory.json`, `raw-reflection-rightward-preservation.json` and
+`final-comparison-preview.png` retain the link, adapter-preservation and browser
+checks. `held-out-evaluation/commands.json` and `execution.json` record all ten
+actual commands, successful exits and measured wall times.
+
+## Interpretation and next experiment
+
+This loop establishes independent strategy ownership and a working procedural
+learning/evidence pipeline. It does not establish a competent learned lander.
+The nine bounded allocations and two general reward revisions are complete;
+there is no further reward search or controller repair inside this contract.
+The positive incumbent result shows that many inputs in this declared population
+are solvable. It does not establish another generator's coverage, arbitrary
+terrain reliability, or a directly comparable rate to the old 1k campaigns.
 
 The [next experimental recommendation](procedural_learning_next.md) proposes a
-controlled curriculum over complete procedural missions and a separately
-bounded control-interface investigation. It is not another launched allocation.
+physical distribution audit, a controlled curriculum over complete procedural
+missions and a separately bounded control-interface investigation. Keep corrected
+v3 objective accounting as the next baseline and vary one design factor at a
+time. The observed held-out population can become a later regression panel,
+retaining its original role and exposure history; new generalization claims
+require fresh held-out seeds. This recommendation is not a launched allocation.

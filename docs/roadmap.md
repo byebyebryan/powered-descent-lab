@@ -34,6 +34,17 @@ Existing guidance and accepted flight contracts remain current.
 The [execution contract](platform_restructure_execution.md) records the full run
 scope and completion conditions.
 
+The subsequent [procedural learning run](procedural_learning_results.md) is
+complete: two characterized native terrain families, disjoint cohorts, common
+raw/reflected comparisons and nine independent PPO allocations totaling
+72,032,256 transitions. Each selected frozen PPO seed lands 0/2,048 held-out
+missions; the cap-24 reflected incumbent lands 1,973/2,048. All 9,216 executed
+captures pass independent replay, with unsupported inputs retained in the
+10,240-attempt inventory. This validates the independent platform and records
+a negative learning result, not a replacement controller or default promotion.
+The [next recommendation](procedural_learning_next.md) begins with distribution
+coverage, then a controlled curriculum over complete procedural missions.
+
 ### Active planner evaluation and reporting
 
 The accepted native V2 evaluation workflow is `planner_v2_lab_suite`: omitting
@@ -971,13 +982,20 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Execute the launched [procedural learning contract](procedural_learning_plan.md):
-complete procedural landing tasks, two native terrain families, common
-comparisons, independently owned RL training and frozen native checkpoint
-evaluation. Terminal/simple-transfer cases are synthetic diagnostics; authored
-waypoint/planner probes constrain only the approaches that use those contracts.
-The platform extraction is complete. Preserve its neutral dependencies and
-existing flight/evidence contracts while extending the experiment.
+The first [procedural learning contract](procedural_learning_plan.md) is complete;
+read its [measured results](procedural_learning_results.md) before another
+allocation. Prepare the next contract from the
+[experimental recommendation](procedural_learning_next.md): audit physical
+distribution coverage, then compare a complete-mission sampler curriculum
+against uniform sampling with the corrected objective. Investigate a separately
+owned control parameterization only if physical diagnostics support it. Declare
+bounded revisions, budgets and new held-out seeds before training.
+
+Terminal/simple-transfer cases remain synthetic diagnostics; authored
+waypoint/planner probes constrain only the approaches using those contracts.
+Preserve neutral dependencies, native flight/evidence rules and original
+exposure histories. The old held-out inputs are now observed, so they cannot
+establish a new experiment's unexposed generalization result.
 
 The controller-mechanics follow-up below is parked. Preserve it as context for a
 separately resumed algorithm investigation rather than treating it as the active
