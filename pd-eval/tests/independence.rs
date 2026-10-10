@@ -225,3 +225,139 @@ fn collection_schedule_keeps_initialization_failures_and_explicit_repeats() {
     assert_eq!(verify_collection(&collection).unwrap(), manifest);
     std::fs::remove_dir_all(parent).unwrap();
 }
+
+#[test]
+fn offline_executor_keeps_unsupported_and_binds_only_selected_input_per_episode() {
+    let parent = temporary_parent();
+    let collection = parent.join("collection");
+    let manifest = write_collection(
+        &collection,
+        CollectionRequestV1 {
+            schema_version: 1,
+            role: CollectionRoleV1::Development,
+            recipe: MissionRecipeV1::default(),
+            seed: 81,
+            indices: vec![0, 1],
+        },
+    )
+    .unwrap();
+    let descriptor = External {
+        mutate: None,
+        fail: false,
+    }
+    .descriptor();
+    let request = CollectionEvaluationRequestV1 {
+        schema_version: 1,
+        manifest_sha256: sha256(&std::fs::read(collection.join("manifest.json")).unwrap()),
+        agent: descriptor,
+        attempt_indices: vec![0, 1],
+    };
+    let mut ordinal = 0;
+    let result = evaluate_collection_with_executor(
+        &collection,
+        &parent.join("campaign"),
+        request,
+        &mut |scenario, scope| {
+            ordinal += 1;
+            assert_eq!(scope.inputs.len(), 1);
+            assert!(scope.inputs[0].is_file());
+            if ordinal == 1 {
+                record_collection_usage(
+                    &collection,
+                    "concurrent-exposure",
+                    CollectionExposureV1::Tuning,
+                    "Concurrent exposure is recorded without changing immutable inputs",
+                )
+                .unwrap();
+            }
+            if ordinal == 2 {
+                return Err(AttemptExecutionErrorV1::Unsupported(
+                    "approach does not support this input".to_owned(),
+                ));
+            }
+            let ctx = pd_core::RunContext::from_scenario(scenario).unwrap();
+            evaluate_agent(
+                scenario,
+                &mut External {
+                    mutate: None,
+                    fail: false,
+                },
+                pd_run::scenario_horizon_limits(&ctx).unwrap(),
+                scope,
+            )
+            .map_err(AttemptExecutionErrorV1::Execution)
+        },
+        &EvidenceScope {
+            sources: vec![],
+            inputs: vec![collection.clone()],
+        },
+    )
+    .unwrap();
+    assert!(result.integrity_passed);
+    assert_eq!(result.attempts.len(), 2);
+    assert!(matches!(
+        result.attempts[1].disposition,
+        AttemptDispositionV1::Unsupported { .. }
+    ));
+    let first = load_verified_evaluation(&parent.join("campaign/attempt-000000")).unwrap();
+    assert_eq!(first.evidence_before.input_files.len(), 1);
+    assert_eq!(verify_collection(&collection).unwrap(), manifest);
+    std::fs::remove_dir_all(parent).unwrap();
+}
+
+#[test]
+fn campaign_detects_unselected_input_drift_without_quadratic_episode_binding() {
+    let parent = temporary_parent();
+    let collection = parent.join("collection");
+    let manifest = write_collection(
+        &collection,
+        CollectionRequestV1 {
+            schema_version: 1,
+            role: CollectionRoleV1::Development,
+            recipe: MissionRecipeV1::default(),
+            seed: 82,
+            indices: vec![0, 1],
+        },
+    )
+    .unwrap();
+    let request = CollectionEvaluationRequestV1 {
+        schema_version: 1,
+        manifest_sha256: sha256(&std::fs::read(collection.join("manifest.json")).unwrap()),
+        agent: External {
+            mutate: None,
+            fail: false,
+        }
+        .descriptor(),
+        attempt_indices: vec![0, 1],
+    };
+    let other = collection.join(&manifest.entries[1].file);
+    let result = evaluate_collection_with_executor(
+        &collection,
+        &parent.join("campaign"),
+        request,
+        &mut |scenario, scope| {
+            let ctx = pd_core::RunContext::from_scenario(scenario).unwrap();
+            evaluate_agent(
+                scenario,
+                &mut External {
+                    mutate: Some(other.clone()),
+                    fail: false,
+                },
+                pd_run::scenario_horizon_limits(&ctx).unwrap(),
+                scope,
+            )
+            .map_err(AttemptExecutionErrorV1::Execution)
+        },
+        &EvidenceScope::default(),
+    )
+    .unwrap();
+    assert!(!result.integrity_passed);
+    assert!(matches!(
+        result.attempts[1].disposition,
+        AttemptDispositionV1::InputInvalid { .. }
+    ));
+    let first = load_verified_evaluation(&parent.join("campaign/attempt-000000")).unwrap();
+    assert!(first.integrity_passed);
+    assert_eq!(first.evidence_before.input_files.len(), 1);
+    std::fs::remove_dir_all(parent).unwrap();
+}

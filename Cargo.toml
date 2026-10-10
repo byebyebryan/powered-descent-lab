@@ -4,6 +4,7 @@ members = [
   "pd-run",
   "pd-missions",
   "pd-python",
+  "pd-benchmark",
   "pd-plan",
   "pd-planner",
   "pd-control",

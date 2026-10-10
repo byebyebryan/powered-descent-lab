@@ -70,6 +70,9 @@ boundaries; the maintained solver extraction is complete.
 | `pd-missions` | Declared procedural recipes, resolved inputs and collection receipts | `pd-core` |
 | `pd-eval` | Generic execution accounting, capture, integrity and replay assessment | Core, runtime, missions |
 | `pd-report` | Rich saved-artifact projections, navigation and common templates | Core, runtime |
+| `pd-python` | Thin native episode, terrain query and capture binding | Core, runtime, missions, evaluation, reports |
+| `experiments/rl` | PPO features/actions/rewards/sampler/optimizer and checkpoint selection | Native Python binding; no incumbent imports |
+| `pd-benchmark` | Explicit raw/reflected incumbent adapters and common campaigns | Concrete solver plus neutral platform |
 | `pd-control` | Maintained feedback implementations and legacy specification registry | Core, runtime |
 | `pd-plan` | Pure planning mathematics and geometry | Core |
 | `pd-planner` | Policy 3 and ballistic execution, effective configuration and source proof | Core, runtime, planning math, feedback |
@@ -81,6 +84,12 @@ scenario labels, collection membership and seeds stay in orchestration. Config
 snapshots and optional telemetry are opaque to evaluation and rendering.
 The developer gate checks these dependency boundaries. The historical record
 shapes re-exported by `pd-control` retain their previous JSON encoding.
+
+Complete procedural missions are primary experimental tasks. Terminal and
+simple-transfer synthetic tasks diagnose physical control; authored waypoint
+and planner probes diagnose particular approaches. An algorithm's internal
+boost/coast/waypoint phases are not universal task acceptance requirements.
+The [learning contract](procedural_learning_plan.md) records the current run.
 
 ### Concrete v1 stack
 

@@ -59,6 +59,20 @@ they do not disappear from the denominator. It records a collection exposure
 receipt before execution. Existing built-in workflows remain application-owned
 in `pd-eval-cli`; the installed binary is still named `pd-eval`.
 
+`evaluate_collection_with_executor` admits offline approaches through a
+composition callback, without importing a strategy into evaluation. Unsupported
+inputs retain a separate disposition in the full scheduled denominator. Each
+episode binds its selected mission and explicit checkpoint/source scope; the
+whole collection is bound once before/after the campaign. Overall campaign
+integrity must pass before using its aggregate landing counts. There is no
+mutable evidence cache or whole-collection snapshot inside each episode.
+
+`assess_execution` applies the same physical/mission/integrity/replay contract
+to an externally driven ordinary native episode. The thin `pd-python` binding
+uses it for the [independent PPO experiment](../experiments/rl/README.md).
+Its observation/action/reward and launch choices are approach-owned; there is
+no controller/planner dependency or fallback.
+
 ## Rich reporting
 
 `pd_report::render_agent_run_report` uses the maintained common run template,
@@ -72,6 +86,11 @@ Report configuration parameters are JSON snapshots. Existing applications
 serialize their unchanged `ControllerSpec` at the rendering boundary. Historical
 configuration decoding therefore does not import executable controllers into
 the renderer.
+
+`pd_report::campaign` renders common campaign projections on the maintained
+batch shell, with coverage groups, an interactive attempt tree, configuration,
+native proof dispositions and individual run links. Failed campaign integrity
+prevents aggregate promotion even when an earlier individual capture verifies.
 
 ## Reset/step and capture modes
 

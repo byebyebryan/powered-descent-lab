@@ -15,6 +15,7 @@ use serde::Serialize;
 
 pub mod agent;
 pub mod batch;
+pub mod campaign;
 pub use agent::{AgentReportEvidenceV1, agent_capture_navigation, render_agent_run_report};
 pub mod batch_tree;
 pub mod flight_annotations;

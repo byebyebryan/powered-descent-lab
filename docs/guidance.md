@@ -413,19 +413,19 @@ V2 implementation ownership is:
 - `pd-plan/src/waypoint_v2.rs`: versioned finite policy, correction bounds and clocks.
 - `pd-plan/src/local_clearing.rs`: sealed template family and pure scalar
   handoff braking-room estimate; no terrain query or physical acceptance.
-- `pd-eval-cli/src/planner_flight/`: current request/preflight, canonical initial
+- `pd-planner/src/planner_flight/`: current request/preflight, canonical initial
   source fitting, state-derived airborne acquisition, terminal realization and
   phase/contact geometry, extracted from historical research orchestration.
-- `pd-eval-cli/src/waypoint_v2.rs`: input preflight, the owned session lifecycle and
+- `pd-planner/src/waypoint_v2.rs`: input preflight, the owned session lifecycle and
   named phases for nominal generation/audit, fixed-prefix proof, direct
   execution, local clearing search and actual E-to-H/certificate execution.
-- `pd-eval-cli/src/waypoint_v2/model.rs`: persisted flight records and additive
+- `pd-planner/src/waypoint_v2/model.rs`: persisted flight records and additive
   session progress, re-exported through the unchanged public paths.
-- `pd-eval-cli/src/waypoint_v2/execution.rs`: forward queries, exclusive segment
+- `pd-planner/src/waypoint_v2/execution.rs`: forward queries, exclusive segment
   ownership, phase-aware guards and original-source replay proofs.
 - `waypoint_v2_output.rs` and `waypoint_v2_bundle.rs`: create-only evidence,
   progress/receipt validation and saved-source CLI replay.
-- `local_clearing.rs`: bounded proposal search, actual continuation and proof
+- `pd-planner/src/local_clearing.rs`: bounded proposal search, actual continuation and proof
   helpers; no historical canary orchestration.
 - `evidence_io.rs`: exact-byte hashing and create-only writing/reservation;
   caller-specific trust and provenance validation remain with their callers.

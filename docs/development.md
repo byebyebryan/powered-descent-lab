@@ -15,6 +15,9 @@ using a dated protocol as an implementation plan.
   require a runtime with global `WebSocket` and an explicitly configured local
   Chrome debugging endpoint.
 - Git and RTK: the maintained gate invokes commands through `rtk proxy`.
+- Python 3.12 or newer with a linkable Python library for the workspace's PyO3
+  bridge. The optional learning experiment uses a uv-managed Python 3.12 local
+  environment and pinned CPU dependencies; see its [workflow](../experiments/rl/README.md).
 - Python 3 and tmux for the optional report server. Regenerating terminal-suite
   illustrations uses uv and Python 3.11 or newer, and rewrites tracked SVG assets
   as well as a local HTML preview; it is not needed for Rust tests.
@@ -89,8 +92,8 @@ rtk proxy cargo run -p pd-cli --features planner-v2 -- --help
 ```
 
 The default-off normal dependency tree must not include evaluation or planning
-packages. The independent platform crates (`pd-run`, `pd-missions`, `pd-eval`
-and `pd-report`) must not import concrete strategies, including with all features.
+packages. The independent platform crates (`pd-run`, `pd-missions`, `pd-eval`,
+`pd-report` and `pd-python`) must not import concrete strategies, including with all features.
 The gate enforces both boundaries and prevents `pd-planner` from importing
 evaluation, rendering or collection management. The accepted
 V2 adapter is synchronous session execution, not externally driven per-tick

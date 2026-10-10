@@ -21,6 +21,31 @@ complete path without importing the current controller or planner. Its supplied
 weights are an untrained integration fixture. Authored packs and the already
 observed 1k sets below retain their separate regression roles.
 
+The [learning execution contract](procedural_learning_plan.md) and
+[independent PPO package](../experiments/rl/README.md) extend this path to actual
+training. Native value-noise and layered terrain families are primary complete
+mission benchmarks. Terminal/simple-transfer synthetic sets remain physical
+diagnostics; authored waypoint/planner probes retain their approach-specific
+regression role.
+
+`pd-benchmark` owns the common incumbent adapter. Raw mode keeps unsupported
+leftward inputs in its denominator. Explicit reflection mode is a separately
+named global approach: it transforms the physical input for planning, then
+executes transformed commands on the original mission with native proof.
+Both record the effective combined-safety configuration and correction cap;
+cap 24 is an experimental comparator, not a default-planner promotion.
+
+```sh
+rtk proxy cargo run --release -p pd-benchmark -- --collection outputs/my-missions --output outputs/my-incumbent-raw --correction-cap 24
+rtk proxy cargo run --release -p pd-benchmark -- --collection outputs/my-missions --output outputs/my-incumbent-reflection --correction-cap 24 --mirror-leftward
+```
+
+These new create-only campaigns write common captures, exposure receipts,
+approach-specific stop diagnostics, rich individual reports and a common batch
+report. They do not refresh indexes, publish or change accepted selectors.
+An early solver stop preserves its finite executed prefix; it does not become a
+complete landing or extend the original scenario horizon.
+
 ## Planner Evaluation (V2 Default)
 
 The latest opt-in [combined safety checkpoint](ballistic_combined_validation_results.md)

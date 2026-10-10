@@ -33,8 +33,8 @@ completed migration slices and their preservation checks. The
 [execution contract](platform_restructure_execution.md) retains the run scope and
 acceptance conditions. [Independent agents](independent_agents.md) and
 [procedural missions](procedural_missions.md) provide the runnable new workflow.
-The checkpoint example demonstrates integration; training/reward experiments
-are the next product decision.
+The checkpoint example demonstrates integration; the launched learning loop
+below now owns training/reward experiments.
 
 ## Procedural learning
 
@@ -44,6 +44,9 @@ terminal/simple-transfer tasks remain synthetic diagnostics and authored
 waypoint/planner probes remain approach-specific. The loop includes native
 mission families, common comparisons, actual independent RL training and frozen
 checkpoint evaluation. Controller tuning remains parked.
+The [PPO package](../experiments/rl/README.md) provides the local training
+workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
+documents the common raw/reflected incumbent comparisons.
 
 ## Current contracts and ownership
 

@@ -1,0 +1,16 @@
+[package]
+name = "pd-benchmark"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+pd-core = { path = "../pd-core" }
+pd-run = { path = "../pd-run" }
+pd-missions = { path = "../pd-missions" }
+pd-eval = { path = "../pd-eval" }
+pd-report = { path = "../pd-report" }
+pd-planner = { path = "../pd-planner" }
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
