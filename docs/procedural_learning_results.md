@@ -10,10 +10,10 @@ validated owned milestones are committed separately from the ten pre-existing
 report/navigation/server paths.
 
 Current status: the two terrain families, common campaigns/reports and independent
-PPO interface are implemented. Initial and braking-reward allocations are
-complete. The final declared reward revision is running. Checkpoint freezing,
-broad confirmation and the final native held-out comparison remain pending.
-This record does not yet establish goal completion or a learned landing policy.
+PPO interface are implemented. All nine training allocations and broad
+confirmations are complete. The selected v2 checkpoints were frozen before
+held-out evaluation, which is running. Final comparison and independent inventory
+verification remain pending. No learned landing competence is established.
 
 ## Accepted platform and inputs
 
@@ -52,7 +52,7 @@ and elevation vary without solver-outcome filtering.
 Training streams start at index 256 under the training seeds. Workers alternate
 families and advance independent declared index schedules. Every consumed
 proposal, structural rejection, physical identity and terminal training outcome
-is retained. The first six completed allocations together consumed 41,000 unique
+is retained. The nine completed allocations together consumed 41,000 unique
 physical missions, rather than the sum of the overlapping per-run counts.
 No consumed training identity overlaps development, validation or held-out.
 
@@ -60,8 +60,9 @@ No consumed training identity overlaps development, validation or held-out.
 
 Each design uses fresh seeds 801, 802 and 803, eight million requested transitions
 per seed, and the same PPO architecture/optimizer. Each completed allocation
-contains 8,003,584 transitions and 4,885 optimizer epochs. The first six source
-identity checks passed. Their recurring development panel contains 128 inputs
+contains 8,003,584 transitions and 4,885 optimizer epochs. All source/native
+identity checks and v3's additional installed-SDK checks passed. Their recurring
+development panel contains 128 inputs
 from both families; selection uses native summary success count, horizontal
 target offset, then earlier checkpoint. These are summaries without saved-command
 landing proof. The horizontal secondary metric omits vertical separation.
@@ -70,7 +71,30 @@ landing proof. The horizontal secondary metric omits vertical separation.
 | --- | --- | --- | --- |
 | v1: distance-progress reward | 24,010,752 | 0 / 384 | 29.46 m |
 | v2: added kinetic/contact potential | 24,010,752 | 0 / 384 | 23.28 m |
-| v3: aligned discount and zero terminal potential | Running | Pending | Pending |
+| v3: aligned discount and zero terminal potential | 24,010,752 | 0 / 384 | 206.08 m |
+
+Total optimization is 72,032,256 transitions across nine independent allocations.
+The final reward revision corrects terminal accounting but did not improve the
+declared development score. Its selected first-seed panel timed out on all 128
+inputs; four supplementary native captures also timed out and replay exactly.
+
+The declared design ordering selected v2, since all three designs had zero
+successes and v2 had the lowest median horizontal offset. Selection was frozen
+at **2026-10-10 21:35:40 UTC**, before the first held-out exposure. The freeze
+retains checkpoint bytes, training receipts and matching original training source
+and native-module bytes. All subsequent evaluation uses those checkpoint copies.
+
+| Seed | Selected optimizer checkpoint | Frozen checkpoint SHA-256 |
+| --- | --- | --- |
+| 801 | 5,242,880 transitions | `f2b6a667b0df2f40694eec6e75140ec2065ca26e734fb8ef7521ff47eeca6e54` |
+| 802 | 4,194,304 transitions | `a97e08b680ec84671d7f08140c503f6e83136ed64d6b2ca90697b0fd8cc0b73d` |
+| 803 | 3,670,016 transitions | `c220ddcdfcea776bb3e72c94a38530efea24cc23b6e5f69a87ca82f3a1eb2a06` |
+
+Broad confirmations evaluated each frozen seed on all 1,024 development and
+512 validation inputs: zero native summary successes in each of the six panels,
+with unchanged source/input/checkpoint bindings. These 4,608 repeated attempts
+cover 1,536 unique inputs and carry no saved-command proof. They were not used
+to re-rank designs or checkpoints.
 
 The initial design mostly learned rapid transfer ending in crashes. Mean
 completed distance shaping was about 63–79 reward units versus a crash penalty
