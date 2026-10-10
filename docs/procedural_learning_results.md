@@ -171,3 +171,7 @@ Broad development/validation are confirmations after freezing, never another
 selection search. Further reward revisions are outside this run's declared
 allocation. Final results and the next experimental recommendation will replace
 the pending status only after those campaigns and independent replay finish.
+
+The [next experimental recommendation](procedural_learning_next.md) proposes a
+controlled curriculum over complete procedural missions and a separately
+bounded control-interface investigation. It is not another launched allocation.
