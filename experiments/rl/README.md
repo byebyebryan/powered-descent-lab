@@ -119,3 +119,10 @@ Its report exporter must be built with
 `rtk proxy cargo build --release -p pd-report --example campaign`.
 These commands create local evidence and never publish it.
 
+`verify.py --campaign CAMPAIGN --output NEW_VERIFICATION_JSON` independently
+replays saved native commands and checks their projection against the campaign
+schedule and descriptor. It imports no learning library and loads no checkpoint.
+Supply `--campaign` repeatedly to verify the full paired inventory in a fresh
+process, including the incumbent captures. Unsupported inputs remain accounted
+for; any capture or campaign integrity failure rejects the final inventory.
+
