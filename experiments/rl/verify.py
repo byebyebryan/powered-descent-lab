@@ -2,6 +2,8 @@
 import argparse
 import hashlib
 import json
+import math
+import statistics
 from pathlib import Path
 
 import pd_native
@@ -27,6 +29,7 @@ def verify_campaign(directory):
     manifest = json.loads(manifest_path.read_text())
     entries = {entry["index"]: entry for entry in manifest["entries"]}
     captures, landings, unsupported = 0, 0, 0
+    timeout_endpoints, incoming_speeds = [], []
     for index, (mission_index, attempt, row) in enumerate(zip(schedule, attempts, rows)):
         if attempt["attempt_index"] != index or attempt["mission_index"] != mission_index or row["mission_index"] != mission_index:
             raise ValueError("saved schedule differs from request")
@@ -62,12 +65,29 @@ def verify_campaign(directory):
             raise ValueError("final capture lacks exact integrity/replay proof")
         captures += 1
         landings += int(actual["verified_target_landing"])
+        episode, scenario = evaluation["execution"]["episode"], evaluation["scenario"]
+        state = episode["final_state"]
+        goal = scenario["mission"]["goal"]
+        if state["physical_outcome"] == "timed_out" and goal["kind"] == "landing_on_pad":
+            pad = next(pad for pad in scenario["world"]["landing_pads"] if pad["id"] == goal["target_pad_id"])
+            vertical = state["position_m"]["y"]-pad["surface_y_m"]-scenario["vehicle"]["geometry"]["touchdown_base_offset_m"]
+            timeout_endpoints.append((abs(state["position_m"]["x"]-pad["center_x_m"]), vertical,
+                                      math.hypot(state["velocity_mps"]["x"], state["velocity_mps"]["y"])))
+        if episode["incoming_contact"] is not None:
+            velocity = episode["incoming_contact"]["state"]["velocity_mps"]
+            incoming_speeds.append(math.hypot(velocity["x"], velocity["y"]))
         if captures % 128 == 0:
             print(json.dumps({"campaign": str(directory), "replayed": captures}), flush=True)
     return {"directory": str(directory), "scheduled": len(schedule), "replayed": captures,
             "unsupported": unsupported, "verified_target_landings": landings,
             "summary_sha256": hashlib.sha256(summary_path.read_bytes()).hexdigest(),
-            "checkpoint_loaded": False}
+            "checkpoint_loaded": False,
+            "timeout_endpoints": {"count": len(timeout_endpoints),
+                "median_horizontal_offset_m": statistics.median(item[0] for item in timeout_endpoints) if timeout_endpoints else None,
+                "median_vertical_above_upright_target_m": statistics.median(item[1] for item in timeout_endpoints) if timeout_endpoints else None,
+                "median_speed_mps": statistics.median(item[2] for item in timeout_endpoints) if timeout_endpoints else None},
+            "incoming_contacts": {"count": len(incoming_speeds),
+                "median_speed_mps": statistics.median(incoming_speeds) if incoming_speeds else None}}
 
 
 def main():
