@@ -15,6 +15,7 @@ later code and documentation housekeeping does not create a new flight capture.
 | Browse, serve, refresh and check saved reports | [Report workflow](reports.md) |
 | Identify maintained scripts and their side effects | [Tooling inventory](../scripts/README.md) |
 | Understand frozen inputs and archived pack metadata | [Fixture ownership](../fixtures/README.md) |
+| Generate independent procedural inputs and immutable collections | [Procedural missions](procedural_missions.md) |
 
 ## Active platform work
 

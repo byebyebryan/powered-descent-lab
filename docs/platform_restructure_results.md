@@ -48,9 +48,24 @@ are preserved. New validation artifacts stay under the unique run directory.
   The all-features normal `pd-run` tree contains only core and utility crates.
   All ten unrelated starting dirty files remain byte-for-byte preserved.
 
+- C: `pd-missions` implements versioned recipes, index-local
+  seeded value-noise terrain, local pad preparation, finite structural rejection,
+  create-only collections, physical/byte identities and append-only usage receipts.
+  Seven contract tests and strict crate Clippy passed. Characterization admitted
+  10,000 unique missions with one rejection/retry and no exhausted requests:
+  10,001 proposals, one more than the plan's nominal 10,000 proposal allowance.
+  No solver results informed this distribution. All 10,000 requests were repeated
+  in reverse order with exact result identity. The 64-mission integration
+  collection was generated and verified; see [workflow/coverage](procedural_missions.md).
+  Recipe and mission clocks/resources are explicit. Input readers do not regenerate
+  terrain, and no Pylander checkout or retained capture is a dependency.
+  The full maintained gate passed all 11 checks (`missions-gate.log`).
+  The pre-composition retained comparator passed exact numerical parity on all
+  44 cases (`pre-composition-parity.log`); timing exclusions remain the three
+  original wall-time fields. Retained inputs and artifacts were read-only.
+
 ## Remaining work
 
-- C: self-contained procedural missions, immutable collections and input coverage.
 - D: neutral evaluation/rendering and explicit application composition.
 - E: reset/step, capture modes, independent checkpoint adapter and measurements.
 - F: maintained solver ownership and exact preservation with complete configuration.
