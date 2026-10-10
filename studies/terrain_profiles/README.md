@@ -502,8 +502,378 @@ rtk proxy python3 -B studies/terrain_profiles/early_exit_sweep.py verify \
   outputs/eval/planner_v2_random_terrain/capture-early-exit-sweep-20261008-v2
 ```
 
+## Fresh validation and rejected departure probe
+
+The [completed pass](../../docs/terrain_departure_probe_results.md) follows its
+[bounded plan](../../docs/terrain_departure_probe_plan.md): the exact retained
+early-exit executable lands 77/100 genuinely new worlds, with all 35 clear routes,
+42/65 blocked routes, three preserved controls and five exact repeats. The
+[fresh collector](fresh_validation.py) and [contract](fresh_validation_plan.json)
+keep this denominator separate from the old 1k development population. The
+sample is now observed, not untouched for a later candidate.
+
+The [departure experiment](departure_probe.py) and
+[contract](departure_probe_plan.json) retain a source-sealed 13-mission negative
+result: neither `327` nor `791` gains an admitted H from a fixed half-lift/
+half-forward split. Other diagnostic records remain exact except root experiment
+identity/timings. The rejected core runtime was removed; only saved verification
+is maintained. Both verifiers are documented in the
+[evaluation workflow](../../docs/evaluation.md#planner-evaluation-v2-default).
+No broader campaign, production promotion or report-site publication followed.
+
+The subsequent [departure clearance design](../../docs/terrain_departure_clearance_design.md)
+and [proposed implementation](../../docs/terrain_departure_clearance_plan.md)
+use the complete 46-world source-bridge failure cohort. The read-only
+[analytical helper](departure_design.py) prints receipt-bound saved-geometry and
+kinematic-screen results; it writes no capture and launches no native process.
+These estimates are not accepted handoffs or landings. Its tests are included
+in the ordinary terrain-study unittest discovery.
+
 The authenticated previous cap-24 capture remains a dependency. Complete fallback
 flights, original selected proposals/early executed prefixes, exact queued
 nominals, repeat evidence and imported original ledgers are checked. This campaign
 is closed; a fresh sample, default promotion or publication needs a separate
 decision. No source or historical outcome is rewritten by saved verification.
+
+## Ballistic feedback paired diagnostic
+
+The completed opt-in [phase-transition pass](../../docs/ballistic_phase_transition_results.md)
+records 797/1000 versus 786 (twelve gains, one loss), with exact repeats, focused
+overlap and original inputs. Its [protocol](../../docs/ballistic_phase_transition_plan.md)
+uses [a frozen collector](ballistic_phase_transition_panel.py) for a behavior-identical
+probe, separate coast/entry/pad ablations, their combination and the original
+1000 worlds. Every focused stage has 29 primary worlds and three repeats; the
+full diagnostic has 1000 primary worlds and five repeats. Use `run` only when
+authorized; `verify` reads saved evidence without publishing or rerunning flights.
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/ballistic_phase_transition_panel.py verify full
+```
+
+Previous completed reference: the [finite-correction probe and 1k](../../docs/ballistic_finite_correction_results.md)
+records 786/1000 versus 706 (109 gains, 29 losses). The
+[collector](ballistic_finite_correction_panel.py) freezes one native candidate,
+checks the actual powered acquisition, preserves the failed reader-only focus
+capture, and verifies repeats, focused overlap and all original inputs. Its
+[pass](../../docs/ballistic_finite_correction_plan.md) is complete; no promotion,
+waypoint-ranking/recovery changes or new campaign starts automatically.
+
+Read-only saved verification:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/ballistic_finite_correction_panel.py verify full
+```
+
+Preceding separate diagnostic: the [frozen exit-check 1k result](../../docs/ballistic_exit_diagnostic_results.md)
+records 706/1000 versus 639 (78 gains, eleven losses), with 1,005 complete records
+and exact panel overlap. [Its collector](ballistic_exit_diagnostic.py) adds
+diagnostic authority without weakening the old mechanics gate or changing native
+flight behavior. `verify` is read-only; `run` creates the fixed new capture and
+refuses an existing root. No publication or default change is included.
+The [preceding design](../../docs/ballistic_correction_ownership_design.md) includes a
+[read-only mathematical screen](ballistic_waypoint_energy_screen.py) of existing
+waypoint fits. That tool never launches flights or writes files; its alternatives
+are not terrain-audited/realized landing evidence.
+
+The [results](../../docs/ballistic_feedback_sweep_results.md) retain 360/1000
+landings from the unchanged opt-in construction candidate on the exact original
+1k worlds, including 125 after waypoint handoffs. All 640 misses are finite
+flying stops, not physical crashes. This is not acceptance or a new untouched
+population. The original 817/1000 evidence, accepted site and selectors are
+unchanged; the separate 100-world validation was not run.
+
+The [collector](ballistic_feedback_sweep.py) and
+[frozen contract](ballistic_feedback_sweep_plan.json) authenticate old inputs,
+pin the existing candidate binary/source and record 1000 primary plus two exact
+external repeats. Each native attempt also repeats decisions and replays commands.
+The saved-only Rust example uses the common batch shell/tree/actual-flight preview
+and rich detail links; it creates a local capture index without site publication.
+
+```sh
+rtk proxy python3 -B ballistic_feedback_sweep.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-ballistic-feedback-20261008-v1
+```
+
+Run this command from `studies/terrain_profiles/`, or use the root-relative form
+in the evaluation workflow. It verifies the sealed 1002-attempt capture without
+running flights or changing artifacts. A new collection, candidate change or
+publication requires a separate request; it is not an automatic next task.
+
+### Completed bounded replan follow-up
+
+The [bounded replan results](../../docs/ballistic_replan_results.md) retain the
+first 381/1000 sweep and final 385/1000 guard-repaired sweep. The final source
+preserves all 360 construction-candidate landings and gains 25. The
+[first contract](ballistic_replan_sweep_plan.json),
+[final contract](ballistic_replan_final_sweep_plan.json) and
+[fixed panel runner](ballistic_replan_panel.py) are completed protocols, not new
+flight allowances. Goal replacements/reacquisitions remain separate from actual
+H; full candidate acceptance and publication remain deferred.
+
+The same saved verifier recognizes each explicitly sealed contract without
+weakening the original one:
+
+```sh
+rtk proxy python3 -B ballistic_feedback_sweep.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-ballistic-replan-20261008-r2
+```
+
+### Completed terrain-aware correction follow-up
+
+The [terrain-correction results](../../docs/ballistic_terrain_correction_results.md)
+record 401/1000 with all 385 previous successes exactly preserved. The
+[sealed contract](ballistic_terrain_correction_sweep_plan.json) and
+`ballistic_replan_panel.py --terrain-correction` are completed protocols, not new
+flight allowances. Same-goal command recovery is separate from arc-blocked
+waypoint selection and actual H. The full candidate remains unaccepted.
+
+Saved verification is read-only:
+
+```sh
+rtk proxy python3 -B ballistic_feedback_sweep.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-terrain-correction-20261008-v1
+rtk proxy python3 -B ../../scripts/resume-ballistic-feedback-sweep.py --verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-terrain-correction-20261008-v1
+```
+
+The capture retains four extra interrupted native invocations and their independent
+exact recovery copies outside the 1k denominator. A separately sealed reader-only
+same-clock H/recovery correction leaves all native source/binary/flight evidence
+unchanged. See the results for the original error wave and append-only provenance.
+
+### Completed waypoint-clearance mechanism panel
+
+The [waypoint-clearance results](../../docs/ballistic_waypoint_clearance_results.md)
+record 13/19 selected primary landings and two complete repeats. 807/928 pass
+their original proposal-budget stops but still stop later; 484 now lands.
+This is not a new 1k result. The dated create-only runner/finalizer retains the
+display-only underscore-ID repair without rerunning any collected flight.
+Its protocol is complete, not another active campaign allowance.
+
+Read-only verification from this directory:
+
+```sh
+rtk proxy python3 -B waypoint_clearance_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-waypoint-clearance-panel-20261008-v1
+```
+
+### Completed ridge-placement experiment
+
+The [pinned plan](../../docs/ballistic_ridge_waypoint_plan.md) and
+[ridge-waypoint results](../../docs/ballistic_ridge_waypoint_results.md) complete
+the two-flight probe and 21-record preservation panel. 807 lands with one actual
+H, but three old random landings are lost: 8/16 versus 10/16, plus three exact
+direct controls (11/19 versus 13/19 primary missions). No full 1k rerun, tuning,
+retry or promotion follows. The geometry heuristic needs pass-through timing
+diagnosis, not more terrain thresholds. This is a closed flight allowance.
+
+The saved verifier needs neither current executable nor external captures:
+
+```sh
+rtk proxy python3 -B ridge_waypoint_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-ridge-waypoint-panel-20261008-v1
+```
+
+### Completed waypoint-entry ablations
+
+The [pinned plan](../../docs/ballistic_waypoint_entry_plan.md) and
+[waypoint-entry results](../../docs/ballistic_waypoint_entry_results.md) retain
+four eight-record ablations and one 21-record combined preservation panel.
+Effort and recovery independently land 349/006 without an apex constraint.
+Combined remains 8/16 random landings, with three gains and three losses versus
+V5; three direct controls stay exact. All 53 records verify, with no tuning,
+retry, 1k campaign, default change or accepted-site publication.
+
+The native experimental command exposes `--waypoint-experiment` with explicit
+`ridge` (default), `effort`, `recovery` and `combined` identities. This does not
+select a maintained planner policy. The common rich reports add the estimated
+coast after burn cutoff without removing existing views.
+
+Read-only verification from this directory, using copied sources/evidence:
+
+```sh
+rtk proxy python3 -B waypoint_entry_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-waypoint-entry-preservation-20261008-v1
+```
+
+### Completed local-height / early-target ablations
+
+The [pinned plan](../../docs/ballistic_local_waypoint_plan.md) and
+[results](../../docs/ballistic_local_waypoint_results.md) retain four eleven-record
+comparisons and a 21-record combined preservation panel: all 65 records verify.
+`early-target` alone lands 715; `local-height` alone and
+`local-height-early-target` do not. The combined random panel falls from 8/16 to
+6/16, losing 084/142, with three exact direct controls. Early-only has not run
+the full preservation panel. The flight allowance is closed, with no tuning,
+retry, 1k campaign, default change or accepted-site publication.
+
+These V7 modes inherit V6 combined entry behavior. `combined` is the exact
+same-source V6 control; experimental CLI `ridge` and maintained policy 3 remain
+unchanged. The additive rich report identifies early destination goal changes
+separately from actual H, and records local height versus incoming-corridor max.
+`waypoint_entry_panel.py` supplies the shared proof/report runner through a frozen
+`PanelSpec`; the earlier V6 runner retains its original default contract.
+
+Read-only verification from this directory needs neither current executable nor
+the previous capture:
+
+```sh
+rtk proxy python3 -B waypoint_local_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-waypoint-local-preservation-20261008-v1
+```
+
+### Completed failure-only landing duration
+
+The [pinned protocol](../../docs/ballistic_landing_duration_plan.md) and
+[results](../../docs/ballistic_landing_duration_results.md) close all 44 records:
+nine same-source V7 controls, nine focused V8 records, five early-only controls
+and a 21-record combined preservation pack. The new explicit `landing-duration`
+mode opens terminal entry in 715/084/142 but they stop later under unchanged
+guards. It gains 268 without losses, moving from 6/16 to 7/16 random landings.
+All previous successful ordinary flights and direct controls stay exact.
+`early-target-landing-duration` preserves successful early-only 715 exactly.
+Neither maintained policy 3 nor experimental default `ridge` is changed.
+
+The shared fallback queries exactly one finite 3–14 s duration only after all
+existing latest-safe fits fail; it is used by entry and live descent. It does
+not establish sustained braking when repeatedly recomputed with zero initial
+net vertical acceleration. The countdown follow-up below tests that behavior,
+not guard relaxation. No tuning, retry, broad campaign or publication occurred.
+
+Read-only verification from this directory (no current native binary required):
+
+```sh
+rtk proxy python3 -B waypoint_landing_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-landing-duration-preservation-20261008-v1
+rtk proxy python3 -B waypoint_landing_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-landing-duration-early-preservation-20261008-v1 \
+  --mode early-target-landing-duration
+```
+
+### Completed retained landing countdown
+
+The [protocol](../../docs/ballistic_landing_countdown_plan.md) and
+[results](../../docs/ballistic_landing_countdown_results.md) close 48 records:
+11 exact same-source V8 controls, 11 focused V9 records, five early-only
+preservation records and the 21-record combined panel. The combined panel stays
+7/16, with no new/lost landings. Twelve random ordinary flights, direct controls
+and early-only successful 715 stay exact. 715/084/142/268 change; 268 still lands.
+
+V9 retains the first selected fallback arrival and releases once on infeasibility
+or expiry. It works as implemented, but 084 requires excess thrust later;
+715 releases on tilt after the desired terminal-speed policy changes. Initial
+acceleration admission is not complete-profile feasibility. Inspect that profile
+on saved states before authorizing more flights. No tuning, retries, default
+promotion, full 1k sweep or publication occurred.
+
+Read-only verification from this directory (no current native binary required):
+
+```sh
+rtk proxy python3 -B waypoint_countdown_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-landing-countdown-preservation-20261009-v1
+rtk proxy python3 -B waypoint_countdown_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-landing-countdown-early-preservation-20261009-v1 \
+  --mode early-target-landing-countdown
+```
+
+### Completed automatic coast-to-terminal comparison
+
+The [plan](../../docs/ballistic_coast_terminal_plan.md) and
+[results](../../docs/ballistic_coast_terminal_results.md) close 22 fixed records:
+11 exact same-source V9 controls and 11 explicit `coast-terminal` comparisons.
+084 lands with H1 only, automatically preserving motion to a body-clear crest
+checkpoint and entering standalone terminal control. No saved clock or W2 is
+used. The selected random panel moves from 3/6 to 4/6 without losses; all other
+ordinary flights and the three direct controls remain exact. Full 16-world/1k
+coverage is not measured. Defaults and accepted site remain unchanged.
+
+`coast_terminal_panel.py` reuses the sealed common panel runner. Its layout is
+six selected random worlds, three direct controls and repeats of 715/084; it
+rejects a wider panel. Admission checks current coast and bounded actual terminal
+feedback, with configured controller terrain handling and live guards retained.
+The two-second preview is not a complete landing suffix.
+
+Read-only verification from this directory needs neither the current binary nor
+the earlier capture:
+
+```sh
+rtk proxy python3 -B coast_terminal_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-coast-terminal-focus-20261009-v1
+```
+
+### Completed full preservation and paired coast-terminal sweep
+
+The separate [validation plan](../../docs/ballistic_coast_terminal_validation_plan.md)
+and [results](../../docs/ballistic_coast_terminal_validation_results.md) close
+1023 records with the exact focused native binary: 21 full-panel records and
+1002 conditional-sweep records. The panel lands 8/16 versus V9's 7/16 without
+losses, permitting the sweep. The full candidate lands 562/1000 versus the last
+complete ballistic sweep's 401, with 200 gains and 39 losses. This measures the
+combined newer refinements, not an isolated coast increment or fresh sample.
+Eight of nine worlds selecting coast land; 900 stops later under terrain reserve.
+
+`coast_terminal_validation.py` owns the full frozen inventory and conditional
+gate; the earlier focused runner remains unchanged. The
+[receipt-pinned sweep contract](ballistic_coast_terminal_sweep_plan.json) reuses
+the common sweep collector, copies authenticated gate evidence for portable
+checking, and retains the original worlds, deadlines and cap 24. Native source,
+guards, renderer, report navigation and accepted defaults/site are unchanged.
+No retry, tuning or additional flight follows the closed allowance.
+
+Read-only verification from this directory:
+
+```sh
+rtk proxy python3 -B coast_terminal_validation.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-coast-terminal-preservation-20261009-v1
+rtk proxy python3 -B ballistic_feedback_sweep.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-coast-terminal-sweep-20261009-v1
+```
+
+### Closed focused terminal braking guard
+
+The [plan](../../docs/ballistic_terminal_braking_plan.md) and
+[results](../../docs/ballistic_terminal_braking_results.md) close four focus
+records: 142 and 974 plus exact external repeats. The opt-in candidate lands 974;
+142 slows substantially but stops beside the pad under unchanged body reserve.
+The focus gate fails, so the conditional 21-record preservation panel did not run.
+No new 1k, default promotion or accepted-site publication follows this result.
+
+`terminal_braking_panel.py` reuses the common sealed collector and rich templates,
+with a separate candidate identity and isolated native target. It refuses panel
+execution after a failed focus or a source/binary/renderer change. Its completed
+capture remains portable and read-only verifiable:
+
+```sh
+rtk proxy python3 -B terminal_braking_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-terminal-braking-focus-20261009-v1
+```
+
+The returned `passed: false` is acceptance failure, not an evidence failure.
+The subsequent body-aware result below addresses that centering defect.
+
+### Closed body-aware terminal centering pass
+
+The [plan](../../docs/ballistic_terminal_centering_plan.md) and
+[results](../../docs/ballistic_terminal_centering_results.md) close 25 records.
+142 and 974 land with exact external repeats. The preservation panel improves
+from 8/16 to 10/16 without previous-candidate losses; all three direct controls
+land, and 084 retains its identical one-H flight. Their changed braking commands
+nonetheless fail the declared exact direct-flight criterion. No new full 1k ran.
+
+`terminal_centering_panel.py` reuses the sealed common collectors and rich report
+templates. Its conditional full-sweep admission binds the focus and preservation
+receipts to one native/source/renderer identity and refuses this failed panel.
+Do not weaken the captured criterion, tune or retry it. Separate read-only
+authentication verifies all records and receipts without promoting acceptance.
+
+```sh
+rtk proxy python3 -B terminal_centering_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-terminal-centering-focus-20261009-v1
+rtk proxy python3 -B terminal_centering_panel.py verify \
+  ../../outputs/eval/planner_v2_random_terrain/capture-terminal-centering-preservation-20261009-v1 --panel
+```
+
+The second command is expected to raise the exact-control mismatch. The practical
+next decision is a separate outcome-based control contract and full-1k test of
+the same frozen native candidate, not a new controller tweak. No defaults,
+accepted-site navigation or server lifecycle changed.

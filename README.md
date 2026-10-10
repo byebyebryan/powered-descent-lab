@@ -8,8 +8,12 @@ owns presentation, input and game feel.
 ## Current checkpoint
 
 - Policy 3 is the sole executable planner. It constructs a terrain-blind nominal
-  ballistic transfer, audits that fixed path against terrain, applies a local
+  flight, audits that fixed path against terrain, applies a local
   clearing correction when needed, and replans from the actual handoff state.
+  Airborne proposals can use long powered landing segments; the
+  [ballistic aim and correction revision](docs/ballistic_aim_correction_plan.md)
+  has an opt-in candidate and [local waypoint results](docs/ballistic_local_waypoint_results.md),
+  but is not the accepted planner.
 - The accepted planner pack has 36/36 core target landings: 11 direct and 25
   corrected. Eight diagnostics remain separate: two landings, four zero-step
   `NoClearing` stops and two unsupported inputs. All 44 inputs pass integrity;

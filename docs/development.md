@@ -64,13 +64,19 @@ justify the check:
 
 ```sh
 rtk proxy node scripts/check-planner-development.mjs \
-  --parity-capture outputs/eval/planner_v2_lab_suite/capture-session-repair-20261005-native
+  --parity-capture outputs/eval/planner_v2_lab_suite/capture-early-exit-20261007-native
 ```
 
 This executes all 44 frozen inputs locally without writing/publishing captures.
 Complete flight records must match the validated saved baseline, excluding only
 `planning_s`, `execution_s` and `replay_s`. It is regression evidence, not a new
 accepted flight campaign. Keep diagnostic outcomes separate from landings.
+
+This explicitly identifies the later local pre-candidate checkpoint; it does
+not relabel or publish it as the accepted site. The published October-5 capture
+predates a [documented numerical geometry repair](ballistic_feedback_results.md)
+and differs by 8.88e-16 m in its first clearance scalar. Do not weaken the exact
+comparator or silently substitute that source when claiming preservation.
 
 ## Optional CLI boundary
 

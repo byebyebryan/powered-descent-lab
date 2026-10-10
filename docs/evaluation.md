@@ -10,6 +10,95 @@ Use the saved-capture checks for read-only inspection.
 
 ## Planner Evaluation (V2 Default)
 
+The [ballistic aim and correction plan](ballistic_aim_correction_plan.md) proposes
+a feedback planning revision and full paired regression: the maintained 44-case
+pack, portable diagnostics, easy/harder 100-case sets, all original 1k worlds and
+the separate observed 100-world validation set. The opt-in
+[construction candidate](ballistic_feedback_results.md) is implemented but not
+accepted; its separate [1k diagnostic](ballistic_feedback_sweep_results.md)
+lands 360/1000. The subsequent [bounded replan pass](ballistic_replan_results.md)
+lands 385/1000, preserving all 360 candidate successes. The subsequent
+[terrain-aware correction pass](ballistic_terrain_correction_results.md) lands
+401/1000, preserving all 385 earlier complete flights and gaining 16. These are opt-in diagnostics;
+the full candidate acceptance campaign is not executing.
+The later [waypoint-clearance panel](ballistic_waypoint_clearance_results.md)
+lands 13/19 selected primary missions (plus two finite-stop repeats); 807/928
+progress beyond their original stops but do not land. It is not another full 1k
+estimate, and ordinary planner defaults remain unchanged.
+The later [ridge-aware panel](ballistic_ridge_waypoint_results.md) lands 807 but
+loses three previous selected landings: 8/16 random worlds versus 10/16, with
+three unchanged direct controls. It is not ready for a wider campaign or adoption.
+The preceding [waypoint-entry ablations](ballistic_waypoint_entry_results.md)
+land 349/006 with either lower effort or higher-energy recovery. The combined
+preservation panel stays at 8/16, with three gains and three losses, plus three
+exact direct controls. Its fixed 53 invocations are complete; the opt-in modes
+do not change the maintained planner or the experimental ridge default.
+The preceding [local waypoint ablations](ballistic_local_waypoint_results.md)
+complete 65 planned records: early-target alone lands 715, but local height alone
+does not, and the combined preservation panel falls from 8/16 to 6/16 with
+084/142 lost. Direct controls remain exact. Early-only has seven focused random
+comparisons, not full preservation validation; no wider campaign or adoption
+follows this mixed result. All new modes are explicit opt-ins.
+The subsequent [landing-duration experiment](ballistic_landing_duration_results.md)
+completes 44 more bounded records: combined 715/084/142 enter landing but stop
+later, while 268 is gained without losses (7/16 versus 6/16). All previous
+successful ordinary flights, direct controls and early-only 715 remain exact.
+An instantaneous admitted fit is not sustained braking or a verified landing.
+Its allowance is closed; no 1k campaign or default adoption follows.
+The [retained countdown follow-up](ballistic_landing_countdown_results.md)
+completes 48 records with no new landings (7/16). The arrival clock is retained,
+but thrust/tilt/terrain revalidation releases it before landing. Initial
+acceleration admission does not establish full-profile braking feasibility.
+All old landing outcomes, direct controls and early-only 715 are preserved;
+268's successful ordinary flight changes. Defaults remain unchanged.
+The [084 coast-through diagnostic](ballistic_terminal_coast_results.md) then
+records four fixed setup comparisons. Preserving H1 coast and using standalone
+terminal defaults at a scheduled checkpoint lands without W2; transfer setups
+remain airborne at the original budget. This saved-prefix capability example
+does not select automatic entry timing or change maintained planner commands.
+The subsequent [automatic branch](ballistic_coast_terminal_results.md) completes
+22 fixed comparisons: 084 selects its crest-clear/terminal continuation from
+runtime state and lands with H1 only. Selected random outcomes move from 3/6 to
+4/6, with no losses, all other ordinary flights exact and three exact direct
+controls. The focused allowance is closed. The subsequently authorized
+[full preservation and 1k pass](ballistic_coast_terminal_validation_results.md)
+completes 1023 records: 8/16 panel landings without losses, then 562/1000 versus
+401, with 200 gains and 39 losses. The current candidate combines several
+refinements; this is not the isolated coast-branch increment or held-out coverage.
+All records/repeats/proofs verify, with no actual crashes. The accepted
+policy-3 site and defaults are unchanged; its retained 817/1000 remains stronger.
+Frozen inputs, separate denominators, candidate command/replay proofs
+and native/CLI/repeat agreement remain required; historical full-flight parity
+is not acceptance for an intentional behavior change. Current commands below
+still execute the existing planner, not the proposed loop.
+
+Read-only saved diagnostic verification (no new flight or publication):
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/ballistic_feedback_sweep.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-ballistic-feedback-20261008-v1
+rtk proxy python3 -B studies/terrain_profiles/ballistic_feedback_sweep.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-ballistic-replan-20261008-r2
+rtk proxy python3 -B studies/terrain_profiles/ballistic_feedback_sweep.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-terrain-correction-20261008-v1
+rtk proxy python3 -B scripts/resume-ballistic-feedback-sweep.py --verify \
+  outputs/eval/planner_v2_random_terrain/capture-terrain-correction-20261008-v1
+rtk proxy python3 -B studies/terrain_profiles/waypoint_clearance_panel.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-waypoint-clearance-panel-20261008-v1
+rtk proxy python3 -B studies/terrain_profiles/ridge_waypoint_panel.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-ridge-waypoint-panel-20261008-v1
+rtk proxy python3 -B studies/terrain_profiles/waypoint_entry_panel.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-waypoint-entry-preservation-20261008-v1
+rtk proxy python3 -B studies/terrain_profiles/waypoint_local_panel.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-waypoint-local-preservation-20261008-v1
+rtk proxy python3 -B studies/terrain_profiles/coast_terminal_panel.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-coast-terminal-focus-20261009-v1
+rtk proxy python3 -B studies/terrain_profiles/coast_terminal_validation.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-coast-terminal-preservation-20261009-v1
+rtk proxy python3 -B studies/terrain_profiles/ballistic_feedback_sweep.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-coast-terminal-sweep-20261009-v1
+```
+
 The [bounded early-exit results](terrain_early_exit_results.md) retain a separate
 nine-mission cap-24 diagnostic and normal 44-case cap-6 acceptance pack. Both
 allowances are closed; accepted selectors and report publication are unchanged.
@@ -32,6 +121,24 @@ is also complete: 817/1000 verified landings, 69 gains, no lost prior landings.
 It uses the exact admitted experimental cap-24 binary and unchanged original
 worlds, not the normal acceptance denominator. See
 [saved sweep verification](#paired-early-exit-1000-world-rerun) below.
+
+The [fresh checkpoint and departure probe](terrain_departure_probe_results.md)
+are also closed: 77/100 new-world landings with the retained early-exit/cap-24
+binary, followed by a negative 13-mission fixed departure experiment. Its runtime
+was retired; no default or accepted selector changed. Read-only checks are:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/fresh_validation.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-fresh-early-exit-20261008-v1
+rtk proxy python3 -B studies/terrain_profiles/departure_probe.py verify \
+  outputs/eval/planner_v2_random_terrain/capture-departure-probe-20261008-v1
+```
+
+These checks authenticate saved native/operator sources, full flights, controls,
+repeats and receipts without new flights, replay or publication. The fresh
+edition also needs its retained baseline for reference authentication. The
+rejected departure runner fails before output reservation when its runtime is
+absent; it is not a supported ordinary planner command.
 
 Run the current planner lab suite with the normal batch entrypoint:
 
@@ -123,10 +230,13 @@ rtk proxy node scripts/check-planner-development.mjs
 ```
 
 For the explicit read-only retained-baseline regression, add
-`--parity-capture outputs/eval/planner_v2_lab_suite/capture-session-repair-20261005-native`.
+`--parity-capture outputs/eval/planner_v2_lab_suite/capture-early-exit-20261007-native`.
 It executes all 44 frozen inputs locally and requires exact complete-flight
 parity except the three existing wall-time fields. The ordinary gate uses tracked
 direct, corrected and multi-handoff tests and needs no locally saved capture.
+This is the explicitly named later local numerical checkpoint, not a new
+accepted-site selection; the published October-5 capture predates the documented
+geometry-scalar repair. See [retained parity scope](development.md#optional-retained-flight-regression).
 
 ## Single Planner Flight
 

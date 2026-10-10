@@ -145,6 +145,146 @@ landing suffix or a literal terrain-feature far edge. Another correction may
 follow. Initial rest and airborne acquisition use different realization helpers
 but share this outer-loop contract.
 
+That contract does not currently guarantee a target-directed ballistic transfer
+at every handoff. The airborne constructor can preserve an off-target coast and
+use a long powered terminal bridge to reach the pad, as recorded in `715`.
+The [ballistic aim and correction plan](ballistic_aim_correction_plan.md) proposes
+actual-state velocity correction, waypoint targeting and rechecking during burns,
+with simple destination approach safeguards. It replaces complete landing-suffix
+construction as the proposed planning logic; it is not the accepted planner.
+An opt-in [construction candidate](ballistic_feedback_results.md) now implements
+that direction, separate from policy 3. Its
+[paired 1k diagnostic](ballistic_feedback_sweep_results.md) lands 360/1000,
+including 125 after H, well below the retained 817/1000. It is not accepted or
+selected by the maintained planner commands. The subsequent
+[bounded replan pass](ballistic_replan_results.md) shares blocked-route handling
+across destination/waypoint arcs, coast and short-command prediction. Its final
+385/1000 preserves all 360 candidate wins and gains 25, but remains unaccepted.
+At that checkpoint, none of the 187 original short-command stops became a landing,
+motivating correction-capability and warning/response-room investigation. Do not
+infer that every finite miss is a takeoff collision or physical impossibility.
+The subsequent [terrain-aware correction pass](ballistic_terrain_correction_results.md)
+separates geometric route obstruction from immediate command danger. The latter
+keeps the current goal and tries bounded thrust/attitude recovery before resuming
+acquisition from actual state. It lands 401/1000 with 16 gains and exact flight
+parity for all 385 earlier successes. Terminal/source ownership and handoff guards
+are unchanged. This is an opt-in improvement, not general terrain reliability;
+205 no-command stops motivate an earlier response-room diagnostic.
+
+The subsequent [waypoint-clearance repair](ballistic_waypoint_clearance_results.md)
+keeps x fixed after a rejected proposal and estimates a body-aware height lift
+over its incoming arc and short continuation, including existing H height
+tolerance. Reconstruction/rechecking still uses four total proposals. It removes
+807/928's original proposal-budget stops, but both remain finite later misses;
+484 lands and all twelve selected successful comparisons remain successful.
+The direct constructor, physical reserve and actual H guard are unchanged.
+This 21-record opt-in panel is not a new 1k rate or planner acceptance.
+
+The later [ridge-waypoint experiment](ballistic_ridge_waypoint_results.md)
+resolves crests across small terrain dips and places goals beyond them. 807 now
+lands with one H, but the selected random panel falls from 10/16 to 8/16, losing
+006/142/349; three direct controls stay exact. This is not an adopted replacement.
+Its loss review exposes descending-height timing inherited by pass-through
+waypoint construction, plus separate later destination misses. Keep these
+mechanisms distinct; more terrain-height thresholds are not yet justified.
+
+The subsequent [waypoint-entry experiment](ballistic_waypoint_entry_results.md)
+compares least added thrust effort and forward-crossing/pending-coast recovery.
+Both independently land 349/006 without forcing an apex at the waypoint; the
+combined panel remains 8/16, with three gains and three losses versus V5. In
+particular, a cheaper waypoint entry can worsen the later destination approach.
+All modes are explicit opt-ins, with unchanged destination and physical guards;
+neither policy 3 nor the experimental ridge default is replaced.
+
+The subsequent [local waypoint experiment](ballistic_local_waypoint_results.md)
+separates feature-local height from negative-room early destination reacquisition.
+The latter alone lands 715 without recording a false H2. Local height retains
+full incoming audits but worsens some downstream states; the combined panel
+falls from 8/16 to 6/16, losing 084/142. All three new modes are opt-in. Saved
+715/084/142 states expose destination coasts losing approach admission before
+terminal ownership opens. The follow-up
+[landing-duration experiment](ballistic_landing_duration_results.md) confirms a
+latest-safe horizon sampling gap and opens landing with one bounded opt-in fit.
+The combined panel gains 268 (7/16), with no lost landings; 715/084/142 still stop
+under physical guards. Re-solving zero-initial-net-vertical fits loses braking
+room in 084/142. The [retained countdown follow-up](ballistic_landing_countdown_results.md)
+holds arrival correctly but adds no landings (7/16). 084 releases on thrust;
+715 releases on tilt after a desired-speed change. The first fallback's initial
+request can pass while its ideal later braking exceeds authority. Inspect that
+profile before proposing another fallback change, not guard relaxation or
+adoption. Entry/live descent share the fallback; ordinary defaults do not.
+The later [084 coast-through capability probe](ballistic_terminal_coast_results.md)
+instead preserves the existing H1 coast and lands with standalone terminal
+defaults from a scheduled checkpoint, without W2. Transfer-configured trials
+remain airborne at the original budget. This proves one guarded continuation,
+not an automatic entry policy: the checkpoint is forced and the configured
+terrain approximation disagrees with the executed safe flight. The subsequent
+[automatic coast-to-terminal branch](ballistic_coast_terminal_results.md)
+resolves the first crest from runtime state, checks actual engine-off motion and
+two seconds of guarded standalone terminal feedback, then rechecks at actual
+entry. It lands 084 without W2 or a saved clock; selected comparisons improve
+from 3/6 to 4/6 without losses, with all other ordinary flights exact. This
+bounded preview is not a complete landing certificate or terrain-coverage claim.
+The subsequent [full preservation and 1k validation](ballistic_coast_terminal_validation_results.md)
+preserves all seven V9 panel successes and lands 562/1000, versus the last broad
+ballistic candidate's 401 (200 gains, 39 losses). Eight of nine selected coast
+worlds land; 900 meets later terrain after the preview and stops under the
+ordinary guard. Keep that ownership boundary separate from the 39 broader
+regressions, none of which selects this branch. Policy 3's retained 817/1000 is
+still stronger; current modes/defaults/site are unchanged and no adoption follows.
+
+The later opt-in [terminal coordination panel](ballistic_terminal_coordination_results.md)
+retains nominal lateral intent under an early required-lift constraint and starts
+upright, body-contained touchdown settlement sooner. It improves selected recovery
+to 115/121 versus V12's 75, but 048/755 regress: nominal intent alone is not a
+lateral capture guarantee. Admission failed and no new full 1k ran. Ordinary
+defaults, standalone coast-terminal execution and physical guards stay unchanged.
+
+The separately authorized [unchanged-coordination full diagnostic](ballistic_terminal_coordination_sweep_results.md)
+then lands 639/1000 versus 592, with 49 gains and two known losses. All 1,005
+records/repeats verify, including one typed prediction-domain stop rather than
+an executed domain violation. All 335 preterminal stopped flights stay exact:
+they now account for 335/361 failures. Terminal-only changes cannot resolve
+this larger planning/acquisition gap. The earlier admission remains failed;
+defaults, accepted site and root navigation are unchanged.
+
+The subsequent [V14 mechanics ablation](ballistic_mechanics_results.md) does not
+pass admission. Exit consistency gains three selected landings but loses two;
+early piecewise replanning gains none and loses 715; earlier response warning
+preserves the 25 panel wins but gains none. All 192 native records authenticate,
+with reader-only identity repair kept separate from unchanged flight artifacts.
+No combined candidate or new 1k ran. The early adapter reveals repeated queued
+turn/burn cancellation, while recovery candidates still use unequal response
+horizons. These opt-ins are diagnostic, not adopted fixes; investigate that
+execution ownership before adding more geometry or solver branches.
+
+The separately authorized [unchanged exit-check diagnostic](ballistic_exit_diagnostic_results.md)
+then lands 706/1000 versus 639: 78 gains, eleven losses, every recipe improved,
+all 1,005 records/repeats and 45 panel overlaps authentic. The failed panel gate
+is not reclassified. Consistent exit checking is broadly worthwhile, but 134
+remaining missing-aim stops occur exactly at H. The
+[ownership/energy design](ballistic_correction_ownership_design.md)
+separates optional replanning from active-leg safety. Its waypoint-ranking
+alternative remains deferred and mathematical, not landing proof.
+
+The subsequent opt-in [finite-correction pass](ballistic_finite_correction_results.md)
+confirms the ideal-arc/finite-acquisition mismatch at actual query ticks, then
+lands 786/1000 versus 706 (109 gains, 29 losses). It admits and retains destination
+corrections using a native powered-prefix and realized-cutoff coast check,
+preserving absolute clocks, cadence and all physical guards. Initial nominal
+generation, waypoint ranking, recovery and terminal behavior stay unchanged.
+The 19 new terminal short-command stops make entry timing/terrain clearance the
+next diagnostic question, not an automatic controller change or default promotion.
+
+The following opt-in [phase-transition pass](ballistic_phase_transition_results.md)
+lands 797/1000 versus 786 (twelve gains, one loss). Native finite-rotation coast
+and configured two-second terminal-prefix checks resolve the eight selected early
+entry failures; a guarded pad-lift adapter has limited effect. Initial arcs and
+ordinary defaults remain unchanged. All 95 prior recovery-failure flights remain
+exact, with routing regression 407 adding one more. Common-response diagnostics
+find a warning and safe existing choice at the same earlier state in 80/96 recovery
+stops; that supports testing earlier response, not a complete landing claim.
+
 The current source adds the bounded
 [failure-only timing fallback](intervention_fallback_results.md): complete the
 existing local search first, then try at most four new conflict-relative entries
@@ -210,8 +350,23 @@ records 817/1000 landings under the same isolated cap 24: 69 gained, all 748 old
 successes preserved, and all 387 clear direct flights unchanged. All four terrain
 recipes improve and all 1010 attempts verify. Remaining stops are 148 clearing
 and 35 nominal exhaustions, not crashes; 65 still stop before any correction.
-The next validation candidate is a separately frozen fresh 100-world sample,
-not additional acquisition/controller tuning or automatic default-cap promotion.
+The [fresh checkpoint and departure probe](terrain_departure_probe_results.md)
+then records 77/100 new-world landings (35/35 clear, 42/65 blocked), with all
+108 attempts/replays and exact controls/repeats passing. The fixed half-lift/
+half-forward departure experiment produces no admitted H on `327/791`; its
+runtime edits were removed after the negative result. Terrain-derived departure
+clearance is a design question, not an adopted fix or further flight allowance.
+Do not tune using the now-observed fresh sample or automatically promote cap 24.
+The [departure clearance design review](terrain_departure_clearance_design.md)
+and [implementation plan](terrain_departure_clearance_plan.md) are parked
+analytical proposals, not the selected fix. The
+[planning-cycle diagnostic review](terrain_planning_cycle_review.md) separates
+46 departure conflicts, 25 coast conflicts, 27 acquisition conflicts, 50 approach
+conflicts and 35 missing nominals. Report overlays reenact recorded programs
+from source-proven cycle origins; they do not generate new trajectories or
+replace acceptance proof. Review of `715` subsequently selects the planned
+ballistic aim/correction revision above; the other diagnostic mechanisms remain
+measured context, not a reason to relax their safety guards.
 
 The supported initial request is a route-free `LandingOnPad` mission with the
 tested vehicle, Earth gravity, 120 Hz physics / 60 Hz commands, upright rest on

@@ -24,6 +24,36 @@ modules, not separate campaign entrypoints. Tests with batch/tree/common names
 retain coverage of the shared report contract; those names do not designate
 separate report templates.
 
+The dated [terrain-correction collection](../docs/ballistic_terrain_correction_results.md)
+also retains `resume-ballistic-feedback-sweep.py` and
+`finish-ballistic-feedback-sweep.py` as exact-capture, append-only recovery tools.
+They are not ordinary workflow steps or new flight allowances: their run modes
+create diagnostic attempts/artifacts, never overwrite retained evidence or
+publish reports. The resume tool's `--verify` mode is read-only. Its
+`test-ballistic-collector-recovery.py` checks same-clock goal/H ordering without
+external captures or flights.
+
+The dated [frozen terminal-centering sweep](../docs/ballistic_terminal_centering_sweep_results.md)
+retains `run-terminal-centering-sweep.py` and
+`continue-terminal-centering-sweep.py`. Their `verify` modes are read-only;
+create-only run modes belong to the closed 1002-invocation allowance, not new
+flight authorization. The first capture remains interrupted, while the second
+copies its unchanged prefix and contains only the exact observed domain error.
+`test-terminal-centering-sweep.py` and
+`test-terminal-centering-continuation.py` check admission and exception boundaries
+without flights. These tools do not publish reports or change server state.
+
+The subsequent [terminal coordination pass](../docs/ballistic_terminal_coordination_results.md)
+retains `run-terminal-coordination.py`: `verify-panel`/`verify-sweep` are read-only.
+Its create-only measured allowance is closed after failed admission; the conditional
+full sweep did not run. `test-terminal-coordination.py` exercises cohort denominators,
+prefix preservation, admission and typed-domain evidence without flights or captures.
+The separately authorized [frozen-coordination 1k](../docs/ballistic_terminal_coordination_sweep_results.md)
+adds `diagnostic-sweep` and read-only `verify-diagnostic`. Its 1,005-record
+allowance is now closed: 639/1000 landings, unchanged candidate, failed panel
+verdict retained. Diagnostic authority never passes the older conditional gate;
+collector tests also reject executable/Rust/renderer/planning-script drift.
+
 Retired nominal/V1/conservative-ballistic research runners are intentionally
 absent. Use the [research archive](../docs/history.md) to understand their saved
 results, not to restore their obsolete frontdoors. Scripts inspect or create

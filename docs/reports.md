@@ -9,9 +9,183 @@ no accepted report site until local evidence is generated or supplied.
 
 ## Report Serving
 
+Start at `/` or `/reports/`: **Latest planner experiment** links directly to the
+[latest frozen-centering sweep](ballistic_terminal_centering_sweep_results.md):
+the full 1,000-world batch (592 landings, 392 verified finite stops and 16
+unverified terrain-domain errors), the smaller body-centering preservation panel
+(10/16 random landings, earlier exact-flight admission failed), and mission
+shortcuts for recovered 142/974, new terminal stop 086 and deadline stop 288.
+These entries are also under **Waypoint planning** and **Browse all reports**.
+Links use the server's current host, so no long LAN URL needs copying from chat.
+
+The latest sweep is at
+`/eval/planner_v2_random_terrain/capture-terminal-centering-sweep-20261009-v1-complete/`.
+Its 75 gains are offset by 45 former wins not reproduced, including 12 unverified
+errors that the batch's recorded-only loss headline omits. Root navigation labels
+that limitation explicitly. The previous 562/1000 coast-to-terminal batch and
+8/16 panel remain linked under **Waypoint planning** and **Browse all reports**;
+they are not replaced or rewritten.
+
+The newer, separately authorized
+[terminal-coordination diagnostic](ballistic_terminal_coordination_sweep_results.md)
+records 639/1000 with complete evidence. It is directly reachable at
+`/eval/planner_v2_random_terrain/capture-terminal-coordination-diagnostic-1k-20261009-v1/`.
+Root navigation still selects the 592-landings capture described above: this
+flight allowance did not authorize another root-navigation refresh. The new
+batch uses the same rich details and failure-first tree; its generic previous
+comparison is V10 (562), while the results document supplies the V12 comparison.
+
+This is navigation to existing experimental capture reports, not adoption or
+accepted-capture publication. The accepted **current planner V2 batch** and
+retained policy-3 sweep (817/1000) remain separate. Rich batch/detail pages,
+captures, selectors and receipts are not rewritten; only navigation indexes are
+refreshed. `home_highlights` in `fixtures/reports/report_navigation.json` selects
+the featured entries explicitly. `capture_page` entries link existing local HTML
+under `outputs/eval/`; they are not discovered recursively or selected by mtime.
+Missing captures/mission shortcuts are marked unavailable, never substituted.
+
+The preceding [retained countdown experiment](ballistic_landing_countdown_results.md)
+uses the common rich reports at
+`/eval/planner_v2_random_terrain/capture-landing-countdown-preservation-20261009-v1/`.
+All 48 records verify, but it adds no landings (7/16). Start with 084/715;
+use **Jump to decision → maintained_landing_entry**, then final
+**short_command_obstruction** to distinguish actual state from a rejected
+prediction. Compare successful early-only 715 in
+`/eval/planner_v2_random_terrain/capture-landing-countdown-early-preservation-20261009-v1/`.
+No accepted navigation/publication or server restart occurred.
+
+The preceding [landing-duration experiment](ballistic_landing_duration_results.md)
+retains the same common rich templates at
+`/eval/planner_v2_random_terrain/capture-landing-duration-preservation-20261008-v1/`.
+Start with gained 268, then inspect 084/142's late descent failures and 715's
+edge-clearance stop. **Jump to decision → maintained_landing_entry** identifies
+the newly opened landing transition. The final **short_command_obstruction**
+shows the rejected prediction separately from the still-flying actual state;
+a predicted crash is not an executed crash. All 44 records verify, but the
+three original subjects still do not land. This is local diagnostic evidence,
+not accepted-site publication or authorization to start/restart a server.
+
+The preceding [local waypoint experiment](ballistic_local_waypoint_results.md) uses
+the common rich templates. Start with 715 at
+`/eval/planner_v2_random_terrain/capture-waypoint-local-early-target-20261008-v1/`,
+then compare its failed combined flight at
+`/eval/planner_v2_random_terrain/capture-waypoint-local-combined-20261008-v1/`.
+**Jump to decision → destination_reacquired_before_waypoint** shows the destination
+goal, previous waypoint and projected braking room. W2 is superseded, not an
+actual H2. The full panel is at
+`/eval/planner_v2_random_terrain/capture-waypoint-local-preservation-20261008-v1/`;
+inspect lost 084/142. Local-height summaries show both the local basis and former
+incoming-corridor maximum, without removing existing panels. These local captures
+are not newly published accepted navigation; defaults/site remain unchanged.
+
+The preceding [waypoint-entry experiment](ballistic_waypoint_entry_results.md) uses
+the common rich templates at
+`/eval/planner_v2_random_terrain/capture-waypoint-entry-preservation-20261008-v1/`.
+Review 349's lower-effort ballistic waypoint flight, then 807/139/268's losses.
+The focused recovery-only comparison is at
+`/eval/planner_v2_random_terrain/capture-waypoint-entry-recovery-20261008-v1/`:
+349's **waypoint_acquisition_continues** keeps its higher-energy entry and lands.
+The additive teal **Predicted cutoff coast · not flown** trace shows the coast
+estimated after the remaining burn, separate from the idealized arc, ballistic
+coast now and actual flight. Predictions are not restored states or handoffs.
+All previous panels remain. These local captures are not accepted-site
+publication or selected by report-home navigation; defaults remain unchanged.
+
+The preceding [ridge-aware waypoint panel](ballistic_ridge_waypoint_results.md) uses
+the common rich templates at
+`/eval/planner_v2_random_terrain/capture-ridge-waypoint-panel-20261008-v1/`.
+Start with 807 (one-H landing), then 006/349 (lost acquisition) and 142/928
+(later destination misses). **Jump to decision → waypoint_selected** shows the
+chosen crest as a separate terrain marker alongside the desired arc and goal.
+Goal revisions are not additional actual H. This selected experiment is not
+adopted, published to the accepted site or a new 1k estimate.
+
+The preceding [waypoint-clearance mechanism panel](ballistic_waypoint_clearance_results.md)
+uses the common batch/detail templates at
+`/eval/planner_v2_random_terrain/capture-waypoint-clearance-panel-20261008-v1/`.
+Review 807/928's later finite stops and 484's added landing. This local opt-in
+capture is not published/accepted and does not replace report-home selectors.
+
+The earlier opt-in [terrain-correction diagnostic](ballistic_terrain_correction_results.md)
+has a local common-template batch at
+`/eval/planner_v2_random_terrain/capture-terrain-correction-20261008-v1/`.
+It is not published or selected by accepted-site navigation. Use **Jump to
+decision → terrain_recovery_started / terrain_recovery_resumed** to inspect
+same-goal correction. Start with `114` (direct recovery and landing), `139`
+(recovery toward W1 and landing), and `034/055` (remaining recovery limits).
+Selected/rejected commands and their prediction horizons are described separately
+from actual H. The earlier [ballistic replan diagnostic](ballistic_replan_results.md) has a
+local common-template batch at
+`/eval/planner_v2_random_terrain/capture-ballistic-replan-20261008-r2/`.
+It is not published as the accepted report or selected by the site navigation.
+Within a rich mission detail, **Jump to decision** selects an obstruction,
+waypoint selection/replacement or same-goal reacquisition. The purple star is the
+selected refresh's goal; the gray star is its previous goal. Revision labels and
+proposed-command traces distinguish queries from actual handoffs and flown motion.
+All previous detail panels remain. Start with `084/268` for recovered waypoint
+flights and `055` for a replacement followed by an unresolved correction miss.
+
+The retained policy-3 [paired early-exit 1k run](terrain_early_exit_sweep_results.md) is
+published separately at
+`/reports/eval/planner_v2_random_terrain/recheck-early-exit-20261008-cycles-v5/`:
+**Report home → Waypoint planning → Retained policy-3 1,000-world sweep · failure review**.
+It shows **817/1000 landings and 183 stopped primary missions**, compared with
+748 prior landings under the same experimental cap 24. This is not a new
+campaign, held-out estimate, accepted benchmark or production-cap promotion.
+
+The **Review remaining stops** panel opens a common review-tree subset directly:
+
+- **Not launched · 65**: `NoClearing` before departure; start with `327/791`.
+- **Stopped during obstacle clearing · 83**: one or more actual handoffs, then
+  `NoClearing`; start with `280`.
+- **No next target trajectory · 35**: `NoNominal` at a saved handoff; start with
+  `983/516`.
+
+These are lifecycle groups, not proven root causes or physical impossibility.
+Choosing a group shows its terrain recipes, mission links and previews while
+successful missions remain collapsed. Group URLs retain their `#tree-...` focus
+when opened directly or followed back from a detail page. **Previous / Next
+stopped case** stays inside that group, skipping successes, other stop groups
+and preservation controls/repeats. The full population and rich detail pages
+remain available; plots, telemetry, actual handoffs and raw captures are preserved.
+Each terrain/flight preview sits with its mission link in the sticky first cell,
+so it remains visible on desktop and mobile without horizontal scrolling. Long
+comparison headings wrap; all numerical columns remain available to the right.
+
+Its explicit create-only publication command is:
+
+```sh
+rtk proxy cargo run -p pd-eval -- render-terrain-early-exit-sweep \
+  --capture-dir /ABSOLUTE/outputs/eval/planner_v2_random_terrain/CAPTURE \
+  --output-dir /ABSOLUTE/outputs/reports/eval/planner_v2_random_terrain/recheck-ID \
+  --capture-base-href /eval/planner_v2_random_terrain/CAPTURE/
+rtk proxy cargo run -p pd-eval -- refresh-reports --home-only
+```
+
+The early-exit command uses that study's separate read-only verifier and binds
+the source receipt, baseline, review counts and every published page in
+`render.json`. It executes no flights or fresh replays and leaves the accepted
+selector and previous report editions unchanged. It cannot admit early-exit
+evidence through the original cap-sweep contract.
+
+For the [planning-cycle diagnostic edition](terrain_planning_cycle_review.md),
+add `--planning-cycles` to that command. This explicit opt-in reenacts fixed
+recorded programs against source-matched dynamics; the ordinary command above
+remains simulation-free. It does not run a new nominal search or mission flight.
+The receipt separately records original-source programs, nominal cycles, fixed
+rejected-row reenactments and engine provenance, not zero diagnostic replays.
+Each detail gets a `planning-cycles.json` sidecar and a selector above the
+existing trajectory plot. Default selection is the last planning cycle; switch
+to Launch or After Hn to see how the proposal changes with actual velocity/fuel.
+Purple is the recorded nominal, orange is a current-state unpowered ballistic
+projection, green is executed E-to-H, and the red cross is a future query
+obstruction. The original illustrative launch arc and all other rich views
+remain separate. Start with `715`, then compare `280/983/327/999` and positive
+controls `000/030/565`. Edition v3 and raw capture pages are retained unchanged.
+
 The [paired 1k cap sweep](terrain_cap_sweep_results.md) is published at
 `/reports/eval/planner_v2_random_terrain/recheck-cap-sweep-20261007-v6/`:
-**Report home → Waypoint planning → 1,000-world terrain sweep**. It uses the
+**Report home → Waypoint planning → Previous 1,000-world terrain sweep · cap comparison**. It uses the
 common batch template, with **primary worlds → terrain recipe → outcome →
 mission** branches, separate preservation controls/repeats, and the cap-6 versus
 cap-24 comparison. Detail copies preserve all rich plots, telemetry, diagnostics
