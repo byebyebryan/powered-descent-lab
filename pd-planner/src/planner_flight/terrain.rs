@@ -6,7 +6,7 @@ use pd_plan::ballistic::PadInputV2;
 
 use crate::AirborneDirectAuditV1;
 
-pub(crate) fn has_actual_terrain_conflict(audit: &AirborneDirectAuditV1) -> bool {
+pub fn has_actual_terrain_conflict(audit: &AirborneDirectAuditV1) -> bool {
     audit.clearance_scan.first_violation.is_some()
         || audit
             .first_contact
@@ -43,7 +43,7 @@ fn contact_has_away_geometric_contact(
                 .any(|clearance| *clearance <= 0.0))
 }
 
-pub(crate) fn phase_at_tick(updates: &[FlightProgramUpdateV1], tick: u64) -> String {
+pub fn phase_at_tick(updates: &[FlightProgramUpdateV1], tick: u64) -> String {
     updates
         .iter()
         .take_while(|update| update.physics_step < tick)
@@ -52,7 +52,7 @@ pub(crate) fn phase_at_tick(updates: &[FlightProgramUpdateV1], tick: u64) -> Str
         .unwrap_or_else(|| "source_prefix".into())
 }
 
-pub(crate) fn source_pad_input(context: &RunContext, source_pad_id: &str) -> Result<PadInputV2> {
+pub fn source_pad_input(context: &RunContext, source_pad_id: &str) -> Result<PadInputV2> {
     let pad = context
         .world
         .landing_pad(source_pad_id)

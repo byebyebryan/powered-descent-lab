@@ -4,11 +4,13 @@ use anyhow::{Context, Result, ensure};
 use clap::Parser;
 use pd_core::{MissionOutcome, PhysicalOutcome, ScenarioSpec};
 use pd_eval_cli::{
-    WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
-    WaypointV2CliProgressEntryV1, WaypointV2CliProgressV1, WaypointV2FlightResult,
-    WaypointV2Policy, WaypointV2Session, WaypointV2SessionProgress, WaypointV2Stop,
-    nominal_direct_flight_identity, preflight_waypoint_v2_flight, replay_waypoint_v2_cli_bundle,
+    WaypointV2CliProgressEntryV1, WaypointV2CliProgressV1, replay_waypoint_v2_cli_bundle,
     reserve_waypoint_v2_flight_output, write_waypoint_v2_cli_bundle,
+};
+use pd_planner::{
+    WaypointDirectNominalDirectGenerationPolicyV1, WaypointDirectNominalDirectGenerationRequest,
+    WaypointV2FlightResult, WaypointV2Policy, WaypointV2Session, WaypointV2SessionProgress,
+    WaypointV2Stop, nominal_direct_flight_identity, preflight_waypoint_v2_flight,
 };
 use serde::Serialize;
 

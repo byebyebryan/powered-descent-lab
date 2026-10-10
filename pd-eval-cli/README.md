@@ -5,13 +5,13 @@ This composition package installs the `pd-eval` binary. Cargo callers use
 existing capture/replay/publication rules are unchanged.
 
 Reusable neutral evaluation now lives in the sibling `pd-eval` crate. This
-package is a transitional owner for the existing solver modules until the
-maintained solver extraction finishes. It is not a dependency of independent
+package retains ballistic solver execution until its separate extraction finishes.
+Policy 3 execution now belongs to `pd-planner`. It is not a dependency of independent
 agents, mission generation, generic evaluation or report rendering.
 
 | Current module area | Final owner / treatment |
 | --- | --- |
-| `waypoint_v2`, `planner_flight`, `local_clearing` | Maintained Policy 3 solver orchestration in `pd-planner`; existing tests move with behavior |
+| `waypoint_v2`, `planner_flight`, `local_clearing` | Compatibility exports from `pd-planner`; retained-capture acceptance stays in the application |
 | `ballistic_feedback` solver modules | Combined-safety and required comparator implementations/configuration in `pd-planner`; preserve opt-in admission |
 | Solver output/report/frontdoor modules | Application composition and saved evidence readers; no strategy in generic rendering |
 | `model`, `resolution`, `execution`, `review`, `comparison`, `runtime` | Legacy authored pack compatibility and application registration; neutral equivalents live in platform crates |

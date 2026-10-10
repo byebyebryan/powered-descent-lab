@@ -73,6 +73,13 @@ test('ordinary and explicit parity plans preserve feature and test discovery bou
         /must not import concrete strategies/);
       assert.doesNotThrow(() => boundary.validateOutput(`${packageName} v0.1.0\n└── pd-run v0.1.0`));
     }
+    const solverBoundary = find('solver normal dependency tree');
+    assert(solverBoundary.args.includes('--all-features'));
+    for (const forbidden of ['pd-eval', 'pd-eval-cli', 'pd-report', 'pd-missions']) {
+      assert.throws(() => solverBoundary.validateOutput(`pd-planner v0.1.0\n└── ${forbidden} v0.1.0`),
+        /must not import evaluation/);
+    }
+    assert.doesNotThrow(() => solverBoundary.validateOutput('pd-planner v0.1.0\n└── pd-plan v0.1.0'));
     assert(find('maintained JavaScript tests').args.includes('scripts/test-a.mjs'));
     assert(find('maintained JavaScript tests').args.includes('scripts/test-z.mjs'));
     assert.deepEqual(find('local documentation links').args, [

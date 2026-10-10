@@ -126,8 +126,8 @@ export function nativeSourceSha(root) {
       else if (stat.isFile() && name.endsWith('.rs')) appendSource(hash, root, file);
     }
   }
-  for (const crate of ['pd-eval-cli', 'pd-eval', 'pd-core', 'pd-run', 'pd-missions', 'pd-plan', 'pd-report', 'pd-control']) visit(`${crate}/src`);
-  for (const file of ['Cargo.toml', 'Cargo.lock', 'pd-eval-cli/Cargo.toml', 'pd-eval/Cargo.toml', 'pd-core/Cargo.toml', 'pd-run/Cargo.toml', 'pd-missions/Cargo.toml', 'pd-plan/Cargo.toml', 'pd-report/Cargo.toml', 'pd-control/Cargo.toml']) appendSource(hash, root, file);
+  for (const crate of ['pd-eval-cli', 'pd-eval', 'pd-core', 'pd-run', 'pd-missions', 'pd-plan', 'pd-planner', 'pd-report', 'pd-control']) visit(`${crate}/src`);
+  for (const file of ['Cargo.toml', 'Cargo.lock', 'pd-eval-cli/Cargo.toml', 'pd-eval/Cargo.toml', 'pd-core/Cargo.toml', 'pd-run/Cargo.toml', 'pd-missions/Cargo.toml', 'pd-plan/Cargo.toml', 'pd-planner/Cargo.toml', 'pd-report/Cargo.toml', 'pd-control/Cargo.toml']) appendSource(hash, root, file);
   return hash.digest('hex');
 }
 

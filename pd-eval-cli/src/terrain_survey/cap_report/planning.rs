@@ -44,11 +44,11 @@ pub(super) fn engine_binding(authenticated: &impl Fn(&str) -> Result<Vec<u8>>) -
         "pd-plan/src/local_clearing.rs",
         "pd-eval-cli/src/local_clearing.rs",
         "pd-eval-cli/src/planner_flight.rs",
-        "pd-eval-cli/src/planner_flight/input.rs",
-        "pd-eval-cli/src/planner_flight/airborne.rs",
-        "pd-eval-cli/src/planner_flight/terminal.rs",
-        "pd-eval-cli/src/planner_flight/geometry.rs",
-        "pd-eval-cli/src/planner_flight/math.rs",
+        "pd-planner/src/planner_flight/input.rs",
+        "pd-planner/src/planner_flight/airborne.rs",
+        "pd-planner/src/planner_flight/terminal.rs",
+        "pd-planner/src/planner_flight/geometry.rs",
+        "pd-planner/src/planner_flight/math.rs",
     );
     let seal: Value = serde_json::from_slice(&authenticated("candidate/source-seal.json")?)?;
     let mut bound = BTreeMap::new();

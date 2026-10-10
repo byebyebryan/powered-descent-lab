@@ -133,6 +133,15 @@ export function buildPlannerDevelopmentSteps({
     }));
   }
 
+  steps.push(step(root, 'solver normal dependency tree', [
+    'cargo', 'tree', '-p', 'pd-planner', '--all-features', '--edges', 'normal',
+  ], {
+    captureOutput: true,
+    validateOutput: output => assert.doesNotMatch(output,
+      /\bpd-(?:eval(?:-cli)?|report|missions) v\d/,
+      'concrete solver must not import evaluation, rendering or collection management'),
+  }));
+
   if (parityCapture !== undefined) {
     const capture = isAbsolute(parityCapture)
       ? resolve(parityCapture)

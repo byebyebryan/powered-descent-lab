@@ -221,7 +221,7 @@ pub(super) fn paired_mean(
 
 /// Invert the held throttle's mean acceleration over both post-burn masses.
 /// This uses no core transition and is independently checked by physical replay.
-pub(crate) fn paired_throttle(
+pub fn paired_throttle(
     context: &RunContext,
     policy: &BodyAwareTerminalPolicyV1,
     mass: f64,
@@ -290,7 +290,7 @@ pub(super) fn clearance_policy(
 
 /// Reuse the historical exact conservative rotated-body query. The launch
 /// exception is explicit and can never leak into the local maneuver.
-pub(crate) fn clearing_body_reserve_query(
+pub fn clearing_body_reserve_query(
     context: &RunContext,
     request: &WaypointDirectNominalDirectGenerationRequest,
     state: &SimulationState,
@@ -316,7 +316,7 @@ pub(crate) fn clearing_body_reserve_query(
 
 /// Existing nominal corridor policy, with source exemption disabled after the
 /// original launch. Unlike local clearing, terminal descent may enter its pad.
-pub(crate) fn nominal_body_reserve_query(
+pub fn nominal_body_reserve_query(
     context: &RunContext,
     request: &WaypointDirectNominalDirectGenerationRequest,
     state: &SimulationState,

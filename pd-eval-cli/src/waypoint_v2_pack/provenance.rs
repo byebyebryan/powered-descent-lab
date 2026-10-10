@@ -67,6 +67,7 @@ pub(crate) fn capture_source_state(repo: &Path) -> Result<WaypointV2SourceState>
         "pd-run",
         "pd-missions",
         "pd-plan",
+        "pd-planner",
         "pd-report",
         "pd-control",
     ] {
@@ -84,6 +85,7 @@ pub(crate) fn capture_source_state(repo: &Path) -> Result<WaypointV2SourceState>
         "pd-run/Cargo.toml",
         "pd-missions/Cargo.toml",
         "pd-plan/Cargo.toml",
+        "pd-planner/Cargo.toml",
         "pd-report/Cargo.toml",
         "pd-control/Cargo.toml",
     ] {

@@ -142,7 +142,7 @@ pub struct WaypointV2LocalSearch {
 
 impl WaypointV2LocalSearch {
     /// Actual piece end, not the selected proposal's unexecuted witness H.
-    pub(crate) fn actual_handoff_state(&self) -> Option<&SimulationStateSnapshotV1> {
+    pub fn actual_handoff_state(&self) -> Option<&SimulationStateSnapshotV1> {
         if let Some(exit) = &self.early_exit
             && exit.disposition == WaypointV2EarlyExitDisposition::Committed
         {

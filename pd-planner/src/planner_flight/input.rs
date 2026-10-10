@@ -450,7 +450,7 @@ pub fn preflight_nominal_direct_flight(
 pub fn nominal_direct_flight_identity<T: Serialize>(value: &T) -> Result<String> {
     Ok(format!(
         "fnv1a64:{:016x}",
-        crate::runtime::fnv1a64(&serde_json::to_vec(value)?)
+        crate::fnv1a64(&serde_json::to_vec(value)?)
     ))
 }
 

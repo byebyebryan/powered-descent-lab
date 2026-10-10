@@ -4,6 +4,7 @@ members = [
   "pd-run",
   "pd-missions",
   "pd-plan",
+  "pd-planner",
   "pd-control",
   "pd-report",
   "pd-cli",

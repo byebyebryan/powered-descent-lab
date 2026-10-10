@@ -38,7 +38,7 @@ def rust_digest():
             elif path.suffix == ".rs":
                 append(path)
 
-    crates = ('pd-eval-cli', 'pd-eval', 'pd-core', 'pd-run', 'pd-missions', 'pd-plan', 'pd-report', 'pd-control')
+    crates = ('pd-eval-cli', 'pd-eval', 'pd-core', 'pd-run', 'pd-missions', 'pd-plan', 'pd-planner', 'pd-report', 'pd-control')
     for name in crates:
         visit(survey.REPO / name / "src")
     for name in ("Cargo.toml", "Cargo.lock", *(f"{c}/Cargo.toml" for c in crates)):

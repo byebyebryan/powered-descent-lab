@@ -50,9 +50,9 @@ identify overfitting or its cause. Preserve those captures and their denominator
 Concrete extraction sources include
 [controller execution](../pd-control/src/lib.rs),
 [controller registration](../pd-control/src/controllers.rs),
-[V2 sessions](../pd-eval-cli/src/waypoint_v2.rs),
-[nominal realization](../pd-eval-cli/src/planner_flight.rs),
-[ordinary clearing execution](../pd-eval-cli/src/local_clearing.rs),
+[V2 sessions](../pd-planner/src/waypoint_v2.rs),
+[nominal realization](../pd-planner/src/planner_flight.rs),
+[ordinary clearing execution](../pd-planner/src/local_clearing.rs),
 [ballistic feedback](../pd-eval-cli/src/ballistic_feedback.rs),
 [pack resolution](../pd-eval-cli/src/resolution.rs), and
 [terrain refinement](../studies/terrain_profiles/refinement.py).

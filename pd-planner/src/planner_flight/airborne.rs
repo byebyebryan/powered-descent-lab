@@ -92,7 +92,7 @@ pub(super) fn proposal_identity(proposal: &AirborneDirectProposalV1) -> Result<S
     stable_digest(&canonical)
 }
 
-pub(crate) fn live_rejection(
+pub fn live_rejection(
     context: &RunContext,
     live: &SimulationState,
     deadline: u64,

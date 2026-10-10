@@ -57,7 +57,7 @@ def seeds_for(plan):
 def source_state(binary):
     files = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard"],
                            cwd=REPO, capture_output=True, check=True, text=True).stdout.splitlines()
-    selected = [p for p in files if (p.startswith(("pd-core/", "pd-plan/", "pd-control/", "pd-eval/", "pd-eval-cli/", "pd-run/", "pd-missions/", "pd-report/"))
+    selected = [p for p in files if (p.startswith(("pd-core/", "pd-plan/", "pd-planner/", "pd-control/", "pd-eval/", "pd-eval-cli/", "pd-run/", "pd-missions/", "pd-report/"))
                                     and p.endswith((".rs", "Cargo.toml")))
                 or p in ("Cargo.toml", "Cargo.lock")
                 or (p.startswith("studies/terrain_profiles/") and p.endswith((".py", ".json")))]

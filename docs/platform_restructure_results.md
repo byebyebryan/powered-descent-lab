@@ -128,3 +128,44 @@ are preserved. New validation artifacts stay under the unique run directory.
 - G: execution-path consolidation, dependency gates and current workflow docs.
 
 No flight performance improvement or trained policy is claimed by this record.
+
+## F1: Policy 3 solver ownership
+
+Policy 3 session lifecycle, nominal physical realization, local clearing,
+acquisition, fixed-program terrain audit, early-exit validation and source proof
+now belong to `pd-planner`. The crate composes core/runtime, pure `pd-plan` math
+and maintained feedback implementations. It has no dependency on evaluation,
+report rendering, mission collections or the evaluation application. The
+maintained gate includes a transitive solver dependency check.
+
+Existing application module names are compatibility exports. The opt-in
+`pd-cli` feature imports solver lifecycle directly and retains the application
+service for create-only bundles/replay. Default-off dependencies remain separate.
+The handoff diagnostic computes through a caller-supplied recorder; the
+application owns reading, hashes, destinations and create-only writes. No solver
+source contains application repository/provenance or rendering dependencies.
+
+All 62 solver tests moved with their algorithms. Retained capture parity remains
+in the application because acceptance and frozen pack resolution are application
+services. The injected finalization failure stays a solver test; create-only
+partial capture coverage stays in application bundle/output tests. The early-exit
+query bindings stay with the solver; maintained rich projection coverage stays
+with application report tests. Solver test helpers read unchanged, unmodified
+frozen base recipes directly; they do not depend on the application or outputs.
+
+The first complete gate reached strict Clippy after all workspace/CLI tests
+passed, then rejected redundant references introduced at the diagnostic boundary.
+Those references were fixed; strict workspace Clippy and the gate's Node tests
+passed. Logs are retained as `policy3-extraction-gate.log`,
+`policy3-extraction-clippy.log` and `policy3-extraction-tests.log` under the run
+root. The complete rerun passed all 18 checks, including exact numerical parity for
+all 44 retained cases (`policy3-extraction-gate-v2.log`). All 207 pure terrain
+Python tests passed. Six unchanged protected non-document paths and all 81
+frozen JSON fixtures match the starting byte identities. Ballistic execution and
+complete configuration remain the next separate extraction.
+
+An intermediate direct parity invocation omitted its required environment
+variable and failed before any mission execution (`policy3-extraction-parity.log`).
+The gate supplies the pinned path explicitly; its accepted result is the rerun
+above. A preservation probe initially included the migrated fixtures README as
+a frozen input; the actual JSON input identity check passed without edits.

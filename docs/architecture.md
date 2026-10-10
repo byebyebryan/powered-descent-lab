@@ -72,7 +72,8 @@ boundaries; solver extraction is still underway.
 | `pd-report` | Rich saved-artifact projections, navigation and common templates | Core, runtime |
 | `pd-control` | Maintained feedback implementations and legacy specification registry | Core, runtime |
 | `pd-plan` | Pure planning mathematics and geometry | Core |
-| `pd-eval-cli` | Installed `pd-eval` application, existing packs/readers and temporarily owned solver orchestration | Concrete strategies and reports |
+| `pd-planner` | Maintained Policy 3 session, nominal realization, clearing and source proof | Core, runtime, planning math, feedback |
+| `pd-eval-cli` | Installed `pd-eval` application, existing packs/readers and temporarily owned ballistic orchestration | Concrete strategies and reports |
 
 Reusable platform crates have no executable controller/planner dependency,
 including with all features. Agents receive physical inputs through `MissionView`;
@@ -213,8 +214,8 @@ native V2 evaluator constructs a terrain-blind nominal transfer, audits the fixe
 program against actual heightfield terrain, applies local correction where
 possible, and replans from the actual handoff state. This offline loop may hand
 off at useful safe progress before a feature's far edge; it does not require a
-landing suffix. During solver migration it is owned by the `pd-eval-cli`
-application; its final destination is `pd-planner`. The earlier chord-based V1 setup search is retired; saved route
+landing suffix. Its session and physical realization are owned by `pd-planner`;
+`pd-eval-cli` owns capture frontdoors and saved-data reports. The earlier chord-based V1 setup search is retired; saved route
 contracts remain readable. See the [current V2 evaluation status](waypoint_planning.md#current-v2-evaluation-status-2026-10-04).
 
 Waypoint guidance assumes the waypoint list is already planned, follows the

@@ -202,7 +202,7 @@ pub(super) fn prepare(
 
 /// Saved evidence must distinguish an actual early end from the untouched H
 /// witness and bind the next piece to the exact checked nominal. No replay here.
-pub(crate) fn validate_records(result: &super::WaypointV2FlightResult) -> Result<()> {
+pub fn validate_records(result: &super::WaypointV2FlightResult) -> Result<()> {
     for cycle in &result.cycles {
         let Some(local) = &cycle.local_search else {
             continue;

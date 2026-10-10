@@ -8,6 +8,7 @@ anyhow.workspace = true
 clap.workspace = true
 pd-control = { path = "../pd-control" }
 pd-core = { path = "../pd-core" }
+pd-planner = { path = "../pd-planner", optional = true }
 pd-eval-cli = { path = "../pd-eval-cli", optional = true }
 pd-report = { path = "../pd-report" }
 serde.workspace = true
@@ -15,4 +16,4 @@ serde_json.workspace = true
 
 [features]
 default = []
-planner-v2 = ["dep:pd-eval-cli"]
+planner-v2 = ["dep:pd-eval-cli", "dep:pd-planner"]

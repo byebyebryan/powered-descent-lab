@@ -23,7 +23,7 @@ pub(super) const MAX_PHYSICAL_WITNESSES: usize = 3;
 
 pub(super) const TERMINAL_EXTRA_TICKS: u64 = 4;
 
-pub(crate) const MAX_THRUST_FRACTION: f64 = 0.925;
+pub const MAX_THRUST_FRACTION: f64 = 0.925;
 
 const FLOAT_COMPARE_TOLERANCE: f64 = 1.0e-9;
 
@@ -433,7 +433,7 @@ fn target_kinematics(_context: &RunContext, live: &SimulationState) -> Kinematic
     }
 }
 
-pub(crate) fn turn_ticks_for(
+pub fn turn_ticks_for(
     context: &RunContext,
     current_attitude_rad: f64,
     target_acceleration_mps2: Vec2,

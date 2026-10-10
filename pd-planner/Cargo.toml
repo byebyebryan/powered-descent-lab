@@ -1,0 +1,14 @@
+[package]
+name = "pd-planner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+pd-core = { path = "../pd-core" }
+pd-run = { path = "../pd-run" }
+pd-plan = { path = "../pd-plan" }
+pd-control = { path = "../pd-control" }
+serde.workspace = true
+serde_json.workspace = true

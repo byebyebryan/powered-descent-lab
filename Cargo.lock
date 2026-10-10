@@ -234,6 +234,7 @@ dependencies = [
  "pd-control",
  "pd-core",
  "pd-eval-cli",
+ "pd-planner",
  "pd-report",
  "serde",
  "serde_json",
@@ -278,6 +279,7 @@ dependencies = [
  "pd-control",
  "pd-core",
  "pd-plan",
+ "pd-planner",
  "pd-report",
  "rayon",
  "serde",
@@ -300,6 +302,20 @@ name = "pd-plan"
 version = "0.1.0"
 dependencies = [
  "pd-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "pd-planner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "pd-control",
+ "pd-core",
+ "pd-plan",
+ "pd-run",
  "serde",
  "serde_json",
 ]

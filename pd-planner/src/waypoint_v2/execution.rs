@@ -274,7 +274,7 @@ fn prove_accumulated_evidence(
 /// validates identity and its original deadline, then proves both the recorded
 /// segment command source and saved action prefix against the retained ordinary
 /// evidence; it never reconstructs a stepped plant from the saved snapshot.
-pub(crate) fn replay_saved_waypoint_v2_evidence(
+pub fn replay_saved_waypoint_v2_evidence(
     request: &WaypointDirectNominalDirectGenerationRequest,
     result: &WaypointV2FlightResult,
 ) -> Result<BoundedRunArtifactsV1> {
