@@ -10,6 +10,16 @@ Use the saved-capture checks for read-only inspection.
 
 ## Planner Evaluation (V2 Default)
 
+The latest opt-in [acquisition/safety checkpoint](ballistic_acquisition_safety_results.md)
+records acquisition-only 863/1000 versus 829 (37 gains, three deadline losses)
+and terminal-only 833/1000 (four gains, no losses). Both full paired sweeps,
+focused controls, exact repeats and proofs verify. These are separate development
+experiments, not a combined candidate or the default planner used by commands
+below. Their [frozen plan](ballistic_acquisition_safety_plan.md) is complete;
+read-only checks are listed in the results and
+[terrain tooling workflow](../studies/terrain_profiles/README.md#ballistic-feedback-paired-diagnostic).
+New measured runs, a combination and held-out validation need a separate decision.
+
 The [ballistic aim and correction plan](ballistic_aim_correction_plan.md) proposes
 a feedback planning revision and full paired regression: the maintained 44-case
 pack, portable diagnostics, easy/harder 100-case sets, all original 1k worlds and

@@ -72,6 +72,8 @@ pub enum WaypointExperiment {
     PhaseTransitions,
     RecoveryConsistencyProbe,
     RecoveryConsistency,
+    AcquisitionGate,
+    TerminalSafetyFallback,
 }
 
 impl WaypointExperiment {
@@ -109,6 +111,8 @@ impl WaypointExperiment {
             Self::PhaseTransitions => "ballistic_feedback_v16_phase_transitions",
             Self::RecoveryConsistencyProbe => "ballistic_feedback_v17_recovery_consistency_probe",
             Self::RecoveryConsistency => "ballistic_feedback_v17_recovery_consistency",
+            Self::AcquisitionGate => "ballistic_feedback_v18_acquisition_gate",
+            Self::TerminalSafetyFallback => "ballistic_feedback_v18_terminal_safety_fallback",
         }
     }
 
@@ -154,6 +158,8 @@ impl WaypointExperiment {
                 | Self::PhaseTransitions
                 | Self::RecoveryConsistencyProbe
                 | Self::RecoveryConsistency
+                | Self::AcquisitionGate
+                | Self::TerminalSafetyFallback
         )
     }
 
@@ -174,12 +180,26 @@ impl WaypointExperiment {
     fn recovery_consistency(self) -> bool {
         matches!(
             self,
-            Self::RecoveryConsistencyProbe | Self::RecoveryConsistency
+            Self::RecoveryConsistencyProbe
+                | Self::RecoveryConsistency
+                | Self::AcquisitionGate
+                | Self::TerminalSafetyFallback
         )
     }
 
     fn queued_recovery(self) -> bool {
-        self == Self::RecoveryConsistency
+        matches!(
+            self,
+            Self::RecoveryConsistency | Self::AcquisitionGate | Self::TerminalSafetyFallback
+        )
+    }
+
+    fn open_destination_acquisition(self) -> bool {
+        self == Self::AcquisitionGate
+    }
+
+    fn terminal_safety_fallback(self) -> bool {
+        self == Self::TerminalSafetyFallback
     }
 
     fn piecewise_early_target(self) -> bool {
@@ -769,7 +789,7 @@ struct DestinationPreview {
     goal: Goal,
     arc: BallisticAim,
     correction: Option<Correction>,
-    waypoint_room: HandoffBrakingRoomEstimate,
+    waypoint_room: Option<HandoffBrakingRoomEstimate>,
     obstruction: Option<PredictedConflict>,
 }
 
@@ -858,7 +878,7 @@ fn early_destination_preview(
         goal,
         arc,
         correction,
-        waypoint_room: room,
+        waypoint_room: Some(room),
         obstruction,
     }))
 }
@@ -1811,7 +1831,7 @@ fn execute(
                     None,
                 );
                 record.previous_goal = Some(goal.clone());
-                record.waypoint_braking_room = Some(preview.waypoint_room);
+                record.waypoint_braking_room = preview.waypoint_room;
                 if let Some(conflict) = &preview.obstruction {
                     record_conflict(&mut record, conflict.clone());
                 }
@@ -2097,6 +2117,9 @@ fn execute(
                 let mut frame = terminal.update(&ctx, &s.build_observation(&ctx));
                 if experiment.pad_clearance() && !standalone_terminal {
                     phase_transition::protect_pad(request, &ctx, s, &mut frame)?;
+                    if experiment.terminal_safety_fallback() {
+                        phase_transition::terminal_safety_fallback(request, &ctx, s, &mut frame)?;
+                    }
                 }
                 let command = frame.command;
                 terminal_frame = Some(frame);
@@ -2483,6 +2506,14 @@ pub fn run(
                 "physical_guards_changed": false,
             },
             "phase_transition": transition_metadata,
+            "acquisition_and_terminal_safety": {
+                "open_destination_acquisition": experiment.open_destination_acquisition(),
+                "terminal_safety_fallback": experiment.terminal_safety_fallback(),
+                "fallback_choices": ["upright_coast", "upright_support"],
+                "query_refresh_ticks": REFRESH_TICKS,
+                "physical_guards_changed": false,
+                "standalone_coast_terminal_changed": false,
+            },
             "queued_recovery": {
                 "enabled": experiment.queued_recovery(),
                 "bounded_comparison": experiment.recovery_consistency(),

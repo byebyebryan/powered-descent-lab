@@ -255,10 +255,17 @@ pub(super) fn preview_for(
         acquisition: None,
         rejection: None,
     };
-    let Some(room) = room.filter(|room| room.remaining_room_m < 0.0) else {
+    // Horizontal room is diagnostic, not a measure of the evolving vertical
+    // acquisition opportunity. The explicit ablation checks the existing fit
+    // at the existing coast cadence, with the same native admission audit.
+    if !experiment.open_destination_acquisition()
+        && !room
+            .as_ref()
+            .is_some_and(|room| room.remaining_room_m < 0.0)
+    {
         evidence.rejection = Some("waypoint_braking_room_sufficient_or_unavailable".into());
         return Ok((evidence, None));
-    };
+    }
     let goal = target(ctx);
     let fit = if let Some((ticks, _)) = accepted_coast(ctx, s, &goal) {
         aim::target_arc(

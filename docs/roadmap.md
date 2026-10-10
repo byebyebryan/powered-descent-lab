@@ -951,16 +951,29 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-The latest [bounded recovery pass](ballistic_recovery_consistency_results.md)
+The latest [independent acquisition/safety pass](ballistic_acquisition_safety_results.md)
+lands **863/1000** with acquisition-only versus 829: 37 gains, three protected
+deadline losses and every terrain recipe improved. Terminal-only lands **833/1000**
+with four gains and no losses, preserving all preterminal prefixes and old
+successful flights. All 2,328 records, repeats, focused/full overlap and independent
+full inventories verify. The ordinary gate and later-source 44-case parity pass;
+the older published-source exact-clearance discrepancy remains explicit.
+Use acquisition-only as the opt-in development reference, not default promotion.
+Next choose a separate combination/preservation and held-out validation pass.
+Review the three deadline regressions and reserve accounting; the unchanged
+69 recovery failures and 21 waypoint misses need separate mechanical diagnosis,
+not more arc profiles or a shortened guard. No combined result is established.
+
+The preceding [bounded recovery pass](ballistic_recovery_consistency_results.md)
 lands **829/1000**, versus 797: 33 gains, one loss (138), and all recipes improve.
 All 1,107 records, repeats, focused/full overlap and rich report data verify;
 the ordinary developer gate passes. Keep the independently reproduced untouched-HEAD
 exact retained-parity discrepancy explicit rather than declaring that gate green.
 Use this as the next opt-in development reference, not default promotion.
-Next test native destination acquisition at the existing states where horizontal
-room prevented the query. Preserve guards and distinguish mathematical fits from
-safe powered/coast prefixes. 407, 715, terminal recentering and minor resume churn
-remain separate; no new campaign or broader planner change follows automatically.
+Its native destination-acquisition investigation and independent implementation
+pass are completed above. Preserve guards and distinguish mathematical fits from
+safe powered/coast prefixes. 407, 715 and minor resume churn remain separate;
+no new campaign or broader planner change follows automatically.
 
 The preceding [phase-transition pass](ballistic_phase_transition_results.md) lands
 **797/1000**, versus 786: twelve gains, one loss and all recipes improved. The

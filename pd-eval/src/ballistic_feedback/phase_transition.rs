@@ -193,6 +193,54 @@ pub(super) fn protect_pad(
     Ok(())
 }
 
+/// A rejected terminal reserve request is not proof that every command is
+/// unsafe. After the existing pad adapter, try two fixed upright commands under
+/// precisely the ordinary short guard. The live controller remains unchanged;
+/// the next pair reevaluates its request. No reserve or contact exception.
+pub(super) fn terminal_safety_fallback(
+    request: &WaypointDirectNominalDirectGenerationRequest,
+    ctx: &RunContext,
+    s: &SimulationState,
+    frame: &mut pd_control::ControllerFrame,
+) -> Result<()> {
+    let Some(conflict) = short_conflict(request, ctx, s, frame.command, true)? else {
+        return Ok(());
+    };
+    if conflict.cause != "short_command_reserve" {
+        return Ok(());
+    }
+    let original = frame.command;
+    for (choice, command) in [
+        ("upright_coast", Command::default()),
+        (
+            "upright_support",
+            Command {
+                throttle_frac: 1.0,
+                target_attitude_rad: 0.0,
+            },
+        ),
+    ] {
+        if command == original || short_conflict(request, ctx, s, command, true)?.is_some() {
+            continue;
+        }
+        frame
+            .metrics
+            .insert("guidance.terminal_safety_fallback".into(), choice.into());
+        frame.metrics.insert(
+            "guidance.terminal_safety_original_throttle".into(),
+            original.throttle_frac.into(),
+        );
+        frame.metrics.insert(
+            "guidance.terminal_safety_original_attitude".into(),
+            original.target_attitude_rad.into(),
+        );
+        frame.command = command;
+        frame.status = format!("terminal reserve safety fallback: {choice}");
+        break;
+    }
+    Ok(())
+}
+
 fn state_at_conflict(
     ctx: &RunContext,
     s: &SimulationState,

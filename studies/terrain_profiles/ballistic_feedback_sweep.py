@@ -53,7 +53,10 @@ PHASE_CANDIDATES = {name: f"ballistic_feedback_v16_{name.replace('-', '_')}" for
                     ("transition-probe", "coast-transition", "terminal-takeover", "pad-clearance", "phase-transitions")}
 RECOVERY_CANDIDATES = {name: f"ballistic_feedback_v17_{name.replace('-', '_')}" for name in
                        ("recovery-consistency-probe", "recovery-consistency")}
-PHASE_FAMILY = {**PHASE_CANDIDATES, **RECOVERY_CANDIDATES}
+SAFETY_CANDIDATES = {name: f"ballistic_feedback_v18_{name.replace('-', '_')}" for name in
+                     ("acquisition-gate", "terminal-safety-fallback")}
+BOUNDED_RECOVERY_FAMILY = {**RECOVERY_CANDIDATES, **SAFETY_CANDIDATES}
+PHASE_FAMILY = {**PHASE_CANDIDATES, **BOUNDED_RECOVERY_FAMILY}
 FINITE_FAMILY = {**FINITE_CANDIDATES, **PHASE_FAMILY}
 MECHANICS_FAMILY = {**MECHANICS_CANDIDATES, **FINITE_FAMILY}
 LANDING_FAMILY = {**LANDING_CANDIDATES, **COUNTDOWN_CANDIDATES, **COAST_CANDIDATES, **BRAKING_CANDIDATES, **CENTERING_CANDIDATES, **COORDINATION_CANDIDATES, **MECHANICS_FAMILY}
@@ -251,6 +254,7 @@ def validate_local_waypoints(feedback):
     local = feedback["candidate_id"] not in (LOCAL_CANDIDATES["early-target"], LANDING_CANDIDATES["early-target-landing-duration"],
                                              COUNTDOWN_CANDIDATES["early-target-landing-countdown"])
     early = feedback["candidate_id"] != LOCAL_CANDIDATES["local-height"]
+    open_acquisition = feedback["candidate_id"] == SAFETY_CANDIDATES["acquisition-gate"]
     for r in feedback["refreshes"]:
         selection = r.get("ridge_selection")
         if selection:
@@ -270,11 +274,19 @@ def validate_local_waypoints(feedback):
             arc = r.get("desired_arc") or {}
             if (not early or not r["goal"]["destination"] or previous.get("destination") is not False
                     or r["goal"]["revision"] <= previous["revision"] or arc.get("target_m") != r["goal"]["position_m"]
-                    or r["origin"]["held_command"]["throttle_frac"] != 0.0 or not room
-                    or not all(math.isfinite(v) for v in room.values()) or room["remaining_room_m"] >= 0
-                    or room["required_distance_m"] <= 0
+                    or r["origin"]["held_command"]["throttle_frac"] != 0.0
+                    or (not open_acquisition and (not room or room["remaining_room_m"] >= 0))
+                    or (room is not None and (not all(math.isfinite(v) for v in room.values())
+                                             or room["required_distance_m"] <= 0))
                     or any(h["physics_step"] == r["origin"]["physics_step"] for h in feedback["handoffs"])):
                 raise ValueError("early destination preview is not a distinct guarded goal change")
+            if open_acquisition:
+                matching = [q["finite_destination_query"] for q in feedback["refreshes"]
+                            if q["decision"] == "finite_destination_query" and q["origin"] == r["origin"]
+                            and q["desired_arc"] == r["desired_arc"] and q["correction"] == r["correction"]]
+                if not any(q["rejection"] is None and q["acquisition"] is not None
+                           and q["acquisition"]["rejection"] is None for q in matching):
+                    raise ValueError("open acquisition goal change has no native admission")
         elif room is not None:
             raise ValueError("unexpected destination preview estimate")
 
@@ -362,7 +374,7 @@ def validate_terrain_corrections(feedback):
                 finite_obstruction = (refresh["origin"], conflict)
         transition = refresh.get("transition_query")
         if transition and transition.get("conflict") is not None:
-            if feedback["candidate_id"] in (PHASE_CANDIDATES["coast-transition"], PHASE_CANDIDATES["phase-transitions"], *RECOVERY_CANDIDATES.values()):
+            if feedback["candidate_id"] in (PHASE_CANDIDATES["coast-transition"], PHASE_CANDIDATES["phase-transitions"], *BOUNDED_RECOVERY_FAMILY.values()):
                 finite_obstruction = (refresh["origin"], transition["conflict"])
         if decision in ("waypoint_selected", "waypoint_replaced", "waypoint_reacquired"):
             trigger = refresh.get("replan_trigger") or {}
@@ -713,21 +725,49 @@ def validate_finite_correction(attempt, feedback):
             raise ValueError("incomplete finite acquisition claims acceptance")
 
 
+def validate_safety_options(attempt, feedback):
+    mode = next((m for m, candidate in SAFETY_CANDIDATES.items() if candidate == feedback["candidate_id"]), None)
+    metadata = attempt.get("acquisition_and_terminal_safety")
+    if mode is not None:
+        if metadata != {"open_destination_acquisition": mode == "acquisition-gate",
+                        "terminal_safety_fallback": mode == "terminal-safety-fallback",
+                        "fallback_choices": ["upright_coast", "upright_support"],
+                        "query_refresh_ticks": 24, "physical_guards_changed": False,
+                        "standalone_coast_terminal_changed": False}:
+            raise ValueError("acquisition/terminal ablation flags differ")
+    elif metadata and (metadata.get("open_destination_acquisition") or metadata.get("terminal_safety_fallback")):
+        raise ValueError("new safety behavior under an older candidate identity")
+    for update in feedback.get("controller_updates", []):
+        frame = update["frame"]
+        metrics = frame["metrics"]
+        choice = metrics.get("guidance.terminal_safety_fallback")
+        if choice is None:
+            continue
+        if (mode != "terminal-safety-fallback" or choice not in ("upright_coast", "upright_support")
+                or frame["command"] != {"throttle_frac": 0 if choice == "upright_coast" else 1,
+                                         "target_attitude_rad": 0}
+                or frame["status"] != "terminal reserve safety fallback: " + choice
+                or not all(math.isfinite(metrics.get(key, float("nan"))) for key in
+                           ("guidance.terminal_safety_original_throttle", "guidance.terminal_safety_original_attitude"))):
+            raise ValueError("terminal safety fallback command/provenance differs")
+
+
 def validate_phase_transition(attempt, feedback):
+    validate_safety_options(attempt, feedback)
     mode = next((m for m, candidate in PHASE_FAMILY.items() if candidate == feedback["candidate_id"]), None)
     if mode is None:
         if feedback.get("controller_updates") or any(r.get("transition_query") or r.get("recovery_common_query") for r in feedback["refreshes"]):
             raise ValueError("phase query under an older identity")
         return
     if attempt.get("phase_transition") != {
-            "queries_recorded": True, "actual_coast_settling": mode in ("coast-transition", "phase-transitions", *RECOVERY_CANDIDATES),
-            "configured_terminal_takeover": mode in ("terminal-takeover", "phase-transitions", *RECOVERY_CANDIDATES),
-            "pad_reserve_command_adapter": mode in ("pad-clearance", "phase-transitions", *RECOVERY_CANDIDATES),
-            "recovery_diagnostic_only": mode != "recovery-consistency", "terminal_prefix_ticks": 240,
+            "queries_recorded": True, "actual_coast_settling": mode in ("coast-transition", "phase-transitions", *BOUNDED_RECOVERY_FAMILY),
+            "configured_terminal_takeover": mode in ("terminal-takeover", "phase-transitions", *BOUNDED_RECOVERY_FAMILY),
+            "pad_reserve_command_adapter": mode in ("pad-clearance", "phase-transitions", *BOUNDED_RECOVERY_FAMILY),
+            "recovery_diagnostic_only": mode not in ("recovery-consistency", *SAFETY_CANDIDATES), "terminal_prefix_ticks": 240,
             "query_refresh_ticks": 24, "ordinary_default_changed": False, "physical_guards_changed": False}:
         raise ValueError("phase transition contract differs")
-    if mode in RECOVERY_CANDIDATES and attempt.get("queued_recovery") != {
-            "enabled": mode == "recovery-consistency", "bounded_comparison": True, "goals_unchanged": True}:
+    if mode in BOUNDED_RECOVERY_FAMILY and attempt.get("queued_recovery") != {
+            "enabled": mode in ("recovery-consistency", *SAFETY_CANDIDATES), "bounded_comparison": True, "goals_unchanged": True}:
         raise ValueError("queued recovery contract differs")
 
     def query_check(query, origin):
@@ -762,7 +802,7 @@ def validate_phase_transition(attempt, feedback):
         if common:
             if common["origin"] != refresh["origin"] or not 24 <= common["prediction_ticks"] <= 240:
                 raise ValueError("common recovery origin/horizon differs")
-            expected_kind = "bounded_queued_turn_burn_coast" if mode in RECOVERY_CANDIDATES else "queued_turn_burn_coast"
+            expected_kind = "bounded_queued_turn_burn_coast" if mode in BOUNDED_RECOVERY_FAMILY else "queued_turn_burn_coast"
             if (common["queued_program"]["kind"] != expected_kind
                     or common["queued_program"]["prediction_ticks"] != common["prediction_ticks"]):
                 raise ValueError("queued recovery comparison horizon/kind differs")
@@ -823,7 +863,7 @@ def validate_mechanics(attempt, feedback):
                 or refresh["decision"] not in ("terrain_recovery_started", "terrain_recovery_command", "terrain_recovery_exhausted")):
             raise ValueError("recovery query origin/count differs")
         seen, safe = [], []
-        if mode == "recovery-consistency" and len({q["prediction_ticks"] for q in query["commands"]}) != 1:
+        if mode in ("recovery-consistency", *SAFETY_CANDIDATES) and len({q["prediction_ticks"] for q in query["commands"]}) != 1:
             raise ValueError("selected recovery choices use unequal horizons")
         for command in query["commands"]:
             if command["command"] in seen or command["command"]["throttle_frac"] != 1.0:

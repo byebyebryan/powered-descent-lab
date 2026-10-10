@@ -285,6 +285,20 @@ exact, with routing regression 407 adding one more. Common-response diagnostics
 find a warning and safe existing choice at the same earlier state in 80/96 recovery
 stops; that supports testing earlier response, not a complete landing claim.
 
+The subsequent [bounded recovery pass](ballistic_recovery_consistency_results.md)
+lands 829/1000 with common-horizon queued-program and response checks, without
+changing the command family or physical guards. The later independent
+[acquisition/safety pass](ballistic_acquisition_safety_results.md) lands 863/1000
+with an open native destination-acquisition check during waypoint coast, versus
+829: 37 gains and three protected deadline losses, every recipe improved.
+Its separate terminal-only upright fallback lands 833/1000 with four gains and
+no losses, preserving all preterminal command prefixes. These are independent
+opt-ins, not a combined or accepted planner. All records/repeats verify; the
+69 recovery failures and 21 waypoint misses remain unchanged. Use acquisition-only
+as the development reference, with held-out validation and default promotion
+still separate. The nominal constructor, waypoint placement, controller setup,
+reserves and original budgets remain unchanged.
+
 The current source adds the bounded
 [failure-only timing fallback](intervention_fallback_results.md): complete the
 existing local search first, then try at most four new conflict-relative entries

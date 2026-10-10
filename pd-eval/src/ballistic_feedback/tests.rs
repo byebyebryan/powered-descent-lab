@@ -1,6 +1,192 @@
 use super::*;
 
 #[test]
+fn acquisition_and_terminal_ablations_are_independent_recovery_children() {
+    let parent = WaypointExperiment::RecoveryConsistency;
+    for mode in [
+        WaypointExperiment::AcquisitionGate,
+        WaypointExperiment::TerminalSafetyFallback,
+    ] {
+        assert!(mode.phase_queries() && mode.finite_correction());
+        assert!(mode.coast_transition() && mode.terminal_takeover() && mode.pad_clearance());
+        assert!(mode.queued_recovery() && mode.recovery_consistency());
+        assert_eq!(mode.effort(), parent.effort());
+        assert_eq!(mode.recovery(), parent.recovery());
+        assert_eq!(mode.local_height(), parent.local_height());
+        assert_eq!(mode.early_target(), parent.early_target());
+        assert!(!mode.recovery_lead() && !mode.piecewise_early_target());
+        assert_ne!(mode.candidate_id(), parent.candidate_id());
+    }
+    assert!(WaypointExperiment::AcquisitionGate.open_destination_acquisition());
+    assert!(!WaypointExperiment::AcquisitionGate.terminal_safety_fallback());
+    assert!(WaypointExperiment::TerminalSafetyFallback.terminal_safety_fallback());
+    assert!(!WaypointExperiment::TerminalSafetyFallback.open_destination_acquisition());
+    assert!(!parent.open_destination_acquisition() && !parent.terminal_safety_fallback());
+    assert_eq!(WaypointExperiment::default(), WaypointExperiment::Ridge);
+}
+
+fn acquisition_gate_input() -> (
+    WaypointDirectNominalDirectGenerationRequest,
+    RunContext,
+    SimulationState,
+) {
+    let mut request = crate::test_inputs::planner_request("v2_clear_845");
+    request.scenario.world.terrain = pd_core::TerrainDefinition::Heightfield {
+        points_m: vec![Vec2::new(-1100.0, 0.0), Vec2::new(1500.0, 0.0)],
+    };
+    let ctx = RunContext::from_scenario(&request.scenario).unwrap();
+    let mut state = SimulationState::new(&ctx).unwrap();
+    state.position_m = Vec2::new(ctx.target_pad.center_x_m - 588.0, 242.0);
+    state.velocity_mps = Vec2::new(73.5, 23.0);
+    state.fuel_kg = 5600.0;
+    (request, ctx, state)
+}
+
+#[test]
+fn acquisition_gate_queries_positive_room_with_unchanged_native_guards() {
+    let (request, ctx, state) = acquisition_gate_input();
+    let before = SimulationStateSnapshotV1::from_state(&state);
+    let (old, preview) = finite_correction::preview_for(
+        &request,
+        &ctx,
+        &state,
+        120,
+        10800,
+        WaypointExperiment::RecoveryConsistency,
+    )
+    .unwrap();
+    assert!(old.waypoint_room.as_ref().unwrap().remaining_room_m > 0.0);
+    assert!(old.acquisition.is_none() && preview.is_none());
+    let (query, preview) = finite_correction::preview_for(
+        &request,
+        &ctx,
+        &state,
+        120,
+        10800,
+        WaypointExperiment::AcquisitionGate,
+    )
+    .unwrap();
+    assert_eq!(query.waypoint_room, old.waypoint_room);
+    let audit = query.acquisition.unwrap();
+    assert!(audit.accepted(), "{audit:?}");
+    assert!(audit.coast_settling.as_ref().unwrap().accepted());
+    assert!(preview.unwrap().goal.destination);
+    assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
+}
+
+#[test]
+fn acquisition_gate_declines_powered_obstruction_without_advancing_state() {
+    let (request, mut ctx, state) = acquisition_gate_input();
+    ctx.world.terrain = pd_core::TerrainDefinition::Heightfield {
+        points_m: vec![
+            Vec2::new(-1100.0, 0.0),
+            Vec2::new(state.position_m.x + 50.0, 1000.0),
+            Vec2::new(1500.0, 0.0),
+        ],
+    };
+    let before = SimulationStateSnapshotV1::from_state(&state);
+    let (query, preview) = finite_correction::preview_for(
+        &request,
+        &ctx,
+        &state,
+        120,
+        10800,
+        WaypointExperiment::AcquisitionGate,
+    )
+    .unwrap();
+    assert!(preview.is_none());
+    assert_eq!(query.rejection.as_deref(), Some("powered_short_guard"));
+    assert!(query.acquisition.unwrap().conflict.is_some());
+    assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
+}
+
+#[test]
+fn terminal_safety_fallback_avoids_reserve_losing_tilt_without_changing_state() {
+    let (request, ctx, mut state) = acquisition_gate_input();
+    state.position_m = Vec2::new(
+        ctx.target_pad.center_x_m + 14.0,
+        ctx.target_pad.surface_y_m + 10.06,
+    );
+    state.velocity_mps = Vec2::new(-1.85, 0.06);
+    let before = SimulationStateSnapshotV1::from_state(&state);
+    let original = Command {
+        throttle_frac: 0.23,
+        target_attitude_rad: 0.148,
+    };
+    let mut frame = pd_control::ControllerFrame::command_only(original);
+    assert!(
+        short_conflict(&request, &ctx, &state, original, true)
+            .unwrap()
+            .is_some()
+    );
+    phase_transition::protect_pad(&request, &ctx, &state, &mut frame).unwrap();
+    assert_eq!(frame.command, original);
+    phase_transition::terminal_safety_fallback(&request, &ctx, &state, &mut frame).unwrap();
+    assert_eq!(frame.command, Command::default());
+    assert_eq!(
+        frame.metrics["guidance.terminal_safety_fallback"],
+        "upright_coast".into()
+    );
+    assert!(
+        short_conflict(&request, &ctx, &state, frame.command, true)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
+}
+
+#[test]
+fn terminal_safety_fallback_preserves_clear_commands_and_unrecoverable_stops() {
+    let (request, ctx, mut state) = acquisition_gate_input();
+    let original = Command {
+        throttle_frac: 0.5,
+        target_attitude_rad: 0.1,
+    };
+    let mut frame = pd_control::ControllerFrame::command_only(original);
+    phase_transition::terminal_safety_fallback(&request, &ctx, &state, &mut frame).unwrap();
+    assert_eq!(frame.command, original);
+    assert!(
+        !frame
+            .metrics
+            .contains_key("guidance.terminal_safety_fallback")
+    );
+    state.position_m = Vec2::new(ctx.target_pad.center_x_m + ctx.target_pad.width_m, 10.1);
+    state.velocity_mps = Vec2::new(0.0, -100.0);
+    let before = SimulationStateSnapshotV1::from_state(&state);
+    let mut frame = pd_control::ControllerFrame::command_only(original);
+    phase_transition::terminal_safety_fallback(&request, &ctx, &state, &mut frame).unwrap();
+    assert_eq!(frame.command, original);
+    assert!(
+        !frame
+            .metrics
+            .contains_key("guidance.terminal_safety_fallback")
+    );
+    assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
+}
+
+#[test]
+fn terminal_safety_fallback_uses_support_only_after_coast_fails() {
+    let (request, ctx, mut state) = acquisition_gate_input();
+    state.position_m = Vec2::new(ctx.target_pad.center_x_m + ctx.target_pad.width_m, 10.3);
+    state.velocity_mps = Vec2::new(-2.0, -2.0);
+    let before = SimulationStateSnapshotV1::from_state(&state);
+    let mut frame = pd_control::ControllerFrame::command_only(Command::default());
+    phase_transition::terminal_safety_fallback(&request, &ctx, &state, &mut frame).unwrap();
+    assert_eq!(frame.command.throttle_frac, 1.0);
+    assert_eq!(frame.command.target_attitude_rad, 0.0);
+    assert_eq!(
+        frame.metrics["guidance.terminal_safety_fallback"],
+        "upright_support".into()
+    );
+    assert!(
+        short_conflict(&request, &ctx, &state, frame.command, true)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
+}
+
+#[test]
 fn recovery_consistency_is_opt_in_and_keeps_transition_parent() {
     for mode in [
         WaypointExperiment::RecoveryConsistencyProbe,
@@ -961,7 +1147,7 @@ fn early_target_preview_uses_negative_entry_room_without_advancing_the_state() {
         .unwrap()
         .unwrap();
     assert!(preview.goal.destination);
-    assert!(preview.waypoint_room.remaining_room_m < 0.0);
+    assert!(preview.waypoint_room.unwrap().remaining_room_m < 0.0);
     assert!(preview.correction.is_some());
     assert_eq!(preview.arc.target_m, target(&ctx).position_m);
     assert_eq!(SimulationStateSnapshotV1::from_state(&state), before);

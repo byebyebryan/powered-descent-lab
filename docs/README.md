@@ -53,7 +53,19 @@ For current developer validation, use the development workflow above.
 
 ## Terrain source study
 
-The latest [bounded recovery probe, controls and paired 1k](ballistic_recovery_consistency_results.md)
+The latest [independent acquisition and terminal-safety pass](ballistic_acquisition_safety_results.md)
+lands **863/1000 (86.3%)** with acquisition-only: 37 gains, three protected
+deadline losses and every recipe improved versus 829. Terminal-only lands
+**833/1000**, with four gains and no losses. All 2,328 records, exact controls,
+repeats, overlaps and independent full inventories verify. The ordinary developer
+gate and later-source 44-case exact parity pass; the older published-capture
+clearance discrepancy stays explicit. The [frozen pass](ballistic_acquisition_safety_plan.md)
+is complete, not promoted or combined. Use acquisition-only as the opt-in
+development reference; review deadline accounting and the unchanged 69 recovery
+stops before another tuning pass. A combination and held-out test need a separate
+decision. Existing navigation work and server lifecycle remain unchanged.
+
+The preceding [bounded recovery probe, controls and paired 1k](ballistic_recovery_consistency_results.md)
 lands **829/1000 (82.9%)**, versus 797: 33 gains and one loss (138), with every
 recipe improving. The 48-case diagnostic probe preserves complete reference
 flights; all final records, repeats, focused overlap and rich report data verify.
@@ -63,9 +75,9 @@ The ordinary developer gate passes, but a separate exact retained-parity failure
 also reproduces on untouched HEAD and remains explicit. The
 [bounded pass](ballistic_recovery_consistency_plan.md) is complete, not promoted.
 
-Next diagnose the destination-acquisition gate with native queries before changing
-it. Mathematical fits are not safe terrain prefixes. 407, 715, terminal recentering
-and small resume-churn cases remain separate. Defaults/site/navigation are unchanged.
+Its destination-acquisition diagnostic and authorized independent changes are
+completed above. Mathematical fits are not safe terrain prefixes. 407, 715 and
+small resume-churn cases remain separate. Defaults and accepted site are unchanged.
 
 The preceding [phase-transition probe, ablations and paired 1k](ballistic_phase_transition_results.md)
 lands **797/1000 (79.7%)**, versus 786: twelve gains and one loss. Every recipe

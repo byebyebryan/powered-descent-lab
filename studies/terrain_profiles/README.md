@@ -537,6 +537,23 @@ decision. No source or historical outcome is rewritten by saved verification.
 
 ## Ballistic feedback paired diagnostic
 
+The completed [independent acquisition/safety pass](../../docs/ballistic_acquisition_safety_results.md)
+records acquisition-only **863/1000** versus 829 (37 gains, three deadline losses)
+and terminal-only **833/1000** (four gains, no losses). Its
+[frozen collector](ballistic_acquisition_safety_panel.py) runs one exact V17
+control, two 101-world focused ablations and two independent original 1k sweeps,
+with five repeats each: 2,328 records. All source/protocol freezes, inputs, repeats,
+focused overlaps and proof tuples verify. No combination, tuning, promotion or
+server change is included. The [plan](../../docs/ballistic_acquisition_safety_plan.md)
+is completed; `run` needs new authority and rejects an existing capture root.
+
+Read-only saved checks:
+
+```sh
+rtk proxy python3 -B studies/terrain_profiles/ballistic_acquisition_safety_panel.py verify acquisition-full
+rtk proxy python3 -B studies/terrain_profiles/ballistic_acquisition_safety_panel.py verify terminal-full
+```
+
 The completed opt-in [phase-transition pass](../../docs/ballistic_phase_transition_results.md)
 records 797/1000 versus 786 (twelve gains, one loss), with exact repeats, focused
 overlap and original inputs. Its [protocol](../../docs/ballistic_phase_transition_plan.md)
