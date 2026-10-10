@@ -1,0 +1,20 @@
+{
+  "schema": "pd-lab.ballistic-feedback-sweep-plan.v1",
+  "purpose": "Paired diagnostic coverage, not acceptance or default promotion",
+  "baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-early-exit-sweep-20261008-v2",
+  "baseline_receipt_sha256": "e12c5145626f572a1d6df35d1dbb949db3bb52e35515a09ebbedbf043aaca0f0",
+  "baseline_results_sha256": "c7151009f86c589fc3f44423ba1a73da8e6fd28f52de5528da5d438cd6e90212",
+  "candidate_executable_sha256": "2ffa627cdc2cc98df224a8aadafc7859e9d6ab1dec32c5afa9a267079e7cc6e7",
+  "candidate_rust_source_sha256": "e86de0959ea7e5c84d7a67ceb4992bf2fce8133d500f12f9b03809be19f2ecbf",
+  "candidate_report_script_sha256": "0dd790899fa3aa4078857ad16d16e60ec17b5b775bdaf404645ff1380bd361b0",
+  "primary_cases": 1000,
+  "repeat_indices": [0, 715],
+  "maximum_measured_attempts": 1002,
+  "correction_cap": 24,
+  "workers": 4,
+  "case_wall_limit_s": 60,
+  "campaign_wall_limit_s": 7200,
+  "retries": 0,
+  "tuning": false,
+  "publication": false
+}

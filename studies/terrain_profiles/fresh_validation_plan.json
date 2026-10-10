@@ -1,0 +1,26 @@
+{
+  "schema": "pd-lab.terrain-fresh-validation-plan.v1",
+  "phase": "fresh_early_exit",
+  "master_seed": 2026100801,
+  "seed_count": 100,
+  "cases_per_recipe": 25,
+  "repeat_indices": [0, 25, 50, 75, 1],
+  "maximum_measured_attempts": 108,
+  "workers": 4,
+  "case_wall_limit_s": 300,
+  "campaign_wall_limit_s": 3600,
+  "maximum_corrections": 24,
+  "candidate_policy_id": "piecewise_local_clearing_v2_policy_3_early_exit_probe_24",
+  "candidate_executable_sha256": "54ffd58ac4b4e4a4e9a3d557725cfd03238f40a2bb226b8edbbdb85141271509",
+  "baseline_capture": "outputs/eval/planner_v2_random_terrain/capture-early-exit-sweep-20261008-v2",
+  "baseline_receipt_sha256": "e12c5145626f572a1d6df35d1dbb949db3bb52e35515a09ebbedbf043aaca0f0",
+  "sentinels": ["v2_clear_685", "v2_ridge_early", "v2_plateau_reference_900"],
+  "recipes": [
+    {"id": "mountains_4x", "vertical_scale": 4, "horizontal_scale": 1},
+    {"id": "mountains_8x", "vertical_scale": 8, "horizontal_scale": 1},
+    {"id": "broad_massifs_8x", "vertical_scale": 8, "horizontal_scale": 1.5},
+    {"id": "successive_ridges_8x", "vertical_scale": 8, "horizontal_scale": 0.6}
+  ],
+  "publication": false,
+  "retries": 0
+}
