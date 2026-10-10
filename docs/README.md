@@ -53,7 +53,21 @@ For current developer validation, use the development workflow above.
 
 ## Terrain source study
 
-The latest [phase-transition probe, ablations and paired 1k](ballistic_phase_transition_results.md)
+The latest [bounded recovery probe, controls and paired 1k](ballistic_recovery_consistency_results.md)
+lands **829/1000 (82.9%)**, versus 797: 33 gains and one loss (138), with every
+recipe improving. The 48-case diagnostic probe preserves complete reference
+flights; all final records, repeats, focused overlap and rich report data verify.
+Recovery commands/goals/guards stay bounded and unchanged in family; earlier
+response and common-horizon selection bring 33 more worlds into terminal control.
+The ordinary developer gate passes, but a separate exact retained-parity failure
+also reproduces on untouched HEAD and remains explicit. The
+[bounded pass](ballistic_recovery_consistency_plan.md) is complete, not promoted.
+
+Next diagnose the destination-acquisition gate with native queries before changing
+it. Mathematical fits are not safe terrain prefixes. 407, 715, terminal recentering
+and small resume-churn cases remain separate. Defaults/site/navigation are unchanged.
+
+The preceding [phase-transition probe, ablations and paired 1k](ballistic_phase_transition_results.md)
 lands **797/1000 (79.7%)**, versus 786: twelve gains and one loss. Every recipe
 improves; 407 is the routing regression. All final records, repeats, focused
 overlap and rich controller metrics authenticate. Recovery remains the largest
@@ -67,10 +81,10 @@ improved. The probe confirms that the instantaneous ideal arc can reject a safe
 finite acquisition. All final records, repeats and focused overlap verify.
 The [bounded pass](ballistic_finite_correction_plan.md) is complete, not promoted.
 
-Next review 407 and design bounded early recovery using the actual queued program
-and common response horizon. Pad recentering and 715's distinct aim-admission
-boundary remain separate; waypoint-energy ranking stays deferred.
-Defaults/site/navigation are unchanged.
+Its recommended bounded recovery experiment is completed above; the earlier
+warning counts were finite diagnostics, not promised landing gains. Pad recentering
+and 715's distinct aim-admission boundary remain separate; waypoint-energy ranking
+stays deferred. Defaults/site/navigation are unchanged.
 
 The separately authorized [unchanged exit-check 1k](ballistic_exit_diagnostic_results.md)
 lands **706/1000 (70.6%)**, versus V13's 639: 78 gains, eleven losses and all four

@@ -142,3 +142,31 @@ pub(super) fn select_with_evidence(
     }
     Ok((None, query))
 }
+
+/// Preserve choice order, but do not accept a shorter choice-specific proof.
+/// The comparison is native, at the same actual origin and common horizon.
+pub(super) fn select_common(
+    comparison: &phase_transition::RecoveryComparison,
+    episode_start: u64,
+) -> (Option<TerrainCorrection>, RecoveryQuery) {
+    let mut query = RecoveryQuery {
+        origin: comparison.origin.clone(),
+        commands: Vec::new(),
+    };
+    for choice in &comparison.commands {
+        query.commands.push(choice.clone());
+        if choice.checked && choice.conflict.is_none() {
+            return (
+                Some(TerrainCorrection {
+                    episode_start_physics_step: episode_start,
+                    rejected_command: comparison.requested_command,
+                    selected_command: choice.command,
+                    selected_choice: choice.choice.clone(),
+                    prediction_ticks: comparison.prediction_ticks,
+                }),
+                query,
+            );
+        }
+    }
+    (None, query)
+}

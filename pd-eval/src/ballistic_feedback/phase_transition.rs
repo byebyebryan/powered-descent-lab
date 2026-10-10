@@ -227,6 +227,27 @@ pub(super) fn recovery_comparison(
     requested: Command,
     correction: Option<&Correction>,
 ) -> Result<RecoveryComparison> {
+    recovery_comparison_for(request, ctx, s, requested, correction, false)
+}
+
+pub(super) fn bounded_recovery_comparison(
+    request: &WaypointDirectNominalDirectGenerationRequest,
+    ctx: &RunContext,
+    s: &SimulationState,
+    requested: Command,
+    correction: Option<&Correction>,
+) -> Result<RecoveryComparison> {
+    recovery_comparison_for(request, ctx, s, requested, correction, true)
+}
+
+fn recovery_comparison_for(
+    request: &WaypointDirectNominalDirectGenerationRequest,
+    ctx: &RunContext,
+    s: &SimulationState,
+    requested: Command,
+    correction: Option<&Correction>,
+    bounded: bool,
+) -> Result<RecoveryComparison> {
     let ticks = avoidance::warning_ticks(ctx, s, requested);
     let mut commands = Vec::new();
     for (name, angle) in avoidance::choices(s, requested) {
@@ -261,7 +282,15 @@ pub(super) fn recovery_comparison(
             conflict,
         });
     }
-    let mut queued = Query::new("queued_turn_burn_coast", s, ticks);
+    let mut queued = Query::new(
+        if bounded {
+            "bounded_queued_turn_burn_coast"
+        } else {
+            "queued_turn_burn_coast"
+        },
+        s,
+        ticks,
+    );
     let mut query = s.clone();
     for _ in 0..ticks / 2 {
         let command = if let Some(plan) = correction {
@@ -273,7 +302,14 @@ pub(super) fn recovery_comparison(
         } else {
             requested
         };
-        if !queued.guard(short_conflict(request, ctx, &query, command, false))? {
+        // Check the actual queued pair, including turn/burn/coast switches.
+        // Holding this pair's command for another 24 ticks would invent motion
+        // beyond a known cutoff. The live mandatory guard remains unchanged;
+        // this diagnostic compares both programs exactly through H.
+        let lookahead = if bounded { 2 } else { REFRESH_TICKS };
+        if !queued.guard(short_conflict_ticks(
+            request, ctx, &query, command, false, lookahead,
+        ))? {
             break;
         }
         query.set_command(command);

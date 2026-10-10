@@ -951,13 +951,23 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-The latest [phase-transition pass](ballistic_phase_transition_results.md) lands
+The latest [bounded recovery pass](ballistic_recovery_consistency_results.md)
+lands **829/1000**, versus 797: 33 gains, one loss (138), and all recipes improve.
+All 1,107 records, repeats, focused/full overlap and rich report data verify;
+the ordinary developer gate passes. Keep the independently reproduced untouched-HEAD
+exact retained-parity discrepancy explicit rather than declaring that gate green.
+Use this as the next opt-in development reference, not default promotion.
+Next test native destination acquisition at the existing states where horizontal
+room prevented the query. Preserve guards and distinguish mathematical fits from
+safe powered/coast prefixes. 407, 715, terminal recentering and minor resume churn
+remain separate; no new campaign or broader planner change follows automatically.
+
+The preceding [phase-transition pass](ballistic_phase_transition_results.md) lands
 **797/1000**, versus 786: twelve gains, one loss and all recipes improved. The
 full source/input/replay tuples, repeats, focused overlap and rich metrics verify.
-Keep it opt-in. Review routing regression 407, then design an earlier recovery
-experiment using the actual queued-program warning and one common response
-horizon for the existing command family. Native warning plus a safe alternative
-coincide before 80/96 recovery stops; those are not proven recoverable landings.
+Keep it opt-in. Its queued-program/common-horizon recovery recommendation is
+completed above; the earlier 80/96 warning/alternative figure included some
+lookahead beyond the alternatives' horizon and did not promise recoverable landings.
 Pad recentering and 715's admission discontinuity remain separate. No automatic
 campaign, default/guard change or waypoint-energy ranking resumes from this note.
 

@@ -1,6 +1,157 @@
 use super::*;
 
 #[test]
+fn recovery_consistency_is_opt_in_and_keeps_transition_parent() {
+    for mode in [
+        WaypointExperiment::RecoveryConsistencyProbe,
+        WaypointExperiment::RecoveryConsistency,
+    ] {
+        assert!(mode.phase_queries() && mode.finite_correction());
+        assert!(mode.coast_transition() && mode.terminal_takeover() && mode.pad_clearance());
+        assert!(!mode.recovery_lead() && !mode.piecewise_early_target());
+        assert!(mode.recovery_consistency());
+    }
+    assert!(!WaypointExperiment::RecoveryConsistencyProbe.queued_recovery());
+    assert!(WaypointExperiment::RecoveryConsistency.queued_recovery());
+    assert!(!WaypointExperiment::PhaseTransitions.recovery_consistency());
+    assert!(!WaypointExperiment::PhaseTransitions.queued_recovery());
+    assert_eq!(WaypointExperiment::default(), WaypointExperiment::Ridge);
+}
+
+#[test]
+fn bounded_queued_warning_does_not_borrow_extra_lookahead() {
+    let mut request = crate::test_inputs::planner_request("v2_clear_845");
+    request.scenario.world.terrain = pd_core::TerrainDefinition::Heightfield {
+        points_m: vec![Vec2::new(-1100.0, 0.0), Vec2::new(1500.0, 0.0)],
+    };
+    let ctx = RunContext::from_scenario(&request.scenario).unwrap();
+    let mut state = SimulationState::new(&ctx).unwrap();
+    state.position_m = Vec2::new(500.0, 100.0);
+    state.velocity_mps = Vec2::new(0.0, 0.0);
+    state.physics_step = 100;
+    state.sim_time_s = 100.0 * ctx.sim.physics_dt_s();
+    let ticks = avoidance::warning_ticks(&ctx, &state, Command::default());
+    let (clearance, _, floor) = body_clearance(&request, &ctx, &state, false).unwrap();
+    let n = (ticks + 2) as f64;
+    state.position_m.y += floor - clearance
+        + 0.5 * ctx.world.gravity_mps2 * ctx.sim.physics_dt_s().powi(2) * n * (n + 1.0);
+    let before = SimulationStateSnapshotV1::from_state(&state);
+    let old =
+        phase_transition::recovery_comparison(&request, &ctx, &state, Command::default(), None)
+            .unwrap();
+    assert!(old.queued_program.conflict.unwrap().state.physics_step > state.physics_step + ticks);
+    let bounded = phase_transition::bounded_recovery_comparison(
+        &request,
+        &ctx,
+        &state,
+        Command::default(),
+        None,
+    )
+    .unwrap();
+    assert!(bounded.queued_program.accepted());
+    assert_eq!(bounded.queued_program.checked_ticks, ticks);
+    assert!(bounded.commands.iter().all(|q| q.prediction_ticks == ticks));
+    assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
+}
+
+#[test]
+fn common_selector_skips_short_safe_support_and_preserves_choice_order() {
+    let mut request = crate::test_inputs::planner_request("v2_clear_845");
+    request.scenario.world.terrain = pd_core::TerrainDefinition::Heightfield {
+        points_m: vec![Vec2::new(-1100.0, 0.0), Vec2::new(1500.0, 0.0)],
+    };
+    let ctx = RunContext::from_scenario(&request.scenario).unwrap();
+    let mut state = SimulationState::new(&ctx).unwrap();
+    state.position_m = Vec2::new(500.0, 500.0);
+    let mut comparison = phase_transition::bounded_recovery_comparison(
+        &request,
+        &ctx,
+        &state,
+        Command::default(),
+        None,
+    )
+    .unwrap();
+    // Selector consumes already-native comparison evidence, never a new goal.
+    comparison.commands[0].conflict = Some(PredictedConflict {
+        state: comparison.origin.clone(),
+        cause: "test_common_horizon_conflict".into(),
+    });
+    let chosen_index = comparison
+        .commands
+        .iter()
+        .position(|q| q.conflict.is_none())
+        .unwrap();
+    let (selected, query) = avoidance::select_common(&comparison, 100);
+    let selected = selected.unwrap();
+    assert_eq!(
+        selected.selected_command,
+        comparison.commands[chosen_index].command
+    );
+    assert_eq!(selected.prediction_ticks, comparison.prediction_ticks);
+    assert_eq!(selected.episode_start_physics_step, 100);
+    assert_eq!(query.commands.len(), chosen_index + 1);
+    for q in &mut comparison.commands {
+        q.conflict = Some(PredictedConflict {
+            state: comparison.origin.clone(),
+            cause: "test_blocked".into(),
+        });
+    }
+    assert!(avoidance::select_common(&comparison, 100).0.is_none());
+}
+
+#[test]
+fn bounded_queued_query_reproduces_the_known_powered_cutoff() {
+    let mut request = crate::test_inputs::planner_request("v2_clear_845");
+    request.scenario.world.terrain = pd_core::TerrainDefinition::Heightfield {
+        points_m: vec![Vec2::new(-1100.0, 0.0), Vec2::new(1500.0, 0.0)],
+    };
+    let ctx = RunContext::from_scenario(&request.scenario).unwrap();
+    let mut state = SimulationState::new(&ctx).unwrap();
+    state.position_m = Vec2::new(500.0, 500.0);
+    state.physics_step = 100;
+    state.sim_time_s = 100.0 * ctx.sim.physics_dt_s();
+    let plan = Correction {
+        arrival_physics_step: 1100,
+        turn_end_physics_step: 100,
+        burn_end_physics_step: 104,
+        thrust_acceleration_mps2: Vec2::new(
+            0.0,
+            0.9 * ctx.vehicle.max_thrust_n / state.mass_kg(&ctx),
+        ),
+        target_attitude_rad: 0.0,
+        predicted_cutoff: kinematics(&state),
+    };
+    let before = SimulationStateSnapshotV1::from_state(&state);
+    let requested = correction_command(&ctx, &state, &plan).unwrap();
+    let comparison = phase_transition::bounded_recovery_comparison(
+        &request,
+        &ctx,
+        &state,
+        requested,
+        Some(&plan),
+    )
+    .unwrap();
+    assert!(comparison.queued_program.accepted());
+    let mut expected = state.clone();
+    while expected.physics_step < state.physics_step + comparison.prediction_ticks {
+        let command = if expected.physics_step < plan.burn_end_physics_step {
+            correction_command(&ctx, &expected, &plan).unwrap()
+        } else {
+            Command::default()
+        };
+        expected.set_command(command);
+        for _ in 0..2 {
+            expected.step_with_contact_report(&ctx);
+        }
+    }
+    assert_eq!(
+        comparison.queued_program.end_state,
+        Some(SimulationStateSnapshotV1::from_state(&expected))
+    );
+    assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
+}
+
+#[test]
 fn short_waypoint_profile_declines_a_turn_longer_than_its_arrival_clock() {
     let request = crate::test_inputs::planner_request("v2_clear_845");
     let ctx = RunContext::from_scenario(&request.scenario).unwrap();

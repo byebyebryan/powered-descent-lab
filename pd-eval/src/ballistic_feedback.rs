@@ -70,6 +70,8 @@ pub enum WaypointExperiment {
     TerminalTakeover,
     PadClearance,
     PhaseTransitions,
+    RecoveryConsistencyProbe,
+    RecoveryConsistency,
 }
 
 impl WaypointExperiment {
@@ -105,6 +107,8 @@ impl WaypointExperiment {
             Self::TerminalTakeover => "ballistic_feedback_v16_terminal_takeover",
             Self::PadClearance => "ballistic_feedback_v16_pad_clearance",
             Self::PhaseTransitions => "ballistic_feedback_v16_phase_transitions",
+            Self::RecoveryConsistencyProbe => "ballistic_feedback_v17_recovery_consistency_probe",
+            Self::RecoveryConsistency => "ballistic_feedback_v17_recovery_consistency",
         }
     }
 
@@ -148,19 +152,34 @@ impl WaypointExperiment {
                 | Self::TerminalTakeover
                 | Self::PadClearance
                 | Self::PhaseTransitions
+                | Self::RecoveryConsistencyProbe
+                | Self::RecoveryConsistency
         )
     }
 
     fn coast_transition(self) -> bool {
         matches!(self, Self::CoastTransition | Self::PhaseTransitions)
+            || self.recovery_consistency()
     }
 
     fn terminal_takeover(self) -> bool {
         matches!(self, Self::TerminalTakeover | Self::PhaseTransitions)
+            || self.recovery_consistency()
     }
 
     fn pad_clearance(self) -> bool {
-        matches!(self, Self::PadClearance | Self::PhaseTransitions)
+        matches!(self, Self::PadClearance | Self::PhaseTransitions) || self.recovery_consistency()
+    }
+
+    fn recovery_consistency(self) -> bool {
+        matches!(
+            self,
+            Self::RecoveryConsistencyProbe | Self::RecoveryConsistency
+        )
+    }
+
+    fn queued_recovery(self) -> bool {
+        self == Self::RecoveryConsistency
     }
 
     fn piecewise_early_target(self) -> bool {
@@ -1397,7 +1416,38 @@ fn execute(
                 } else {
                     avoidance::response_ticks(&ctx, s, requested)
                 };
-                if short_conflict_ticks(request, &ctx, s, requested, false, horizon)?.is_none() {
+                let common = if experiment.queued_recovery() {
+                    let comparison = phase_transition::bounded_recovery_comparison(
+                        request,
+                        &ctx,
+                        s,
+                        requested,
+                        proposal.as_ref().map(|p| &p.1),
+                    )?;
+                    if s.physics_step >= next_common_query {
+                        next_common_query = s.physics_step + REFRESH_TICKS;
+                        let mut record = refresh_record(
+                            s,
+                            &goal,
+                            None,
+                            proposal.as_ref().map(|p| p.1.clone()),
+                            "recovery_common_horizon_query",
+                            None,
+                        );
+                        record.recovery_common_query = Some(comparison.clone());
+                        refreshes.push(record);
+                    }
+                    Some(comparison)
+                } else {
+                    None
+                };
+                let resume = if let Some(common) = &common {
+                    common.queued_program.accepted()
+                        && (proposal.is_some() || accepted_coast(&ctx, s, &goal).is_some())
+                } else {
+                    short_conflict_ticks(request, &ctx, s, requested, false, horizon)?.is_none()
+                };
+                if resume {
                     let mut record = refresh_record(
                         s,
                         &goal,
@@ -1414,13 +1464,11 @@ fn execute(
                     coast_started = None;
                     ready_ticks = 0;
                 } else {
-                    let (selected, query) = avoidance::select_with_evidence(
-                        request,
-                        &ctx,
-                        s,
-                        requested,
-                        episode_start,
-                    )?;
+                    let (selected, query) = if let Some(common) = &common {
+                        avoidance::select_common(common, episode_start)
+                    } else {
+                        avoidance::select_with_evidence(request, &ctx, s, requested, episode_start)?
+                    };
                     let Some(selected) = selected else {
                         if experiment.mechanics() {
                             let mut record = refresh_record(
@@ -2070,6 +2118,7 @@ fn execute(
             } else {
                 (Command::default(), "ballistic_coast")
             };
+            let mut common_query = None;
             if experiment.phase_queries()
                 && !landing
                 && source_cleared
@@ -2084,13 +2133,25 @@ fn execute(
                     "recovery_common_horizon_query",
                     None,
                 );
-                record.recovery_common_query = Some(phase_transition::recovery_comparison(
-                    request,
-                    &ctx,
-                    s,
-                    command,
-                    correction.as_ref(),
-                )?);
+                let comparison = if experiment.recovery_consistency() {
+                    phase_transition::bounded_recovery_comparison(
+                        request,
+                        &ctx,
+                        s,
+                        command,
+                        correction.as_ref(),
+                    )?
+                } else {
+                    phase_transition::recovery_comparison(
+                        request,
+                        &ctx,
+                        s,
+                        command,
+                        correction.as_ref(),
+                    )?
+                };
+                record.recovery_common_query = Some(comparison.clone());
+                common_query = Some(comparison);
                 refreshes.push(record);
             }
             let warning_ticks = if experiment.recovery_lead()
@@ -2108,12 +2169,24 @@ fn execute(
             } else {
                 short_conflict(request, &ctx, s, command, landing)?
             };
-            let command_conflict =
+            let mut command_conflict =
                 if !neutral && immediate_conflict.is_none() && warning_ticks > REFRESH_TICKS {
                     short_conflict_ticks(request, &ctx, s, command, landing, warning_ticks)?
                 } else {
                     immediate_conflict
                 };
+            // A diagnostic warning alone cannot terminate an otherwise clear
+            // live prefix. Intervene early only with a passing existing response.
+            if experiment.queued_recovery()
+                && command_conflict.is_none()
+                && let Some(common) = &common_query
+                && common
+                    .commands
+                    .iter()
+                    .any(|q| q.checked && q.conflict.is_none())
+            {
+                command_conflict = common.queued_program.conflict.clone();
+            }
             if let Some(conflict) = command_conflict {
                 let mut record = refresh_record(
                     s,
@@ -2129,8 +2202,31 @@ fn execute(
                 if landing || !source_cleared {
                     break format!("short_command_rejected: {}", conflict.cause);
                 }
-                let (selected, query) =
-                    avoidance::select_with_evidence(request, &ctx, s, command, s.physics_step)?;
+                let (selected, query) = if experiment.queued_recovery() {
+                    if common_query.is_none() {
+                        let comparison = phase_transition::bounded_recovery_comparison(
+                            request,
+                            &ctx,
+                            s,
+                            command,
+                            correction.as_ref(),
+                        )?;
+                        let mut record = refresh_record(
+                            s,
+                            &goal,
+                            None,
+                            correction.clone(),
+                            "recovery_common_horizon_query",
+                            None,
+                        );
+                        record.recovery_common_query = Some(comparison.clone());
+                        refreshes.push(record);
+                        common_query = Some(comparison);
+                    }
+                    avoidance::select_common(common_query.as_ref().unwrap(), s.physics_step)
+                } else {
+                    avoidance::select_with_evidence(request, &ctx, s, command, s.physics_step)?
+                };
                 let Some(selected) = selected else {
                     if experiment.mechanics() {
                         let mut record = refresh_record(
@@ -2259,7 +2355,7 @@ pub fn run(
         "actual_coast_settling": experiment.coast_transition(),
         "configured_terminal_takeover": experiment.terminal_takeover(),
         "pad_reserve_command_adapter": experiment.pad_clearance(),
-        "recovery_diagnostic_only": true,
+        "recovery_diagnostic_only": !experiment.queued_recovery(),
         "terminal_prefix_ticks": CONTINUATION_TICKS,
         "query_refresh_ticks": REFRESH_TICKS,
         "ordinary_default_changed": false,
@@ -2387,6 +2483,11 @@ pub fn run(
                 "physical_guards_changed": false,
             },
             "phase_transition": transition_metadata,
+            "queued_recovery": {
+                "enabled": experiment.queued_recovery(),
+                "bounded_comparison": experiment.recovery_consistency(),
+                "goals_unchanged": true,
+            },
         }),
     )?;
     let preflight = crate::preflight_waypoint_v2_flight(
