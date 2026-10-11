@@ -8,8 +8,9 @@ The October 11 [challenge benchmark plan](procedural_challenge_plan.md) proposes
 a new versioned distribution in which every qualification mission has a measured
 terrain challenge. Its [input review](procedural_challenge_review.md) documents
 the existing collections' milder geometry and pad-edge effects. The V1 contracts
-below remain implemented and unchanged; the proposed V2 recipes, coverage
-admission and bounded pad transitions are still under development. The neutral
+below remain implemented and unchanged. The [V2 generator and bounded pads](procedural_generation_v2.md)
+are implemented with explicit native/CLI/Python proposal frontdoors; V2 challenge
+admission and collections are still under development. The neutral
 [geometry contract](procedural_geometry.md) is implemented independently of V1
 generation and provides physically bound, versioned coverage descriptors.
 

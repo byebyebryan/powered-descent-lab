@@ -112,6 +112,26 @@ or guaranteed solvability. Document unresolved gaps before input promotion.
   and [result](../outputs/procedural-challenge/run-20261011T074706Z-geometry/gate-result.json)
   bind unchanged source files during the run. This is automated preservation
   evidence, not a new terrain flight campaign or qualified benchmark.
-- V2 recipes, collections, frontdoors, maintained coverage views and input pilot:
-  pending. The next slice must preserve raw terrain and bound local prepared
-  edits so geometry selection cannot be driven by manufactured pad-edge spikes.
+- V2 generation/pads: implemented under the [runtime contract](procedural_generation_v2.md).
+  Continuous mission/composition draws, explicit backend provenance, balanced
+  index-local direction, retained raw terrain, finite local transitions and
+  raw/prepared geometry receipts are independent of labels and approaches.
+  Ten new generator tests cover reverse/parallel order, exact outside-edit
+  geometry, grid-adjacent boundaries, structural exhaustion, raw/receipt drift,
+  finer reference samples and pinned default identities for both backends.
+- Proposal frontdoors: explicit V1/V2 recipe/resolved dispatch, CLI `recipe` /
+  `propose`, and Python recipe/alias calls. Three version tests preserve V1
+  serialized generation bytes. Two actual Python-call tests cover generation
+  and complete native/Python command-script record equality. The existing RL
+  environment installation and all control/learning code remain unchanged.
+- Generation checkpoint: all eighteen maintained developer checks pass with
+  source unchanged during the [gate](../outputs/procedural-challenge/run-20261011T081226Z-generation/gate.log).
+  The [release frontdoor receipt](../outputs/procedural-challenge/run-20261011T081226Z-generation/frontdoor-validation.json)
+  verifies CLI/Python agreement for both V1/V2 backends, custom serialized
+  recipe/metric calls, unchanged physical identity under metric changes, V1
+  metric-option rejection and bounded CLI configuration reads. No collection
+  pilot, training, performance campaign or benchmark qualification occurred.
+- Challenge admission, V2 collections/usage dispatch, coverage views and input
+  pilot remain pending. Next record every scheduled request exactly once as
+  accepted, insufficient challenge, physical duplicate or structural exhaustion;
+  accept qualifying mixed/unclassified geometry without family quotas.

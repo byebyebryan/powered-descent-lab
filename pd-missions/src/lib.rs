@@ -3,11 +3,20 @@
 
 mod collection;
 mod generator;
+mod generator_v2;
 mod geometry;
 mod layered;
+mod pads_v2;
+mod recipe_v2;
+mod terrain_v2;
+mod versions;
 pub use collection::*;
 pub use generator::*;
+pub use generator_v2::*;
 pub use geometry::*;
+pub use pads_v2::*;
+pub use recipe_v2::*;
+pub use versions::*;
 
 use sha2::{Digest, Sha256};
 

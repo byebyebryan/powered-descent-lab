@@ -14,6 +14,24 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Operation {
+    /// Emit one structurally resolved proposal as JSON; no collection admission.
+    Propose {
+        #[arg(long)]
+        seed: u64,
+        #[arg(long)]
+        index: u64,
+        #[arg(long)]
+        recipe: Option<PathBuf>,
+        #[arg(long)]
+        family: Option<String>,
+        #[arg(long)]
+        geometry_spec: Option<PathBuf>,
+    },
+    /// Emit a default recipe without generating inputs or writing files.
+    Recipe {
+        #[arg(long)]
+        family: String,
+    },
     Generate {
         #[arg(long)]
         output: PathBuf,
@@ -69,6 +87,25 @@ fn recipe(path: Option<PathBuf>, family: Option<String>) -> Result<MissionRecipe
     };
     recipe.validate()?;
     Ok(recipe)
+}
+
+fn proposal_json(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let limit = 1024 * 1024;
+    let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err("proposal configuration requires a bounded regular JSON file".into());
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|e| e.to_string())?
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > limit {
+        return Err("proposal configuration exceeds bounded size".into());
+    }
+    Ok(bytes)
 }
 
 #[derive(Serialize)]
@@ -218,6 +255,39 @@ fn characterize(
 
 fn main() -> Result<(), String> {
     match Args::parse().command {
+        Operation::Recipe { family } => {
+            print!(
+                "{}",
+                String::from_utf8(json_bytes(&VersionedMissionRecipe::family(&family)?)?)
+                    .map_err(|e| e.to_string())?
+            );
+        }
+        Operation::Propose {
+            seed,
+            index,
+            recipe,
+            family,
+            geometry_spec,
+        } => {
+            if recipe.is_some() && family.is_some() {
+                return Err("choose a recipe file or a family, not both".into());
+            }
+            let recipe = match recipe {
+                Some(path) => VersionedMissionRecipe::from_json(&proposal_json(&path)?)?,
+                None => VersionedMissionRecipe::family(family.as_deref().unwrap_or("value-noise"))?,
+            };
+            let spec = geometry_spec
+                .map(|path| {
+                    let bytes = proposal_json(&path)?;
+                    serde_json::from_slice::<GeometrySpecV1>(&bytes).map_err(|e| e.to_string())
+                })
+                .transpose()?;
+            let result = generate_versioned_mission(&recipe, seed, index, spec.as_ref())?;
+            print!(
+                "{}",
+                String::from_utf8(json_bytes(&result)?).map_err(|e| e.to_string())?
+            );
+        }
         Operation::Generate {
             output,
             seed,

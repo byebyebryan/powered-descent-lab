@@ -218,12 +218,25 @@ impl NativeEpisode {
 
 #[pyfunction]
 fn generate_mission(family: &str, seed: u64, index: u64) -> PyResult<String> {
-    let recipe = match family {
-        "value-noise" => pd_missions::MissionRecipeV1::default(),
-        "layered" => pd_missions::MissionRecipeV1::layered(),
-        _ => return Err(error("unknown terrain family")),
-    };
-    json(&pd_missions::generate_mission(&recipe, seed, index).map_err(error)?)
+    let recipe = pd_missions::VersionedMissionRecipe::family(family).map_err(error)?;
+    json(&pd_missions::generate_versioned_mission(&recipe, seed, index, None).map_err(error)?)
+}
+
+#[pyfunction]
+#[pyo3(signature = (recipe_json, seed, index, geometry_spec_json=None))]
+fn generate_mission_from_recipe(
+    recipe_json: &str,
+    seed: u64,
+    index: u64,
+    geometry_spec_json: Option<&str>,
+) -> PyResult<String> {
+    let recipe =
+        pd_missions::VersionedMissionRecipe::from_json(recipe_json.as_bytes()).map_err(error)?;
+    let spec: Option<pd_missions::GeometrySpecV1> = geometry_spec_json.map(decode).transpose()?;
+    json(
+        &pd_missions::generate_versioned_mission(&recipe, seed, index, spec.as_ref())
+            .map_err(error)?,
+    )
 }
 
 #[pyfunction]
@@ -284,8 +297,124 @@ fn load_collection_missions(
 fn pd_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<NativeEpisode>()?;
     module.add_function(wrap_pyfunction!(generate_mission, module)?)?;
+    module.add_function(wrap_pyfunction!(generate_mission_from_recipe, module)?)?;
     module.add_function(wrap_pyfunction!(evidence_snapshot, module)?)?;
     module.add_function(wrap_pyfunction!(verify_capture, module)?)?;
     module.add_function(wrap_pyfunction!(load_collection_missions, module)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn python_calls_preserve_v1_bytes_and_dispatch_explicit_v2_recipes() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "pd_native_test").unwrap();
+            pd_native(&module).unwrap();
+            for family in ["value-noise", "layered", "layered-v2", "value-noise-v2"] {
+                let recipe = pd_missions::VersionedMissionRecipe::family(family).unwrap();
+                let expected =
+                    pd_missions::generate_versioned_mission(&recipe, 987, 7, None).unwrap();
+                let actual: String = module
+                    .getattr("generate_mission")
+                    .unwrap()
+                    .call1((family, 987, 7))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                assert_eq!(actual, json(&expected).unwrap());
+                let from_recipe: String = module
+                    .getattr("generate_mission_from_recipe")
+                    .unwrap()
+                    .call1((json(&recipe).unwrap(), 987, 7))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                assert_eq!(from_recipe, actual);
+            }
+            assert!(
+                module
+                    .getattr("generate_mission_from_recipe")
+                    .unwrap()
+                    .call1(("{}", 0, 0))
+                    .is_err()
+            );
+            let recipe = json(&pd_missions::MissionRecipeV1::default()).unwrap();
+            let geometry = json(&pd_missions::GeometrySpecV1::default()).unwrap();
+            assert!(
+                module
+                    .getattr("generate_mission_from_recipe")
+                    .unwrap()
+                    .call1((recipe, 0, 0, geometry))
+                    .is_err()
+            );
+        });
+    }
+
+    #[test]
+    fn identical_v2_physical_inputs_and_commands_match_native_episode_records() {
+        Python::attach(|py| {
+            let module = PyModule::new(py, "pd_native_parity_test").unwrap();
+            pd_native(&module).unwrap();
+            for family in ["layered-v2", "value-noise-v2"] {
+                let generated: String = module
+                    .getattr("generate_mission")
+                    .unwrap()
+                    .call1((family, 991, 0))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                let result: pd_missions::GenerationResultV2 = decode(&generated).unwrap();
+                let scenario = result.mission.unwrap().scenario;
+                let ctx = RunContext::from_scenario(&scenario).unwrap();
+                let limits = pd_run::scenario_horizon_limits(&ctx).unwrap();
+                let mut native = Episode::reset(
+                    &scenario,
+                    "frontdoor-parity",
+                    limits,
+                    CaptureModeV1::Captured,
+                )
+                .unwrap();
+                let bound = module
+                    .getattr("NativeEpisode")
+                    .unwrap()
+                    .call1((json(&scenario).unwrap(), true, "frontdoor-parity"))
+                    .unwrap();
+                let mut stopped = false;
+                for index in 0..6000 {
+                    let command = Command {
+                        throttle_frac: if index < 60 { 0.9 } else { 0.0 },
+                        target_attitude_rad: 0.08,
+                    };
+                    let expected = native
+                        .step_frame(pd_run::AgentFrame::command_only(command), None)
+                        .unwrap();
+                    let actual: (Vec<f64>, bool, u64, String, String) = bound
+                        .call_method1("step", (command.throttle_frac, command.target_attitude_rad))
+                        .unwrap()
+                        .extract()
+                        .unwrap();
+                    assert_eq!(actual.0, observation(expected.observation));
+                    assert_eq!(actual.1, expected.stop.is_some());
+                    assert_eq!(actual.2, expected.physics_steps_advanced);
+                    assert_eq!(actual.3, json(&expected.physical_outcome).unwrap());
+                    assert_eq!(actual.4, json(&expected.mission_outcome).unwrap());
+                    if actual.1 {
+                        stopped = true;
+                        break;
+                    }
+                }
+                assert!(stopped);
+                let actual: String = bound
+                    .call_method0("finish_json")
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                let actual: pd_run::EpisodeResultV1 = decode(&actual).unwrap();
+                assert_eq!(actual, native.finish().unwrap());
+            }
+        });
+    }
 }

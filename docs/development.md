@@ -70,6 +70,9 @@ Native procedural geometry and generation checks are part of the workspace gate;
 `rtk proxy cargo test -p pd-missions` is the focused check. See the
 [neutral geometry contract](procedural_geometry.md) for measurement definitions
 and the [implementation loop](procedural_challenge_execution.md) for input-pilot scope.
+`rtk proxy cargo test -p pd-python` includes actual Python-call generation and
+native/Python episode parity for the [V2 proposal frontdoors](procedural_generation_v2.md).
+It does not install a bridge into the RL environment or allocate training.
 
 ## Optional retained flight regression
 
