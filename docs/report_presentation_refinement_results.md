@@ -3,9 +3,9 @@
 [Plan](report_presentation_refinement_plan.md) · [Report workflow](reports.md) ·
 [Documentation home](README.md)
 
-Status: active, October 10, 2026. The owner authorized the implementation goal
-and milestone commits. The goal includes a create-only rendered edition and
-browser inspection of the retained 2,048-mission/five-approach comparison.
+Status: complete, October 10, 2026. The owner authorized the implementation goal
+and milestone commits. The delivered create-only edition covers the retained
+2,048-mission/five-approach comparison, with desktop and phone acceptance.
 
 ## Baseline
 
@@ -80,3 +80,59 @@ other-writer paths remain byte-identical to the starting snapshot.
 The learning outcomes remain
 0/2,048 for each selected PPO seed and 1,973/2,048 for the reflected incumbent.
 Presentation changes cannot add landings, revise inputs or reclassify replay proof.
+
+## Delivered edition and acceptance
+
+[Open the refined comparison](http://192.168.1.110:8000/reports/eval/procedural-learning/presentation-20261011T005754Z/report.html).
+Its [render receipt](../outputs/reports/eval/procedural-learning/presentation-20261011T005754Z/render.json)
+binds the original projection, independent-verification summaries, sealed captures,
+preview/detail hashes and preserved rich payloads. Ten refined campaign companions,
+9,216 rich details, 1,024 unsupported status details and 10,240 compact previews
+form one linked edition. Rendering took 137 seconds without new missions,
+checkpoint loads or fresh native replay. Earlier validation editions remain
+retained; this is the delivery entry point.
+
+All five approach outcome summaries fit in the first 1440×900 desktop viewport;
+phones use a single column. Review shortcuts precede the charts, with mission
+review ahead of expandable coverage and configuration. The final
+[browser receipt](../outputs/report-refinement/run-20261011T001631Z/browser-delivery/browser-check.json)
+checks both report homes, exact coverage focus, all five paired attempts, two
+loaded comparison previews, campaign previews/projection/detail links, outcome
+filtering, search and scoped detail return/next navigation. The original rich
+spatial modes, hover and metrics work, and deliberately blocked Plotly leaves
+three static SVG plots and outcome context without a JavaScript exception.
+Eleven desktop/phone screenshots are retained beside the receipt. Ordinary
+browser errors: zero. Cold campaign visits use distinct viewport check URLs;
+restored browser pages may correctly retain previously materialized rows/images.
+
+Five warm trials per viewport include two animation frames after each action.
+Desktop and phone median group expansion is 33.3 ms and filtering is 33.4 ms,
+below the 250 ms target on this AMD Ryzen 9 7900X / Chrome workstation. These are
+local painted-interaction measurements, not a general network/device guarantee.
+The 7.2 MB comparison contains compact projections, initially 16 group rows and
+zero preview requests, with no complete trajectory arrays or checkpoint/capture
+fetches at startup.
+
+The [final preservation audit](../outputs/report-refinement/run-20261011T001631Z/delivery-preservation.json)
+checks all 2,048 shared-axis preview groups, all 9,216 saved rich payload/detail
+hashes and every campaign projection/detail/preview link. All 37,948 original
+comparison files retain their size and modification time; the renderer separately
+checked evaluation byte seals, physical identities, clocks and sampled physical
+states against the original rich payload. All ten other-writer paths remain
+byte-identical. Unowned source files, including physics, controllers, planners,
+mission generators and frozen inputs, retain their starting identities.
+
+All 18 maintained development checks pass (`final-gate.log`), followed by focused
+report tests/Clippy after the final layout refinement and 17 presentation/docs/gate
+Node tests. Historical terminal, direct transfer and authored-waypoint batches
+retain working previews and tree controls on desktop/phone. The existing V2
+browser workflow passes ten rich/detail/status checks, including actual H and
+multi-handoff interactions; these saved captures were neither regenerated nor
+replayed. Their receipts are `historical-common-views.json` and
+`browser-history-v2/browser-check.json` under the run root. Numerical parity was
+not requested for this presentation-only pass.
+
+The existing report server and accepted selectors remain in place. No push,
+training allocation, controller/planner change or default promotion occurred.
+Landing outcomes remain exactly 0/2,048 for each PPO seed, 984/2,048 for the raw
+incumbent (including 1,024 unsupported inputs) and 1,973/2,048 for reflection.

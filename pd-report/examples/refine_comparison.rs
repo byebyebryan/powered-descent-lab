@@ -394,7 +394,19 @@ fn main() -> Result<()> {
                 "{base}{}summary.json",
                 href.strip_suffix("report.html").expect("validated suffix")
             );
-            campaign.report_href = format!("{base}{href}");
+            let projection_href = format!("campaign-a{a}-c{c}-input.json");
+            campaign.report_href = format!("campaign-a{a}-c{c}.html");
+            let html = pd_report::campaign::render_campaign_edition_page(
+                &campaign.page,
+                &projection_href,
+                "report.html",
+            )
+            .map_err(anyhow::Error::msg)?;
+            write_new(&output.join(&campaign.report_href), html.as_bytes())?;
+            write_new(
+                &output.join(&projection_href),
+                &serde_json::to_vec(&campaign.page)?,
+            )?;
         }
     }
     page.provenance_href = format!("{base}{}", original.provenance_href);
@@ -436,7 +448,7 @@ fn main() -> Result<()> {
     )?;
     let html = pd_report::comparison::render_comparison_page(&page).map_err(anyhow::Error::msg)?;
     write_new(&output.join("report.html"), html.as_bytes())?;
-    let receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"source_projection_sha256":digest(&input),"independent_verification_sha256":digest(&verification_bytes),"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
+    let receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"source_projection_sha256":digest(&input),"independent_verification_sha256":digest(&verification_bytes),"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"campaign_pages":campaign_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
     write_new(
         &output.join("render.json"),
         &serde_json::to_vec_pretty(&receipt)?,

@@ -80,3 +80,7 @@
   .paired-controls input, .paired-controls select { width: 100%; }
   .paired-preview-row .paired-previews { grid-template-columns: 1fr; width: min(310px,80vw); }
 }
+
+.outcome-cards { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 10px 0; }
+.outcome-cards .outcome-card { margin: 0; min-width: 0; }
+@media(max-width:900px) { .outcome-cards { grid-template-columns: 1fr; } }

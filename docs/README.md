@@ -25,9 +25,9 @@ The [refinement plan](report_presentation_refinement_plan.md) repairs missing
 procedural mission previews and restores direct paired-mission review through
 the maintained tree and rich detail templates. Outcome visualizations and review
 actions come first; coverage, configuration and evidence stay accessible. This
-is the launched usability pass; its
-[run record](report_presentation_refinement_results.md) tracks implementation and
-browser acceptance. Existing report/navigation/server work remains separately owned.
+is the completed usability pass; its
+[run record](report_presentation_refinement_results.md) links the full rendered
+edition and desktop/phone browser acceptance. Existing report/navigation/server work remains separately owned.
 
 ## Independent approach platform
 

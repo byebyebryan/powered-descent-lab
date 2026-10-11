@@ -119,7 +119,7 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
         ));
     }
     let overview = format!(
-        "<section class=\"header-overview\"><h2>Outcomes across all scheduled missions</h2><p class=\"section-note\">Each bar uses the full scheduled denominator. Click an outcome to find those missions. Replay proof is separate from the physical outcome.</p>{cards}<details><summary>Schedule accounting</summary><div class=\"table-wrap\">{}</div></details></section>",
+        "<section class=\"header-overview\"><h2>Outcomes across all scheduled missions</h2><p class=\"section-note\">Each bar uses the full scheduled denominator. Click an outcome to find those missions. Replay proof is separate from the physical outcome.</p><div class=\"outcome-cards\">{cards}</div><details><summary>Schedule accounting</summary><div class=\"table-wrap\">{}</div></details></section>",
         batch::render_overview_table(
             "<th>Approach</th><th>Scheduled attempts</th><th>Unique physical inputs</th><th>Verified landings</th>",
             &accounting

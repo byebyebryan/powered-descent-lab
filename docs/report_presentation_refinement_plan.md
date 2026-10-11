@@ -3,9 +3,9 @@
 [Documentation home](README.md) · [Report workflow](reports.md) ·
 [Common-template contract](planner_v2_common_report_templates_results.md)
 
-Status: implementation launched, October 10, 2026, after the owner's explicit
+Status: completed, October 10, 2026, after the owner's explicit
 "go for a goal loop, commit as you go." The
-[run record](report_presentation_refinement_results.md) tracks validated milestones.
+[run record](report_presentation_refinement_results.md) records delivery and acceptance.
 This document scopes the presentation and quality-of-life pass.
 Reports are the lab's main inspection interface for individual flights and whole
 experiments. Their usability is a product requirement, not optional polish.

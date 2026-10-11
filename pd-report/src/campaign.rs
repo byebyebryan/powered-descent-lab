@@ -118,6 +118,35 @@ pub(crate) fn validate_campaign_page(page: &CampaignPageV1) -> Result<(), String
 }
 
 pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
+    render_campaign_with_links(page, "report-input.json", None)
+}
+
+/// A campaign companion inside a paired edition, with its own projection link.
+pub fn render_campaign_edition_page(
+    page: &CampaignPageV1,
+    projection_href: &str,
+    collection_href: &str,
+) -> Result<String, String> {
+    for href in [projection_href, collection_href] {
+        if href.is_empty()
+            || href.starts_with('/')
+            || href.contains([':', '\\', '?', '#'])
+            || href
+                .split('/')
+                .any(|p| p.is_empty() || p == ".." || p == ".")
+            || href.chars().any(char::is_control)
+        {
+            return Err("unsafe campaign edition link".into());
+        }
+    }
+    render_campaign_with_links(page, projection_href, Some(collection_href))
+}
+
+fn render_campaign_with_links(
+    page: &CampaignPageV1,
+    projection_href: &str,
+    collection_href: Option<&str>,
+) -> Result<String, String> {
     validate_campaign_page(page)?;
     let scheduled = page.attempts.len();
     let landings = if page.integrity_passed {
@@ -204,8 +233,9 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
         page.integrity_passed
     );
     let actions = format!(
-        "<a href=\"{}\">Campaign evidence</a> <a href=\"report-input.json\">Report projection</a>",
-        escape(&page.summary_href)
+        "<a href=\"{}\">Campaign evidence</a> <a href=\"{}\">Report projection</a>",
+        escape(&page.summary_href),
+        escape(projection_href)
     );
     Ok(batch::render_review_first_batch_page(batch::BatchPage {
         title: &page.title,
@@ -214,7 +244,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
             "<span class=\"chip\"><strong>{landings}/{scheduled}</strong> verified target landings</span>"
         ),
         actions_html: &actions,
-        before_hero_html: &format!("<style>{}</style>", campaign_view::STYLE),
+        before_hero_html: &format!("<style>{}</style>{}", campaign_view::STYLE,collection_href.map_or_else(String::new,|href|format!("<nav class=\"review-detail-nav\"><a href=\"{}\">Back to paired comparison</a></nav>",escape(href)))),
         after_hero_html: "",
         overview_html: &overview,
         planner_html: "",
@@ -288,6 +318,12 @@ mod tests {
         assert!(html.contains("A &lt;campaign&gt;"));
         assert!(html.contains("Mission 0 · attempt 0"));
         assert!(html.contains("data-parent=\"campaign-group-0\""));
+        let edition =
+            render_campaign_edition_page(&page, "campaign-input.json", "report.html").unwrap();
+        assert!(edition.contains("href=\"campaign-input.json\""));
+        assert!(edition.contains("Back to paired comparison"));
+        assert!(render_campaign_edition_page(&page, "../other.json", "report.html").is_err());
+        assert!(render_campaign_edition_page(&page, "input.json", "javascript:bad").is_err());
         let mut bad = page;
         bad.attempts[0].complete_replay_verified = false;
         assert!(render_campaign_page(&bad).is_err());

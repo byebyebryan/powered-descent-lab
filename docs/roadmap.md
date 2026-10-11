@@ -47,13 +47,13 @@ coverage, then a controlled curriculum over complete procedural missions.
 
 ### Report presentation refinement
 
-The [presentation plan](report_presentation_refinement_plan.md) is the next
-usability pass. Restore procedural campaign previews, provide paired mission
-inspection, put outcome visualizations and review actions first, and refine the
-existing rich detail pages. Keep shared templates, original physical/evidence
-data and historical report editions. The owner launched implementation and
-create-only rendering; the [run record](report_presentation_refinement_results.md)
-tracks accepted milestones and browser validation.
+The [presentation pass](report_presentation_refinement_results.md) is complete:
+restored campaign previews, paired physical-mission inspection, outcome bars and
+review actions first, context-preserving detail navigation and static chart
+fallback. The linked 2,048-mission/five-approach edition has ten campaign companions
+and 10,240 detail pages, with desktop/phone and preservation acceptance. Original
+physics, evidence, accepted selectors and other-writer navigation/server work
+remain unchanged. See the [presentation workflow](report_presentations.md).
 
 ### Active planner evaluation and reporting
 
@@ -992,11 +992,11 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-Prioritize the [report presentation refinement](report_presentation_refinement_plan.md)
-before another learning allocation. Reports are the main flight-inspection
-interface; the new procedural views need their missing previews and meaningful
-mission-level comparison restored. The bounded pass extends maintained views,
-with explicit visual/interaction acceptance and a create-only rendered edition.
+The [report presentation refinement](report_presentation_refinement_results.md)
+is complete. Use its full paired edition to inspect saved procedural outcomes
+before defining another learning allocation. Further presentation changes should
+be driven by concrete inspection gaps, preserving original evidence and the
+maintained views.
 
 The first [procedural learning contract](procedural_learning_plan.md) is complete;
 read its [measured results](procedural_learning_results.md) before another
