@@ -9,7 +9,9 @@ a new versioned distribution in which every qualification mission has a measured
 terrain challenge. Its [input review](procedural_challenge_review.md) documents
 the existing collections' milder geometry and pad-edge effects. The V1 contracts
 below remain implemented and unchanged; the proposed V2 recipes, coverage
-admission and bounded pad transitions are not implemented by this planning pass.
+admission and bounded pad transitions are still under development. The neutral
+[geometry contract](procedural_geometry.md) is implemented independently of V1
+generation and provides physically bound, versioned coverage descriptors.
 
 ## Initial distribution: `pd-missions/value-noise-rest-v1`
 

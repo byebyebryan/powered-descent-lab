@@ -63,7 +63,13 @@ synthetic tests. These do not collect measured flights or require saved captures
 
 ```sh
 rtk proxy python3 -B -m unittest discover -s studies/terrain_profiles -p 'test_*.py'
+rtk proxy python3 -B -m unittest discover -s studies/mission_coverage -p 'test_*.py'
 ```
+
+Native procedural geometry and generation checks are part of the workspace gate;
+`rtk proxy cargo test -p pd-missions` is the focused check. See the
+[neutral geometry contract](procedural_geometry.md) for measurement definitions
+and the [implementation loop](procedural_challenge_execution.md) for input-pilot scope.
 
 ## Optional retained flight regression
 

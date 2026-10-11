@@ -67,9 +67,9 @@ Audit distance x sustained width, rise x target width, departure proximity x
 source width, approach proximity x target width, and crest spacing x barrier
 height. An absent obstacle is an explicit missing value, not distance zero.
 Bins are diagnostic choices, not completeness or universal difficulty criteria.
-Specify crest-spacing boundaries with the native metric contract before running
-the pilot. Present marginal ranges and joint counts together; do not silently
-remove overflow or unclassified inputs.
+Crest-spacing interior boundaries are 40, 100, 250 and 500 m, with `null`
+spacing when there are fewer than two significant crests. Present marginal ranges
+and joint counts together; do not silently remove overflow or unclassified inputs.
 
 ## Preservation and acceptance
 
@@ -101,4 +101,17 @@ or guaranteed solvability. Document unresolved gaps before input promotion.
 - Planning checkpoint checks: eleven audit tests, thirteen documentation/gate
   helper tests, 208 Markdown files / 1,393 local links / zero issues, and clean
   whitespace validation. No runtime change or new flight evidence in this commit.
-- Native implementation and pilot: pending.
+- Neutral native geometry: implemented under the [versioned contract](procedural_geometry.md).
+  Fifteen focused analytical/contract tests plus all ten preexisting mission
+  tests pass. Positions, spacing, endpoint surroundings and pad-edit exclusions
+  are independent of labels and strategies. Review caught and fixed a
+  tolerance-adjacent peak-height defect before accepting the metric version.
+- Final geometry code passes all eighteen maintained developer checks, including
+  workspace/CLI tests, formatting, strict Clippy, Node tests and dependency
+  boundaries. The [gate log](../outputs/procedural-challenge/run-20261011T074706Z-geometry/gate.log)
+  and [result](../outputs/procedural-challenge/run-20261011T074706Z-geometry/gate-result.json)
+  bind unchanged source files during the run. This is automated preservation
+  evidence, not a new terrain flight campaign or qualified benchmark.
+- V2 recipes, collections, frontdoors, maintained coverage views and input pilot:
+  pending. The next slice must preserve raw terrain and bound local prepared
+  edits so geometry selection cannot be driven by manufactured pad-edge spikes.

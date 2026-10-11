@@ -304,7 +304,8 @@ policy to improve a comparison. Any later agent change has a new descriptor.
 
 The [review record](procedural_challenge_review.md) supports staged implementation
 but does not validate taxonomy completeness. The [execution record](procedural_challenge_execution.md)
-tracks the authorized loop. Challenge thresholds, display labels/bands, backend
+tracks the authorized loop; the [neutral native geometry contract](procedural_geometry.md)
+is implemented. Challenge thresholds, display labels/bands, backend
 weights and observed coverage gaps require input-only calibration. A qualified
 release needs a frozen distribution and explicit limits; it is not a complete-
 coverage or solvability certificate.

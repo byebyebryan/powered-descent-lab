@@ -3,9 +3,11 @@
 
 mod collection;
 mod generator;
+mod geometry;
 mod layered;
 pub use collection::*;
 pub use generator::*;
+pub use geometry::*;
 
 use sha2::{Digest, Sha256};
 
