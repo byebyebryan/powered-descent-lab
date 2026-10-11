@@ -265,7 +265,7 @@ fn load_collection_missions(
     exposure: &str,
 ) -> PyResult<String> {
     let root = Path::new(path);
-    let manifest = pd_missions::read_collection_manifest(root).map_err(error)?;
+    let manifest = pd_missions::read_versioned_collection_manifest(root).map_err(error)?;
     let exposure = match exposure {
         "tuning" => pd_missions::CollectionExposureV1::Tuning,
         "evaluation" => pd_missions::CollectionExposureV1::Evaluation,
@@ -275,7 +275,7 @@ fn load_collection_missions(
         return Err(error("collection schedule must contain 1..100000 indices"));
     }
     let entries: std::collections::BTreeMap<_, _> = manifest
-        .entries
+        .entries()
         .iter()
         .map(|entry| (entry.index, entry))
         .collect();
@@ -288,7 +288,9 @@ fn load_collection_missions(
         "Consumed declared collection inputs in independent Python composition; consult run request for schedule").map_err(error)?;
     let missions: Result<Vec<_>, _> = indices
         .into_iter()
-        .map(|index| pd_missions::load_collection_mission(root, &manifest, entries[&index]))
+        .map(|index| {
+            pd_missions::load_versioned_collection_mission(root, &manifest, entries[&index])
+        })
         .collect();
     json(&missions.map_err(error)?)
 }
@@ -307,6 +309,89 @@ fn pd_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn python_collection_reads_keep_v1_shape_and_consume_only_v2_admitted_inputs() {
+        use pd_missions::*;
+        let parent =
+            std::env::temp_dir().join(format!("pd-python-collections-{}", std::process::id()));
+        std::fs::create_dir(&parent).unwrap();
+        let v1 = parent.join("v1");
+        write_collection(
+            &v1,
+            CollectionRequestV1 {
+                schema_version: 1,
+                role: CollectionRoleV1::Development,
+                recipe: MissionRecipeV1::default(),
+                seed: 45,
+                indices: vec![0, 1],
+            },
+        )
+        .unwrap();
+        let v2 = parent.join("v2");
+        write_collection_v2(
+            &v2,
+            CollectionRequestV2::broad(MissionRecipeV2::default(), 981, 8),
+        )
+        .unwrap();
+        Python::attach(|py| {
+            let module = PyModule::new(py, "pd_native_collection_test").unwrap();
+            pd_native(&module).unwrap();
+            for root in [&v1, &v2] {
+                let manifest = read_versioned_collection_manifest(root).unwrap();
+                let index = manifest.entries()[0].index;
+                let indices = vec![index, index];
+                let expected: Vec<_> = indices
+                    .iter()
+                    .map(|i| {
+                        load_versioned_collection_mission(
+                            root,
+                            &manifest,
+                            manifest.entries().iter().find(|e| e.index == *i).unwrap(),
+                        )
+                        .unwrap()
+                    })
+                    .collect();
+                let actual: String = module
+                    .getattr("load_collection_missions")
+                    .unwrap()
+                    .call1((root.to_str().unwrap(), indices, "python-tuning", "tuning"))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                assert_eq!(actual, json(&expected).unwrap());
+                assert_eq!(
+                    read_collection_usage(root).unwrap()[0].exposure,
+                    CollectionExposureV1::Tuning
+                );
+                assert!(
+                    module
+                        .getattr("load_collection_missions")
+                        .unwrap()
+                        .call1((
+                            root.to_str().unwrap(),
+                            vec![index],
+                            "python-tuning",
+                            "evaluation"
+                        ))
+                        .is_err()
+                );
+                assert!(
+                    module
+                        .getattr("load_collection_missions")
+                        .unwrap()
+                        .call1((
+                            root.to_str().unwrap(),
+                            vec![99999u64],
+                            "missing",
+                            "evaluation"
+                        ))
+                        .is_err()
+                );
+            }
+        });
+        std::fs::remove_dir_all(parent).unwrap();
+    }
 
     #[test]
     fn python_calls_preserve_v1_bytes_and_dispatch_explicit_v2_recipes() {

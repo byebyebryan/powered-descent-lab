@@ -42,6 +42,83 @@ fn temporary_parent() -> PathBuf {
     root
 }
 
+#[test]
+fn v2_executor_consumes_only_admitted_physical_inputs_and_binds_excluded_proposals() {
+    for corrupt_excluded in [false, true] {
+        let parent = temporary_parent();
+        let collection = parent.join("v2");
+        let manifest = write_collection_v2(
+            &collection,
+            CollectionRequestV2::broad(MissionRecipeV2::default(), 981, 32),
+        )
+        .unwrap();
+        let excluded = manifest
+            .receipts
+            .iter()
+            .find(|r| r.disposition == SelectionDispositionV2::InsufficientChallenge)
+            .unwrap()
+            .proposal
+            .as_ref()
+            .unwrap();
+        let entry = &manifest.entries[0];
+        let resolved = load_collection_mission_v2(&collection, &manifest, entry).unwrap();
+        let request = CollectionEvaluationRequestV1 {
+            schema_version: 1,
+            manifest_sha256: sha256(&std::fs::read(collection.join("manifest.json")).unwrap()),
+            agent: External {
+                mutate: None,
+                fail: false,
+            }
+            .descriptor(),
+            attempt_indices: vec![entry.index, entry.index],
+        };
+        let mut calls = 0;
+        let result = evaluate_collection_with_executor(
+            &collection,
+            &parent.join("evaluation"),
+            request,
+            &mut |scenario, scope| {
+                calls += 1;
+                assert_eq!(scenario, &resolved.scenario);
+                assert_eq!(scope.inputs, vec![collection.join(&entry.file)]);
+                assert!(!scenario.metadata.contains_key("labels"));
+                if corrupt_excluded && calls == 1 {
+                    std::fs::write(collection.join(&excluded.file), b"changed excluded input")
+                        .unwrap();
+                }
+                Err(AttemptExecutionErrorV1::Unsupported(
+                    "test executor deliberately does not fly".into(),
+                ))
+            },
+            &EvidenceScope {
+                sources: vec![],
+                inputs: vec![],
+            },
+        )
+        .unwrap();
+        assert_eq!(result.attempts.len(), 2);
+        assert_eq!(result.unique_scheduled_missions, 1);
+        assert_eq!(calls, 2);
+        assert_eq!(result.integrity_passed, !corrupt_excluded);
+        assert_eq!(
+            result.evidence_before.input_files.len(),
+            manifest
+                .receipts
+                .iter()
+                .filter(|r| r.proposal.is_some())
+                .count()
+                + 3
+        );
+        assert!(
+            result
+                .attempts
+                .iter()
+                .all(|a| matches!(a.disposition, AttemptDispositionV1::Unsupported { .. }))
+        );
+        std::fs::remove_dir_all(parent).unwrap();
+    }
+}
+
 fn landed_scenario() -> ScenarioSpec {
     let mut scenario: ScenarioSpec = serde_json::from_str(include_str!(
         "../../fixtures/scenarios/flat_terminal_descent.json"

@@ -245,7 +245,7 @@ pub fn record_collection_usage(
     if !valid_receipt_id(receipt_id) || purpose.trim().is_empty() {
         return Err("usage receipt requires a safe unique id and purpose".to_owned());
     }
-    read_collection_manifest(root)?;
+    crate::read_versioned_collection_manifest(root)?;
     let receipt = CollectionUsageReceiptV1 {
         schema_version: 1,
         receipt_id: receipt_id.to_owned(),
@@ -261,7 +261,7 @@ pub fn record_collection_usage(
 }
 
 pub fn read_collection_usage(root: &Path) -> Result<Vec<CollectionUsageReceiptV1>, String> {
-    read_collection_manifest(root)?;
+    crate::read_versioned_collection_manifest(root)?;
     let manifest_digest = sha256(&read_regular_file(
         &root.join("manifest.json"),
         64 * 1024 * 1024,
@@ -300,7 +300,7 @@ fn valid_receipt_id(id: &str) -> bool {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
 }
-fn valid_digest(digest: &str) -> bool {
+pub(crate) fn valid_digest(digest: &str) -> bool {
     digest.len() == 64 && digest.bytes().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -314,7 +314,7 @@ pub fn write_json_create_only(path: &Path, value: &impl Serialize) -> Result<(),
     write_bytes_create_only(path, &json_bytes(value)?)
 }
 
-fn write_bytes_create_only(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn write_bytes_create_only(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -325,7 +325,7 @@ fn write_bytes_create_only(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-fn read_regular_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
+pub(crate) fn read_regular_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
     let metadata =
         fs::symlink_metadata(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     if !metadata.is_file() || metadata.len() > max_bytes {

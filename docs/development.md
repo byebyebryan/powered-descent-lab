@@ -67,6 +67,9 @@ rtk proxy python3 -B -m unittest discover -s studies/mission_coverage -p 'test_*
 ```
 
 Native procedural geometry and generation checks are part of the workspace gate;
+V2 [admission/collection checks](procedural_collections_v2.md) cover analytical
+challenge paths, accounting, label-independent membership, quotas, exposure,
+Python reads and evaluator binding of excluded proposals.
 `rtk proxy cargo test -p pd-missions` is the focused check. See the
 [neutral geometry contract](procedural_geometry.md) for measurement definitions
 and the [implementation loop](procedural_challenge_execution.md) for input-pilot scope.

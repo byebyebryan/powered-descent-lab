@@ -107,8 +107,9 @@ rtk proxy cargo run --release -p pd-missions --example missions -- propose --rec
 writing files. Aliases `layered` and `value-noise` retain V1; `layered-v2` and
 `value-noise-v2` select V2. `propose --geometry-spec PATH` supplies a complete
 `GeometrySpecV1` for V2. V1 rejects that option rather than ignoring it.
-Existing `generate`/`characterize` collection commands still consume V1; V2
-collection frontdoors are the next implementation slice.
+Existing `generate`/`characterize` commands still consume V1. The explicit V2
+`collect --request PATH --output PATH` command and versioned collection readers
+are implemented under the [challenge/collection contract](procedural_collections_v2.md).
 
 The thin Python bridge retains `generate_mission(family, seed, index)` with
 unchanged V1 aliases/results and explicit new V2 aliases. Its new

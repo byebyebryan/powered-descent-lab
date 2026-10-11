@@ -1,20 +1,28 @@
 //! Procedural input generation and immutable collection management.
 //! No strategy, evaluation result, external game checkout or saved flight is an input.
 
+mod admission;
 mod collection;
+mod collection_v2;
+mod collection_versions;
 mod generator;
 mod generator_v2;
 mod geometry;
 mod layered;
 mod pads_v2;
+mod population;
 mod recipe_v2;
 mod terrain_v2;
 mod versions;
+pub use admission::*;
 pub use collection::*;
+pub use collection_v2::*;
+pub use collection_versions::*;
 pub use generator::*;
 pub use generator_v2::*;
 pub use geometry::*;
 pub use pads_v2::*;
+pub use population::*;
 pub use recipe_v2::*;
 pub use versions::*;
 

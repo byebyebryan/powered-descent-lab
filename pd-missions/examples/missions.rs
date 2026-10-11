@@ -14,6 +14,13 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Operation {
+    /// Reserve a challenging V2 collection from its complete serialized request.
+    Collect {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Emit one structurally resolved proposal as JSON; no collection admission.
     Propose {
         #[arg(long)]
@@ -255,6 +262,15 @@ fn characterize(
 
 fn main() -> Result<(), String> {
     match Args::parse().command {
+        Operation::Collect { request, output } => {
+            let request: CollectionRequestV2 =
+                serde_json::from_slice(&proposal_json(&request)?).map_err(|e| e.to_string())?;
+            let manifest = write_collection_v2(&output, request)?;
+            println!(
+                "{}",
+                String::from_utf8(json_bytes(&manifest.counts)?).map_err(|e| e.to_string())?
+            );
+        }
         Operation::Recipe { family } => {
             print!(
                 "{}",
@@ -327,18 +343,25 @@ fn main() -> Result<(), String> {
             );
         }
         Operation::Verify { collection } => {
-            let manifest = verify_collection(&collection)?;
+            let manifest = verify_versioned_collection(&collection)?;
             let receipts = read_collection_usage(&collection)?;
             println!(
                 "Verified {} immutable missions, {} exhausted requests, {} usage receipts; original role: {:?}",
-                manifest.entries.len(),
-                manifest.exhausted_indices.len(),
+                manifest.entries().len(),
+                manifest.exhausted_count(),
                 receipts.len(),
-                manifest.request.role
+                manifest.role()
             );
-            if manifest.request.role == CollectionRoleV1::HeldOut && !receipts.is_empty() {
+            if manifest.role() == CollectionRoleV1::HeldOut && !receipts.is_empty() {
                 println!(
                     "Held-out inputs have recorded exposure; consult receipts before any performance claim."
+                );
+            }
+            if let VersionedCollectionManifest::V2(manifest) = &manifest {
+                println!(
+                    "Population: {}; terminal counts: {}",
+                    manifest.request.population.key(),
+                    serde_json::to_string(&manifest.counts).map_err(|e| e.to_string())?
                 );
             }
         }

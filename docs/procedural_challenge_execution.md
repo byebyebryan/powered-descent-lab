@@ -131,7 +131,34 @@ or guaranteed solvability. Document unresolved gaps before input promotion.
   recipe/metric calls, unchanged physical identity under metric changes, V1
   metric-option rejection and bounded CLI configuration reads. No collection
   pilot, training, performance campaign or benchmark qualification occurred.
-- Challenge admission, V2 collections/usage dispatch, coverage views and input
-  pilot remain pending. Next record every scheduled request exactly once as
-  accepted, insufficient challenge, physical duplicate or structural exhaustion;
-  accept qualifying mixed/unclassified geometry without family quotas.
+- Challenge/collection implementation: the [V2 contract](procedural_collections_v2.md)
+  now retains every structurally resolved proposal and accounts for each scheduled
+  index exactly once. Broad admission uses raw-and-prepared sustained obstruction,
+  substantial pad rise or repeated significant crests. Multi-label taxonomy is
+  independent; qualifying unclassified inputs remain admitted. Separate stress
+  panels record quotas/overlap, and shift declarations require changed support
+  or backend rather than fresh seeds alone. Default thresholds remain development
+  candidates pending the predeclared input-only pilot.
+- Collection integration: strict V1/V2 manifest/load/verify dispatch, create-only
+  usage receipts, CLI `collect` and Python admitted-input reads are implemented.
+  The common evaluator consumes only physical scenarios and binds all V2
+  proposal files, including exclusions. Its outcome/proof/replay contract and
+  every strategy remain unchanged. The incumbent report composition still needs
+  a truthful V2 projection before a future comparison.
+- Seventeen new analytical/accounting/interface checks pass, including exact
+  threshold behavior, raw-only/prepared-only disagreement, mild exclusions,
+  retained unclassified terrain, canonical/reversed schedules, taxonomy-independent
+  membership, physical duplicates, structural exhaustion, stress overlap,
+  projection/file/symlink drift, Python per-version byte shapes and common
+  evaluator detection of excluded-input mutation. All 62 focused mission,
+  Python and evaluator checks pass. All eighteen maintained developer checks
+  pass with source unchanged during the [gate](../outputs/procedural-challenge/run-20261011T083727Z-collections/gate.log)
+  ([result](../outputs/procedural-challenge/run-20261011T083727Z-collections/gate-result.json)).
+  The [release frontdoor receipt](../outputs/procedural-challenge/run-20261011T083727Z-collections/frontdoor-validation.json)
+  verifies CLI-created collections and actual Python reads across both V1 and
+  both V2 aliases, explicit repeated attempts, exposure receipts, create-only
+  refusal, excluded-input refusal and same-support shift rejection. No campaign,
+  benchmark promotion or training allocation occurred.
+- Pending: commit the serialized pilot declaration before generation; run the
+  10,000-index development stream per backend, resolution/joint coverage audits,
+  bounded maintained previews, and the freeze/comparison-budget readiness record.

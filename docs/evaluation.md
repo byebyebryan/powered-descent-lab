@@ -10,6 +10,13 @@ Use the saved-capture checks for read-only inspection.
 
 ## Independent agents on procedural missions
 
+The neutral evaluator and Python reader accept both strict V1 and
+[challenging V2 collections](procedural_collections_v2.md). V2 retains excluded
+proposals as immutable input evidence and separates broad, stress and shift
+populations. The incumbent `pd-benchmark` report composition below currently
+consumes V1; V2 presentation integration and the budgeted comparison remain
+pending. Geometric admission is not flight qualification.
+
 The [independent-agent workflow](independent_agents.md) runs supplied approach
 factories through neutral `pd-eval`, using [immutable procedural collections](procedural_missions.md).
 It records every scheduled attempt, initialization/execution/capture failure,

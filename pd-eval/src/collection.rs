@@ -4,7 +4,7 @@ use std::path::Path;
 
 use pd_core::{BoundedRunStopCauseV1, MissionOutcome, PhysicalOutcome, ScenarioSpec};
 use pd_missions::{
-    CollectionExposureV1, load_collection_mission, read_collection_manifest,
+    CollectionExposureV1, load_versioned_collection_mission, read_versioned_collection_manifest,
     record_collection_usage, sha256, write_json_create_only,
 };
 use pd_run::{Agent, AgentDescriptorV1};
@@ -128,11 +128,11 @@ pub fn evaluate_collection_with_executor(
     evidence: &EvidenceScope,
 ) -> Result<CollectionEvaluationV1, String> {
     request.agent.validate()?;
-    let manifest = read_collection_manifest(collection_root)?;
+    let manifest = read_versioned_collection_manifest(collection_root)?;
     let manifest_sha =
         sha256(&fs::read(collection_root.join("manifest.json")).map_err(|e| e.to_string())?);
     let available: BTreeMap<_, _> = manifest
-        .entries
+        .entries()
         .iter()
         .map(|entry| (entry.index, entry))
         .collect();
@@ -166,16 +166,11 @@ pub fn evaluate_collection_with_executor(
     let collection_path = fs::canonicalize(collection_root).map_err(|e| e.to_string())?;
     // Bind declared immutable inputs and the exposure records present at entry.
     // A later append-only usage receipt is not a mutation of physical inputs.
-    let mut collection_files = vec![
-        collection_root.join("manifest.json"),
-        collection_root.join("request.json"),
-    ];
-    collection_files.extend(
-        manifest
-            .entries
-            .iter()
-            .map(|entry| collection_root.join(&entry.file)),
-    );
+    let mut collection_files: Vec<_> = manifest
+        .immutable_files()
+        .into_iter()
+        .map(|file| collection_root.join(file))
+        .collect();
     for entry in fs::read_dir(collection_root).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         if entry.file_name().to_string_lossy().starts_with("usage-") {
@@ -229,9 +224,10 @@ pub fn evaluate_collection_with_executor(
         selected_scope
             .inputs
             .push(collection_root.join(&entry.file));
-        let disposition = match load_collection_mission(collection_root, &manifest, entry) {
+        let disposition = match load_versioned_collection_mission(collection_root, &manifest, entry)
+        {
             Err(detail) => AttemptDispositionV1::InputInvalid { detail },
-            Ok(mission) => match executor(&mission.scenario, &selected_scope) {
+            Ok(mission) => match executor(mission.scenario(), &selected_scope) {
                 Err(AttemptExecutionErrorV1::Unsupported(detail)) => {
                     AttemptDispositionV1::Unsupported { detail }
                 }
@@ -242,7 +238,7 @@ pub fn evaluate_collection_with_executor(
                     AttemptDispositionV1::ExecutionFailed { detail }
                 }
                 Ok(result)
-                    if result.scenario != mission.scenario
+                    if &result.scenario != mission.scenario()
                         || result.execution.descriptor != evaluation.request.agent =>
                 {
                     AttemptDispositionV1::ExecutionFailed {

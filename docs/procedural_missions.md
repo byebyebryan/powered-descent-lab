@@ -9,8 +9,10 @@ a new versioned distribution in which every qualification mission has a measured
 terrain challenge. Its [input review](procedural_challenge_review.md) documents
 the existing collections' milder geometry and pad-edge effects. The V1 contracts
 below remain implemented and unchanged. The [V2 generator and bounded pads](procedural_generation_v2.md)
-are implemented with explicit native/CLI/Python proposal frontdoors; V2 challenge
-admission and collections are still under development. The neutral
+are implemented with explicit native/CLI/Python proposal frontdoors. The
+[V2 challenge/collection contract](procedural_collections_v2.md) now implements
+taxonomy-independent admission, complete receipts and separate broad/stress/shift
+declarations; input calibration and qualification remain pending. The neutral
 [geometry contract](procedural_geometry.md) is implemented independently of V1
 generation and provides physically bound, versioned coverage descriptors.
 
