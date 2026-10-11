@@ -31,6 +31,9 @@ edition and desktop/phone browser acceptance. Existing report/navigation/server 
 The owner's follow-up [mission hierarchy correction](report_mission_hierarchy_results.md)
 restores mission structure as the primary navigation in report trees and the
 report home/library; controller comparisons remain secondary.
+The [bounded browsing follow-up](report_bounded_browsing_results.md) replaces
+bulk mission expansion with one stratum and twelve occurrences per page,
+while retaining full summary counts and viewport preview loading.
 
 ## Independent approach platform
 

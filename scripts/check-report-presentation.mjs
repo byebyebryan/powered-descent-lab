@@ -20,7 +20,22 @@ export async function checkPresentation({rootUrl,cdpUrl,editionPath,outputDir}) 
   const response=await fetch(new URL('/json/new?about:blank',cdp),{method:'PUT'});assert(response.ok);const tab=await response.json();
   const ws=new WebSocket(tab.webSocketDebuggerUrl);await new Promise((ok,bad)=>{ws.addEventListener('open',ok,{once:true});ws.addEventListener('error',bad,{once:true});});
   const client=cdpClient(ws);const checks=[];const screenshots=[];const timings=[];
-  const navigate=async url=>{await client.send('Page.navigate',{url});await waitForBrowserPage(client,url);};
+  const navigate=async url=>{
+    const navigation=await client.send('Page.navigate',{url});assert(!navigation.errorText,navigation.errorText);
+    // Paging canonicalizes old open-all URLs and off-page detail returns.
+    // Bind readiness to the new document, then check its final URL below.
+    for(let i=0;i<300;i++){
+      const {frameTree}=await client.send('Page.getFrameTree');
+      const actual=await client.evaluate('({url:location.href,ready:document.readyState})');
+      if(frameTree.frame.loaderId===navigation.loaderId&&actual.ready==='complete'){
+        const final=new URL(actual.url);const requested=new URL(url);
+        assert.equal(final.origin,requested.origin);assert.equal(final.pathname,requested.pathname);
+        await waitForBrowserPage(client,actual.url);return;
+      }
+      await new Promise(r=>setTimeout(r,50));
+    }
+    throw Error(`New browser document did not become ready: ${url}`);
+  };
   const wait=async expression=>{for(let i=0;i<300;i++){if(await client.evaluate(expression))return;await new Promise(r=>setTimeout(r,50));}throw Error(`Browser readiness: ${expression}`);};
   const screenshot=async name=>{if(!outputDir)return;const {data}=await client.send('Page.captureScreenshot',{format:'png'});writeFileSync(resolve(outputDir,name),Buffer.from(data,'base64'),{flag:'wx'});screenshots.push(name);};
   const noOverflow=async label=>{const width=await client.evaluate('({client:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth})');assert(width.scroll<=width.client+1,`${label}: document overflow ${JSON.stringify(width)}`);};
@@ -45,10 +60,27 @@ export async function checkPresentation({rootUrl,cdpUrl,editionPath,outputDir}) 
       assert(initial.order.findIndex(c=>c.includes('review-tree'))<initial.order.findIndex(c=>c.includes('paired-coverage')));
       expected.forEach((e,i)=>assert(initial.cards[i].includes(`${e.landed}/${e.total}`),`accounting: ${e.label}`));
       await screenshot(`${size.name}-outcomes.png`);
+      // Exercise the owner's bulk-expansion failure on the full saved corpus.
+      const bulkTime=await client.evaluate('(async()=>{document.querySelector("[data-paired-action=reset]").click();const t=performance.now();document.querySelector("[data-paired-depth=\\"3\\"]").click();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return performance.now()-t})()');
+      assert(bulkTime<250,'bulk browsing exceeds the warm 250 ms paint target');
+      await client.evaluate('document.querySelector("[data-paired-mission]").scrollIntoView({block:"center"})');
+      await wait('[...document.querySelectorAll(".mission-preview img")].some(i=>i.complete&&i.naturalWidth>0)');
+      const bulk=await client.evaluate('({matched:PdPairedReview.data.missions.filter(m=>PdPairedReview.matches(m,PdPairedReview.state)).length,rendered:document.querySelectorAll("[data-paired-mission]").length,openStrata:document.querySelectorAll("[data-kind=stratum][aria-expanded=true]").length,loaded:document.querySelectorAll(".mission-preview img[src]").length,height:document.getElementById("review-tree-root").getBoundingClientRect().height})');
+      assert.equal(bulk.matched,receipt.scheduled_missions);assert.equal(bulk.rendered,12);assert.equal(bulk.openStrata,1);
+      assert(bulk.loaded>0&&bulk.loaded<12,'offscreen previews were eagerly assigned URLs');assert(bulk.height<5000,'mission table grew into an unbounded scrolling surface');
+      await screenshot(`${size.name}-bounded-browsing.png`);
+      const traversal=await client.evaluate('(()=>{const ids=[];let maximum=0;const select=document.querySelector("[data-review-stratum-select]");const strata=[...select.options].map(o=>o.value);for(const id of strata){const s=document.querySelector("[data-review-stratum-select]");s.value=id;s.dispatchEvent(new Event("change",{bubbles:true}));do{const rows=[...document.querySelectorAll("[data-paired-mission]")];maximum=Math.max(maximum,rows.length);ids.push(...rows.map(r=>r.dataset.pairedMission));const next=document.querySelector(".mission-browser [data-review-page=next]");if(next.disabled)break;next.click();}while(true);}return {ids,maximum,strata:strata.length,expected:PdPairedReview.data.missions.map(m=>m.id)}})()');
+      assert(traversal.maximum<=12);assert.equal(traversal.ids.length,traversal.expected.length,'paging changed the scheduled occurrence count');assert(traversal.ids.every((id,i)=>id===traversal.expected[i]),'paging lost, reordered or repeated scheduled mission occurrences');
+      const legacy=await client.evaluate('(()=>{const u=new URL(location.href);u.searchParams.delete("mission");u.searchParams.delete("stratum");u.searchParams.set("page","9999");u.searchParams.set("open",PdPairedReview.data.branches.map(b=>b.id).join(","));u.hash="";return u.href})()');
+      await navigate(legacy);await wait('!!window.PdPairedReview');
+      assert(await client.evaluate('document.querySelectorAll("[data-kind=stratum][aria-expanded=true]").length===1&&document.querySelectorAll("[data-paired-mission]").length<=12'), 'old expand-all URLs bypassed the rendering bound');
       const focus=await client.evaluate('(()=>{const b=document.querySelector("[data-paired-focus]");b.closest("details").open=true;b.click();return {group:b.dataset.pairedFocus,approach:b.dataset.approach,expected:PdPairedReview.data.missions.filter(m=>m.group===b.dataset.pairedFocus).length}})()');
-      const actual=await client.evaluate('({group:PdPairedReview.state.group,approach:PdPairedReview.state.approach,groups:document.querySelectorAll("[data-paired-group]").length,missions:document.querySelectorAll("[data-paired-mission]").length})');
-      assert.equal(actual.group,focus.group);assert.equal(actual.approach,focus.approach);assert.equal(actual.groups,3);assert.equal(actual.missions,focus.expected);
-      await client.evaluate('document.querySelector("[data-paired-mission]").click();document.querySelector(".mission-comparison").open=true;document.querySelector(".paired-preview-row").scrollIntoView({block:"start"})');
+      const actual=await client.evaluate('({group:PdPairedReview.state.group,approach:PdPairedReview.state.approach,groups:document.querySelectorAll("[data-paired-group]").length,missions:document.querySelectorAll("[data-paired-mission]").length,matched:PdPairedReview.pageInfo.total})');
+      assert.equal(actual.group,focus.group);assert.equal(actual.approach,focus.approach);assert.equal(actual.groups,3);assert.equal(actual.missions,Math.min(12,focus.expected));assert.equal(actual.matched,focus.expected);
+      await client.evaluate('document.querySelector(".mission-browser [data-review-page=next]").click()');
+      const pageUrl=await client.evaluate('location.href');await navigate(pageUrl);await wait('!!window.PdPairedReview');
+      assert.equal(await client.evaluate('PdPairedReview.pageInfo.page'),2);
+      await client.evaluate('[...document.querySelectorAll("[data-paired-mission]")].at(-1).click();document.querySelector(".mission-comparison").open=true;document.querySelector(".paired-preview-row").scrollIntoView({block:"start"})');
       await wait('[...document.querySelectorAll(".pair-card img")].length===2&&[...document.querySelectorAll(".pair-card img")].every(i=>i.complete&&i.naturalWidth>0)');
       assert.equal(await client.evaluate('document.querySelectorAll("tr.paired-attempt-row").length'),expected.length);await noOverflow(`${size.name}/pair`);
       await screenshot(`${size.name}-paired-mission.png`);
@@ -59,7 +91,7 @@ export async function checkPresentation({rootUrl,cdpUrl,editionPath,outputDir}) 
       assert(charts.payload);assert(charts.ready,'live rich charts unavailable in ordinary check');
       await checkFlightInteractions(client,{correction_count:charts.handoffs},`${size.name}/saved-detail`);
       await screenshot(`${size.name}-rich-detail.png`);
-      if(charts.next){await navigate(charts.next);await wait('document.querySelector(".review-detail-nav")?.dataset.contextReady==="true"');const next=await client.evaluate('({mission:document.body.dataset.reviewMission,back:document.querySelector("[data-back-review]").href})');assert.notEqual(next.mission,before.mission);assert.equal(new URL(next.back).searchParams.get('group'),focus.group);}
+      if(charts.next){await navigate(charts.next);await wait('document.querySelector(".review-detail-nav")?.dataset.contextReady==="true"');const next=await client.evaluate('({mission:document.body.dataset.reviewMission,back:document.querySelector("[data-back-review]").href})');assert.notEqual(next.mission,before.mission);assert.equal(new URL(next.back).searchParams.get('group'),focus.group);await navigate(next.back);await wait('!!window.PdPairedReview');assert.equal(await client.evaluate('PdPairedReview.state.mission'),next.mission);assert.equal(await client.evaluate('PdPairedReview.pageInfo.page'),3);assert(await client.evaluate(`!!document.getElementById(${JSON.stringify(next.mission)})`),'off-page detail return failed to reveal the selected mission');}
       await navigate(charts.back);await wait('!!window.PdPairedReview');
       assert.equal(await client.evaluate('PdPairedReview.state.mission'),before.mission);assert.equal(await client.evaluate('location.search'),before.query);
       const duration=await client.evaluate('(async()=>{const paint=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const results=[];for(let i=0;i<5;i++){let t=performance.now();PdPairedReview.focus(PdPairedReview.data.groups[i%PdPairedReview.data.groups.length].id,"0");await paint();const expand=performance.now()-t;t=performance.now();PdPairedReview.state.outcome="timed-out";PdPairedReview.state.approach="0";PdPairedReview.render();await paint();results.push({expand_ms:expand,filter_ms:performance.now()-t});}return results})()');const median=key=>duration.map(t=>t[key]).sort((a,b)=>a-b)[2];assert(median('expand_ms')<250&&median('filter_ms')<250,'warm painted interactions exceed 250 ms target');timings.push({viewport:size.name,trials:duration,includes_two_animation_frames:true,median_expand_ms:median('expand_ms'),median_filter_ms:median('filter_ms')});
@@ -76,7 +108,7 @@ export async function checkPresentation({rootUrl,cdpUrl,editionPath,outputDir}) 
       const camp=await client.evaluate('({previewVisible:[...document.querySelectorAll("tr.campaign-row:not([hidden]) img")].some(i=>i.naturalWidth&&i.getBoundingClientRect().left>=0&&i.getBoundingClientRect().right<=document.documentElement.clientWidth),detail:document.querySelector("tr.campaign-row:not([hidden]) .mission-link").href})');assert(camp.previewVisible);assert(new URL(camp.detail).pathname.startsWith(base.pathname+'details/'));
       await client.evaluate('document.querySelector("[data-review-outcome]").click()');
       assert(await client.evaluate('(()=>{const selected=document.querySelector("[data-review-outcome]").dataset.reviewOutcome;return [...document.querySelectorAll("tr.campaign-row:not(.review-filter-hidden)")].every(r=>r.dataset.outcome===selected)})()'));
-      checks.push({viewport:size.name,initial,coverage:actual,pair_previews_loaded:2,context_roundtrip:true,rich_modes_hover_and_handoffs:true,unsupported:!!unsupported,campaign_companion_preview_links_and_filter:true});
+      checks.push({viewport:size.name,initial,bulk:{...bulk,paint_ms:bulkTime},paging:{scheduled_occurrences_visited:traversal.ids.length,strata:traversal.strata,maximum_rendered:traversal.maximum,reload_and_off_page_return:true,legacy_expand_all_url_bounded:true},coverage:actual,pair_previews_loaded:2,context_roundtrip:true,rich_modes_hover_and_handoffs:true,unsupported:!!unsupported,campaign_companion_preview_links_and_filter:true});
     }
     assert.deepEqual(client.errors,[],'ordinary browser errors');
     const homeNavigation=[];

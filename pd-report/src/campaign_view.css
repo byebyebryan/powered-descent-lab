@@ -101,6 +101,16 @@
 .controller-overview > summary, .comparison-options > summary,
 .mission-comparison > summary { cursor: pointer; font-weight: 600; }
 .mission-comparison .paired-previews { margin-top: 12px; }
+.mission-browser { border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin: 12px 0; background: var(--paper); }
+.mission-browser[hidden] { display: none; }
+.stratum-controls, .mission-page-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stratum-controls { margin-bottom: 10px; }
+.stratum-controls label { flex: 1 1 220px; min-width: 0; font-size: .75rem; }
+.stratum-controls select { display: block; width: 100%; margin-top: 4px; padding: 7px; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
+.mission-page-controls span { flex: 1 1 160px; font-size: .8rem; text-align: center; }
+.mission-browser button { cursor: pointer; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); }
+.mission-browser button:disabled { cursor: default; opacity: .45; }
+.mission-browser button:focus-visible, .mission-browser select:focus-visible { outline: 3px solid #3568a8; outline-offset: 2px; }
 @media(max-width:700px) {
   .paired-table th:first-child { width: 200px; }
   .paired-group-row > td:first-child,

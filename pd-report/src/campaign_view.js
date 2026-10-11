@@ -1,15 +1,32 @@
-// Load a preview only after its existing review-tree row becomes visible.
+// Load previews near the viewport, including after opening a tree/disclosure.
 (() => {
   const root = document.getElementById('review-tree-root');
   if (!root) return;
   let scheduled = false;
+  const watched = new Set();
+  const load = image => {
+    if (!image.isConnected || !image.dataset.previewSrc || !image.getClientRects().length) return;
+    image.loading = 'lazy';
+    image.src = image.dataset.previewSrc;
+    image.removeAttribute('data-preview-src');
+    observer?.unobserve(image);
+    watched.delete(image);
+  };
+  const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(entries => {
+    entries.forEach(entry => {if (entry.isIntersecting) load(entry.target);});
+  }, {rootMargin: '200px 0px'});
   const update = () => {
     scheduled = false;
+    watched.forEach(image => {
+      if (!image.isConnected || !image.dataset.previewSrc) {observer?.unobserve(image);watched.delete(image);}
+    });
     root.querySelectorAll('img[data-preview-src]').forEach(image => {
-      if (image.closest('tr')?.hidden || !image.getClientRects().length) return;
-      image.loading = 'lazy';
-      image.src = image.dataset.previewSrc;
-      image.removeAttribute('data-preview-src');
+      if (observer) {
+        if (!watched.has(image)) {watched.add(image);observer.observe(image);}
+      } else {
+        const box = image.getBoundingClientRect();
+        if (box.bottom >= -200 && box.top <= innerHeight + 200 && box.right > 0 && box.left < innerWidth) load(image);
+      }
     });
   };
   const schedule = () => {
@@ -21,6 +38,7 @@
     subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'aria-expanded', 'open'],
   });
   window.PdCampaignPreviews = {loadVisible: schedule};
+  if (!observer) {window.addEventListener('scroll', schedule, {passive:true});window.addEventListener('resize', schedule);}
   document.addEventListener('pd-batch-ready', () => {
     if (document.getElementById('paired-review-data')) return;
     const tree = root.__pdBatchTreeApi;

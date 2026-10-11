@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const context=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../pd-report/src/paired_model.js',import.meta.url),'utf8'),context);
-const {matches}=context.PdPairedReviewModel;
+const {matches,pageMissions,pageSize}=context.PdPairedReviewModel;
 const mission={id:'mission-0',mission_index:5,label:'Value noise · left · stratum 0',group:'coverage-0',physical_sha256:'abcdef01234',attempts:[{approach:0,outcome:'timed-out'},{approach:1,outcome:'landed'},{approach:2,outcome:'unsupported'}]};
 const all={q:'',group:'',outcome:'all',approach:'all'};
 
@@ -34,6 +34,36 @@ test('selection retains repeat occurrences and leaves the paired attempts intact
   assert.equal(selected.length,2);
   assert.equal(selected[0].attempts.length,3);
   assert.equal(JSON.stringify([mission,repeat]),originals);
+});
+
+test('bounded pages cover every scheduled occurrence in order, including repeats',()=>{
+  const inventory=Array.from({length:128},(_,i)=>({...mission,id:`mission-${i}`,occurrence:i}));
+  const before=JSON.stringify(inventory);const visited=[];
+  for(let page=1;page<=Math.ceil(inventory.length/pageSize);page++){
+    const slice=pageMissions(inventory,page);
+    assert(slice.items.length<=pageSize);assert.equal(slice.total,128);
+    visited.push(...slice.items.map(m=>m.id));
+  }
+  assert.deepEqual(visited,inventory.map(m=>m.id));
+  assert.equal(JSON.stringify(inventory),before);
+});
+
+test('a detail return reveals its exact occurrence on the correct page',()=>{
+  const inventory=Array.from({length:128},(_,i)=>({...mission,id:`mission-${i}`,occurrence:i}));
+  const slice=pageMissions(inventory,1,'mission-24');
+  assert.equal(slice.page,3);assert.equal(slice.start,25);assert.equal(slice.end,36);
+  assert.equal(slice.items[0].id,'mission-24');
+  assert.equal(pageMissions(inventory,2,'missing').page,2);
+});
+
+test('page bounds remain usable for invalid URLs, last pages and empty filters',()=>{
+  const inventory=Array.from({length:13},(_,i)=>({...mission,id:`mission-${i}`}));
+  for(const page of [-1,0,'NaN',Infinity])assert.equal(pageMissions(inventory,page).page,1);
+  assert.equal(pageMissions(inventory,99).page,2);
+  assert.equal(pageMissions(inventory,2).items.length,1);
+  const empty=pageMissions([],99);
+  assert.equal(empty.page,1);assert.equal(empty.pages,0);assert.equal(empty.start,0);assert.equal(empty.end,0);
+  assert.equal(empty.items.length,0);
 });
 
 test('detail navigation rejects an external return URL and filters neighbours',async()=>{

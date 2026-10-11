@@ -1,7 +1,8 @@
 # Saved campaign presentation editions
 
 [Report workflow](reports.md) · [Development](development.md) ·
-[Refinement results](report_presentation_refinement_results.md)
+[Refinement results](report_presentation_refinement_results.md) ·
+[Bounded browsing results](report_bounded_browsing_results.md)
 
 The common campaign and comparison views are presentation components in
 `pd-report`. They consume neutral saved projections, without importing an agent,
@@ -32,11 +33,22 @@ not replace the mission hierarchy. Compare A/B uses shared axes without choosing
 the best repeat. Existing synthetic trees retain their applicable mission,
 arrival/route, condition, vehicle, arc, velocity and seed structure.
 
+**Browse missions** opens one terrain stratum, with twelve mission occurrences
+per page. Opening a different stratum closes the previous one. Previous/next
+stratum controls and a stratum selector navigate the matched collection; page
+controls appear above and below the table. Family/direction/stratum counts and
+coverage totals always describe all matches, not just the current page.
+Previews receive their image URLs only near the viewport. Expanding summaries
+does not materialize the whole mission inventory or request every preview.
+
 Coverage cells focus their exact family, direction, stratum and approach. Search
 accepts a mission number, terrain label or physical identity. The URL retains
-filters, comparison choices, open groups and the selected mission. Detail links
-restore that context; previous/next follows matched missions for the same
-approach. Family/direction focus includes descendants and repeated occurrences.
+filters, comparison choices, open groups, stratum, page and the selected mission.
+Detail links restore that context; previous/next follows matched missions for the same
+approach across page boundaries. Returning from a detail automatically reveals
+the selected occurrence's stratum and page. Old expand-all links remain readable
+with a single open stratum. Family/direction focus includes descendants and
+repeated occurrences.
 Unsupported details show terrain and the target without inventing a
 flight. Recorded but unstarted episodes are a separate outcome.
 
@@ -74,7 +86,7 @@ full-population result. Use `refine_campaign` for a single saved campaign; its
 three arguments are the source directory, new output directory and source URL
 base. A campaign-only edition keeps original detail links.
 
-Branches materialize on demand and previews load after they become visible. The
+Branches materialize on demand and previews load near the viewport. The
 comparison carries compact outcome/metric projections, without full trajectory
 arrays, checkpoint reads or capture fetches at page startup. Its navigation index
 contains the same mission occurrences and is fetched only by a detail page.
@@ -102,7 +114,8 @@ rtk proxy node scripts/check-report-presentation.mjs \
 ```
 
 It checks desktop/mobile mission hierarchy, mission-first home/library navigation,
-accounting, lazy previews, exact coverage focus,
+accounting, viewport preview loading, bounded bulk browsing, complete pagination,
+page reload/detail returns, old expand-all links, exact coverage focus,
 filter/search behavior, shared mission review, context round trips, rich tools,
 unsupported status and deliberately blocked Plotly fallback. Screenshots and
 five warm interaction timings per viewport are retained with the receipt.
