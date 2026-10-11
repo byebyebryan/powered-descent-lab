@@ -4,6 +4,13 @@ The new distribution is declared here before inspecting any strategy's results.
 It is separate from the frozen Pylander-derived studies and authored fixtures.
 Those inputs and their outcomes keep their original identities.
 
+The October 11 [challenge benchmark plan](procedural_challenge_plan.md) proposes
+a new versioned distribution in which every qualification mission has a measured
+terrain challenge. Its [input review](procedural_challenge_review.md) documents
+the existing collections' milder geometry and pad-edge effects. The V1 contracts
+below remain implemented and unchanged; the proposed V2 recipes, coverage
+admission and bounded pad transitions are not implemented by this planning pass.
+
 ## Initial distribution: `pd-missions/value-noise-rest-v1`
 
 The first tier is a complete source-pad-rest to target-pad mission with Earth

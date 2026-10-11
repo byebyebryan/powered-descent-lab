@@ -44,6 +44,13 @@ captures pass independent replay, with unsupported inputs retained in the
 a negative learning result, not a replacement controller or default promotion.
 The [next recommendation](procedural_learning_next.md) begins with distribution
 coverage, then a controlled curriculum over complete procedural missions.
+The October 11 [challenge benchmark plan](procedural_challenge_plan.md) and
+[review](procedural_challenge_review.md) complete the saved-input coverage audit.
+The [active execution loop](procedural_challenge_execution.md) establishes
+versioned layered-first recipes, taxonomy-independent challenge admission and
+joint coverage audits. Broad evaluation retains qualifying mixed/unclassified
+missions; stress and shift populations are separate. Gentle procedural curricula
+remain separate from qualification scoring.
 
 ### Report presentation refinement
 
@@ -1008,12 +1015,19 @@ maintained views.
 
 The first [procedural learning contract](procedural_learning_plan.md) is complete;
 read its [measured results](procedural_learning_results.md) before another
-allocation. Prepare the next contract from the
-[experimental recommendation](procedural_learning_next.md): audit physical
-distribution coverage, then compare a complete-mission sampler curriculum
-against uniform sampling with the corrected objective. Investigate a separately
-owned control parameterization only if physical diagnostics support it. Declare
-bounded revisions, budgets and new held-out seeds before training.
+allocation. The [challenge benchmark plan](procedural_challenge_plan.md) and
+[completed planning review](procedural_challenge_review.md) now put mission
+coverage first: implement neutral metrics, versioned recipes/pad transitions,
+taxonomy-independent geometry admission, then a bounded input-only calibration
+and maintained report projections. The [execution record](procedural_challenge_execution.md)
+owns that authorized loop. Named categories organize review; broad sampling,
+selected joint audits and separately scored stress/shift panels establish the
+declared evidence and limits. Freeze a challenging benchmark before its separately scoped
+incumbent comparison or another RL allocation. The
+[learning recommendation](procedural_learning_next.md) follows that prerequisite:
+compare a training curriculum against uniform sampling with the corrected
+objective, and investigate control parameterization only when diagnostics
+support it. Declare revisions, budgets and new held-out seeds before training.
 
 Terminal/simple-transfer cases remain synthetic diagnostics; authored
 waypoint/planner probes constrain only the approaches using those contracts.

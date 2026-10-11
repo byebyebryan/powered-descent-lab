@@ -6,6 +6,13 @@ Status: recommendation for the next loop, not a launched allocation. The October
 10 run's final comparison remains authoritative in its run record. This proposal
 does not reopen its frozen checkpoints, rewards or held-out selection.
 
+The October 11 [challenge benchmark plan](procedural_challenge_plan.md) and
+[completed planning review](procedural_challenge_review.md) now define the
+mission-platform prerequisite. Qualification requires meaningful procedural
+terrain in every admitted case; gentle curricula remain training/integration
+collections. Establish and freeze that benchmark before another large learning
+allocation. The learning experiments below remain recommendations, not a launch.
+
 ## What the completed optimization tells us
 
 Nine allocations completed 72,032,256 PPO transitions on complete procedural
@@ -37,6 +44,13 @@ rate on these two recipes would establish performance on those recipes. It
 would not establish coverage of another generator or a wider game envelope.
 Declare any broader recipe or new generator version before flight outcomes;
 keep this input characterization separate from solvability and controller scores.
+The saved-input audit is now complete. Next implement versioned neutral metrics,
+layered-first recipes and explicit geometry admission, then run the bounded
+input-only calibration described in the challenge plan. Broad evaluation keeps
+all qualifying unique proposals regardless of display category; targeted stress
+and distribution-shift panels have separate denominators. Final challenge rules,
+proposal mixtures and diagnostic coverage definitions must be frozen before the
+benchmark comparison. Category occupancy cannot establish complete coverage.
 
 1. Establish a learning diagnostic before another large allocation. Inspect
    reward components, actual commanded throttle/attitude, touchdown separation,
@@ -45,9 +59,10 @@ keep this input characterization separate from solvability and controller scores
    control. They neither replace the complete-mission benchmark nor require
    authored waypoint phases.
 2. Test a sampler curriculum over complete procedural missions. Begin with
-   shorter transfers and lower relief in both terrain families, then mix in and
-   advance toward the original envelope. Preserve rest-on-source-pad starts,
-   target-pad contact, native fuel/horizon and both travel directions throughout.
+   shorter transfers and lower relief in separately named training collections,
+   then advance toward the frozen challenging benchmark envelope. Preserve
+   rest-on-source-pad starts, target-pad contact, native fuel/horizon and both
+   travel directions throughout.
    Recipes, stage populations, mixing weights and advancement rules must be
    declared before their outcome evaluations. Retain every structural rejection;
    do not admit missions because a controller happens to solve them.
@@ -62,10 +77,10 @@ keep this input characterization separate from solvability and controller scores
    adapter is a candidate, not a current implementation. Compare it while holding
    sampling and objective fixed. Any deterministic control must be documented
    as part of that approach, with no incumbent planner/controller fallback.
-5. Freeze the chosen design and all seed checkpoints, then run the unchanged
-   common benchmark on new seed-disjoint held-out collections. Report each seed,
-   both families, directions and relief strata, along with unsupported inputs
-   and the complete native landing/integrity/replay tuple.
+5. Freeze the chosen design and all seed checkpoints, then run the frozen
+   challenging benchmark on new seed-disjoint held-out collections. Report each
+   seed, morphology family, geometry band and backend, with direction as a facet,
+   unsupported inputs and the complete native landing/integrity/replay tuple.
 
 Do not change sampler, objective and control mapping together in the first
 comparison. Reserve final evaluation time and cap the number of revisions.

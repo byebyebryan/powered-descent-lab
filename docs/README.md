@@ -70,6 +70,12 @@ each selected PPO seed lands 0/2,048; the reflected incumbent lands 1,973/2,048.
 The [next experiment recommendation](procedural_learning_next.md) separates a
 physical coverage audit, complete-mission curriculum and control-interface
 investigation; it is not another launched allocation.
+The October 11 [challenging procedural benchmark plan](procedural_challenge_plan.md)
+now owns the mission-platform prerequisite. Its [review and research](procedural_challenge_review.md)
+audit 4,048 saved inputs. The owner's coverage review replaces equal category
+quotas with broad challenging evaluation, separate stress/shift populations and
+joint coverage audits. The [active execution record](procedural_challenge_execution.md)
+tracks the authorized staged mission-platform loop before another flight/learning campaign.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.

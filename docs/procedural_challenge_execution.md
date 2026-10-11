@@ -1,0 +1,104 @@
+# Procedural challenge implementation loop
+
+[Roadmap](procedural_challenge_plan.md) · [Planning review](procedural_challenge_review.md) ·
+[Mission contracts](procedural_missions.md) · [Development](development.md)
+
+Status: October 11, 2026 active. The owner authorized a goal loop and incremental
+commits after reviewing the limits of mission categorization. Work is in the
+current checkout. No other agent is delegated.
+
+## Authorized result
+
+Implement roadmap slices 1–4: native neutral geometry; explicit V2 recipes and
+bounded pad transitions; broad challenging collections and complete selection
+receipts; input-only calibration and maintained coverage/report projections.
+Prepare a concrete budgeted freeze/incumbent comparison plan for slice 5.
+Controller tuning, training and new flight campaigns remain outside this loop.
+Keep server lifecycle, accepted report editions, historical captures, frozen
+inputs and their evidence identities unchanged. Commit reviewed milestones;
+push/publication is not part of the request.
+
+The qualification population must contain meaningful terrain challenge in every
+admitted mission. Synthetic terminal/simple-transfer cases cover basic control;
+gentle complete procedural missions can support separately declared curricula.
+Generate broad continuous proposal distributions independently of classification.
+Retain qualifying mixed/unclassified terrain; labels organize review rather than
+define an exhaustive universe or admission quotas.
+
+## Reviewable milestones
+
+1. Revise coverage decisions and preserve the saved-input audit/research.
+2. Add versioned, physically bound native descriptors with analytical geometry,
+   symmetry, clipping, plateau, position/spacing and bounded-work checks.
+3. Add configurable V2 terrain/mission contracts and bounded local pad edits;
+   preserve V1 bytes/identities and both native/Python frontdoors.
+4. Add challenge admission and immutable broad/stress/shift declarations with
+   complete proposal accounting, no controller input and deterministic receipts.
+5. Freeze a development pilot declaration, run bounded input-only generation,
+   compare geometry/resolution, audit selected interactions and review bounded
+   previews through maintained reporting components.
+6. Reconcile runtime docs, record calibration limits and blind spots, run the
+   maintained gate, and commit the readiness/comparison-budget record.
+
+## Initial pilot declaration
+
+Reserve a new create-only output directory. Use seed 20261011031 for layered
+development proposals and 20261011032 for value-noise proposals, each with
+10,000 scheduled indices and at most eight structural attempts per index.
+Alternate physical direction by index; random parameter draws are index-local.
+These seeds and all generated previews are exposed development inputs.
+Do not generate held-out inputs until the recipe/admission/metric definitions
+are frozen. The serialized recipe and pilot configuration must be committed
+before generation; later adjustments have new identities and receipts.
+
+Predeclare diagnostic bins in physical units, with visible underflow/overflow:
+
+| Axis | Diagnostic interior boundaries |
+| --- | --- |
+| Transfer distance, m | 600, 1,200, 1,800 |
+| Signed pad rise, m | -400, -150, 0, 150, 400 |
+| Target/source width, m | 32, 48, 64 |
+| Chord barrier, m | 50, 100, 200, 400 |
+| Sustained barrier width at 100 m, m | 40, 80, 200, 400 |
+| Departure/approach barrier distance, m | 40, 100, 250, 500 |
+| Significant crest count | 1, 2, 4 |
+
+Audit distance x sustained width, rise x target width, departure proximity x
+source width, approach proximity x target width, and crest spacing x barrier
+height. An absent obstacle is an explicit missing value, not distance zero.
+Bins are diagnostic choices, not completeness or universal difficulty criteria.
+Specify crest-spacing boundaries with the native metric contract before running
+the pilot. Present marginal ranges and joint counts together; do not silently
+remove overflow or unclassified inputs.
+
+## Preservation and acceptance
+
+V1 schema validation, index/stratum scheduling, serialized bytes and physical
+identities remain pinned. New physical inputs use explicit V2 contracts.
+Prepared terrain equals raw terrain outside the declared pad-edit intervals;
+finite local transitions cannot clear an inter-pad flight corridor.
+Agents receive physical missions without seed/coverage membership. The native
+plant, command ordering, gravity, resources, clocks, stop and replay semantics
+remain authoritative and unchanged.
+
+Each proposal has one terminal disposition; accepted inputs are unique by
+physical identity and satisfy the declared challenge predicate after pad edits.
+Stress/shift panels retain separate membership, provenance and denominators.
+Taxonomy changes cannot change broad evaluation membership. Reversed generation,
+symmetry and duplicate/exhaustion cases need meaningful tests.
+
+Use analytical geometry and output-independent tests, then the maintained
+development gate for native changes. The old saved-input audit remains local
+geometry evidence, not flight replay. Claims after the pilot describe the
+declared sampling distribution and measured interactions, not complete coverage
+or guaranteed solvability. Document unresolved gaps before input promotion.
+
+## Progress
+
+- Roadmap revision: broad evaluation, stress and shift separated; overlapping
+  labels and unclassified retention replace the twelve-cell qualification quota.
+- Saved-input analysis: preserved 4,048-input evidence and its eleven pure tests.
+- Planning checkpoint checks: eleven audit tests, thirteen documentation/gate
+  helper tests, 208 Markdown files / 1,393 local links / zero issues, and clean
+  whitespace validation. No runtime change or new flight evidence in this commit.
+- Native implementation and pilot: pending.
