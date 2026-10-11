@@ -77,8 +77,12 @@ The October 11 [challenging procedural benchmark plan](procedural_challenge_plan
 now owns the mission-platform prerequisite. Its [review and research](procedural_challenge_review.md)
 audit 4,048 saved inputs. The owner's coverage review replaces equal category
 quotas with broad challenging evaluation, separate stress/shift populations and
-joint coverage audits. The [active execution record](procedural_challenge_execution.md)
+joint coverage audits. The [completed execution record](procedural_challenge_execution.md)
 tracks the authorized staged mission-platform loop before another flight/learning campaign.
+The [20,000-input calibration](procedural_challenge_calibration.md) now records
+the V2 distributions, resolution warnings, bounded rich previews and coverage
+limits. The [freeze/unchanged-incumbent proposal](procedural_challenge_comparison_plan.md)
+defines a separately scoped budget; no new flight or learning allocation occurred.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.

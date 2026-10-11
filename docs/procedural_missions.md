@@ -12,14 +12,16 @@ below remain implemented and unchanged. The [V2 generator and bounded pads](proc
 are implemented with explicit native/CLI/Python proposal frontdoors. The
 [V2 challenge/collection contract](procedural_collections_v2.md) now implements
 taxonomy-independent admission, complete receipts and separate broad/stress/shift
-declarations; input calibration and qualification remain pending. The neutral
+declarations. [Input calibration](procedural_challenge_calibration.md) is complete;
+qualification freeze and flights remain separate work. The neutral
 [geometry contract](procedural_geometry.md) is implemented independently of V1
 generation and provides physically bound, versioned coverage descriptors.
 
 The [native input audit](procedural_input_audit.md) now supplies proposed/admitted
 statistics, selected joints, pad/concentration diagnostics, bounded reference QA
 and preview selections. Its create-only runner uses the committed development
-pilot; report projection and calibration review remain pending.
+pilot. The [maintained input report](procedural_input_audit.md#maintained-local-input-report)
+now projects its measured coverage and bounded previews without flight outcomes.
 
 ## Initial distribution: `pd-missions/value-noise-rest-v1`
 

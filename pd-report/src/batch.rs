@@ -467,7 +467,8 @@ const COVERAGE_TREE_SCRIPT: &str = r#"
   });
 "#;
 
-fn escape_html(value: &str) -> String {
+/// Escape plain text for shared report fragments and HTML attributes.
+pub fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")

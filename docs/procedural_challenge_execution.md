@@ -3,7 +3,7 @@
 [Roadmap](procedural_challenge_plan.md) · [Planning review](procedural_challenge_review.md) ·
 [Mission contracts](procedural_missions.md) · [Development](development.md)
 
-Status: October 11, 2026 active. The owner authorized a goal loop and incremental
+Status: October 11, 2026 implemented and validated. The owner authorized a goal loop and incremental
 commits after reviewing the limits of mission categorization. Work is in the
 current checkout. No other agent is delegated.
 
@@ -192,7 +192,48 @@ or guaranteed solvability. Document unresolved gaps before input promotion.
   preflights both complete 10,000-index requests without generation, then verifies
   small seed-981 audits for both backends, population reconciliation and refusal
   to reuse an artifact before recording further exposure. Reserved pilot seeds
-  have not yet been generated.
-- Pending: maintained coverage reporting, the 10,000-index development
-  stream per backend, resolution/joint coverage review, and the separate
-  freeze/comparison-budget readiness record.
+  had not yet been generated at that checkpoint.
+- Declared pilot completed: all 20,000 resolved proposals verified, with 8,168
+  layered and 8,080 value challenges admitted. There are no structural failures
+  or exact duplicates within/across streams. Mixed/unclassified qualifying inputs
+  remain in the denominator. The [calibration record](procedural_challenge_calibration.md)
+  owns continuous ranges, interactions, pad effects, sparse cells, resolution
+  warnings and the backend decision; no complete-coverage claim is made.
+- Maintained input views: shared full batch/status templates now project these
+  saved audits without generation or flights. Full counts, marginal plots,
+  conditional directions and joint matrices precede bounded collection/morphology/
+  barrier-band browsing. Details retain raw/prepared geometry and original JSON;
+  one preview band and twelve lazy images per page preserve the earlier UX.
+  Native and Node projection/pagination checks pass. Final-source desktop/mobile
+  [browser acceptance](../outputs/procedural-challenge/browser-20261011T095305Z/browser-result.json)
+  checks image absence, assets, paging, reload, direction, detail return and
+  overflow. The [frontdoor receipt](../outputs/procedural-challenge/validation-20261011T095600Z-reports/frontdoor-validation.json)
+  verifies all 578 generated pages/snapshots, source/executable binding,
+  create-only/dangling refusal, excluded-file drift and rebound wrong statistics.
+- The [next comparison proposal](procedural_challenge_comparison_plan.md) declares
+  freeze prerequisites, composition/report gaps and a maximum 9,248-attempt/
+  replay budget, with broad/stress/backend populations kept separate. It is
+  separately scoped work; the current loop has zero flights/training, no held-out
+  generation, no accepted publication and no server lifecycle changes.
+- Final validation: all eighteen maintained developer checks pass, with the
+  complete tracked/untracked source set unchanged during the
+  [gate](../outputs/procedural-challenge/gate-20261011T100100Z-final/gate.log)
+  ([result](../outputs/procedural-challenge/gate-20261011T100100Z-final/gate-result.json)).
+  Native preservation, source/frontend verification, local browser acceptance
+  and calibration interpretation are retained as separate evidence. No paths
+  under the plant/runtime, controllers/planner or RL experiment changed in this
+  loop; V1 fixture inputs and prior captures remain intact.
+
+## Completion boundary
+
+Authorized slices 1–4 and the separate comparison-budget proposal are delivered.
+Native mission generation/admission/accounting, common evaluation, independent
+Python consumption and neutral presentation keep their distinct owners. The
+revised approach is broad conditional sampling with measured blind spots;
+taxonomy organizes review and cannot certify complete coverage.
+
+The next work begins with the [comparison prerequisites](procedural_challenge_comparison_plan.md),
+including resolution-policy decisions, separate stress declarations and truthful
+V2 incumbent/report composition. It is not an automatic continuation into tuning,
+training, final held-out generation or a controller campaign. The current pilot
+remains exposed development evidence with all original inputs/receipts preserved.

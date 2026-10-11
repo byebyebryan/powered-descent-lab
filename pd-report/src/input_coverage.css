@@ -1,0 +1,30 @@
+.input-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:20px 0; }
+.input-kpis div { padding:14px; border:1px solid #ddd3c4; border-radius:10px; color:#756857; }
+.input-kpis strong { display:block; font-size:28px; color:#332c25; }
+.input-chart-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.input-chart h4 { margin:12px 0 4px; }
+.input-histogram { width:100%; min-width:360px; font-family:ui-monospace,monospace; font-size:11px; fill:#564b3d; }
+.input-distribution, .input-joint { margin-top:12px; padding:12px; border:1px solid #ddd3c4; border-radius:10px; }
+.input-distribution summary, .input-joint summary { cursor:pointer; font-weight:600; }
+.input-chart { overflow:auto; }
+.input-heatmap { font-variant-numeric:tabular-nums; }
+.input-coverage-report .paired-controls { display:flex; flex-wrap:wrap; gap:12px; margin:16px 0; }
+.input-coverage-report label { display:grid; gap:5px; }
+.input-coverage-report input, .input-coverage-report select, .input-coverage-report button { padding:8px 12px; border:1px solid #c8bba8; border-radius:6px; background:#fffcf5; color:#332c25; }
+.input-coverage-report button { cursor:pointer; }
+.input-coverage-report button:disabled { opacity:.5; cursor:default; }
+.input-collection { padding:14px; border:1px solid #ddd3c4; border-radius:10px; margin:10px 0; }
+.input-collection h3 { margin:0 0 12px; }
+.input-group { margin:8px 0; }
+.input-group summary { cursor:pointer; padding:8px 0; }
+.input-band-buttons { display:flex; flex-wrap:wrap; gap:8px; padding:8px 0 12px 18px; }
+.input-band-buttons button[aria-pressed=true] { background:#356c69; color:white; }
+#input-pager { display:flex; align-items:center; gap:12px; margin:16px 0; }
+#input-preview-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+.input-preview-card { border:1px solid #ddd3c4; border-radius:10px; padding:12px; }
+.input-preview-card img { width:100%; height:auto; background:#fbf7ee; }
+.input-preview-card .section-note { margin:8px 0; }
+.input-preview-card a { font-weight:600; }
+.input-preview-card code { overflow-wrap:anywhere; }
+@media(max-width:850px) { .input-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .input-chart-grid { grid-template-columns:1fr; } #input-preview-cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:550px) { #input-preview-cards { grid-template-columns:1fr; } }

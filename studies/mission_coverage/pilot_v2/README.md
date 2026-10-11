@@ -43,9 +43,10 @@ is collection → morphology group → measured band → mission, one open band 
 twelve rows per page. Full summary counts and bounded preview counts must remain
 distinguishable. Labels/bands/display never change collection membership.
 
-The next implementation milestone provides a native bounded audit driver and
-maintained report projection. Commit this declaration before the 20,000-input
-run, preserve it in the run receipt, and write to a fresh output directory. If
+The [completed calibration](../../../docs/procedural_challenge_calibration.md)
+uses the native bounded audit driver and maintained report projection. This
+declaration was committed before the 20,000-input run and preserved in its
+create-only receipt. Future runs also require a fresh output directory. If
 calibration motivates changes, retain this declaration/run and issue a revision
 with new identities. No held-out generation, flight, training, report publication
 or server lifecycle action is part of this pilot. Freeze and an unchanged-incumbent

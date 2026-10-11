@@ -80,6 +80,9 @@ It does not install a bridge into the RL environment or allocate training.
 The [native input audit](procedural_input_audit.md) has ten statistical,
 selection, coordinate and saved-input checks. The coverage study's Python checks
 also validate the bounded runner's declaration, scope and create-only boundaries.
+The [input report](procedural_input_audit.md#maintained-local-input-report) adds
+three native projection/plot checks and three Node pagination/filter checks.
+Its explicit browser checker reads local files without starting a report server.
 
 ## Optional retained flight regression
 

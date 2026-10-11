@@ -94,6 +94,59 @@ and cross-stream exact shared identities, and refuses existing/dangling destinat
 It cannot resume, create held-out inputs, train, fly, publish or manage a server.
 `--plan` is a read-only declaration/file check; native preflight remains pending.
 
-The full coverage/preview report projection is the next milestone. Audit success
-establishes saved-input consistency and measured distributions, not landings,
-complete coverage, policy generalization or a frozen benchmark.
+## Maintained local input report
+
+The native composition example reads a completed pilot and passes neutral,
+bounded presentation DTOs to `pd-report::input_coverage`. The report crate imports
+no generator, collection selector or strategy. Its common full batch/status
+templates retain the existing shell and palette; no accepted report edition or
+home/library navigation is rewritten.
+
+```sh
+rtk proxy cargo run --release -p pd-missions --example input-report -- \
+  --pilot outputs/procedural-challenge/COMPLETED-PILOT \
+  --output outputs/procedural-challenge/NEW-LOCAL-REPORT
+```
+
+The destination must be fresh. The renderer authenticates completed-run/audit
+bytes, recomputes aggregate projections from the saved compact rows, reconciles
+them with the native selection ledger, and authenticates all immutable inputs
+before and after rendering. It loads selected saved physical inputs through the
+native reader; it does not regenerate noise or reference samples. `render.json`
+binds the executable, pilot sources, collection files, generated pages/snapshots,
+shared plot bounds and zero flight/training/publication allocation. A failure
+leaves a partial new directory without a completed receipt.
+
+The overview leads with measured coverage and full scheduled/admitted counts.
+Marginal charts compare proposed/admitted counts on shared scales, retain missing
+and overflow bins, and expose directions within bins. Joint matrices show exact
+counts and observed-pair correlations. Regular and targeted reference QA retain
+separate denominators and flagged input indices.
+
+Review follows **collection → morphology → measured chord-barrier band → mission**.
+Display bands are `<100`, `100–<200`, `200–<400`, `≥400` m above the pad chord,
+plus missing. They are presentation thresholds, introduced after selection;
+they never become V1 strata, admission rules or difficulty/solvability claims.
+Mixed/unclassified groups remain visible. Physical direction is a filter.
+Only one band materializes previews, twelve per page, with no initial image
+requests. Full band counts remain separate from the selected preview inventory.
+Search applies only to selected previews, not the entire saved collection.
+
+Raw/prepared plots use shared source-relative metre bounds across the selected
+inventory and reflect display toward the right. Horizontal/vertical pixel scales
+differ and are disclosed. Pad edits and the metric's pad chord are marked;
+no flight trajectory is fabricated. Details retain admission paths, plant/resource
+context, full descriptors and exact saved resolved JSON. Return links reopen the
+same band. Input views do not substitute for rich flight detail pages.
+
+`scripts/check-input-coverage-browser.mjs` performs explicit desktop/mobile QA
+against local files through an already available test browser. It checks initial
+image absence, twelve-image pagination, URL reload, direction filtering, detail
+and return navigation, visible assets, overflow and browser errors. It starts no
+report server. Native projection/plot checks and the maintained Node model tests
+cover count reconciliation, unsafe links, coordinate reflection and pagination.
+
+The [calibration record](procedural_challenge_calibration.md) owns measured pilot
+findings. Audit/report success establishes saved-input consistency and selected
+distributions, not landings, complete coverage, policy generalization or a frozen
+benchmark.

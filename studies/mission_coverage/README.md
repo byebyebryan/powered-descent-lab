@@ -3,14 +3,16 @@
 [Plan](../../docs/procedural_challenge_plan.md) ·
 [Review, measurements and research](../../docs/procedural_challenge_review.md)
 
-The committed [V2 pilot declaration](pilot_v2/README.md) owns the next input-only
-calibration. Its native recipes and metric/admission/projection specs are distinct
+The committed [V2 pilot declaration](pilot_v2/README.md) owns the completed input-only
+[calibration](../../docs/procedural_challenge_calibration.md). Its native recipes and metric/admission/projection specs are distinct
 from this historical saved-input audit. No new flights or training are scheduled.
 
 `run_pilot_v2.py --plan` inspects that declaration without generation.
 The [native audit workflow](../../docs/procedural_input_audit.md) owns the
 create-only collection/QA run; the script orchestrates native tools without
 implementing another terrain generator or controller.
+The native `input-report` example projects its completed saved audits through
+the maintained report shell; see the same workflow for create-only local views.
 
 `audit.py` reads saved manifest-bound missions, authenticates selected file
 bytes and emits geometry summaries to stdout. It runs no generator, strategy,

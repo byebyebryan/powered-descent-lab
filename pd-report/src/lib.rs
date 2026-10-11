@@ -23,6 +23,7 @@ pub mod paired_review;
 pub use agent::{AgentReportEvidenceV1, agent_capture_navigation, render_agent_run_report};
 pub mod batch_tree;
 pub mod flight_annotations;
+pub mod input_coverage;
 pub mod planning_cycles;
 pub mod report_navigation;
 mod rich_template;

@@ -339,6 +339,7 @@ dependencies = [
  "clap",
  "fastnoise-lite",
  "pd-core",
+ "pd-report",
  "serde",
  "serde_json",
  "sha2",

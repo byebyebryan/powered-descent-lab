@@ -46,11 +46,16 @@ The [next recommendation](procedural_learning_next.md) begins with distribution
 coverage, then a controlled curriculum over complete procedural missions.
 The October 11 [challenge benchmark plan](procedural_challenge_plan.md) and
 [review](procedural_challenge_review.md) complete the saved-input coverage audit.
-The [active execution loop](procedural_challenge_execution.md) establishes
+The [completed execution loop](procedural_challenge_execution.md) establishes
 versioned layered-first recipes, taxonomy-independent challenge admission and
 joint coverage audits. Broad evaluation retains qualifying mixed/unclassified
 missions; stress and shift populations are separate. Gentle procedural curricula
 remain separate from qualification scoring.
+The [20,000-input V2 calibration](procedural_challenge_calibration.md) now supplies
+complete input receipts, measured interactions, resolution warnings and bounded
+rich previews. The [next comparison proposal](procedural_challenge_comparison_plan.md)
+separates freeze prerequisites and an unchanged-incumbent budget; no new flight,
+training or accepted publication is included in the mission-platform loop.
 
 ### Report presentation refinement
 
@@ -1017,10 +1022,13 @@ The first [procedural learning contract](procedural_learning_plan.md) is complet
 read its [measured results](procedural_learning_results.md) before another
 allocation. The [challenge benchmark plan](procedural_challenge_plan.md) and
 [completed planning review](procedural_challenge_review.md) now put mission
-coverage first: implement neutral metrics, versioned recipes/pad transitions,
-taxonomy-independent geometry admission, then a bounded input-only calibration
-and maintained report projections. The [execution record](procedural_challenge_execution.md)
-owns that authorized loop. Named categories organize review; broad sampling,
+coverage first. Neutral metrics, versioned recipes/pad transitions,
+taxonomy-independent geometry admission, bounded input-only calibration
+and maintained report projections are implemented under the
+[execution record](procedural_challenge_execution.md). Review the
+[calibration findings](procedural_challenge_calibration.md) and
+[next comparison scope](procedural_challenge_comparison_plan.md) before freeze.
+Named categories organize review; broad sampling,
 selected joint audits and separately scored stress/shift panels establish the
 declared evidence and limits. Freeze a challenging benchmark before its separately scoped
 incumbent comparison or another RL allocation. The

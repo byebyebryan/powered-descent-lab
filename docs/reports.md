@@ -7,6 +7,14 @@ refreshing rewrites generated pages. Read-only acceptance checking is a separate
 operation. None of these pages are checked into Git, and a fresh checkout has
 no accepted report site until local evidence is generated or supplied.
 
+Input-only V2 calibration uses the same maintained report shell through the
+[native input report](procedural_input_audit.md#maintained-local-input-report).
+Its [current local edition](procedural_challenge_calibration.md#backend-decision-and-readable-review)
+leads with distributions/joint counts, then collection/morphology/barrier-band
+browsing with twelve lazy previews in one open band. These local pages have no
+flight outcomes and do not refresh accepted editions, home/library navigation or
+the report server. A geometry band is a presentation threshold, not difficulty.
+
 ## Report Serving
 
 Start at `/` or `/reports/`: **Browse missions** leads with terminal control,

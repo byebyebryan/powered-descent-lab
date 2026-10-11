@@ -5,8 +5,9 @@
 
 V2 collections select complete configurable proposals without a controller,
 route, checkpoint, reward or outcome input. This is an implemented input contract.
-The default geometric rule is a development candidate; calibration and freeze
-remain pending. Meeting its thresholds does not prove solvability, universal
+The default geometric rule remains a development candidate after the
+[completed input pilot](procedural_challenge_calibration.md); freeze is separate
+work. Meeting its thresholds does not prove solvability, universal
 difficulty or complete terrain coverage.
 
 ## Admission and labels

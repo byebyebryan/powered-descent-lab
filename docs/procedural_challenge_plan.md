@@ -6,8 +6,10 @@
 Status: October 11, 2026 reviewed roadmap, revised after the owner's coverage
 question. The [execution record](procedural_challenge_execution.md) owns the
 authorized implementation loop. The saved-input audit is complete; native V2
-implementation and input-only calibration are underway. Flights and training
-remain separately scoped work.
+implementation and input-only calibration are implemented and validated in that
+record. The [calibration evidence](procedural_challenge_calibration.md)
+and [bounded next comparison proposal](procedural_challenge_comparison_plan.md)
+record gaps before freeze. Flights and training remain separately scoped work.
 
 ## Decision and intended behavior
 
