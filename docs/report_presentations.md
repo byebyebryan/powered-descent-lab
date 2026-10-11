@@ -2,7 +2,8 @@
 
 [Report workflow](reports.md) · [Development](development.md) ·
 [Refinement results](report_presentation_refinement_results.md) ·
-[Bounded browsing results](report_bounded_browsing_results.md)
+[Bounded browsing results](report_bounded_browsing_results.md) ·
+[Direction filter results](report_direction_facets_results.md)
 
 The common campaign and comparison views are presentation components in
 `pd-report`. They consume neutral saved projections, without importing an agent,
@@ -24,8 +25,11 @@ the mission entrypoints.
 Outcome bars count every scheduled attempt, including unsupported and failed
 attempts. Integrity and complete replay are reported separately. Only the complete
 physical/mission/execution/integrity/replay tuple qualifies as a verified landing.
-The review tree preserves terrain family → travel direction → terrain stratum
-→ individual mission. Each mission row has a saved-flight preview and the result
+The review tree preserves terrain family → terrain stratum → individual mission.
+Leftward and rightward travel share the same stratum; direction appears as mission
+metadata and an optional **More filters** control, defaulting to all directions.
+Preview plots normalize left/right for comparison. Each mission row has a
+saved-flight preview and the result
 for **Show results for**, which defaults to the first declared approach rather
 than choosing a winner. Expand a mission for its controller attempts. Controller
 outcome bars and paired preview comparisons are optional disclosures; they do
@@ -36,21 +40,29 @@ arrival/route, condition, vehicle, arc, velocity and seed structure.
 **Browse missions** opens one terrain stratum, with twelve mission occurrences
 per page. Opening a different stratum closes the previous one. Previous/next
 stratum controls and a stratum selector navigate the matched collection; page
-controls appear above and below the table. Family/direction/stratum counts and
+controls appear above and below the table. Family/stratum counts and
 coverage totals always describe all matches, not just the current page.
 Previews receive their image URLs only near the viewport. Expanding summaries
 does not materialize the whole mission inventory or request every preview.
 
-Coverage cells focus their exact family, direction, stratum and approach. Search
+Coverage cells focus their exact family, direction, stratum and approach using
+the merged stratum and direction filter. Old coverage selectors retain their
+original membership. Mission identities remain stable; within a stratum,
+missions follow mission-number order across both directions. Search
 accepts a mission number, terrain label or physical identity. The URL retains
 filters, comparison choices, open groups, stratum, page and the selected mission.
 Detail links restore that context; previous/next follows matched missions for the same
 approach across page boundaries. Returning from a detail automatically reveals
 the selected occurrence's stratum and page. Old expand-all links remain readable
-with a single open stratum. Family/direction focus includes descendants and
+with a single open stratum. Family/stratum focus includes descendants and
 repeated occurrences.
 Unsupported details show terrain and the target without inventing a
 flight. Recorded but unstarted episodes are a separate outcome.
+
+Campaign companions use the same family/stratum hierarchy and optional direction
+filter. Their filter count describes all matching scheduled attempts; their
+summary rows explicitly retain full-collection totals. Direction and outcome
+filters compose, and reset restores the full collection.
 
 Rich details lead with outcome and endpoint context, then the trajectory and time
 plots. Run summary, phases and capture provenance remain expandable. Spatial
@@ -115,7 +127,8 @@ rtk proxy node scripts/check-report-presentation.mjs \
 
 It checks desktop/mobile mission hierarchy, mission-first home/library navigation,
 accounting, viewport preview loading, bounded bulk browsing, complete pagination,
-page reload/detail returns, old expand-all links, exact coverage focus,
+page reload/detail returns, old expand-all and coverage links, exact coverage focus,
+both-direction strata, optional direction filters and empty intersections,
 filter/search behavior, shared mission review, context round trips, rich tools,
 unsupported status and deliberately blocked Plotly fallback. Screenshots and
 five warm interaction timings per viewport are retained with the receipt.

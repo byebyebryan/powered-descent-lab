@@ -1,10 +1,18 @@
 (() => {
   const matches = (mission, state) => {
     if (state.group && mission.group !== state.group && !mission.path?.includes(state.group)) return false;
+    if (state.direction && state.direction !== 'all' && String(mission.direction) !== state.direction) return false;
     const q = (state.q || '').trim().toLowerCase();
     if (q && (/^\d+$/.test(q) ? mission.mission_index !== Number(q) : !`${mission.mission_index} ${mission.label} ${mission.physical_sha256}`.toLowerCase().includes(q))) return false;
     const attempts = state.approach === 'all' ? mission.attempts : mission.attempts.filter(a => String(a.approach) === state.approach);
     return attempts.some(a => state.outcome === 'all' || (state.outcome === 'misses' ? a.outcome !== 'landed' : a.outcome === state.outcome));
+  };
+  // Old coverage selectors encode direction. Preserve their exact subset while
+  // exposing its merged stratum and direction as independent view controls.
+  const normalizeScope = (state, groups = []) => {
+    const coverage = groups.find(g => g.id === state.group && g.branch);
+    return coverage ? {...state, group:coverage.branch,
+      direction:state.direction && state.direction !== 'all' ? state.direction : String(coverage.direction)} : {...state};
   };
   const pageSize = 12;
   // Page a presentation slice without filtering or deduplicating the inventory.
@@ -19,5 +27,5 @@
     return {page, pages, total: missions.length, start: missions.length ? offset + 1 : 0,
       end: Math.min(offset + pageSize, missions.length), items: missions.slice(offset, offset + pageSize)};
   };
-  globalThis.PdPairedReviewModel = {matches, pageMissions, pageSize};
+  globalThis.PdPairedReviewModel = {matches, normalizeScope, pageMissions, pageSize};
 })();

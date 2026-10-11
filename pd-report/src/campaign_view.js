@@ -43,11 +43,24 @@
     if (document.getElementById('paired-review-data')) return;
     const tree = root.__pdBatchTreeApi;
     const rows = [...root.querySelectorAll('tr.campaign-row')];
+    const direction = document.getElementById('campaign-direction');
+    const selected = new URLSearchParams(location.search).get('direction') || 'all';
+    if ([...direction.options].some(o=>o.value===selected)) direction.value=selected;
+    const updateFilter = () => {
+      rows.forEach(row=>row.classList.toggle('review-direction-hidden',direction.value!=='all'&&row.dataset.direction!==direction.value));
+      const count=rows.filter(row=>!row.classList.contains('review-direction-hidden')&&!row.classList.contains('review-filter-hidden')).length;
+      document.getElementById('campaign-filter-count').textContent=`${count} / ${rows.length} scheduled attempts match the filters. Summary totals cover the full collection.`;
+      if(direction.value!=='all')direction.closest('details').open=true;
+      schedule();
+    };
+    direction.addEventListener('change',()=>{const url=new URL(location.href);if(direction.value==='all')url.searchParams.delete('direction');else url.searchParams.set('direction',direction.value);history.replaceState(null,'',url.pathname+url.search+url.hash);updateFilter();});
+    updateFilter();
     document.querySelectorAll('[data-review-outcome]').forEach(button => button.addEventListener('click', () => {
       rows.forEach(row => row.classList.toggle('review-filter-hidden', row.dataset.outcome !== button.dataset.reviewOutcome));
+      updateFilter();
       tree?.expandLeaves();root.scrollIntoView({block:'start'});
     }));
-    document.querySelectorAll('[data-campaign-reset]').forEach(button => button.addEventListener('click', () => {rows.forEach(r=>r.classList.remove('review-filter-hidden'));tree?.collapseGroups(0);}));
+    document.querySelectorAll('[data-campaign-reset]').forEach(button => button.addEventListener('click', () => {rows.forEach(r=>r.classList.remove('review-filter-hidden'));direction.value='all';direction.dispatchEvent(new Event('change'));tree?.collapseGroups(0);}));
   }, {once:true});
   schedule();
 })();

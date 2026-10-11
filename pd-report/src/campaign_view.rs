@@ -175,7 +175,23 @@ pub fn render_mission_cell(row: &CampaignRowV1) -> String {
         let plot = row.report_href.as_ref().map_or_else(|| format!("<span class=\"run-preview\">{image}</span>"), |href| format!("<a class=\"run-preview\" href=\"{}\" aria-label=\"Open flight for {}\">{image}</a>", escape(href), escape(&label)));
         format!("{plot}<span class=\"row-note muted preview-caption\">{}</span>", escape(&view.caption))
     });
-    format!("<div class=\"preview-cell\">{link}{preview}</div>")
+    let direction = if row.direction < 0 {
+        "Travel left"
+    } else if row.direction > 0 {
+        "Travel right"
+    } else {
+        "Vertical"
+    };
+    format!(
+        "<div class=\"preview-cell\">{link}<span class=\"row-note mission-direction\">{direction}</span>{preview}</div>"
+    )
+}
+
+pub fn render_direction_filter(id: &str) -> String {
+    format!(
+        "<details class=\"review-more-filters\"><summary>More filters</summary><div class=\"paired-controls\"><label>Travel direction<select id=\"{}\"><option value=\"all\">All directions</option><option value=\"-1\">Left</option><option value=\"1\">Right</option><option value=\"0\">Vertical</option></select></label></div><p class=\"section-note\">Travel direction varies within each terrain stratum. Preview plots normalize left/right for comparison.</p></details>",
+        escape(id)
+    )
 }
 
 pub fn render_outcome_cell(row: &CampaignRowV1, integrity: bool) -> String {

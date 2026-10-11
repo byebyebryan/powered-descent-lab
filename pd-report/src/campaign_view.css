@@ -47,6 +47,9 @@
 .provenance-disclosure summary { cursor: pointer; font-weight: 700; }
 .campaign-view .coverage-cell { color: var(--ink); background: transparent; }
 .review-filter-hidden { display: none !important; }
+.review-direction-hidden { display: none !important; }
+.review-more-filters { margin: 10px 0; }
+.review-more-filters > summary { cursor: pointer; font-weight: 600; }
 .paired-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 12px 0; }
 .paired-controls label { display: flex; flex-direction: column; gap: 3px; font-size: .78rem; min-width: 0; }
 .paired-controls select, .paired-controls input { padding: 6px 8px; max-width: 220px; font: inherit; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--paper); }
@@ -90,7 +93,6 @@
 .paired-table th:first-child { width: 300px; }
 .paired-group-row > td:first-child,
 .paired-mission-row > td:first-child { padding-left: calc(14px + var(--mission-depth,0) * 12px); }
-.paired-group-row[data-kind="direction"] { background: #f3eee5; }
 .paired-group-row[data-kind="stratum"] { background: #f8f4ed; font-weight: 600; }
 .paired-attempt-row > td:first-child { padding-left: 62px; }
 .paired-mission-row .mission-preview { display: block; width: 190px; max-width: 100%; margin-top: 8px; }

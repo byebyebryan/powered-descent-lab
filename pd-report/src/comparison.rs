@@ -371,13 +371,14 @@ mod tests {
     }
 
     #[test]
-    fn mission_hierarchy_uses_recorded_axes_and_keeps_controller_attempts_at_leaves() {
+    fn mission_hierarchy_merges_direction_and_keeps_attempts_and_coverage_identity() {
         let mut page = comparison();
         for approach in &mut page.approaches {
             let campaign = &mut approach.campaigns[0].page;
             for (index, family, direction, stratum) in [
                 (1, "pd-missions/value-noise-rest-v1", -1, 2),
                 (2, "pd-missions/layered-perlin-rest-v1", 1, 0),
+                (3, "pd-missions/value-noise-rest-v1", -1, 0),
             ] {
                 let mut row = campaign.attempts[0].clone();
                 row.physical_sha256 = format!("{index:064x}");
@@ -387,7 +388,7 @@ mod tests {
                 row.terrain_stratum = stratum;
                 campaign.attempts.push(row);
             }
-            campaign.unique_scheduled_missions = 3;
+            campaign.unique_scheduled_missions = 4;
         }
         let review = crate::paired_review::build(&page).unwrap();
         assert_eq!(
@@ -406,18 +407,58 @@ mod tests {
                 .collect();
             assert_eq!(
                 path.iter().map(|b| b.kind.as_str()).collect::<Vec<_>>(),
-                ["family", "direction", "stratum"]
+                ["family", "stratum"]
             );
             assert_eq!(path[1].parent.as_ref(), Some(&path[0].id));
-            assert_eq!(path[2].parent.as_ref(), Some(&path[1].id));
-            assert_eq!(path[2].id, mission.group);
+            let coverage = review
+                .groups
+                .iter()
+                .find(|g| g.id == mission.group)
+                .unwrap();
+            assert_eq!(path[1].id, coverage.branch);
+            assert_eq!(mission.direction, coverage.direction);
             assert_eq!(mission.attempts.len(), page.approaches.len());
+        }
+        let same_stratum: Vec<_> = review
+            .missions
+            .iter()
+            .filter(|m| m.label.starts_with("Value noise") && m.label.ends_with("stratum 0"))
+            .collect();
+        assert_eq!(same_stratum.len(), 2);
+        assert_eq!(same_stratum[0].path, same_stratum[1].path);
+        assert_ne!(same_stratum[0].direction, same_stratum[1].direction);
+        assert_ne!(same_stratum[0].group, same_stratum[1].group);
+        assert!(same_stratum[0].mission_index < same_stratum[1].mission_index);
+        let mut prior_order: Vec<_> = page.approaches[0].campaigns[0]
+            .page
+            .attempts
+            .iter()
+            .collect();
+        prior_order.sort_by_key(|r| {
+            (
+                crate::paired_review::coverage_label(
+                    &r.terrain_family,
+                    r.direction,
+                    r.terrain_stratum,
+                ),
+                r.mission_index,
+                &r.physical_sha256,
+            )
+        });
+        for (ordinal, row) in prior_order.iter().enumerate() {
+            let mission = review
+                .missions
+                .iter()
+                .find(|m| m.physical_sha256 == row.physical_sha256)
+                .unwrap();
+            assert_eq!(mission.id, format!("mission-{ordinal}"));
         }
         let campaign =
             crate::campaign::render_campaign_page(&page.approaches[0].campaigns[0].page).unwrap();
         assert!(campaign.contains("data-kind=\"family\" data-depth=\"0\""));
-        assert!(campaign.contains("data-kind=\"direction\" data-depth=\"1\""));
-        assert!(campaign.contains("data-kind=\"stratum\" data-depth=\"2\""));
-        assert!(campaign.contains("data-depth=\"3\" data-outcome="));
+        assert!(!campaign.contains("data-kind=\"direction\""));
+        assert!(campaign.contains("data-kind=\"stratum\" data-depth=\"1\""));
+        assert!(campaign.contains("data-depth=\"2\" data-direction="));
+        assert!(campaign.contains("id=\"campaign-direction\""));
     }
 }

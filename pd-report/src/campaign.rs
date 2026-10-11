@@ -163,21 +163,10 @@ fn render_campaign_with_links(
         "<section class=\"header-overview\"><h2>Outcomes</h2>{}<button type=\"button\" data-campaign-reset>Show all scheduled attempts</button></section>",
         campaign_view::render_outcome_bar("Scheduled missions", &outcome_rows, 0)
     );
-    let mut groups: BTreeMap<String, Vec<&CampaignRowV1>> = BTreeMap::new();
+    let mut groups: BTreeMap<(String, u32), Vec<&CampaignRowV1>> = BTreeMap::new();
     for row in &page.attempts {
         groups
-            .entry(format!(
-                "{} · {} · stratum {}",
-                family_label(&row.terrain_family),
-                if row.direction < 0 {
-                    "left"
-                } else if row.direction > 0 {
-                    "right"
-                } else {
-                    "vertical"
-                },
-                row.terrain_stratum
-            ))
+            .entry((row.terrain_family.clone(), row.terrain_stratum))
             .or_default()
             .push(row);
     }
@@ -185,64 +174,34 @@ fn render_campaign_with_links(
     let mut coverage_rows = String::new();
     let mut tree_rows = String::new();
     let mut families = BTreeMap::new();
-    let mut directions = BTreeMap::new();
-    for (ordinal, (label, rows)) in groups.iter().enumerate() {
+    for (ordinal, ((family, stratum), rows)) in groups.iter_mut().enumerate() {
+        rows.sort_by_key(|row| (row.mission_index, row.attempt_index));
+        let label = format!("{} · stratum {stratum}", family_label(family));
         let group = format!("campaign-group-{ordinal}");
-        let example = rows[0];
-        let mut parent = String::new();
-        for depth in 0..2 {
-            let key = if depth == 0 {
-                example.terrain_family.clone()
-            } else {
-                format!("{}/{}", example.terrain_family, example.direction)
-            };
-            let ids = if depth == 0 {
-                &mut families
-            } else {
-                &mut directions
-            };
-            let new_id = format!("campaign-axis-{depth}-{}", ids.len());
-            if !ids.contains_key(&key) {
-                let axis_rows: Vec<_> = page
-                    .attempts
-                    .iter()
-                    .filter(|r| {
-                        r.terrain_family == example.terrain_family
-                            && (depth == 0 || r.direction == example.direction)
-                    })
-                    .collect();
-                let landed = axis_rows
-                    .iter()
-                    .filter(|r| page.integrity_passed && verified(r))
-                    .count();
-                let axis_label = if depth == 0 {
-                    family_label(&example.terrain_family)
-                } else if example.direction < 0 {
-                    "Travel left"
-                } else if example.direction > 0 {
-                    "Travel right"
-                } else {
-                    "Vertical"
-                };
-                let parent_attr = if depth == 0 {
-                    String::new()
-                } else {
-                    format!(" data-parent=\"{parent}\"")
-                };
-                tree_rows.push_str(&batch::render_row(Some("summary-row"),
-                    &format!("data-group=\"{new_id}\" data-kind=\"{}\" data-depth=\"{depth}\"{parent_attr} aria-expanded=\"false\" tabindex=\"0\"", if depth == 0 { "family" } else { "direction" }),
-                    &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",escape(axis_label),axis_rows.len())));
-                ids.insert(key.clone(), new_id);
-            }
-            parent = ids[&key].clone();
+        let parent = format!("campaign-axis-0-{}", families.len());
+        if !families.contains_key(family) {
+            let family_rows: Vec<_> = page
+                .attempts
+                .iter()
+                .filter(|row| &row.terrain_family == family)
+                .collect();
+            let landed = family_rows
+                .iter()
+                .filter(|row| page.integrity_passed && verified(row))
+                .count();
+            tree_rows.push_str(&batch::render_row(Some("summary-row"),
+                &format!("data-group=\"{parent}\" data-kind=\"family\" data-depth=\"0\" aria-expanded=\"false\" tabindex=\"0\""),
+                &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",escape(family_label(family)),family_rows.len())));
+            families.insert(family.clone(), parent);
         }
+        let parent = &families[family];
         let landed = if page.integrity_passed {
             rows.iter().filter(|r| verified(r)).count()
         } else {
             0
         };
         coverage_rows.push_str(&batch::render_coverage_row(
-            label,
+            &label,
             &batch::render_coverage_group_cell(
                 "coverage-cell",
                 &group,
@@ -250,11 +209,11 @@ fn render_campaign_with_links(
             ),
         ));
         tree_rows.push_str(&batch::render_row(Some("summary-row"),
-            &format!("data-group=\"{group}\" data-parent=\"{parent}\" data-kind=\"stratum\" data-depth=\"2\" aria-expanded=\"false\" tabindex=\"0\""),
+            &format!("data-group=\"{group}\" data-parent=\"{parent}\" data-kind=\"stratum\" data-depth=\"1\" aria-expanded=\"false\" tabindex=\"0\""),
             &format!("<td><span class=\"expander\">+</span> Terrain stratum {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",rows[0].terrain_stratum,rows.len())));
         for row in rows {
             tree_rows.push_str(&batch::render_row(Some("campaign-row"),
-                &format!("data-parent=\"{group}\" data-depth=\"3\" data-outcome=\"{}\" data-search=\"{}\"",campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,label))),
+                &format!("data-parent=\"{group}\" data-depth=\"2\" data-direction=\"{}\" data-outcome=\"{}\" data-search=\"{}\"",row.direction,campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,format_args!("{label} {}",if row.direction < 0 {"left"} else if row.direction > 0 {"right"} else {"vertical"})))),
                 &format!("<td class=\"tree-label\">{}</td><td>{}</td><td>{} s</td><td>{} kg</td><td>{}</td>",
                     campaign_view::render_mission_cell(row),campaign_view::render_outcome_cell(row,page.integrity_passed),number(row.sim_time_s),number(row.fuel_kg),campaign_view::render_evidence_cell(row,page.integrity_passed))));
         }
@@ -263,14 +222,17 @@ fn render_campaign_with_links(
         "All scheduled inputs remain in each denominator, including unsupported inputs.",
         "",
         &batch::render_coverage_table(
-            "Family / direction / stratum",
+            "Family / terrain stratum",
             "<th>Verified landing / scheduled</th>",
             &coverage_rows,
         ),
     );
     let tree = batch::render_review_tree_section(
         &batch_tree::render_controls("Attempts", false),
-        "<p>Terrain family → travel direction → terrain stratum → mission and saved flight.</p>",
+        &format!(
+            "<p>Terrain family → terrain stratum → mission and saved flight. Summary totals cover the full collection.</p>{}<p id=\"campaign-filter-count\" aria-live=\"polite\"></p>",
+            campaign_view::render_direction_filter("campaign-direction")
+        ),
         &batch::render_review_tree_table("procedural-campaign", headers, &tree_rows),
     );
     let config = escape(&serde_json::to_string_pretty(&page.agent).map_err(|e| e.to_string())?);
@@ -308,8 +270,8 @@ fn render_campaign_with_links(
         appendix_html: &format!("<script>{}</script>", campaign_view::SCRIPT),
         body_class: "procedural-campaign campaign-view",
         tree: batch::BatchTreeOptions {
-            max_depth: 3,
-            depth_by_kind: &[("family", 0), ("direction", 1), ("stratum", 2)],
+            max_depth: 2,
+            depth_by_kind: &[("family", 0), ("stratum", 1)],
             leaf_selector: "tr.campaign-row",
             default_expansion: 0,
         },

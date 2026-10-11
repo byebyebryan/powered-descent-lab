@@ -34,6 +34,9 @@ report home/library; controller comparisons remain secondary.
 The [bounded browsing follow-up](report_bounded_browsing_results.md) replaces
 bulk mission expansion with one stratum and twelve occurrences per page,
 while retaining full summary counts and viewport preview loading.
+The [direction filter correction](report_direction_facets_results.md) merges
+left/right missions within each terrain stratum, retaining direction as metadata
+and an optional filter rather than a navigation branch.
 
 ## Independent approach platform
 

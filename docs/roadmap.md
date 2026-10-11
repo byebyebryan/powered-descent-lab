@@ -57,6 +57,11 @@ remain unchanged. See the [presentation workflow](report_presentations.md).
 The owner's follow-up [hierarchy correction](report_mission_hierarchy_results.md)
 makes mission structure primary in the tree and home/library navigation;
 controller comparisons are secondary within that structure.
+The [bounded browsing pass](report_bounded_browsing_results.md) limits the tree
+to one stratum and twelve occurrences per page. The
+[direction filter correction](report_direction_facets_results.md) now groups
+both travel directions within each stratum, retaining optional direction coverage
+and exact saved selectors.
 
 ### Active planner evaluation and reporting
 

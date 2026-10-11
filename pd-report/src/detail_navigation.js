@@ -14,7 +14,7 @@
   fetch(new URL('navigation.json',root),{redirect:'error'}).then(response=>{if(!response.ok)throw Error('Navigation unavailable');return response.json();}).then(data=>{
     if(data.schema_version!==1)return;
     const p=review.searchParams;
-    const state={q:p.get('q')||'',outcome:p.get('outcome')||'all',approach:p.get('approach')||'all',group:p.get('group')||''};
+    const state=PdPairedReviewModel.normalizeScope({q:p.get('q')||'',outcome:p.get('outcome')||'all',approach:p.get('approach')||'all',direction:p.get('direction')||'all',group:p.get('group')||''},data.groups);
     const selected=data.missions.filter(m=>PdPairedReviewModel.matches(m,state));
     const index=selected.findIndex(m=>m.id===current);
     if(index<0)return;

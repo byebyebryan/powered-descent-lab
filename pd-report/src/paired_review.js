@@ -1,6 +1,6 @@
 /* Mission hierarchy owns navigation; controller attempts are mission children. */
 (() => {
-  const {matches, pageMissions} = globalThis.PdPairedReviewModel;
+  const {matches, normalizeScope, pageMissions} = globalThis.PdPairedReviewModel;
   if (typeof document === 'undefined') return;
   const start = () => {
     const dataNode = document.getElementById('paired-review-data');
@@ -14,10 +14,11 @@
     const footer = document.createElement('nav');
     footer.className='mission-browser mission-browser-footer';footer.setAttribute('aria-label','Mission pages');root.after(footer);
     const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const controls = Object.fromEntries(['q','outcome','approach','view','a','b'].map(key => [key,document.getElementById(key==='q'?'review-search':'review-'+key)]));
+    const controls = Object.fromEntries(['q','outcome','approach','direction','view','a','b'].map(key => [key,document.getElementById(key==='q'?'review-search':'review-'+key)]));
     const params = new URLSearchParams(location.search);
-    const state = {q:params.get('q') || '',outcome:params.get('outcome') || 'all',approach:params.get('approach') || 'all',group:params.get('group') || '',mission:params.get('mission') || location.hash.slice(1),stratum:params.get('stratum') || '',page:params.get('page') || 1,view:params.get('view') || '0',a:params.get('a') || '0',b:params.get('b') || String(data.labels.length-1)};
-    for (const key of ['outcome','approach','view','a','b']) if (![...controls[key].options].some(o=>o.value===state[key])) state[key]=key==='outcome'||key==='approach'?'all':key==='b'?String(data.labels.length-1):'0';
+    const state = {q:params.get('q') || '',outcome:params.get('outcome') || 'all',approach:params.get('approach') || 'all',direction:params.get('direction') || 'all',group:params.get('group') || '',mission:params.get('mission') || location.hash.slice(1),stratum:params.get('stratum') || '',page:params.get('page') || 1,view:params.get('view') || '0',a:params.get('a') || '0',b:params.get('b') || String(data.labels.length-1)};
+    for (const key of ['outcome','approach','direction','view','a','b']) if (![...controls[key].options].some(o=>o.value===state[key])) state[key]=['outcome','approach','direction'].includes(key)?'all':key==='b'?String(data.labels.length-1):'0';
+    Object.assign(state,normalizeScope(state,data.groups));
     const branches = data.branches || data.groups.map(g=>({...g,parent:null,depth:0,kind:'coverage'}));
     const byId = new Map(branches.map(b=>[b.id,b]));
     const leaves = branches.filter(b=>!branches.some(child=>child.parent===b.id));
@@ -25,13 +26,15 @@
     const path = mission => mission.path || [mission.group];
     const ancestors = id => {const result=[];for(let b=byId.get(id);b;b=byId.get(b.parent))result.unshift(b.id);return result;};
     if (!byId.has(state.group)) state.group='';
-    const opened = new Set((params.get('open') || '').split(',').filter(id=>byId.has(id)));
+    const branchId = id => data.groups.find(g=>g.id===id)?.branch || id;
+    state.stratum=branchId(state.stratum);
+    const opened = new Set((params.get('open') || '').split(',').map(branchId).filter(id=>byId.has(id)));
     // Old expand-all URLs remain readable, with one materialized stratum.
     if (!state.stratum) state.stratum=[...opened].find(id=>leafIds.has(id)) || '';
     if (state.mission) {const m=data.missions.find(m=>m.id===state.mission);if(m)path(m).forEach(id=>opened.add(id));else state.mission='';}
     const updateUrl = () => {
       const p = new URLSearchParams();
-      for (const key of ['q','outcome','approach','group','mission','stratum','view','a','b']) if(state[key]&&state[key]!=='all')p.set(key,state[key]);
+      for (const key of ['q','outcome','approach','direction','group','mission','stratum','view','a','b']) if(state[key]&&state[key]!=='all')p.set(key,state[key]);
       if(state.stratum&&state.page>1)p.set('page',String(state.page));
       if(opened.size)p.set('open',[...opened].join(','));
       history.replaceState(null,'',location.pathname+(p.size?'?'+p:'')+(state.mission?'#'+state.mission:''));
@@ -57,7 +60,9 @@
     };
     const pageControls = () => `<div class="mission-page-controls"><button type="button" data-review-page="previous"${pageInfo.page<=1?' disabled':''}>Previous page</button><span aria-live="polite">Missions ${pageInfo.start}–${pageInfo.end} of ${pageInfo.total} · page ${pageInfo.page} of ${pageInfo.pages}</span><button type="button" data-review-page="next"${pageInfo.page>=pageInfo.pages?' disabled':''}>Next page</button></div>`;
     const render = () => {
+      Object.assign(state,normalizeScope(state,data.groups));
       for (const [key,input] of Object.entries(controls))input.value=state[key];
+      if(state.direction!=='all')controls.direction.closest('details').open=true;
       const selected=data.missions.filter(m=>matches(m,state));
       const bins=new Map(branches.map(b=>[b.id,[]]));selected.forEach(m=>path(m).forEach(id=>bins.get(id)?.push(m)));
       available=leaves.filter(b=>bins.get(b.id).length);
@@ -82,7 +87,8 @@
         const href=detailHref(attempt,mission);
         const depth=path(mission).length;
         const label=`Mission ${mission.mission_index}${mission.occurrence?` · repeat ${mission.occurrence+1}`:''}`;
-        let html=`<tr class="paired-mission-row" id="${mission.id}" data-paired-mission="${mission.id}" tabindex="0" aria-expanded="${open}" style="--mission-depth:${depth}"><td><span class="expander">${open?'−':'+'}</span> ${label}${href?`<a class="run-preview mission-preview" href="${href}">${preview(attempt)}</a>`:preview(attempt)}</td>${attempt.cells}</tr>`;
+        const direction=mission.direction<0?'Travel left':mission.direction>0?'Travel right':'Vertical';
+        let html=`<tr class="paired-mission-row" id="${mission.id}" data-paired-mission="${mission.id}" data-direction="${mission.direction}" tabindex="0" aria-expanded="${open}" style="--mission-depth:${depth}"><td><span class="expander">${open?'−':'+'}</span> ${label}<span class="row-note mission-direction">${direction}</span>${href?`<a class="run-preview mission-preview" href="${href}">${preview(attempt)}</a>`:preview(attempt)}</td>${attempt.cells}</tr>`;
         if(!open)return html;
         html+=`<tr class="mission-context-row"><td colspan="4"><span class="mission-path">${path(mission).map(id=>esc(byId.get(id).label)).join(' → ')} → ${label}</span><details class="row-evidence"><summary>Physical input and pairing</summary><p><code>${esc(mission.physical_sha256)}</code> · occurrence ${mission.occurrence+1}. Pairing uses physical identity and scheduled occurrence, without best-repeat selection.</p></details><strong>Controller attempts for this mission</strong></td></tr>`;
         for(const a of mission.attempts){const link=detailHref(a,mission);html+=`<tr class="paired-attempt-row" data-approach="${a.approach}" data-outcome="${esc(a.outcome)}"><td>${link?`<a class="paired-detail" href="${link}">${esc(data.labels[a.approach])}</a>`:esc(data.labels[a.approach])}<span class="row-note">Attempt ${a.attempt_index}</span></td>${a.cells}</tr>`;}
@@ -105,7 +111,7 @@
     };
     for(const [key,input] of Object.entries(controls))input.addEventListener(key==='q'?'input':'change',()=>{
       state[key]=input.value;
-      if(['q','outcome','approach'].includes(key)){
+      if(['q','outcome','approach','direction'].includes(key)){
         state.page=1;state.mission='';
         if(state.q){const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');}
       }
@@ -126,16 +132,16 @@
     };
     root.addEventListener('click',e=>activate(e.target));
     root.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){if(e.target.matches('[data-paired-group],[data-paired-mission]')){e.preventDefault();activate(e.target);}}});
-    const focus = (group,approach) => {state.group=group;state.approach=String(approach);state.view=String(approach);state.outcome='all';state.q='';opened.clear();const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');render();browser.scrollIntoView({block:'start'});root.querySelector(`[data-paired-group="${group}"]`)?.focus({preventScroll:true});};
+    const focus = (group,approach) => {Object.assign(state,{group,direction:'all',approach:String(approach),view:String(approach),outcome:'all',q:''},normalizeScope({group,direction:'all'},data.groups));opened.clear();const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');render();browser.scrollIntoView({block:'start'});root.querySelector(`[data-paired-group="${state.group}"]`)?.focus({preventScroll:true});};
     document.querySelectorAll('[data-paired-focus]').forEach(button=>button.addEventListener('click',()=>focus(button.dataset.pairedFocus,button.dataset.approach)));
-    document.querySelectorAll('[data-review-outcome]').forEach(button=>button.addEventListener('click',()=>{state.outcome=button.dataset.reviewOutcome;state.approach=button.dataset.approach || 'all';if(state.approach!=='all')state.view=state.approach;state.group='';state.q='';chooseStratum('');opened.clear();render();root.scrollIntoView({block:'start'});}));
+    document.querySelectorAll('[data-review-outcome]').forEach(button=>button.addEventListener('click',()=>{state.outcome=button.dataset.reviewOutcome;state.approach=button.dataset.approach || 'all';if(state.approach!=='all')state.view=state.approach;state.group='';state.direction='all';state.q='';chooseStratum('');opened.clear();render();root.scrollIntoView({block:'start'});}));
     document.querySelectorAll('[data-paired-depth]').forEach(button=>button.addEventListener('click',()=>{
       const depth=Number(button.dataset.pairedDepth);opened.clear();chooseStratum('');
-      branches.filter(b=>b.depth<Math.min(depth,2)).forEach(b=>opened.add(b.id));
+      branches.filter(b=>!leafIds.has(b.id)&&b.depth<depth).forEach(b=>opened.add(b.id));
       if(depth>=3){const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');}
       render();
     }));
-    document.querySelectorAll('[data-paired-action]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.pairedAction==='reset')Object.assign(state,{q:'',outcome:'all',approach:'all',group:''});chooseStratum('');opened.clear();render();}));
+    document.querySelectorAll('[data-paired-action]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.pairedAction==='reset')Object.assign(state,{q:'',outcome:'all',approach:'all',direction:'all',group:''});chooseStratum('');opened.clear();render();}));
     for(const nav of [browser,footer]){
       nav.addEventListener('click',event=>{
         const page=event.target.closest('[data-review-page]');const stratum=event.target.closest('[data-review-stratum]');

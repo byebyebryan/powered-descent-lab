@@ -5,9 +5,9 @@ import vm from 'node:vm';
 
 const context=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../pd-report/src/paired_model.js',import.meta.url),'utf8'),context);
-const {matches,pageMissions,pageSize}=context.PdPairedReviewModel;
-const mission={id:'mission-0',mission_index:5,label:'Value noise · left · stratum 0',group:'coverage-0',physical_sha256:'abcdef01234',attempts:[{approach:0,outcome:'timed-out'},{approach:1,outcome:'landed'},{approach:2,outcome:'unsupported'}]};
-const all={q:'',group:'',outcome:'all',approach:'all'};
+const {matches,normalizeScope,pageMissions,pageSize}=context.PdPairedReviewModel;
+const mission={id:'mission-0',mission_index:5,direction:-1,path:['family-0','stratum-0'],label:'Value noise · left · stratum 0',group:'coverage-0',physical_sha256:'abcdef01234',attempts:[{approach:0,outcome:'timed-out'},{approach:1,outcome:'landed'},{approach:2,outcome:'unsupported'}]};
+const all={q:'',group:'',outcome:'all',approach:'all',direction:'all'};
 
 test('coverage focus and selected outcome approach are exact intersections',()=>{
   assert(matches(mission,all));
@@ -34,6 +34,28 @@ test('selection retains repeat occurrences and leaves the paired attempts intact
   assert.equal(selected.length,2);
   assert.equal(selected[0].attempts.length,3);
   assert.equal(JSON.stringify([mission,repeat]),originals);
+});
+
+test('direction is an optional intersection within a merged terrain stratum',()=>{
+  const right={...mission,id:'mission-2',direction:1,group:'coverage-1'};
+  assert(matches(mission,{...all,group:'stratum-0'}));
+  assert(matches(right,{...all,group:'stratum-0'}));
+  assert(matches(mission,{...all,group:'stratum-0',direction:'-1',outcome:'landed',approach:'1'}));
+  assert(!matches(right,{...all,group:'stratum-0',direction:'-1'}));
+  assert(!matches(mission,{...all,direction:'-1',outcome:'landed',approach:'0'}));
+  assert(!matches(mission,{...all,direction:'0'}));
+});
+
+test('legacy coverage selectors preserve their exact side and do not mutate inventory or input',()=>{
+  const groups=[{id:'coverage-0',branch:'stratum-0',direction:-1}];
+  const original={...all,group:'coverage-0'};const before=JSON.stringify(original);
+  const state=normalizeScope(original,groups);
+  assert.equal(state.group,'stratum-0');assert.equal(state.direction,'-1');
+  assert(matches(mission,state));
+  assert(!matches({...mission,direction:1,group:'coverage-1'},state));
+  assert.equal(JSON.stringify(original),before);
+  assert.equal(normalizeScope({...state,direction:'all'},groups).direction,'all');
+  assert.equal(normalizeScope(original,[{id:'coverage-0'}]).group,'coverage-0');
 });
 
 test('bounded pages cover every scheduled occurrence in order, including repeats',()=>{
@@ -71,7 +93,7 @@ test('detail navigation rejects an external return URL and filters neighbours',a
   const back={};const nav={dataset:{},querySelector:s=>links[s.includes('previous')?'previous':'next']};
   const m={...mission,attempts:mission.attempts.map(a=>({...a,href:`details/mission-0-a${a.approach}.html`}))};
   const neighbour={...m,id:'mission-2',mission_index:13,attempts:m.attempts.map(a=>({...a,href:`details/mission-2-a${a.approach}.html`}))};
-  const excluded={...neighbour,id:'mission-1',group:'coverage-1'};
+  const excluded={...neighbour,id:'mission-1',group:'coverage-1',direction:1};
   const run=async review=>{
     const body={dataset:{reviewRoot:'/edition/',reviewMission:'mission-0',reviewApproach:'0'}};
     const ctx=vm.createContext({URL,URLSearchParams,location:{origin:'http://localhost:8000',search:'?review='+encodeURIComponent(review)},document:{body,querySelector:s=>s==='[data-back-review]'?back:nav},fetch:async()=>({ok:true,json:async()=>({schema_version:1,missions:[m,excluded,neighbour]})})});
@@ -84,15 +106,18 @@ test('detail navigation rejects an external return URL and filters neighbours',a
   assert(links.previous.hidden);
   assert.equal(new URL(links.next.href,'http://localhost').pathname,'/edition/details/mission-2-a0.html');
   assert(new URL(links.next.href,'http://localhost').searchParams.get('review').includes('group=coverage-0'));
+  await run('/edition/report.html?group=stratum-0&direction=-1&approach=0&outcome=timed-out');
+  assert.equal(new URL(links.next.href,'http://localhost').pathname,'/edition/details/mission-2-a0.html');
+  assert.equal(new URL(links.next.href,'http://localhost').searchParams.get('review').includes('direction=-1'),true);
   await run('https://outside.example/report.html');
   assert.equal(back.href,'/edition/report.html#mission-0');
 });
 
-test('parent family and direction focus preserve descendants and repeats',()=>{
-  const nested={...mission,path:['family-0','direction-0','coverage-0']};
+test('family and merged stratum focus preserve descendants and repeats',()=>{
+  const nested={...mission,path:['family-0','stratum-0']};
   assert(matches(nested,{...all,group:'family-0'}));
-  assert(matches(nested,{...all,group:'direction-0',outcome:'landed',approach:'1'}));
-  assert(!matches(nested,{...all,group:'direction-1'}));
+  assert(matches(nested,{...all,group:'stratum-0',outcome:'landed',approach:'1'}));
+  assert(!matches(nested,{...all,group:'stratum-1'}));
   assert(matches({...nested,occurrence:1},{...all,group:'family-0'}));
 });
 

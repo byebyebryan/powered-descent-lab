@@ -3,7 +3,7 @@
   const families = [
     {id:'terminal',label:'Terminal control',note:'Synthetic arrivals, conditions, arc and velocity cases.'},
     {id:'transfer',label:'Direct transfers',note:'Synthetic source-to-target transfers, route angles and radii.'},
-    {id:'procedural',label:'Complete procedural terrain',note:'Complete missions with generated terrain; family, direction and terrain strata.'},
+    {id:'procedural',label:'Complete procedural terrain',note:'Complete missions with generated terrain, grouped by family and terrain stratum.'},
     {id:'waypoint',label:'Authored waypoint routes',note:'Approach-specific route and handoff probes.'},
     {id:'planner',label:'Planner probes and terrain studies',note:'Planner-specific diagnostics and retained terrain campaigns.'},
     {id:'other',label:'Other reports',note:'Reports without a recorded mission family.'},
