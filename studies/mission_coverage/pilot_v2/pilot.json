@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "pilot_version": "pd-missions/challenge-calibration-v2-a",
+  "scope": "exposed_development_inputs_only",
+  "collections": [
+    {
+      "id": "layered-broad",
+      "recipe_file": "layered-recipe.json",
+      "seed": 20261011031,
+      "index_start": 0,
+      "index_count": 10000,
+      "role": "development",
+      "population": {
+        "kind": "broad"
+      }
+    },
+    {
+      "id": "value-broad",
+      "recipe_file": "value-recipe.json",
+      "seed": 20261011032,
+      "index_start": 0,
+      "index_count": 10000,
+      "role": "development",
+      "population": {
+        "kind": "broad"
+      }
+    }
+  ],
+  "spec_files": {
+    "geometry": "geometry-spec.json",
+    "challenge": "challenge-rule.json",
+    "morphology": "morphology-spec.json"
+  },
+  "file_sha256": {
+    "layered-recipe.json": "8c9ff4ed3461ed7157b026cfce7dc9e5cb3a78a6e5c314c41487a7b0ee1804a8",
+    "value-recipe.json": "6f3a704cfc3718f8aa72f5f20305d67b0d115c7c090bc80831216204a9516d61",
+    "geometry-spec.json": "9fb59b53f42fd0ddf803051b717aa3f04a8a902feb4bcb0d8d482c15a8208ef1",
+    "challenge-rule.json": "95f9313dd38b1bacc033144fcd979614bfeb2f9fd62f0e9270c68f6e51835e54",
+    "morphology-spec.json": "8ab5f47e962c878a24a43c7daf32505e9e69bf0f273479b87721a2b4b7ca3f22"
+  },
+  "diagnostic_axes": [
+    {
+      "axis": "distance",
+      "interior_boundaries": [
+        600,
+        1200,
+        1800
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "signed_rise",
+      "interior_boundaries": [
+        -400,
+        -150,
+        0,
+        150,
+        400
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "source_width",
+      "interior_boundaries": [
+        32,
+        48,
+        64
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "target_width",
+      "interior_boundaries": [
+        32,
+        48,
+        64
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "chord_barrier",
+      "interior_boundaries": [
+        50,
+        100,
+        200,
+        400
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "sustained_barrier_width",
+      "interior_boundaries": [
+        40,
+        80,
+        200,
+        400
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "departure_distance",
+      "interior_boundaries": [
+        40,
+        100,
+        250,
+        500
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "approach_distance",
+      "interior_boundaries": [
+        40,
+        100,
+        250,
+        500
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "crest_count",
+      "interior_boundaries": [
+        1,
+        2,
+        4
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    },
+    {
+      "axis": "min_crest_spacing",
+      "interior_boundaries": [
+        40,
+        100,
+        250,
+        500
+      ],
+      "show_underflow_overflow": true,
+      "show_missing": true
+    }
+  ],
+  "diagnostic_joints": [
+    [
+      "distance",
+      "sustained_barrier_width"
+    ],
+    [
+      "signed_rise",
+      "target_width"
+    ],
+    [
+      "departure_distance",
+      "source_width"
+    ],
+    [
+      "approach_distance",
+      "target_width"
+    ],
+    [
+      "min_crest_spacing",
+      "chord_barrier"
+    ]
+  ],
+  "reference_qa": {
+    "spacing_m": 1.0,
+    "regular_index_stride": 80,
+    "regular_index_offsets": [0, 1],
+    "boundary_extra_per_backend": 32,
+    "boundary_score": "Closest relative distance to sustained width, absolute rise, or a retained crest height/prominence/half-width/adjacent-spacing admission threshold; index breaks ties. Skip indices already selected by stride.",
+    "maximum_per_backend": 282,
+    "diagnostic_flags": {
+      "maximum_raw_interpolation_error_m": 25.0,
+      "absolute_chord_barrier_change_m": 25.0,
+      "absolute_sustained_width_change_m": 40.0,
+      "admission_disagreement": true
+    },
+    "flags_are_not_benchmark_acceptance": true
+  },
+  "preview_review": {
+    "maximum_per_backend": 96,
+    "selection": "Union of marginal extremes and 10/50/90 percentiles, occupied diagnostic joint cells, morphology groups including mixed/unclassified, and admission-boundary cases; ties by index; use a deterministic round robin if over budget.",
+    "missions_per_page": 12,
+    "open_bands_at_once": 1,
+    "normalize_display_direction": true,
+    "metadata_filters": [
+      "backend",
+      "physical_direction"
+    ],
+    "membership_independent_of_display": true
+  },
+  "flight_training_budget": 0,
+  "held_out_generation": false,
+  "benchmark_freeze": false
+}

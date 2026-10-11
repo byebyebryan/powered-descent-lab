@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "metric_version": "pd-missions/transfer-geometry-v1",
+  "barrier_heights_m": [
+    50.0,
+    100.0,
+    200.0
+  ],
+  "crest_min_prominence_m": 50.0,
+  "crest_min_half_prominence_width_m": 8.0,
+  "crest_min_separation_m": 20.0,
+  "endpoint_radius_m": 200.0
+}

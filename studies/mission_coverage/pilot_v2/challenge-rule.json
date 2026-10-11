@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "rule_version": "pd-missions/challenge-v1",
+  "barrier_height_m": 100.0,
+  "sustained_width_m": 80.0,
+  "absolute_pad_rise_m": 300.0,
+  "crest_height_m": 50.0,
+  "crest_prominence_m": 80.0,
+  "crest_width_m": 40.0,
+  "crest_separation_m": 80.0,
+  "crest_count": 2
+}

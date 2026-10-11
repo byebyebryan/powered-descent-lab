@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "taxonomy_version": "pd-missions/morphology-v1",
+  "mountain_height_m": 200.0,
+  "massif_barrier_height_m": 100.0,
+  "massif_width_m": 300.0,
+  "ridge_min_prominence_m": 80.0,
+  "ridge_count": 3,
+  "absolute_pad_rise_m": 400.0
+}

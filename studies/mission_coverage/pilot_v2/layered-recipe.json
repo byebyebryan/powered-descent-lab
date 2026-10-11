@@ -1,0 +1,106 @@
+{
+  "schema_version": 2,
+  "generator_version": "pd-missions/configurable-rest-v2",
+  "backend": "layered_perlin",
+  "sim": {
+    "physics_hz": 120,
+    "controller_hz": 60,
+    "max_time_s": 90.0,
+    "sample_hz": 10
+  },
+  "gravity_mps2": 9.81,
+  "vehicle": {
+    "geometry": {
+      "hull_width_m": 8.0,
+      "hull_height_m": 10.0,
+      "touchdown_half_span_m": 4.0,
+      "touchdown_base_offset_m": 5.0
+    },
+    "dry_mass_kg": 7200.0,
+    "initial_fuel_kg": 6300.0,
+    "max_fuel_kg": 6300.0,
+    "max_thrust_n": 240000.0,
+    "max_fuel_burn_kgps": 49.5,
+    "min_throttle_frac": 0.25,
+    "max_rotation_rate_radps": 1.5707963267948966,
+    "safe_touchdown_normal_speed_mps": 3.0,
+    "safe_touchdown_tangential_speed_mps": 2.0,
+    "safe_touchdown_attitude_error_rad": 0.15,
+    "safe_touchdown_angular_rate_radps": 0.35
+  },
+  "travel_distance_m": {
+    "min": 300.0,
+    "max": 2400.0
+  },
+  "source_x_m": {
+    "min": -500.0,
+    "max": 500.0
+  },
+  "source_width_m": {
+    "min": 24.0,
+    "max": 80.0
+  },
+  "target_width_m": {
+    "min": 24.0,
+    "max": 80.0
+  },
+  "terrain": {
+    "macro_amplitude_m": {
+      "min": 240.0,
+      "max": 960.0
+    },
+    "macro_wavelength_m": {
+      "min": 1200.0,
+      "max": 3600.0
+    },
+    "structure_amplitude_m": {
+      "min": 420.0,
+      "max": 1680.0
+    },
+    "structure_wavelength_m": {
+      "min": 300.0,
+      "max": 1000.0
+    },
+    "ridge_mix": {
+      "min": 0.1,
+      "max": 0.85
+    },
+    "octave_gain": {
+      "min": 0.25,
+      "max": 0.55
+    },
+    "lacunarity": {
+      "min": 1.6,
+      "max": 2.4
+    },
+    "weighted_strength": {
+      "min": 0.0,
+      "max": 0.8
+    },
+    "warp_amplitude_m": {
+      "min": 0.0,
+      "max": 120.0
+    },
+    "warp_wavelength_m": {
+      "min": 500.0,
+      "max": 2000.0
+    },
+    "feature_amplitude_m": {
+      "min": 40.0,
+      "max": 240.0
+    },
+    "feature_cell_m": {
+      "min": 180.0,
+      "max": 720.0
+    },
+    "feature_density": {
+      "min": 0.05,
+      "max": 0.6
+    }
+  },
+  "octaves": 3,
+  "terrain_spacing_m": 4.0,
+  "domain_margin_m": 800.0,
+  "pad_transition_m": 24.0,
+  "max_attempts": 8
+}

@@ -44,12 +44,18 @@ define an exhaustive universe or admission quotas.
 
 Reserve a new create-only output directory. Use seed 20261011031 for layered
 development proposals and 20261011032 for value-noise proposals, each with
-10,000 scheduled indices and at most eight structural attempts per index.
+  10,000 scheduled indices and at most eight structural attempts per index.
 Alternate physical direction by index; random parameter draws are index-local.
 These seeds and all generated previews are exposed development inputs.
 Do not generate held-out inputs until the recipe/admission/metric definitions
 are frozen. The serialized recipe and pilot configuration must be committed
 before generation; later adjustments have new identities and receipts.
+
+The serialized [pilot declaration](../studies/mission_coverage/pilot_v2/README.md)
+now binds both recipe files and the metric/admission/projection specifications.
+It fixes diagnostic bins and five joint audits, caps 1 m reference QA at 564
+inputs, and caps human preview review at 192 inputs. QA flags are diagnostic;
+they do not promote a benchmark. Commit this declaration before the full run.
 
 Predeclare diagnostic bins in physical units, with visible underflow/overflow:
 
@@ -159,6 +165,15 @@ or guaranteed solvability. Document unresolved gaps before input promotion.
   both V2 aliases, explicit repeated attempts, exposure receipts, create-only
   refusal, excluded-input refusal and same-support shift rejection. No campaign,
   benchmark promotion or training allocation occurred.
-- Pending: commit the serialized pilot declaration before generation; run the
-  10,000-index development stream per backend, resolution/joint coverage audits,
-  bounded maintained previews, and the freeze/comparison-budget readiness record.
+- Serialized pilot declaration: native recipe JSON and metric/challenge/morphology
+  specs are retained with file hashes in the [configuration](../studies/mission_coverage/pilot_v2/pilot.json).
+  The [declaration review](../outputs/procedural-challenge/run-20261011T083727Z-collections/declaration-review-validation.json)
+  verifies its bound files, native request validation and balanced regular QA
+  schedule: 125 rightward and 125 leftward indices per backend. Review corrected
+  a stride/parity blind spot before committing or running the full pilot.
+  Input generation remains pending until its declaration commit is complete.
+  These are exposed development seeds, with zero flight/training allocation and
+  no held-out generation or benchmark freeze.
+- Pending: native bounded audit/maintained reporting, the 10,000-index development
+  stream per backend, resolution/joint coverage review, and the separate
+  freeze/comparison-budget readiness record.

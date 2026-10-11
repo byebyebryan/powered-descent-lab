@@ -3,6 +3,10 @@
 [Plan](../../docs/procedural_challenge_plan.md) ·
 [Review, measurements and research](../../docs/procedural_challenge_review.md)
 
+The committed [V2 pilot declaration](pilot_v2/README.md) owns the next input-only
+calibration. Its native recipes and metric/admission/projection specs are distinct
+from this historical saved-input audit. No new flights or training are scheduled.
+
 `audit.py` reads saved manifest-bound missions, authenticates selected file
 bytes and emits geometry summaries to stdout. It runs no generator, strategy,
 flight, native replay or external game code, and writes no files. The default
@@ -29,6 +33,7 @@ Excluding edge-adjacent segments is a diagnostic, not removal of every pad edit.
 
 File-byte authentication and scalar geometry agreement do not establish native
 physical-identity serialization, a valid replay, solvability or controller
-success. The future versioned native descriptors and qualification classifier
-belong to `pd-missions`. This utility supplies reproducible input-review evidence.
+success. Implemented [native descriptors](../../docs/procedural_geometry.md) and
+[V2 challenge admission](../../docs/procedural_collections_v2.md) belong to
+`pd-missions`. This utility supplies reproducible historical input-review evidence.
 
