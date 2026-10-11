@@ -57,6 +57,11 @@ All flags preserve the unchanged adapter behavior. A fresh independent verifier
 is available through `pd-eval`'s `verify-collection` example, with arguments
 `COLLECTION SAVED_CAMPAIGN NEW_RECEIPT_JSON`; it replays saved commands and never
 imports the incumbent or planner.
+Run that fresh verification while the captured source and input bytes remain
+unchanged. Later presentation editions bind the retained verification receipts
+and original capture identities; changing report source does not relabel the
+flight checkpoint. See the [completed development baseline](procedural_challenge_baseline.md)
+for a report-only recovery example.
 
 These new create-only campaigns write common captures, exposure receipts,
 approach-specific stop diagnostics, rich individual reports and a common batch

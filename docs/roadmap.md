@@ -56,6 +56,12 @@ complete input receipts, measured interactions, resolution warnings and bounded
 rich previews. The [next comparison proposal](procedural_challenge_comparison_plan.md)
 separates freeze prerequisites and an unchanged-incumbent budget; no new flight,
 training or accepted publication is included in the mission-platform loop.
+The separately authorized [existing-input development baseline](procedural_challenge_baseline.md)
+has since measured the unchanged cap-24 reflection reference at 77.0% layered
+and 77.4% value across 3,311 admitted physical inputs. V2 incumbent composition,
+neutral geometry-based reports and independent native verification are now
+integrated. Fresh qualification/stress inputs and another RL allocation remain
+future work; the baseline does not promote a default or freeze that proposal.
 
 ### Report presentation refinement
 
@@ -1030,8 +1036,11 @@ and maintained report projections are implemented under the
 [next comparison scope](procedural_challenge_comparison_plan.md) before freeze.
 Named categories organize review; broad sampling,
 selected joint audits and separately scored stress/shift panels establish the
-declared evidence and limits. Freeze a challenging benchmark before its separately scoped
-incumbent comparison or another RL allocation. The
+declared evidence and limits. The
+[exposed-input development baseline](procedural_challenge_baseline.md) supplies
+an initial incumbent measurement without freezing the fresh-input proposal.
+Freeze the challenging qualification/stress inventories before their separately
+scoped incumbent comparison or another RL allocation. The
 [learning recommendation](procedural_learning_next.md) follows that prerequisite:
 compare a training curriculum against uniform sampling with the corrected
 objective, and investigate control parameterization only when diagnostics
