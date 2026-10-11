@@ -45,6 +45,38 @@ keeps the wide table inside its scrolling container. Receipts and screenshots ar
 in the baseline run directory. All 44 report tests and report/benchmark Clippy
 checks pass. The ten other-writer file byte identities remain unchanged.
 
+## Paired review and rich detail
+
+The common shell now has an opt-in review-first ordering. Procedural comparisons
+show mutually exclusive scheduled-outcome bars, counts/percentages and separate
+proof accounting, followed by mission review and expandable coverage/provenance.
+The paired component joins physical identity and repeat occurrence, materializes
+branches on demand and shows two selected previews on common mission axes.
+Exact coverage focus, outcome/approach filters, literal search and URL context are
+available; all approaches remain inspectable under each matched mission.
+
+Detail navigation restores filters and selects neighbours within that scope.
+Original rich report payloads are physically bound to sealed samples and retained
+exactly. Concise outcome/endpoint context and the plots lead; the old run summary
+and source provenance are expandable. Plotly failure keeps static SVG flight,
+velocity and sampled commanded-throttle plots, without a JavaScript exception.
+Unsupported details show terrain/target only. Control-update throttle display in
+the original rich payload is preserved separately from sampled held commands.
+
+Create-only inspection slices of 16 and 64 physical missions passed real
+1440×900 and 390×844 browser checks: accounting, initially zero preview requests,
+loaded pair images, all five attempts, exact coverage, search, return context,
+rich modes/hover, unsupported status and deliberately blocked Plotly fallback.
+The larger slice has 288 rich and 32 status details and rendered in 3.9 seconds.
+Receipts/screenshots are in `browser-qa2/` and `browser-qa3/` under the run root.
+These are inspection slices, not full-population acceptance. The full retained
+edition and final gate/preservation checks are next. Source checks currently pass
+46 report tests, four synthetic presentation tests and strict report Clippy.
+
+See the [current presentation workflow](report_presentations.md) for rendering
+and optional browser commands. Original accepted report navigation and the ten
+other-writer paths remain byte-identical to the starting snapshot.
+
 The learning outcomes remain
 0/2,048 for each selected PPO seed and 1,973/2,048 for the reflected incumbent.
 Presentation changes cannot add landings, revise inputs or reclassify replay proof.

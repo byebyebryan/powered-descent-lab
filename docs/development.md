@@ -38,6 +38,11 @@ whitespace, strict all-target Clippy, local documentation links and all maintain
 JavaScript tests. It creates no accepted capture or publication and does not
 require local historical outputs.
 
+For common report presentation work, see the
+[saved campaign presentation workflow](report_presentations.md). Source tests are
+part of the ordinary gate; real browser acceptance uses a supplied edition and
+disposable browser separately.
+
 For focused documentation work:
 
 ```sh

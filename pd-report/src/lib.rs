@@ -18,6 +18,8 @@ pub mod batch;
 pub mod campaign;
 pub mod campaign_view;
 pub mod comparison;
+pub mod detail_view;
+pub mod paired_review;
 pub use agent::{AgentReportEvidenceV1, agent_capture_navigation, render_agent_run_report};
 pub mod batch_tree;
 pub mod flight_annotations;
@@ -220,7 +222,17 @@ pub fn render_run_report_with_flight_annotations(
             &annotations.map(|a| a.panel_html()).unwrap_or_default(),
         )
         .replace("__REPORT_DATA__", &json_html(&report_data));
-    Ok(html)
+    let handoffs: Vec<_> = annotations
+        .into_iter()
+        .flat_map(|a| a.corrections.iter().map(|c| c.handoff.position_m))
+        .collect();
+    let svg = build_saved_flight_preview_svg(scenario, Some(manifest), samples, &handoffs);
+    detail_view::with_static_fallback(
+        &html,
+        &svg,
+        &detail_view::metric_fallback(samples),
+        "Recorded terrain and sampled flight",
+    )
 }
 
 pub fn write_run_preview_svg(
@@ -369,6 +381,30 @@ pub fn build_saved_flight_preview_svg(
         route_plan: None,
     }];
     build_preview_svg_with_handoffs(&series, PreviewOptions::saved_flight(), handoffs)
+}
+
+/// Saved flight preview with shared world-coordinate bounds for a paired mission.
+/// Additional positions affect axes only; they never become a displayed path.
+pub fn build_saved_flight_preview_svg_with_context(
+    scenario: &ScenarioSpec,
+    manifest: Option<&RunManifest>,
+    samples: &[SampleRecord],
+    handoffs: &[Vec2],
+    comparison_positions: &[Vec2],
+) -> String {
+    let series = [PreviewRenderSeries {
+        scenario,
+        manifest,
+        trajectory: PreviewTrajectory::Samples(samples),
+        controller_updates: None,
+        route_plan: None,
+    }];
+    build_preview_svg_with_bounds(
+        &series,
+        PreviewOptions::saved_flight(),
+        handoffs,
+        comparison_positions,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -583,6 +619,15 @@ fn build_preview_svg_with_handoffs(
     series: &[PreviewRenderSeries<'_>],
     options: PreviewOptions,
     handoffs: &[Vec2],
+) -> String {
+    build_preview_svg_with_bounds(series, options, handoffs, &[])
+}
+
+fn build_preview_svg_with_bounds(
+    series: &[PreviewRenderSeries<'_>],
+    options: PreviewOptions,
+    handoffs: &[Vec2],
+    bounds: &[Vec2],
 ) -> String {
     const WIDTH_PX: f64 = 156.0;
     const HEIGHT_PX: f64 = 92.0;
@@ -807,6 +852,10 @@ fn build_preview_svg_with_handoffs(
     {
         include_point(center_x_m - (0.5 * width_m), surface_y_m);
         include_point(center_x_m + (0.5 * width_m), surface_y_m);
+    }
+
+    for point in bounds.iter().filter(|p| p.x.is_finite() && p.y.is_finite()) {
+        include_point(transform_x(point.x, first_flip_sign), point.y);
     }
 
     if !min_x.is_finite() || !max_x.is_finite() || !min_y.is_finite() || !max_y.is_finite() {
@@ -1804,7 +1853,7 @@ fn json_html<T: Serialize>(value: &T) -> String {
         .replace('>', "\\u003e")
 }
 
-fn escape_html(value: &str) -> String {
+pub fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")

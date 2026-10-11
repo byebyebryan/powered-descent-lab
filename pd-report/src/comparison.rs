@@ -75,34 +75,31 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             );
         }
     }
-    let mut overview_rows = String::new();
+    let review = crate::paired_review::build(page)?;
+    let mut cards = String::new();
+    let mut accounting = String::new();
     let mut context = String::new();
-    let mut groups: BTreeMap<String, Vec<(usize, usize)>> = BTreeMap::new();
-    let mut tree_rows = String::new();
     for (ordinal, approach) in page.approaches.iter().enumerate() {
-        let scheduled: usize = approach
-            .campaigns
-            .iter()
-            .map(|c| c.page.attempts.len())
-            .sum();
         let integrity = approach.campaigns.iter().all(|c| c.page.integrity_passed);
         let rows: Vec<_> = approach
             .campaigns
             .iter()
-            .flat_map(|c| &c.page.attempts)
+            .flat_map(|c| c.page.attempts.iter().map(|r| (r, integrity)))
             .collect();
-        let landings = if integrity {
-            rows.iter().filter(|r| verified(r)).count()
-        } else {
-            0
-        };
-        let unsupported = rows
-            .iter()
-            .filter(|r| r.disposition == "unsupported")
-            .count();
-        let replayed = rows.iter().filter(|r| r.complete_replay_verified).count();
-        let executed = rows.iter().filter(|r| r.disposition == "executed").count();
-        let failures = scheduled - executed - unsupported;
+        let scheduled = rows.len();
+        let landed = rows.iter().filter(|(r, ok)| *ok && verified(r)).count();
+        cards.push_str(&crate::campaign_view::render_outcome_bar(
+            &approach.label,
+            &rows,
+            ordinal,
+        ));
+        accounting.push_str(&format!(
+            "<tr><td>{}</td><td>{scheduled}</td><td>{}</td><td>{landed}/{scheduled}</td></tr>",
+            escape(&approach.label),
+            reference.len()
+        ));
+        let descriptor = serde_json::to_string_pretty(&approach.campaigns[0].page.agent)
+            .map_err(|e| e.to_string())?;
         let links = approach
             .campaigns
             .iter()
@@ -115,114 +112,98 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             })
             .collect::<Vec<_>>()
             .join(" · ");
-        overview_rows.push_str(&format!("<tr><td>{}</td><td>{scheduled}</td><td>{}</td><td>{landings}/{scheduled}</td><td>{unsupported}</td><td>{failures}</td><td>{replayed}/{executed}</td><td>{integrity}</td><td>{links}</td></tr>",escape(&approach.label),reference.len()));
-        let descriptor = serde_json::to_string_pretty(&approach.campaigns[0].page.agent)
-            .map_err(|e| e.to_string())?;
         context.push_str(&format!(
-            "<details><summary>{}</summary><pre>{}</pre></details>",
+            "<details><summary>{}</summary><p>{links}</p><pre>{}</pre></details>",
             escape(&approach.label),
             escape(&descriptor)
         ));
-        let group_id = format!("comparison-{ordinal}");
-        tree_rows.push_str(&batch::render_row(Some("summary-row"), &format!("data-group=\"{group_id}\" data-kind=\"group\" data-depth=\"0\" aria-expanded=\"false\" tabindex=\"0\""),
-            &format!("<td><span class=\"expander\">+</span> {}</td><td>{landings}/{scheduled}</td><td>{links}</td>",escape(&approach.label))));
-        for campaign in &approach.campaigns {
-            let count = campaign.page.attempts.len();
-            let landed = if integrity {
-                campaign
-                    .page
-                    .attempts
-                    .iter()
-                    .filter(|r| verified(r))
-                    .count()
-            } else {
-                0
-            };
-            tree_rows.push_str(&batch::render_row(Some("comparison-row"),&format!("data-parent=\"{group_id}\" data-depth=\"1\""),
-                &format!("<td>{}</td><td>{landed}/{count}</td><td><a href=\"{}\">Campaign and native flight evidence</a></td>",escape(family_label(&campaign.page.attempts[0].terrain_family)),escape(&campaign.report_href))));
-            for row in &campaign.page.attempts {
-                let key = format!(
-                    "{} · {} · stratum {}",
-                    family_label(&row.terrain_family),
-                    if row.direction < 0 {
-                        "left"
-                    } else if row.direction > 0 {
-                        "right"
-                    } else {
-                        "vertical"
-                    },
-                    row.terrain_stratum
-                );
-                let counters = groups
-                    .entry(key)
-                    .or_insert_with(|| vec![(0, 0); page.approaches.len()]);
-                counters[ordinal].0 += usize::from(integrity && verified(row));
-                counters[ordinal].1 += 1;
-            }
-        }
     }
-    let overview = batch::render_overview_section(
-        "",
-        &batch::render_overview_table(
-            "<th>Approach</th><th>Scheduled</th><th>Unique inputs</th><th>Verified landing</th><th>Unsupported</th><th>Failed preparation/capture</th><th>Complete replay</th><th>Integrity</th><th>Campaigns</th>",
-            &overview_rows,
-        ),
+    let overview = format!(
+        "<section class=\"header-overview\"><h2>Outcomes across all scheduled missions</h2><p class=\"section-note\">Each bar uses the full scheduled denominator. Click an outcome to find those missions. Replay proof is separate from the physical outcome.</p>{cards}<details><summary>Schedule accounting</summary><div class=\"table-wrap\">{}</div></details></section>",
+        batch::render_overview_table(
+            "<th>Approach</th><th>Scheduled attempts</th><th>Unique physical inputs</th><th>Verified landings</th>",
+            &accounting
+        )
     );
-    let headers = page
+    let coverage_headers = page
         .approaches
         .iter()
         .map(|a| format!("<th>{}</th>", escape(&a.label)))
         .collect::<String>();
-    let coverage_rows = groups
-        .iter()
-        .map(|(label, counters)| {
-            batch::render_coverage_row(
-                label,
-                &counters
-                    .iter()
-                    .enumerate()
-                    .map(|(ordinal, (landed, scheduled))| {
-                        batch::render_coverage_group_cell(
-                            "coverage-cell",
-                            &format!("comparison-{ordinal}"),
-                            &format!("{landed}/{scheduled}"),
-                        )
-                    })
-                    .collect::<String>(),
+    let mut coverage_rows = String::new();
+    for group in &review.groups {
+        let missions: Vec<_> = review
+            .missions
+            .iter()
+            .filter(|m| m.group == group.id)
+            .collect();
+        let cells=page.approaches.iter().enumerate().map(|(approach,_)|{
+            let total=missions.len();let landed=missions.iter().filter(|m|m.attempts[approach].outcome=="landed").count();let pct=100.0*landed as f64/total.max(1) as f64;
+            format!("<td><button type=\"button\" class=\"coverage-inspect {}\" data-paired-focus=\"{}\" data-approach=\"{approach}\" aria-label=\"Inspect {} for {}\">{landed}/{total}<span class=\"row-note\">{pct:.1}%</span></button></td>",if landed==0 {"zero"}else if pct>=90.0 {"high"}else{"mixed"},group.id,escape(&group.label),escape(&page.approaches[approach].label))
+        }).collect::<String>();
+        coverage_rows.push_str(&batch::render_coverage_row(&group.label, &cells));
+    }
+    let coverage = format!(
+        "<details class=\"paired-coverage\"><summary>Coverage · {} family / direction / stratum groups</summary>{}</details>",
+        review.groups.len(),
+        batch::render_coverage_section(
+            "Click a cell to focus that exact coverage group and approach. Unsupported inputs remain scheduled.",
+            "",
+            &format!(
+                "<div class=\"table-wrap\">{}</div>",
+                batch::render_coverage_table(
+                    "Physical mission coverage",
+                    &coverage_headers,
+                    &coverage_rows
+                )
             )
-        })
-        .collect::<String>();
-    let coverage = batch::render_coverage_section(
-        "Same physical inputs and repeat schedule for every approach. Unsupported inputs remain in the full denominator.",
-        "",
-        &batch::render_coverage_table("Family / direction / stratum", &headers, &coverage_rows),
+        )
+    );
+    let incumbent = page
+        .approaches
+        .iter()
+        .position(|a| a.label.to_lowercase().contains("reflection"))
+        .unwrap_or(page.approaches.len() - 1);
+    let shortcuts = format!(
+        "<div class=\"review-shortcuts\"><button type=\"button\" data-review-outcome=\"misses\" data-approach=\"{incumbent}\">Review incumbent misses</button><button type=\"button\" data-review-outcome=\"unsupported\" data-approach=\"all\">Review unsupported inputs</button><button type=\"button\" data-review-outcome=\"not-launched\" data-approach=\"all\">Review stopped before departure</button></div>"
     );
     let tree = batch::render_review_tree_section(
         "",
-        "Expand an approach to open its common campaigns and rich individual native captures.",
-        &batch::render_review_tree_table(
-            "procedural-comparison",
-            "<th>Approach / family</th><th>Verified landing / scheduled</th><th>Saved evidence</th>",
-            &tree_rows,
+        &crate::paired_review::controls(&review),
+        &batch::render_table(
+            "scenario-table paired-table",
+            "data-tree-table=\"paired-missions\"",
+            "<th>Mission / approach</th><th>Outcome / stop</th><th>Flight / endpoint</th><th>Evidence</th>",
+            "",
         ),
     );
     let context = format!(
-        "<section class=\"context-section\"><h2>Configuration and provenance</h2><p>Each approach covers {} unique physical inputs. Counts require campaign integrity and the complete physical, mission, execution-validity and native replay tuple. A failed constituent campaign gates that approach's combined landing count to zero.</p>{context}</section>",
+        "<details class=\"provenance-disclosure context-section\"><summary>Configuration, campaign evidence and provenance</summary><p>Each approach covers {} unique physical inputs. Repeated physical inputs remain separate scheduled occurrences. Landing counts require campaign integrity and the complete physical, mission, execution-validity and replay tuple. A failed constituent campaign gates its approach's combined landing count.</p>{context}</details>",
         reference.len()
     );
-    Ok(batch::render_batch_page(batch::BatchPage {
+    let scripts = format!(
+        "<script>{}</script>{}",
+        crate::campaign_view::SCRIPT,
+        crate::paired_review::data_script(&review)?
+    );
+    Ok(batch::render_review_first_batch_page(batch::BatchPage {
         title: &page.title,
         subtitle: "Paired complete procedural missions under identical physical and resource budgets",
         chips_html: &format!(
-            "<span class=\"chip\">{} unique physical inputs per approach</span>",
-            reference.len()
+            "<span class=\"chip\">{} unique physical inputs · {} scheduled occurrences · {} approaches</span>",
+            reference.len(),
+            review.missions.len(),
+            page.approaches.len()
         ),
         actions_html: &format!(
-            "<a href=\"{}\">Experiment provenance</a>",
+            "<a href=\"#review-tree-root\">Inspect missions</a><a href=\"/\">Report library</a><a href=\"{}\">Experiment provenance</a><a href=\"comparison-input.json\">Report projection</a>",
             escape(&page.provenance_href)
         ),
-        before_hero_html: "<style>body.procedural-comparison .coverage-table th:first-child { width: 320px; text-transform: none; }</style>",
-        after_hero_html: "",
+        before_hero_html: &format!(
+            "<style>{} .paired-table th:first-child {{ width:230px; }}</style>",
+            crate::campaign_view::STYLE
+        ),
+        after_hero_html: &shortcuts,
         overview_html: &overview,
         planner_html: "",
         coverage_html: &coverage,
@@ -230,15 +211,15 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
         diagnostics_html: "",
         review_tree_html: &tree,
         comparison_html: "",
-        appendix_html: "",
-        body_class: "procedural-comparison",
+        appendix_html: &scripts,
+        body_class: "procedural-comparison campaign-view",
         tree: batch::BatchTreeOptions {
-            max_depth: 1,
-            depth_by_kind: &[("group", 0)],
-            leaf_selector: "tr.comparison-row",
+            max_depth: 0,
+            depth_by_kind: &[],
+            leaf_selector: "tr.paired-attempt-row",
             default_expansion: 0,
         },
-        coverage_tree_jump: true,
+        coverage_tree_jump: false,
     }))
 }
 
@@ -333,6 +314,62 @@ mod tests {
             render_comparison_page(&page)
                 .unwrap_err()
                 .contains("repeat schedule")
+        );
+    }
+
+    #[test]
+    fn pairing_uses_identity_when_approach_order_differs_and_keeps_repeats() {
+        let mut page = comparison();
+        for approach in &mut page.approaches {
+            let campaign = &mut approach.campaigns[0].page;
+            let mut second = campaign.attempts[0].clone();
+            second.physical_sha256 = "c".repeat(64);
+            second.mission_index = 19;
+            second.attempt_index = 19;
+            campaign.attempts.push(second);
+            campaign.unique_scheduled_missions = 2;
+        }
+        page.approaches[1].campaigns[0].page.attempts.reverse();
+        render_comparison_page(&page).unwrap();
+        let review = crate::paired_review::build(&page).unwrap();
+        assert_eq!(review.missions.len(), 2);
+        for mission in &review.missions {
+            assert_eq!(
+                mission.attempts[0].attempt_index,
+                mission.attempts[1].attempt_index
+            );
+        }
+        for approach in &mut page.approaches {
+            let mut repeat = approach.campaigns[0]
+                .page
+                .attempts
+                .iter()
+                .find(|r| r.mission_index == 19)
+                .unwrap()
+                .clone();
+            repeat.attempt_index = 20;
+            approach.campaigns[0].page.attempts.push(repeat);
+        }
+        render_comparison_page(&page).unwrap();
+        let review = crate::paired_review::build(&page).unwrap();
+        assert_eq!(review.missions.len(), 3);
+        assert_eq!(
+            review
+                .missions
+                .iter()
+                .filter(|m| m.mission_index == 19)
+                .count(),
+            2
+        );
+        assert_eq!(
+            review
+                .missions
+                .iter()
+                .find(|m| m.occurrence == 1)
+                .unwrap()
+                .attempts[1]
+                .attempt_index,
+            20
         );
     }
 }

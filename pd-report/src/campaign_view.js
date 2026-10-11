@@ -18,7 +18,18 @@
     requestAnimationFrame(update);
   };
   new MutationObserver(schedule).observe(root, {
-    subtree: true, attributes: true, attributeFilter: ['hidden', 'aria-expanded'],
+    subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'aria-expanded'],
   });
+  window.PdCampaignPreviews = {loadVisible: schedule};
+  document.addEventListener('pd-batch-ready', () => {
+    if (document.getElementById('paired-review-data')) return;
+    const tree = root.__pdBatchTreeApi;
+    const rows = [...root.querySelectorAll('tr.campaign-row')];
+    document.querySelectorAll('[data-review-outcome]').forEach(button => button.addEventListener('click', () => {
+      rows.forEach(row => row.classList.toggle('review-filter-hidden', row.dataset.outcome !== button.dataset.reviewOutcome));
+      tree?.expandLeaves();root.scrollIntoView({block:'start'});
+    }));
+    document.querySelectorAll('[data-campaign-reset]').forEach(button => button.addEventListener('click', () => {rows.forEach(r=>r.classList.remove('review-filter-hidden'));tree?.collapseGroups(0);}));
+  }, {once:true});
   schedule();
 })();

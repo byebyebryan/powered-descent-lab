@@ -207,6 +207,53 @@ pub fn render_evidence_cell(row: &CampaignRowV1, integrity: bool) -> String {
     )
 }
 
+/// Mutually exclusive scheduled-attempt partition; proof is reported separately.
+pub fn render_outcome_bar(label: &str, rows: &[(&CampaignRowV1, bool)], approach: usize) -> String {
+    let total = rows.len();
+    let counts = DisplayOutcome::ALL.map(|status| {
+        rows.iter()
+            .filter(|(row, integrity)| outcome(row, *integrity) == status)
+            .count()
+    });
+    let mut segments = String::new();
+    let mut legend = String::new();
+    for (status, count) in DisplayOutcome::ALL.into_iter().zip(counts) {
+        if count == 0 {
+            continue;
+        }
+        let pct = 100.0 * count as f64 / total.max(1) as f64;
+        let title = format!("{}: {count}/{total} ({pct:.1}%)", status.label());
+        segments.push_str(&format!(
+            "<span class=\"bar-{}\" style=\"width:{pct:.5}%\" title=\"{}\"></span>",
+            status.key(),
+            escape(&title)
+        ));
+        legend.push_str(&format!("<button type=\"button\" data-review-outcome=\"{}\" data-approach=\"{approach}\"><span class=\"legend-dot bar-{}\"></span>{} <strong>{count}</strong> <span class=\"muted\">{pct:.1}%</span></button>", status.key(), status.key(), status.label()));
+    }
+    let landed = counts[0];
+    let executed = rows
+        .iter()
+        .filter(|(r, _)| r.disposition == "executed")
+        .count();
+    let proof = rows
+        .iter()
+        .filter(|(r, integrity)| {
+            *integrity
+                && r.disposition == "executed"
+                && r.execution_valid
+                && r.integrity_passed
+                && r.physical_replay_verified
+                && r.complete_replay_verified
+        })
+        .count();
+    format!(
+        "<article class=\"outcome-card\" data-outcome-approach=\"{approach}\"><div class=\"outcome-card-head\"><h3>{}</h3><strong>{landed}/{total} <span class=\"muted\">verified landings · {:.1}%</span></strong></div><div class=\"outcome-bar\" role=\"img\" aria-label=\"{}\">{segments}</div><div class=\"outcome-legend\">{legend}</div><p class=\"proof-note\">Saved integrity and complete replay: {proof}/{executed} executed attempts. All {total} scheduled attempts remain in the outcome denominator.</p></article>",
+        escape(label),
+        100.0 * landed as f64 / total.max(1) as f64,
+        escape(&format!("{label}: {landed}/{total} verified landings"))
+    )
+}
+
 pub const STYLE: &str = include_str!("campaign_view.css");
 pub const SCRIPT: &str = include_str!("campaign_view.js");
 

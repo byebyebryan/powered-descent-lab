@@ -45,6 +45,15 @@ pub struct BatchPage<'a> {
 /// The complete common batch page, including the established report shell,
 /// full shared styles, the shared tree engine, and configured initialization.
 pub fn render_batch_page(page: BatchPage<'_>) -> String {
+    render_ordered_batch_page(page, false)
+}
+
+/// Retains the full common template with review before coverage and provenance.
+pub fn render_review_first_batch_page(page: BatchPage<'_>) -> String {
+    render_ordered_batch_page(page, true)
+}
+
+fn render_ordered_batch_page(page: BatchPage<'_>, review_first: bool) -> String {
     let BatchPage {
         title,
         subtitle,
@@ -66,6 +75,15 @@ pub fn render_batch_page(page: BatchPage<'_>) -> String {
     } = page;
     let script = render_page_script(&tree, coverage_tree_jump);
     let style = style();
+    let sections = if review_first {
+        format!(
+            "{overview_html}{planner_html}{review_tree_html}{diagnostics_html}{coverage_html}{context_html}"
+        )
+    } else {
+        format!(
+            "{overview_html}{planner_html}{coverage_html}{context_html}{diagnostics_html}{review_tree_html}"
+        )
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -87,12 +105,7 @@ pub fn render_batch_page(page: BatchPage<'_>) -> String {
       <div class="hero-actions">{actions_html}</div>
     </header>
     {after_hero_html}
-    {overview_html}
-    {planner_html}
-    {coverage_html}
-    {context_html}
-    {diagnostics_html}
-    {review_tree_html}
+    {sections}
     <div class="compare-sections">{comparison_html}</div>
     {appendix_html}
   </div>
@@ -107,12 +120,7 @@ pub fn render_batch_page(page: BatchPage<'_>) -> String {
         chips_html = chips_html,
         actions_html = actions_html,
         after_hero_html = after_hero_html,
-        overview_html = overview_html,
-        planner_html = planner_html,
-        coverage_html = coverage_html,
-        context_html = context_html,
-        diagnostics_html = diagnostics_html,
-        review_tree_html = review_tree_html,
+        sections = sections,
         comparison_html = comparison_html,
         appendix_html = appendix_html,
         script = script,
@@ -383,6 +391,7 @@ fn render_page_script(tree: &BatchTreeOptions<'_>, coverage_tree_jump: bool) -> 
   window.addEventListener("hashchange", focusHash);
   focusHash();
   {coverage}
+  document.dispatchEvent(new CustomEvent("pd-batch-ready"));
 }})();"#,
         tree_script = batch_tree::SCRIPT,
         config = config,

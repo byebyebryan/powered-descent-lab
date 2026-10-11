@@ -125,32 +125,14 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
     } else {
         0
     };
-    let unsupported = page
+    let outcome_rows: Vec<_> = page
         .attempts
         .iter()
-        .filter(|r| r.disposition == "unsupported")
-        .count();
-    let executed = page
-        .attempts
-        .iter()
-        .filter(|r| r.disposition == "executed")
-        .count();
-    let replayed = page
-        .attempts
-        .iter()
-        .filter(|r| r.complete_replay_verified)
-        .count();
-    let overview = batch::render_overview_section(
-        "",
-        &batch::render_overview_table(
-            "<th>Approach</th><th>Scheduled attempts</th><th>Unique missions</th><th>Verified landing</th><th>Unsupported</th><th>Executed</th><th>Complete replay</th><th>Campaign integrity</th>",
-            &format!(
-                "<tr><td><code>{}</code></td><td>{scheduled}</td><td>{}</td><td>{landings}/{scheduled}</td><td>{unsupported}</td><td>{executed}</td><td>{replayed}/{executed}</td><td>{}</td></tr>",
-                escape(&page.agent.implementation),
-                page.unique_scheduled_missions,
-                page.integrity_passed
-            ),
-        ),
+        .map(|row| (row, page.integrity_passed))
+        .collect();
+    let overview = format!(
+        "<section class=\"header-overview\"><h2>Outcomes</h2>{}<button type=\"button\" data-campaign-reset>Show all scheduled attempts</button></section>",
+        campaign_view::render_outcome_bar("Scheduled missions", &outcome_rows, 0)
     );
     let mut groups: BTreeMap<String, Vec<&CampaignRowV1>> = BTreeMap::new();
     for row in &page.attempts {
@@ -193,7 +175,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
             &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",escape(label),rows.len())));
         for row in rows {
             tree_rows.push_str(&batch::render_row(Some("campaign-row"),
-                &format!("data-parent=\"{group}\" data-depth=\"1\""),
+                &format!("data-parent=\"{group}\" data-depth=\"1\" data-outcome=\"{}\" data-search=\"{}\"",campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,label))),
                 &format!("<td class=\"tree-label\">{}</td><td>{}</td><td>{} s</td><td>{} kg</td><td>{}</td>",
                     campaign_view::render_mission_cell(row),campaign_view::render_outcome_cell(row,page.integrity_passed),number(row.sim_time_s),number(row.fuel_kg),campaign_view::render_evidence_cell(row,page.integrity_passed))));
         }
@@ -225,7 +207,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
         "<a href=\"{}\">Campaign evidence</a> <a href=\"report-input.json\">Report projection</a>",
         escape(&page.summary_href)
     );
-    Ok(batch::render_batch_page(batch::BatchPage {
+    Ok(batch::render_review_first_batch_page(batch::BatchPage {
         title: &page.title,
         subtitle: "Complete procedural missions under original physical, fuel and time budgets",
         chips_html: &format!(
@@ -237,7 +219,9 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
         overview_html: &overview,
         planner_html: "",
         coverage_html: &coverage,
-        context_html: &context,
+        context_html: &format!(
+            "<details class=\"provenance-disclosure\"><summary>Configuration and provenance</summary>{context}</details>"
+        ),
         diagnostics_html: "",
         review_tree_html: &tree,
         comparison_html: "",

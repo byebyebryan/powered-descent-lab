@@ -1,6 +1,6 @@
 //! Create-only preview edition from a sealed saved campaign; no simulation/replay.
 #[path = "support/saved_campaign.rs"]
-mod saved_campaign;
+pub mod saved_campaign;
 
 use anyhow::{Result, ensure};
 use pd_report::campaign::CampaignPageV1;

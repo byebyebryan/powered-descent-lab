@@ -13,6 +13,7 @@ later code and documentation housekeeping does not create a new flight capture.
 | Build, validate and make safe changes | [Development workflow](development.md) |
 | Planner flights, batch evaluation and controller caches | [Evaluation workflow](evaluation.md) |
 | Browse, serve, refresh and check saved reports | [Report workflow](reports.md) |
+| Refine and inspect saved procedural campaign editions | [Presentation workflow](report_presentations.md) |
 | Identify maintained scripts and their side effects | [Tooling inventory](../scripts/README.md) |
 | Understand frozen inputs and archived pack metadata | [Fixture ownership](../fixtures/README.md) |
 | Generate independent procedural inputs and immutable collections | [Procedural missions](procedural_missions.md) |
