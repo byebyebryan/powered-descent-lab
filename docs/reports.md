@@ -9,45 +9,52 @@ no accepted report site until local evidence is generated or supplied.
 
 ## Report Serving
 
-Start at `/` or `/reports/`: **Latest planner experiment** links directly to the
-[latest frozen phase-transition sweep](ballistic_phase_transition_results.md):
-the full 1,000-world batch (797 verified landings and 203 protected airborne
-stops), the focused diagnostic panel (23/29 selected landings versus 14), and
-mission shortcuts for recovered 080, routing regression 407, recovery stop 020,
-pad-centering stop 538 and aim-admission stop 715.
-These entries are also under **Waypoint planning** and **Browse all reports**.
-Links use the server's current host, so no long LAN URL needs copying from chat.
+Start at `/` or `/reports/`: **Browse missions** leads with terminal control,
+direct transfers and complete procedural terrain. Authored waypoint and planner
+probes remain separate approach-specific diagnostics. **Recent reports**
+automatically lists saved report entrypoints, newest generated page first.
+**Browse all reports** groups them by mission family and provides the
+full catalogue with search, topic/type filters, optional missing fixture entries
+and newest/name ordering. Topic pages retain their curated benchmarks and review
+guides before recent reports. Links use the current server host;
+you do not need to copy capture URLs from chat or edit a fixture for each run.
 
-The latest sweep is at
-`/eval/planner_v2_random_terrain/capture-ballistic-phase-transition-full-20261009-v2/`.
-Its twelve gains and one loss are paired against the previous ballistic candidate
-at 786/1000. All 1,005 records/repeats verify; repeats are outside the 1,000-world
-denominator. This is the frozen experimental capture, not a rerun of subsequent
-review fixes. The focused panel is at
-`/eval/planner_v2_random_terrain/capture-ballistic-phase-transition-focus-20261009-v2/`;
-its selected worlds are not an independent broad-terrain coverage estimate.
-The 786/1000 reference, earlier 592/1000 and 562/1000 batches and their panels
-remain linked under **Waypoint planning** and **Browse all reports**; they are
-not replaced or rewritten. The 592 capture retains its 16 unverified exceptions
-and the warning that its recorded-only loss headline omits twelve former wins.
+Discovery scans up to three collection/edition directory levels beneath
+`outputs/eval`, `outputs/research` and `outputs/reports/{eval,setups,runs,replays}`.
+It finds `index.html` and `report.html`, deduplicates existing curated links,
+skips symlinks, caches, mission `runs`/`cases`, `details`/`previews` assets,
+source clones and hidden paths,
+and reads at most 64 KiB of a page header for its reported title/chips. Individual
+missions remain accessible inside their rich batches; raw directories without a
+report entrypoint are not reports. Unknown subjects remain Unclassified.
 
-The earlier, separately authorized
-[terminal-coordination diagnostic](ballistic_terminal_coordination_sweep_results.md)
-records 639/1000 with complete evidence. It is directly reachable at
-`/eval/planner_v2_random_terrain/capture-terminal-coordination-diagnostic-1k-20261009-v1/`.
-Its flight allowance did not refresh root navigation; the subsequent
-navigation-only update now selects the 797-landings capture above. The 639
-batch uses the same rich details and failure-first tree; its generic previous
-comparison is V10 (562), while the results document supplies the V12 comparison.
+**Updated** is the HTML file's modification time, displayed in UTC. It measures
+the report view, not the original flight date: regenerating an old view moves it
+up. Header summaries are reported metadata, not a new integrity/landing check.
+Presence and recency do not promote a capture or prove acceptance. The accepted
+**current planner V2 batch**, retained policy-3 sweep and experimental captures
+keep their separate labels and selectors. Rich reports and receipts are never
+rewritten by discovery.
 
-This is navigation to existing experimental capture reports, not adoption or
-accepted-capture publication. The accepted **current planner V2 batch** and
-retained policy-3 sweep (817/1000) remain separate. Rich batch/detail pages,
-captures, selectors and receipts are not rewritten; only navigation indexes are
-refreshed. `home_highlights` in `fixtures/reports/report_navigation.json` selects
-the featured entries explicitly. `capture_page` entries link existing local HTML
-under `outputs/eval/`; they are not discovered recursively or selected by mtime.
-Missing captures/mission shortcuts are marked unavailable, never substituted.
+The retained [recovery pass](ballistic_recovery_consistency_results.md)
+has its 829/1000 full batch, 48-world focus and diagnostic probe in this catalogue.
+The preceding 797/1000 phase-transition checkpoint retains its pinned mission
+review guides. `home_highlights` now owns only those curated guides, not which
+report is latest; older captures and their honest limitations remain available.
+
+`scripts/serve-reports start` builds the current evaluator and starts the
+navigation-aware [HTTP server](../scripts/report_server.py). On a navigation
+GET/HEAD it checks bounded entrypoint metadata (at most once per second) and
+runs only `pd-eval refresh-reports --home-only` when sources changed. It does not
+execute flights, replays, full report regeneration or accepted publication.
+Navigation responses disable caching; rich report requests stay ordinary static
+file reads. A refresh failure returns HTTP 503 and logs the error instead of
+quietly claiming a stale catalogue is current.
+
+Use `PDL_REPORT_AUTO_REFRESH=0` for static-only serving; custom output roots also
+remain static. A server that was already running the old implementation needs
+one explicit `scripts/serve-reports restart`. Without the server, a one-shot
+`pd-eval refresh-reports --home-only` still generates a static catalogue.
 
 The preceding [retained countdown experiment](ballistic_landing_countdown_results.md)
 uses the common rich reports at
@@ -284,6 +291,9 @@ The script starts a simple HTTP server inside a named detached `tmux` session
 and serves `outputs/` on `0.0.0.0:8000` by default. The root URL now lands on a
 generated `outputs/index.html` page, and `/reports/` remains the clean
 report-only subtree. The printed LAN URL resolves automatically when available.
+To check the navigation server without changing the running server or saved
+reports, run `rtk proxy python3 -B scripts/test-report-server.py`; its HTTP tests
+use temporary files and an ephemeral loopback port.
 
 The default bind exposes all of `outputs/`, including raw captures, to reachable
 LAN clients without authentication. Use a trusted network; for loopback-only
@@ -291,10 +301,12 @@ serving, set `PDL_REPORT_HOST=127.0.0.1` when starting a stopped server. Other
 overrides are `PDL_REPORT_PORT`, `PDL_REPORT_SESSION` and `PDL_REPORT_ROOT`.
 Changing an environment value does not reconfigure an already-running tmux server.
 
-Start at `/` or `/reports/`, then browse by subject:
+Start at `/` or `/reports/`, then browse by mission. The library retains that
+grouping while you search, filter and reorder reports. Subject navigation remains
+available below the mission entrypoints:
 
-- **Waypoint planning** starts with the current V2 batch, followed by historical
-  V2 previews, the legacy V1 planner baseline, and related analytical studies.
+- **Waypoint planning** retains the current V2 batch, historical V2 previews,
+  the legacy V1 planner baseline and related studies, followed by recent reports.
 - **Flight and landing control** groups terminal landing, direct transfers and
   following authored waypoint routes.
 - **Research and history**, **Browse all reports** and **Raw data** are
@@ -344,15 +356,14 @@ Stable HTML entrypoints also live under `outputs/reports/`, for example:
 - `outputs/reports/runs/latest/`
 - `outputs/reports/eval/latest/`
 
-The root and report-home URLs use the same topic hierarchy:
+The root and report-home URLs use the same mission-first navigation:
 
 - `outputs/index.html`
 - `outputs/reports/index.html`
 
-Start with **Waypoint planning** for terrain-aware route selection, or **Flight
-and landing control** for landing, direct transfer and following authored
-waypoints. Research/history, the searchable report library and raw data are
-secondary destinations. Report type and review status are shown separately.
+Start with terminal control, direct transfers or complete procedural terrain.
+Subject pages, research/history and raw data remain available below the mission
+entrypoints. Report type and review status are shown separately.
 
 To apply the current report templates to existing captures without running
 simulations:

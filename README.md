@@ -86,8 +86,11 @@ Serve locally generated reports:
 rtk proxy ./scripts/serve-reports start
 ```
 
-Start at `/` or `/reports/`, then **Waypoint planning → Current V2 batch → Mission
-detail**. The canonical batch is `/reports/eval/planner_v2_lab_suite/`.
+Start at `/` or `/reports/`: **Browse missions** leads with terminal control,
+direct transfers and complete procedural terrain. **Recent reports** discovers
+saved reports automatically; **Browse all reports** adds search and filters.
+For the accepted benchmark use **Waypoint planning → Current V2
+batch → Mission detail**; its canonical batch is `/reports/eval/planner_v2_lab_suite/`.
 Terminal, transfer and planner reports share the detailed templates and review
 tree; executed waypoint handoffs extend those views rather than replace them.
 See [report operations](docs/reports.md) before refreshing or publishing pages.

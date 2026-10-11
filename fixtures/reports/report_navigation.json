@@ -7,15 +7,15 @@
     "status": "Historical presentation"
   },
   "home_highlights": {
-    "title": "Latest planner experiment",
-    "description": "Ballistic phase transitions · 9 October 2026. Latest verified development capture: 797/1000 landings. This frozen experimental result is not the accepted V2 benchmark below or a rerun of the subsequent review fixes.",
+    "title": "Pinned review guides · phase transitions",
+    "description": "Retained 797/1000 development checkpoint with selected mission shortcuts. Recent reports above are discovered automatically; these guides are not a latest-report selector or the accepted V2 benchmark.",
     "entry_ids": ["planner-ballistic-latest-1k", "planner-ballistic-latest-panel"]
   },
   "topics": [
     {
       "id": "waypoint-planning",
       "title": "Waypoint planning",
-      "description": "Browse the accepted V2 benchmark, the latest ballistic experiment (797/1000), or the retained policy-3 1,000-world paired terrain sweep (817/1000). Development experiments are separate from the accepted benchmark; earlier comparisons and rich mission reports remain available.",
+      "description": "Recent saved planner reports appear automatically, newest first. The accepted V2 benchmark and retained policy-3 terrain sweep remain explicit checkpoints, separate from development experiments and archived reports.",
       "entries": [
         {
           "id": "planner-v2-current",
@@ -27,7 +27,7 @@
         },
         {
           "id": "planner-ballistic-latest-1k",
-          "title": "Latest 1,000-world ballistic batch",
+          "title": "Phase-transition checkpoint · 1,000-world ballistic batch",
           "description": "797/1000 verified landings versus the previous ballistic candidate's 786: twelve gains and one loss (407). The 203 remaining failures are protected airborne stops, not actual crashes; recovery is the largest group. 433 landings follow waypoint handoffs. Start with the mission shortcuts below. All 1,005 records/repeats verify; the retained policy-3 sweep still lands 817/1000 and no replacement is accepted.",
           "report_type": "Experimental batch report",
           "status": "9 Oct · 797 landed · 203 protected stops · not adopted",
@@ -42,7 +42,7 @@
         },
         {
           "id": "planner-ballistic-latest-panel",
-          "title": "Latest focused diagnostic panel · phase transitions",
+          "title": "Phase-transition checkpoint · focused diagnostic panel",
           "description": "23/29 selected diagnostic worlds land, versus 14 in the previous ballistic candidate: nine gains and no losses. Actual-rotation coast checks, configured terminal takeover and a guarded pad-lift adapter are combined here. All 32 records/repeats verify; repeats are outside the 29-world denominator. This selected panel is not a broad terrain landing rate.",
           "report_type": "Experimental batch report",
           "status": "9 Oct · 23/29 selected landings · nine gains · no losses · not adopted",

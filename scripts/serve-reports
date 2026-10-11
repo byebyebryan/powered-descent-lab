@@ -8,6 +8,7 @@ session_name="${PDL_REPORT_SESSION:-pdlab-reports}"
 host="${PDL_REPORT_HOST:-0.0.0.0}"
 port="${PDL_REPORT_PORT:-8000}"
 root="${PDL_REPORT_ROOT:-${repo_root}/outputs}"
+auto_refresh="${PDL_REPORT_AUTO_REFRESH:-1}"
 log_dir="${root}/.serve"
 log_file="${log_dir}/server.log"
 
@@ -114,14 +115,22 @@ start_server() {
     exit 0
   fi
 
-  local q_repo_root q_root q_log_file q_host
+  local q_repo_root q_root q_log_file q_host refresh_args=""
   printf -v q_repo_root '%q' "$repo_root"
   printf -v q_root '%q' "$root"
   printf -v q_log_file '%q' "$log_file"
   printf -v q_host '%q' "$host"
 
+  if [[ "$auto_refresh" == "1" && "$root" == "${repo_root}/outputs" ]]; then
+    require_cmd cargo
+    cargo build -p pd-eval-cli
+    local q_evaluator
+    printf -v q_evaluator '%q' "${repo_root}/target/debug/pd-eval"
+    refresh_args=" --repo ${q_repo_root} --evaluator ${q_evaluator}"
+  fi
+
   tmux new-session -d -s "$session_name" \
-    "cd ${q_repo_root} && exec python3 -m http.server ${port} --bind ${q_host} --directory ${q_root} >> ${q_log_file} 2>&1"
+    "cd ${q_repo_root} && exec python3 -B scripts/report_server.py --port ${port} --bind ${q_host} --directory ${q_root}${refresh_args} >> ${q_log_file} 2>&1"
 
   for _ in $(seq 1 20); do
     if http_ok; then
@@ -185,6 +194,7 @@ Environment overrides:
   PDL_REPORT_HOST
   PDL_REPORT_PORT
   PDL_REPORT_ROOT
+  PDL_REPORT_AUTO_REFRESH (1 by default; 0 serves saved files only)
 EOF
 }
 

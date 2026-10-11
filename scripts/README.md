@@ -14,7 +14,9 @@ available for exact options.
 | [check-planner-v2-workflow.mjs](check-planner-v2-workflow.mjs) | Read-only acceptance and shared batch/detail/receipt checks for existing native evidence. Needs a compiled evaluator and saved captures. |
 | [check-planner-v2-integration.mjs](check-planner-v2-integration.mjs) | Explicit session/CLI modes: `native-parity`, `check-cli` and `check-replays` inspect saved evidence; `capture-cli` plans up to 44 flights; `replay-cli` executes up to 42 saved-command replays and writes a new receipt directory. Not part of the ordinary gate. |
 | [check-planner-v2-browser.mjs](check-planner-v2-browser.mjs) | Uses an existing server and explicitly supplied disposable local browser. Opens/closes its own tab; optional create-only screenshots/receipt, no report regeneration. |
-| [serve-reports](serve-reports) | Explicit tmux HTTP server start/status/attach/stop. Defaults to unauthenticated LAN serving of all `outputs/`. |
+| [serve-reports](serve-reports) | Explicit tmux HTTP server start/status/attach/stop. Builds the evaluator and defaults to unauthenticated LAN serving of all `outputs/`, with navigation-only auto-refresh. Custom roots or `PDL_REPORT_AUTO_REFRESH=0` stay static. |
+| [report_server.py](report_server.py) | Serves existing files; navigation requests refresh only home/topic/library indexes when bounded source metadata changes. No flights, replays, report regeneration or accepted publication. |
+| [test-report-server.py](test-report-server.py) | Run with `python3 -B scripts/test-report-server.py`. Checks bounded discovery, refresh caching/retries and HTTP behavior using temporary files and an ephemeral loopback server. |
 | [render_terminal_suite.py](render_terminal_suite.py) | Optional uv/Python 3.11 illustration generator. Rewrites tracked SVG illustrations and an ignored local HTML preview; no flight execution. |
 | `test*.mjs` | Automatically discovered maintained Node tests, with no accepted external capture required by the ordinary gate. |
 

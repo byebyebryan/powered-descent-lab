@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path, PathBuf},
+    time::SystemTime,
 };
 
 use anyhow::{Context, Result, ensure};
@@ -10,6 +11,8 @@ use serde::Deserialize;
 use crate::escape_html;
 
 const NAVIGATION_FIXTURE: &str = "fixtures/reports/report_navigation.json";
+
+mod discovery;
 
 /// Native evaluator packs selected by topic navigation, distinct from legacy
 /// controller scorecards. Used by report-only refresh to include the active
@@ -192,6 +195,7 @@ struct Row {
     status: String,
     availability: String,
     href: Option<String>,
+    updated: Option<SystemTime>,
 }
 
 /// Parse and render every navigation-owned page before any index is written.
@@ -229,7 +233,16 @@ pub(crate) fn prepare(
         .collect::<BTreeMap<_, _>>();
 
     let outputs_root = repo_root.join("outputs");
-    let home = render_home(&manifest, &preview, reports_root, &outputs_root)?;
+    let rows = build_rows(
+        &manifest,
+        &guidance,
+        &packs,
+        reports_root,
+        &outputs_root,
+        &preview,
+        &topic_labels,
+    )?;
+    let home = render_home(&manifest, &preview, reports_root, &outputs_root, &rows)?;
     let mut pages = vec![
         (reports_root.join("index.html"), home.clone()),
         (repo_root.join("outputs/index.html"), home),
@@ -240,19 +253,17 @@ pub(crate) fn prepare(
                 .join("topics")
                 .join(&topic.id)
                 .join("index.html"),
-            render_topic(topic, &guidance, reports_root, &outputs_root, &preview)?,
+            render_topic(
+                topic,
+                &guidance,
+                reports_root,
+                &outputs_root,
+                &preview,
+                &rows,
+            )?,
         ));
     }
 
-    let rows = build_rows(
-        &manifest,
-        &guidance,
-        &packs,
-        reports_root,
-        &outputs_root,
-        &preview,
-        &topic_labels,
-    )?;
     pages.push((
         reports_root.join("history/index.html"),
         render_history(&manifest, reports_root)?,
@@ -554,6 +565,7 @@ fn render_home(
     preview: &PreviewTargets,
     reports_root: &Path,
     outputs_root: &Path,
+    reports: &[Row],
 ) -> Result<String> {
     let highlights = if let Some(highlights) = &manifest.home_highlights {
         let rows = highlights
@@ -571,7 +583,7 @@ fn render_home(
             .collect::<Result<Vec<_>>>()?
             .join("");
         format!(
-            r#"<section id="latest-work"><h2>{}</h2><p class="library-note">{}</p><div class="entry-list">{rows}</div></section>"#,
+            r#"<details id="review-guides"><summary>{}</summary><p class="library-note">{}</p><div class="entry-list">{rows}</div></details>"#,
             escape_html(&highlights.title),
             escape_html(&highlights.description),
         )
@@ -609,7 +621,8 @@ fn render_home(
         "Reports",
         "Start with the flight question you have. Report type and status describe the evidence inside each subject.",
         &format!(
-            r#"{highlights}<section><h2>Browse by subject</h2><div class="subject-grid">{subjects}</div></section><section class="secondary"><h2>Other ways to browse</h2><div class="secondary-links"><a href="/reports/history/index.html">Research and history</a><a href="/reports/library/index.html">Browse all reports</a><a href="/reports/data/index.html">Raw data</a></div></section>"#
+            r#"{}<section><h2>Browse by subject</h2><div class="subject-grid">{subjects}</div></section>{highlights}<section class="secondary"><h2>Other ways to browse</h2><div class="secondary-links"><a href="/reports/history/index.html">Research and history</a><a href="/reports/library/index.html">Browse all reports</a><a href="/reports/data/index.html">Raw data</a></div></section>"#,
+            render_recent(reports, None),
         ),
     ))
 }
@@ -620,6 +633,7 @@ fn render_topic(
     reports_root: &Path,
     outputs_root: &Path,
     preview: &PreviewTargets,
+    reports: &[Row],
 ) -> Result<String> {
     let mut rows = String::new();
     for entry in &topic.entries {
@@ -641,10 +655,29 @@ fn render_topic(
         &topic.title,
         &topic.description,
         &format!(
-            r#"<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/reports/index.html">Reports</a><span>›</span><span aria-current="page">{}</span></nav><section class="entry-list">{rows}</section><p class="section-footer"><a href="/reports/library/index.html">Browse all reports</a> · <a href="/reports/data/index.html">Raw data</a></p>"#,
+            r#"<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/reports/index.html">Reports</a><span>›</span><span aria-current="page">{}</span></nav>{}<h2>Benchmarks and review guides</h2><section class="entry-list">{rows}</section><p class="section-footer"><a href="/reports/library/index.html">Browse all reports</a> · <a href="/reports/data/index.html">Raw data</a></p>"#,
             escape_html(&topic.title),
+            render_recent(reports, Some(&topic.id)),
         ),
     ))
+}
+
+fn render_recent(rows: &[Row], topic: Option<&str>) -> String {
+    let recent = rows
+        .iter()
+        .filter(|row| row.href.is_some() && topic.is_none_or(|id| row.topic_id == id))
+        .take(6)
+        .map(render_library_row)
+        .collect::<String>();
+    let recent = if recent.is_empty() {
+        "<p class=\"empty\">No saved report pages were found yet.</p>".to_owned()
+    } else {
+        recent
+    };
+    let query = topic.map(|id| format!("?topic={id}")).unwrap_or_default();
+    format!(
+        r#"<section id="latest-work"><h2>Recent reports</h2><p class="library-note">Automatically discovered; newest report page first. Updated time describes the generated view, not a new flight or acceptance. Experimental captures remain separate from the accepted benchmark.</p><div class="report-rows">{recent}</div><p class="section-footer"><a href="/reports/library/index.html{query}">Browse all reports — newest first</a></p></section>"#
+    )
 }
 
 fn entry_href(
@@ -838,6 +871,7 @@ fn build_rows(
             }
             .to_owned(),
             href,
+            updated: None,
         });
         paths.insert(relative);
     }
@@ -888,6 +922,7 @@ fn build_rows(
                     }
                     .to_owned(),
                     href,
+                    updated: None,
                 });
                 if !capture {
                     paths.insert(path.clone());
@@ -937,6 +972,7 @@ fn build_rows(
             }
             .to_owned(),
             href,
+            updated: None,
         });
         paths.insert(entry.path.clone());
     }
@@ -963,14 +999,11 @@ fn build_rows(
         }
         .to_owned(),
         href,
+        updated: None,
     });
 
-    rows.sort_by(|left, right| {
-        left.title
-            .to_lowercase()
-            .cmp(&right.title.to_lowercase())
-            .then(left.id.cmp(&right.id))
-    });
+    discovery::extend_rows(&mut rows, outputs_root, topic_labels)?;
+    discovery::sort_rows(&mut rows, outputs_root)?;
     Ok(rows)
 }
 
@@ -998,6 +1031,7 @@ fn unclassified_row(
         }
         .to_owned(),
         href,
+        updated: None,
     }
 }
 
@@ -1037,9 +1071,9 @@ fn render_library(rows: &[Row], topic_labels: &BTreeMap<&str, &str>) -> String {
     page(
         "Browse all reports",
         "Browse all reports",
-        "Search stable report entrypoints by subject and report type.",
+        "All discovered saved reports, newest generated page first. Filter by subject, report type or name.",
         &format!(
-            r#"<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/reports/index.html">Reports</a><span>›</span><span aria-current="page">Browse all reports</span></nav><p class="library-note">Fixture-defined reports remain visible when a capture is missing. Missing captures have no active link. Reports without topic metadata are marked Unclassified.</p><div id="report-library"><div class="filters"><label>Search reports<input id="report-search" type="search" placeholder="Name or report ID"></label><label>Topic<select id="topic-filter"><option value="all">All topics</option>{topics}</select></label><label>Report type<select id="type-filter"><option value="all">All types</option>{types}</select></label><span id="report-count" aria-live="polite"></span></div><div class="report-rows">{rendered_rows}</div></div><script>{LIBRARY_JS}</script>"#
+            r#"<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/reports/index.html">Reports</a><span>›</span><span aria-current="page">Browse all reports</span></nav><p class="library-note">Saved capture and published report entrypoints are discovered automatically. Page timestamps describe view updates, not new flights. Reported summaries are copied from page headers, not reverified here. Missing fixture-defined reports have no active link and can be shown with Availability.</p><div id="report-library"><div class="filters"><label>Search reports<input id="report-search" type="search" placeholder="Name, capture or report ID"></label><label>Topic<select id="topic-filter"><option value="all">All topics</option>{topics}</select></label><label>Report type<select id="type-filter"><option value="all">All types</option>{types}</select></label><label>Availability<select id="availability-filter"><option value="available">Saved reports</option><option value="all">Include missing</option></select></label><label>Order<select id="order-filter"><option value="newest">Newest first</option><option value="name">Name A–Z</option></select></label><span id="report-count" aria-live="polite"></span></div><p id="report-empty" class="empty" hidden>No reports match these filters.</p><div class="report-rows">{rendered_rows}</div></div><script>{LIBRARY_JS}</script>"#
         ),
     )
 }
@@ -1067,18 +1101,22 @@ fn render_library_row(row: &Row) -> String {
     )
     .to_lowercase();
     format!(
-        r#"<article class="report-row" data-topic="{}" data-type="{}" data-status="{}" data-search="{}"><div class="report-main">{title}<p>{description}</p><code>{id}</code></div><div class="report-meta"><span>{topic}</span><span>{report_type}</span><span>{status}</span><span>{availability}</span></div></article>"#,
+        r#"<article class="report-row" data-topic="{}" data-type="{}" data-status="{}" data-search="{}" data-available="{}" data-updated="{}" data-name="{}"><div class="report-main">{title}<p>{description}</p><code>{id}</code></div><div class="report-meta"><span>{topic}</span><span>{report_type}</span><span>{status}</span><span>{availability}</span><span class="report-updated">Updated {updated}</span></div></article>"#,
         escape_html(&row.topic_id),
         escape_html(&row.type_id),
         escape_html(&slug(&row.status)),
         escape_html(&search),
+        row.href.is_some(),
+        discovery::timestamp(row.updated),
+        escape_html(&row.title.to_lowercase()),
         title = title,
         description = escape_html(&row.description),
         id = escape_html(&row.id),
         topic = escape_html(&row.topic),
         report_type = escape_html(&row.report_type),
         status = escape_html(&row.status),
-        availability = escape_html(&row.availability)
+        availability = escape_html(&row.availability),
+        updated = escape_html(&discovery::date_label(row.updated)),
     )
 }
 
@@ -1450,15 +1488,18 @@ fn slug_title(value: &str) -> String {
 }
 
 const LIBRARY_JS: &str = r#"
-const rows=[...document.querySelectorAll('#report-library .report-row')],search=document.querySelector('#report-search'),topic=document.querySelector('#topic-filter'),type=document.querySelector('#type-filter'),count=document.querySelector('#report-count');
-function apply(){const q=search.value.trim().toLowerCase();let n=0;for(const row of rows){const show=(topic.value==='all'||row.dataset.topic===topic.value)&&(type.value==='all'||row.dataset.type===type.value)&&(!q||row.dataset.search.includes(q));row.hidden=!show;if(show)n++;}count.textContent=`${n} reports`;}
-search.addEventListener('input',apply);topic.addEventListener('change',apply);type.addEventListener('change',apply);apply();
+const rows=[...document.querySelectorAll('#report-library .report-row')],search=document.querySelector('#report-search'),topic=document.querySelector('#topic-filter'),type=document.querySelector('#type-filter'),availability=document.querySelector('#availability-filter'),order=document.querySelector('#order-filter'),count=document.querySelector('#report-count'),empty=document.querySelector('#report-empty'),container=document.querySelector('#report-library .report-rows');
+const initial=new URLSearchParams(location.search).get('topic');if(initial&&[...topic.options].some(o=>o.value===initial))topic.value=initial;
+function apply(){const q=search.value.trim().toLowerCase();let n=0;for(const row of rows){const show=(availability.value==='all'||row.dataset.available==='true')&&(topic.value==='all'||row.dataset.topic===topic.value)&&(type.value==='all'||row.dataset.type===type.value)&&(!q||row.dataset.search.includes(q));row.hidden=!show;if(show)n++;}count.textContent=`${n} reports`;empty.hidden=n!==0;}
+function sort(){rows.sort((a,b)=>(order.value==='newest'?(Number(b.dataset.available==='true')-Number(a.dataset.available==='true')||Number(b.dataset.updated)-Number(a.dataset.updated)):0)||a.dataset.name.localeCompare(b.dataset.name)||a.dataset.search.localeCompare(b.dataset.search));for(const row of rows)container.appendChild(row);apply();}
+search.addEventListener('input',apply);for(const select of [topic,type,availability])select.addEventListener('change',apply);order.addEventListener('change',sort);apply();
 "#;
 
 const CSS: &str = r#"
 :root{color-scheme:light;--canvas:#f1ede5;--paper:#fffdf8;--ink:#20211e;--muted:#6d665c;--line:#d9cdbc;--rust:#b95024;--green:#176b5c;--shadow:0 18px 44px rgba(54,39,25,.08);--sans:"Avenir Next","IBM Plex Sans","Trebuchet MS",sans-serif;--display:"Iowan Old Style","Palatino Linotype",Georgia,serif;--mono:"Iosevka Term","SFMono-Regular",Consolas,monospace}
 #latest-work{border-left:3px solid var(--green);padding-left:16px}#latest-work .entry-title{color:var(--green);text-decoration:underline;text-underline-offset:3px}.review-links{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;font-size:.86rem}.review-links a{color:var(--green);padding:5px 0}.entry-main{min-width:0}
 *{box-sizing:border-box}body{margin:0;color:var(--ink);font-family:var(--sans);background:radial-gradient(circle at 7% -8%,rgba(185,80,36,.13),transparent 31rem),linear-gradient(180deg,#fbf8f2,var(--canvas));min-height:100vh}.page{width:min(1120px,100%);margin:auto;padding:28px 22px 60px}.hero{border:1px solid var(--line);border-radius:22px;background:rgba(255,253,248,.92);box-shadow:var(--shadow);padding:22px 26px;margin:0 0 22px}.brand,.eyebrow{font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}.brand{text-decoration:none}.hero h1{font:clamp(2rem,5vw,3.4rem)/1.05 var(--display);margin:16px 0 9px}.hero p{max-width:760px;line-height:1.55;color:var(--muted);margin:0}.page>section{margin:26px 0}.page h2{font:1.55rem var(--display);margin:0 0 14px}.subject-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.subject{border:1px solid var(--line);border-radius:16px;background:var(--paper);box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:12px}.subject>a:first-child{color:inherit;text-decoration:none}.subject h2{font:1.65rem var(--display);margin:8px 0}.subject p,.entry-main p,.report-main p{color:var(--muted);line-height:1.5;margin:7px 0}.action,.shortcut,.minor-link{display:inline-block;color:var(--green);font-weight:700}.shortcut{border-top:1px solid var(--line);padding-top:11px;font-size:.9rem}.secondary{border-top:1px solid var(--line);padding-top:20px}.secondary-links{display:flex;flex-wrap:wrap;gap:10px}.secondary-links a,.section-footer a{border:1px solid var(--line);border-radius:999px;background:var(--paper);padding:9px 14px;color:var(--ink);text-decoration:none}.breadcrumbs{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:.88rem;margin:0 0 16px}.breadcrumbs a,footer a{color:var(--green)}.entry-list{display:grid;gap:9px}.entry-row,.report-row{border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center}.entry-title,.report-title{font-weight:700;color:var(--ink);text-decoration:none}.entry-title:hover,.report-title:hover,.breadcrumbs a:hover{color:var(--rust);text-decoration:underline}.unavailable{color:var(--muted)}.entry-main code,.report-main code{display:block;font:.78rem var(--mono);color:var(--muted);margin-top:7px;overflow-wrap:anywhere}.entry-meta,.report-meta{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:7px;max-width:340px}.entry-meta span,.report-meta span{border:1px solid var(--line);border-radius:999px;padding:5px 8px;font-size:.77rem;color:var(--muted)}.minor-link{display:block;font-size:.82rem;margin-top:8px}.section-footer{margin-top:18px}.library-note{color:var(--muted);line-height:1.5}.filters{display:grid;grid-template-columns:minmax(220px,2fr) repeat(2,minmax(150px,1fr)) auto;gap:10px;align-items:end;margin:18px 0}.filters label{display:grid;gap:6px;font-size:.83rem;font-weight:700}.filters input,.filters select{font:inherit;border:1px solid var(--line);border-radius:9px;background:var(--paper);padding:10px;color:var(--ink);min-width:0}.filters #report-count{padding:10px;color:var(--muted);font-size:.85rem}.report-rows{display:grid;gap:7px}.report-row{grid-template-columns:minmax(0,1fr) minmax(150px,270px)}.report-main{min-width:0}.report-title{display:inline-block}.report-meta{align-items:flex-end}.report-row[hidden]{display:none}.empty{padding:18px;background:var(--paper);border:1px solid var(--line);border-radius:12px;color:var(--muted)}footer{display:flex;flex-wrap:wrap;gap:16px;border-top:1px solid var(--line);padding-top:18px;margin-top:30px;font-size:.86rem}
+.filters{grid-template-columns:repeat(4,minmax(0,1fr))}.filters label:first-child,.filters #report-count{grid-column:1/-1}.entry-main,.report-main{overflow-wrap:anywhere}.report-updated{font-variant-numeric:tabular-nums}#review-guides{border-top:1px solid var(--line);padding-top:18px;margin:24px 0}#review-guides summary{cursor:pointer;font-weight:700;color:var(--green)}#latest-work .report-row:first-child{border-color:var(--green)}[hidden]{display:none!important}
 @media(max-width:760px){.page{padding:16px 12px 42px}.hero{padding:19px}.subject-grid{grid-template-columns:1fr}.entry-row,.report-row{grid-template-columns:1fr}.entry-meta,.report-meta{justify-content:flex-start;max-width:none}.filters{grid-template-columns:1fr 1fr}.filters label:first-child,.filters #report-count{grid-column:1/-1}.filters #report-count{padding:2px 0}.report-row{padding:12px}.subject{padding:16px}}
 "#;
 
@@ -1551,7 +1592,7 @@ mod tests {
         for name in ["outputs/index.html", "outputs/reports/index.html"] {
             let html = fs::read_to_string(root.join(name)).unwrap();
             assert!(html.contains("href=\"/reports/topics/waypoint-planning/index.html\""));
-            assert!(html.contains("1,000-world paired terrain sweep"));
+            assert!(html.contains("1,000-world terrain sweep"));
         }
         for name in [
             "outputs/reports/topics/waypoint-planning/index.html",
@@ -1603,9 +1644,10 @@ mod tests {
                 );
             }
             assert!(html.contains("817/1000") && html.contains("failure review"));
-            // Topic order is curated; the all-reports library stays alphabetic.
+            // Review-guide order stays curated below the new recent section.
             if name.contains("topics/") {
-                assert!(html.find(latest).unwrap() < html.find(previous).unwrap());
+                let guides = html.split_once("Benchmarks and review guides").unwrap().1;
+                assert!(guides.find(latest).unwrap() < guides.find(previous).unwrap());
             }
         }
         fs::remove_dir_all(root).unwrap();
@@ -1673,14 +1715,14 @@ mod tests {
                 assert!(html.contains("45 former wins not reproduced"));
             }
             if name.contains("topics/") {
-                assert!(html.find(sweep).unwrap() < html.find(reference).unwrap());
-                assert!(html.find(reference).unwrap() < html.find(centering).unwrap());
+                let guides = html.split_once("Benchmarks and review guides").unwrap().1;
+                assert!(guides.find(sweep).unwrap() < guides.find(reference).unwrap());
+                assert!(guides.find(reference).unwrap() < guides.find(centering).unwrap());
             }
         }
         let home = fs::read_to_string(root.join("outputs/index.html")).unwrap();
         assert!(home.find("id=\"latest-work\"").unwrap() < home.find("Browse by subject").unwrap());
-        assert!(!home.contains(centering));
-        assert!(!home.contains("592/1000"));
+        assert!(home.contains("Recent reports") && home.contains("Pinned review guides"));
         assert_eq!(
             home,
             fs::read_to_string(root.join("outputs/reports/index.html")).unwrap()
@@ -1695,11 +1737,11 @@ mod tests {
     }
 
     #[test]
-    fn missing_latest_capture_is_unavailable_without_promoting_an_older_report() {
+    fn missing_pinned_capture_does_not_hide_other_saved_reports_or_promote_them() {
         let root = fixture_root();
         ReportSite::new(&root).refresh_home().unwrap();
         let home = fs::read_to_string(root.join("outputs/index.html")).unwrap();
-        assert!(home.contains("Latest 1,000-world ballistic batch"));
+        assert!(home.contains("Phase-transition checkpoint · 1,000-world ballistic batch"));
         assert!(home.contains("unavailable"));
         assert!(!home.contains("href=\"/eval/"));
         assert!(!home.contains("Suggested mission details"));
@@ -1710,9 +1752,9 @@ mod tests {
         fs::write(previous.join("index.html"), "previous batch sentinel").unwrap();
         ReportSite::new(&root).refresh_home().unwrap();
         let home = fs::read_to_string(root.join("outputs/index.html")).unwrap();
-        assert!(home.contains("Latest 1,000-world ballistic batch"));
+        assert!(home.contains("Phase-transition checkpoint · 1,000-world ballistic batch"));
         assert!(home.contains("unavailable"));
-        assert!(!home.contains("href=\"/eval/"));
+        assert!(home.contains("not a latest-report selector"));
         let topic =
             fs::read_to_string(root.join("outputs/reports/topics/waypoint-planning/index.html"))
                 .unwrap();
@@ -1721,7 +1763,8 @@ mod tests {
             fs::read_to_string(previous.join("index.html")).unwrap(),
             "previous batch sentinel"
         );
-        // Existing navigation manifests need not opt into home highlights.
+        assert!(home.contains("href=\"/eval/planner_v2_random_terrain/capture-coast-terminal-sweep-20261009-v1/index.html\""));
+        // Existing navigation manifests need not opt into pinned review guides.
         let mut manifest: serde_json::Value = serde_json::from_str(include_str!(
             "../../fixtures/reports/report_navigation.json"
         ))
@@ -1736,7 +1779,102 @@ mod tests {
         assert!(
             !fs::read_to_string(root.join("outputs/index.html"))
                 .unwrap()
-                .contains("id=\"latest-work\"")
+                .contains("id=\"review-guides\"")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn new_capture_and_nested_edition_are_discovered_newest_first_without_fixture_edits() {
+        let root = fixture_root();
+        let navigation_before = fs::read(root.join(NAVIGATION_FIXTURE)).unwrap();
+        let earlier = "eval/planner_v2_random_terrain/capture-aaa-first/index.html";
+        let latest = "eval/planner_v2_random_terrain/capture-zzz-recovery-full/index.html";
+        let edition = "reports/eval/unknown_study/edition-new/index.html";
+        for (relative, seconds) in [(earlier, 10), (latest, 30), (edition, 20)] {
+            let path = root.join("outputs").join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, "<title>Saved &amp; rich</title><span class=\"chip\">829/1000 verified landings</span>").unwrap();
+            fs::File::open(path)
+                .unwrap()
+                .set_times(
+                    fs::FileTimes::new().set_modified(
+                        SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(seconds),
+                    ),
+                )
+                .unwrap();
+        }
+        // Give the existing generic fixture page an older deterministic timestamp.
+        fs::File::open(root.join("outputs/reports/eval/unknown_study/index.html"))
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(SystemTime::UNIX_EPOCH))
+            .unwrap();
+        ReportSite::new(&root).refresh_home().unwrap();
+        for page in [
+            "outputs/index.html",
+            "outputs/reports/index.html",
+            "outputs/reports/library/index.html",
+            "outputs/reports/topics/waypoint-planning/index.html",
+        ] {
+            let html = fs::read_to_string(root.join(page)).unwrap();
+            assert!(html.contains(&format!("href=\"/{latest}\"")), "{page}");
+            assert!(
+                html.find(latest).unwrap() < html.find(earlier).unwrap(),
+                "{page}"
+            );
+            assert!(
+                html.contains("829/1000 verified landings") && html.contains("Saved &amp; rich")
+            );
+            if !page.contains("topics/") {
+                assert!(html.find(latest).unwrap() < html.find(edition).unwrap());
+                assert!(html.find(edition).unwrap() < html.find(earlier).unwrap());
+                assert_eq!(html.matches(&format!("href=\"/{latest}\"")).count(), 1);
+            }
+        }
+        assert_eq!(
+            navigation_before,
+            fs::read(root.join(NAVIGATION_FIXTURE)).unwrap()
+        );
+        // Refresh never touches a saved batch page or adds mission links to the catalogue.
+        assert_eq!(
+            fs::read_to_string(root.join("outputs").join(latest)).unwrap(),
+            "<title>Saved &amp; rich</title><span class=\"chip\">829/1000 verified landings</span>"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn automatic_discovery_skips_symlinks_mission_bundles_and_source_clones() {
+        let root = fixture_root();
+        let outside = root.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("index.html"), "outside sentinel").unwrap();
+        let collection = root.join("outputs/eval/planner_new");
+        fs::create_dir_all(&collection).unwrap();
+        std::os::unix::fs::symlink(&outside, collection.join("escape")).unwrap();
+        for nested in [
+            "capture/runs/case",
+            "capture/candidate/source",
+            "capture/details",
+            "capture/previews",
+        ] {
+            let path = collection.join(nested);
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("index.html"), "never scan this").unwrap();
+        }
+        ReportSite::new(&root).refresh_home().unwrap();
+        let library = fs::read_to_string(root.join("outputs/reports/library/index.html")).unwrap();
+        assert!(
+            !library.contains("/planner_new/escape/")
+                && !library.contains("/capture/runs/")
+                && !library.contains("/candidate/source/")
+                && !library.contains("/capture/details/")
+                && !library.contains("/capture/previews/")
+        );
+        assert_eq!(
+            fs::read_to_string(outside.join("index.html")).unwrap(),
+            "outside sentinel"
         );
         fs::remove_dir_all(root).unwrap();
     }
