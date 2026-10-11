@@ -1,0 +1,27 @@
+.procedural-campaign .scenario-table { min-width: 850px; table-layout: fixed; }
+.procedural-campaign .scenario-table th:first-child { width: 220px; }
+.procedural-campaign .scenario-table th:nth-child(2) { width: 215px; }
+.procedural-campaign .scenario-table td { white-space: normal; overflow-wrap: anywhere; }
+.procedural-campaign .row-note { display: block; margin-top: 5px; color: var(--muted); font-size: .8rem; }
+.procedural-campaign .run-preview { width: 190px; max-width: 100%; }
+.outcome-badge { display: inline-block; border: 1px solid currentColor; border-radius: 7px; padding: 3px 7px; font-weight: 700; font-size: .8rem; }
+.outcome-landed { color: var(--good); background: #edf5ef; }
+.outcome-crashed, .outcome-failed, .outcome-unverified { color: var(--bad); background: #fbedE7; }
+.outcome-timed-out, .outcome-stopped, .outcome-off-target { color: var(--warn); background: #fff5df; }
+.outcome-not-launched { color: var(--muted); background: #f0eeea; }
+.outcome-unsupported { color: var(--muted); background: #f0eeea; }
+.row-evidence { margin-top: 7px; color: var(--muted); font-size: .8rem; }
+.row-evidence summary { cursor: pointer; }
+.row-evidence dt { font-weight: 700; margin-top: 6px; }
+.row-evidence dd { margin: 0; }
+.row-evidence code { word-break: break-all; }
+.proof-status { font-size: .8rem; }
+.campaign-view a:focus-visible, .campaign-view summary:focus-visible { outline: 3px solid #3568a8; outline-offset: 3px; }
+.procedural-campaign .coverage-table th:first-child { width: 260px; text-transform: none; }
+.campaign-view .review-tree-root { overflow-x: auto; max-width: 100%; }
+.campaign-view .context-section { min-width: 0; }
+.campaign-view .context-section pre { max-width: 100%; overflow: auto; }
+.campaign-view .context-section code, .campaign-view h1 { overflow-wrap: anywhere; }
+.campaign-view .page { width: 100%; }
+.campaign-view .hero > * { min-width: 0; max-width: 100%; }
+.campaign-view .coverage-section { max-width: 100%; overflow-x: auto; }

@@ -16,6 +16,7 @@ use serde::Serialize;
 pub mod agent;
 pub mod batch;
 pub mod campaign;
+pub mod campaign_view;
 pub mod comparison;
 pub use agent::{AgentReportEvidenceV1, agent_capture_navigation, render_agent_run_report};
 pub mod batch_tree;

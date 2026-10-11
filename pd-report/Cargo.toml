@@ -9,3 +9,6 @@ pd-run = { path = "../pd-run" }
 pd-core = { path = "../pd-core" }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+sha2.workspace = true

@@ -6,6 +6,7 @@ use pd_core::{BoundedRunStopCauseV1, MissionOutcome, PhysicalOutcome};
 use pd_run::AgentDescriptorV1;
 use serde::{Deserialize, Serialize};
 
+use crate::campaign_view::{self, CampaignPresentationV1};
 use crate::{batch, batch_tree};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -31,6 +32,8 @@ pub struct CampaignRowV1 {
     pub fuel_kg: Option<f64>,
     pub wall_time_us: Option<u64>,
     pub report_href: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<CampaignPresentationV1>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -104,6 +107,10 @@ pub(crate) fn validate_campaign_page(page: &CampaignPageV1) -> Result<(), String
             .attempts
             .iter()
             .any(|r| r.verified_target_landing && !verified(r))
+        || page
+            .attempts
+            .iter()
+            .any(|r| r.presentation.as_ref().is_some_and(|view| !view.validate()))
     {
         return Err("invalid common campaign projection or incomplete landing tuple".into());
     }
@@ -163,7 +170,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
             .or_default()
             .push(row);
     }
-    let headers = "<th>Group / attempt</th><th>Physical input</th><th>Disposition / stop</th><th>Physical / mission</th><th>Verified landing</th><th>Integrity / replay</th><th>Flight s</th><th>Fuel kg</th><th>Application wall ms</th><th>Evidence</th>";
+    let headers = "<th>Mission / saved flight</th><th>Outcome / stop</th><th>Flight time</th><th>Fuel remaining</th><th>Evidence</th>";
     let mut coverage_rows = String::new();
     let mut tree_rows = String::new();
     for (ordinal, (label, rows)) in groups.iter().enumerate() {
@@ -183,25 +190,12 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
         ));
         tree_rows.push_str(&batch::render_row(Some("summary-row"),
             &format!("data-group=\"{group}\" data-kind=\"group\" data-depth=\"0\" aria-expanded=\"false\" tabindex=\"0\""),
-            &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"9\">{landed}/{} verified target landings</td>",escape(label),rows.len())));
+            &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",escape(label),rows.len())));
         for row in rows {
-            let proof = format!(
-                "{} / {}",
-                row.integrity_passed, row.complete_replay_verified
-            );
-            let outcome = format!("{:?} / {:?}", row.physical_outcome, row.mission_outcome);
-            let disposition = format!("{} / {:?}", row.disposition, row.stop);
-            let link = row.report_href.as_ref().map_or_else(
-                || "—".into(),
-                |href| format!("<a href=\"{}\">Run report</a>", escape(href)),
-            );
             tree_rows.push_str(&batch::render_row(Some("campaign-row"),
                 &format!("data-parent=\"{group}\" data-depth=\"1\""),
-                &format!("<td>Attempt {} · mission {}</td><td><code>{}</code></td><td title=\"{}\">{}</td><td>{}</td><td>{}</td><td>{proof}</td><td>{}</td><td>{}</td><td>{}</td><td>{link}</td>",
-                    row.attempt_index,row.mission_index,escape(&row.physical_sha256),
-                    escape(row.detail.as_deref().unwrap_or("")),escape(&disposition),escape(&outcome),
-                    page.integrity_passed&&verified(row),number(row.sim_time_s),number(row.fuel_kg),
-                    number(row.wall_time_us.map(|v|v as f64/1000.0)))));
+                &format!("<td class=\"tree-label\">{}</td><td>{}</td><td>{} s</td><td>{} kg</td><td>{}</td>",
+                    campaign_view::render_mission_cell(row),campaign_view::render_outcome_cell(row,page.integrity_passed),number(row.sim_time_s),number(row.fuel_kg),campaign_view::render_evidence_cell(row,page.integrity_passed))));
         }
     }
     let coverage = batch::render_coverage_section(
@@ -238,7 +232,7 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
             "<span class=\"chip\"><strong>{landings}/{scheduled}</strong> verified target landings</span>"
         ),
         actions_html: &actions,
-        before_hero_html: "<style>body.procedural-campaign .coverage-table th:first-child { width: 320px; text-transform: none; }</style>",
+        before_hero_html: &format!("<style>{}</style>", campaign_view::STYLE),
         after_hero_html: "",
         overview_html: &overview,
         planner_html: "",
@@ -247,8 +241,8 @@ pub fn render_campaign_page(page: &CampaignPageV1) -> Result<String, String> {
         diagnostics_html: "",
         review_tree_html: &tree,
         comparison_html: "",
-        appendix_html: "",
-        body_class: "procedural-campaign",
+        appendix_html: &format!("<script>{}</script>", campaign_view::SCRIPT),
+        body_class: "procedural-campaign campaign-view",
         tree: batch::BatchTreeOptions {
             max_depth: 1,
             depth_by_kind: &[("group", 0)],
@@ -301,13 +295,14 @@ mod tests {
                 fuel_kg: Some(1.),
                 wall_time_us: Some(1),
                 report_href: Some("attempt-000000/report.html".into()),
+                presentation: None,
             }],
         };
         let html = render_campaign_page(&page).unwrap();
         assert!(html.contains("data-batch-template=\"common-v1\""));
         assert!(html.contains("0/1</strong> verified target landings"));
         assert!(html.contains("A &lt;campaign&gt;"));
-        assert!(html.contains("Run report"));
+        assert!(html.contains("Mission 0 · attempt 0"));
         assert!(html.contains("data-parent=\"campaign-group-0\""));
         let mut bad = page;
         bad.attempts[0].complete_replay_verified = false;

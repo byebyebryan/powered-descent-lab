@@ -291,6 +291,7 @@ mod tests {
                         fuel_kg: Some(3000.0),
                         wall_time_us: Some(100),
                         report_href: Some("attempt/report.html".into()),
+                        presentation: None,
                     }],
                 },
             }],

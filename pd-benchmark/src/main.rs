@@ -92,6 +92,7 @@ fn main() -> Result<(), String> {
         let entry = entries[&attempt.mission_index];
         let disposition = serde_json::to_value(&attempt.disposition).map_err(|e| e.to_string())?;
         let mut row = pd_report::campaign::CampaignRowV1 {
+            presentation: None,
             attempt_index: attempt.attempt_index,
             mission_index: attempt.mission_index,
             physical_sha256: entry.physical_sha256.clone(),
