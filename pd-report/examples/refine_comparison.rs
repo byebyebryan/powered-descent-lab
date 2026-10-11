@@ -415,6 +415,14 @@ fn main() -> Result<()> {
             "Procedural comparison · inspection slice ({})",
             review.missions.len()
         )
+    } else if original
+        .approaches
+        .iter()
+        .flat_map(|a| &a.campaigns)
+        .flat_map(|c| &c.page.attempts)
+        .all(|r| r.geometry.is_some())
+    {
+        original.title.clone()
     } else {
         format!(
             "Procedural terrain missions · {} inputs / {} approaches",
@@ -448,7 +456,7 @@ fn main() -> Result<()> {
     )?;
     let html = pd_report::comparison::render_comparison_page(&page).map_err(anyhow::Error::msg)?;
     write_new(&output.join("report.html"), html.as_bytes())?;
-    let receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"source_projection_sha256":digest(&input),"independent_verification_sha256":digest(&verification_bytes),"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"campaign_pages":campaign_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
+    let receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"renderer_executable_sha256":digest(&fs::read(std::env::current_exe()?)?),"source_projection_sha256":digest(&input),"independent_verification_sha256":digest(&verification_bytes),"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"campaign_pages":campaign_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
     write_new(
         &output.join("render.json"),
         &serde_json::to_vec_pretty(&receipt)?,

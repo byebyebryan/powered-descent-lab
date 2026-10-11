@@ -126,6 +126,29 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
         .iter()
         .position(|a| a.label.to_lowercase().contains("reflection"))
         .unwrap_or(page.approaches.len() - 1);
+    let geometry_coverage = page.approaches[0]
+        .campaigns
+        .iter()
+        .flat_map(|campaign| &campaign.page.attempts)
+        .all(|row| row.geometry.is_some());
+    let headline = if geometry_coverage {
+        let approach = &page.approaches[incumbent];
+        let integrity = approach.campaigns.iter().all(|c| c.page.integrity_passed);
+        let rows: Vec<_> = approach
+            .campaigns
+            .iter()
+            .flat_map(|c| &c.page.attempts)
+            .collect();
+        let landed = rows.iter().filter(|row| integrity && verified(row)).count();
+        format!(
+            "<span class=\"chip\">{}: {landed}/{} verified landings ({:.1}%)</span>",
+            escape(&approach.label),
+            rows.len(),
+            100.0 * landed as f64 / rows.len().max(1) as f64
+        )
+    } else {
+        String::new()
+    };
     let shortcuts = format!(
         "<div class=\"review-shortcuts\"><button type=\"button\" data-review-outcome=\"misses\" data-approach=\"{incumbent}\">Review incumbent misses</button><button type=\"button\" data-review-outcome=\"unsupported\" data-approach=\"all\">Review unsupported inputs</button><button type=\"button\" data-review-outcome=\"not-launched\" data-approach=\"all\">Review stopped before departure</button></div>"
     );
@@ -155,8 +178,13 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
         coverage_rows.push_str(&batch::render_coverage_row(&group.label, &cells));
     }
     let coverage = format!(
-        "<details class=\"paired-coverage\"><summary>Coverage · {} family / direction / stratum groups</summary>{}</details>",
+        "<details class=\"paired-coverage\"><summary>Coverage · {} {} groups</summary>{}</details>",
         review.groups.len(),
+        if geometry_coverage {
+            "backend / direction / morphology / barrier"
+        } else {
+            "family / direction / stratum"
+        },
         batch::render_coverage_section(
             "Click a cell to focus that exact coverage group and approach. Unsupported inputs remain scheduled.",
             "",
@@ -193,7 +221,7 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
         title: &page.title,
         subtitle: "Paired complete procedural missions under identical physical and resource budgets",
         chips_html: &format!(
-            "<span class=\"chip\">{} unique physical inputs · {} scheduled occurrences · {} approaches</span>",
+            "{headline}<span class=\"chip\">{} unique physical inputs · {} scheduled occurrences · {} approaches</span>",
             reference.len(),
             review.missions.len(),
             page.approaches.len()

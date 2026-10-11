@@ -92,10 +92,29 @@ pub fn with_static_fallback(html: &str, svg: &str, metrics: &str, caption: &str)
         "<div id=\"static-flight-fallback\" class=\"static-plot\">{svg}<p>{} · static view. Interactive charts are unavailable until the chart library loads.</p></div>",
         escape(caption)
     );
-    let html=html.replacen(SPATIAL,&format!("{SPATIAL}{fallback}"),1).replacen(METRICS,&format!("{METRICS}<div id=\"static-metrics-fallback\" class=\"static-plot\">{metrics}<p>Recorded samples; commanded throttle is shown separately from velocity.</p></div>"),1);
+    let metric_fallback = format!(
+        "<div id=\"static-metrics-fallback\" class=\"static-plot\">{metrics}<p>Recorded samples; commanded throttle is shown separately from velocity.</p></div>"
+    );
     let old =
         "      buildSpatialPlot();\n      buildMetricsPlot();\n      initFlightCorrections();";
     let guarded = "      if (typeof Plotly !== \"undefined\") {\n        buildSpatialPlot();\n        buildMetricsPlot();\n        initFlightCorrections();\n      }";
+    let spatial_count = html.matches("id=\"static-flight-fallback\"").count();
+    let metric_count = html.matches("id=\"static-metrics-fallback\"").count();
+    ensure!(
+        (spatial_count, metric_count) == (0, 0) || (spatial_count, metric_count) == (1, 1),
+        "saved rich detail has ambiguous static fallbacks"
+    );
+    if spatial_count == 1 {
+        ensure!(
+            html.matches(guarded).count() == 1 && html.matches(old).count() == 0,
+            "saved rich detail has unsupported guarded initialization"
+        );
+        let html = replace_static_container(html, "static-flight-fallback", &fallback)?;
+        return replace_static_container(&html, "static-metrics-fallback", &metric_fallback);
+    }
+    let html = html
+        .replacen(SPATIAL, &format!("{SPATIAL}{fallback}"), 1)
+        .replacen(METRICS, &format!("{METRICS}{metric_fallback}"), 1);
     ensure!(
         html.matches(old).count() == 1,
         "saved rich detail has unsupported initialization"
@@ -106,6 +125,29 @@ pub fn with_static_fallback(html: &str, svg: &str, metrics: &str, caption: &str)
     Ok(html
         .replacen("</head>", &format!("{css}</head>"), 1)
         .replacen("</body>", &format!("{js}</body>"), 1))
+}
+
+fn replace_static_container(html: &str, id: &str, replacement: &str) -> Result<String> {
+    let opening = format!("<div id=\"{id}\" class=\"static-plot\">");
+    ensure!(
+        html.matches(&opening).count() == 1,
+        "saved rich detail has unsupported static container"
+    );
+    let start = html.find(&opening).unwrap();
+    let content_start = start + opening.len();
+    let end = html[content_start..]
+        .find("</div>")
+        .map(|offset| content_start + offset)
+        .ok_or_else(|| anyhow::anyhow!("saved static container is unclosed"))?;
+    ensure!(
+        !html[content_start..end].contains("<div"),
+        "saved static container has nested or unclosed content"
+    );
+    Ok(format!(
+        "{}{replacement}{}",
+        &html[..start],
+        &html[end + "</div>".len()..]
+    ))
 }
 
 /// Navigation and concise endpoint summary for a create-only review edition.
@@ -174,6 +216,36 @@ mod tests {
         assert!(html.contains("const reportData = {\"untouched\":true};"));
         assert!(html.contains("typeof Plotly !== \"undefined\""));
         assert!(html.contains("saved &lt;flight&gt;"));
+        assert_eq!(
+            with_static_fallback(&html, "<svg/>", "<svg/>", "saved <flight>").unwrap(),
+            html
+        );
+        let updated = with_static_fallback(
+            &html,
+            "<svg id=\"shared-world\"/>",
+            "<svg id=\"updated-metrics\"/>",
+            "shared bounds",
+        )
+        .unwrap();
+        assert!(updated.contains("const reportData = {\"untouched\":true};"));
+        assert!(updated.contains("<svg id=\"shared-world\"/>"));
+        assert!(updated.contains("<svg id=\"updated-metrics\"/>"));
+        assert!(!updated.contains("saved &lt;flight&gt;"));
+        assert_eq!(updated.matches("id=\"static-flight-fallback\"").count(), 1);
+        assert_eq!(updated.matches("id=\"static-metrics-fallback\"").count(), 1);
+        assert_eq!(
+            updated.matches("typeof Plotly !== \"undefined\"").count(),
+            1
+        );
+        assert_eq!(updated.matches(".static-plot svg{").count(), 1);
+        assert_eq!(updated.matches("let remaining=100;").count(), 1);
+        for malformed in [
+            html.replace("static-metrics-fallback", "missing-metrics"),
+            html.replacen("<svg/>", "<div>nested</div>", 1),
+            format!("{html}<div id=\"static-flight-fallback\" class=\"static-plot\"></div>"),
+        ] {
+            assert!(with_static_fallback(&malformed, "", "", "").is_err());
+        }
         assert!(with_static_fallback(&(source.to_string() + source), "", "", "").is_err());
         assert!(with_review_context(&html, "", "", "//outside/", "mission-0", 0, false).is_err());
     }
