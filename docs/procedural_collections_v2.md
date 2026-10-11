@@ -133,6 +133,9 @@ admitted entries can be consumed; explicit repeated attempt indices are allowed.
 Existing receipts record tuning/evaluation exposure. Actual Python-call tests
 verify byte and schema agreement.
 
-The incumbent `pd-benchmark` composition/report frontdoor still consumes V1;
-V2 presentation integration is a later task. No flight or learning campaign is
-needed to verify this input-management milestone.
+The incumbent `pd-benchmark` composition/report frontdoor accepts both versions.
+Its V2 projection uses saved physical direction, measured morphology and
+chord-barrier display bands, with no synthetic V1 stratum. See the
+[development baseline](procedural_challenge_baseline.md) for the first fixed
+existing-input comparison. Flight evidence remains separate from this
+input-management milestone.

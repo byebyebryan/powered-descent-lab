@@ -20,6 +20,8 @@
     for (const key of ['outcome','approach','direction','view','a','b']) if (![...controls[key].options].some(o=>o.value===state[key])) state[key]=['outcome','approach','direction'].includes(key)?'all':key==='b'?String(data.labels.length-1):'0';
     Object.assign(state,normalizeScope(state,data.groups));
     const branches = data.branches || data.groups.map(g=>({...g,parent:null,depth:0,kind:'coverage'}));
+    const unit = branches.some(b=>b.kind==='band') ? 'terrain band' : 'stratum';
+    browser.setAttribute('aria-label',`Browse mission ${unit}s`);
     const byId = new Map(branches.map(b=>[b.id,b]));
     const leaves = branches.filter(b=>!branches.some(child=>child.parent===b.id));
     const leafIds = new Set(leaves.map(b=>b.id));
@@ -78,7 +80,7 @@
       if(state.stratum){
         const index=available.findIndex(b=>b.id===state.stratum);
         const label=b=>ancestors(b.id).map(id=>byId.get(id).label).join(' → ');
-        browser.innerHTML=`<div class="stratum-controls"><button type="button" data-review-stratum="previous"${index<=0?' disabled':''}>Previous stratum</button><label>Current stratum<select data-review-stratum-select>${available.map(b=>`<option value="${esc(b.id)}"${b.id===state.stratum?' selected':''}>${esc(label(b))} · ${bins.get(b.id).length} missions</option>`).join('')}</select></label><button type="button" data-review-stratum="next"${index>=available.length-1?' disabled':''}>Next stratum</button></div>${pageControls()}`;
+        browser.innerHTML=`<div class="stratum-controls"><button type="button" data-review-stratum="previous"${index<=0?' disabled':''}>Previous ${unit}</button><label>Current ${unit}<select data-review-stratum-select>${available.map(b=>`<option value="${esc(b.id)}"${b.id===state.stratum?' selected':''}>${esc(label(b))} · ${bins.get(b.id).length} missions</option>`).join('')}</select></label><button type="button" data-review-stratum="next"${index>=available.length-1?' disabled':''}>Next ${unit}</button></div>${pageControls()}`;
         footer.innerHTML=pageControls();
       }else{browser.innerHTML='';footer.innerHTML='';}
       const missionRow = mission => {
@@ -104,7 +106,7 @@
         return html;
       }).join('');
       tbody.innerHTML=branchRows(null)||'<tr><td colspan="4">No missions match these filters. Reset to review every scheduled input.</td></tr>';
-      document.getElementById('review-count').textContent=`${selected.length} / ${data.missions.length} scheduled mission occurrences matched${state.stratum?` · showing ${pageInfo.items.length} from one stratum`:''}`;
+      document.getElementById('review-count').textContent=`${selected.length} / ${data.missions.length} scheduled mission occurrences matched${state.stratum?` · showing ${pageInfo.items.length} from one ${unit}`:''}`;
       window.PdCampaignPreviews?.loadVisible();
       window.dispatchEvent(new CustomEvent('pd-review-updated'));
       return selected.length;

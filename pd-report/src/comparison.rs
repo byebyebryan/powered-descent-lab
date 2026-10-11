@@ -29,7 +29,7 @@ pub struct ComparisonPageV1 {
     pub approaches: Vec<ComparisonApproachV1>,
 }
 
-type InputInventory = BTreeMap<String, (String, i32, u32, usize)>;
+type InputInventory = BTreeMap<String, (String, i32, Option<u32>, String, usize)>;
 
 fn inventory(approach: &ComparisonApproachV1) -> Result<InputInventory, String> {
     if approach.campaigns.is_empty() {
@@ -44,19 +44,22 @@ fn inventory(approach: &ComparisonApproachV1) -> Result<InputInventory, String> 
             return Err("comparison approach changes descriptor across campaigns".into());
         }
         for row in &page.attempts {
+            let geometry = serde_json::to_string(&row.geometry).map_err(|e| e.to_string())?;
             let entry = result.entry(row.physical_sha256.clone()).or_insert((
                 row.terrain_family.clone(),
                 row.direction,
                 row.terrain_stratum,
+                geometry.clone(),
                 0,
             ));
             if entry.0 != row.terrain_family
                 || entry.1 != row.direction
                 || entry.2 != row.terrain_stratum
+                || entry.3 != geometry
             {
                 return Err("physical input has inconsistent coverage metadata".into());
             }
-            entry.3 += 1;
+            entry.4 += 1;
         }
     }
     Ok(result)
@@ -254,7 +257,8 @@ mod tests {
                         physical_sha256: "b".repeat(64),
                         terrain_family: "pd-missions/value-noise-rest-v1".into(),
                         direction: 1,
-                        terrain_stratum: 0,
+                        terrain_stratum: Some(0),
+                        geometry: None,
                         disposition: "executed".into(),
                         detail: None,
                         stop: Some(BoundedRunStopCauseV1::MissionTerminal),
@@ -371,6 +375,53 @@ mod tests {
     }
 
     #[test]
+    fn v2_measured_hierarchy_preserves_mixed_inputs_and_rejects_metadata_drift() {
+        let mut page = comparison();
+        for approach in &mut page.approaches {
+            let row = &mut approach.campaigns[0].page.attempts[0];
+            row.terrain_stratum = None;
+            row.terrain_family = "pd-missions/layered-perlin-rest-v2".into();
+            row.geometry = Some(crate::campaign_view::CampaignGeometryV2 {
+                schema_version: 2,
+                morphology: "Mixed morphology".into(),
+                chord_barrier_m: 400.0,
+                distance_m: 1200.0,
+                signed_pad_rise_m: -300.0,
+                source_width_m: 40.0,
+                target_width_m: 50.0,
+                crest_count: 3,
+            });
+        }
+        let review = crate::paired_review::build(&page).unwrap();
+        assert_eq!(review.missions.len(), 1);
+        assert_eq!(review.missions[0].path.len(), 3);
+        assert_eq!(
+            review
+                .branches
+                .iter()
+                .map(|b| b.kind.as_str())
+                .collect::<Vec<_>>(),
+            ["family", "morphology", "band"]
+        );
+        assert_eq!(review.groups[0].branch, review.missions[0].path[2]);
+        let html = render_comparison_page(&page).unwrap();
+        assert!(html.contains("Mixed morphology"));
+        assert!(html.contains("Chord barrier ≥400 m"));
+        let campaign =
+            crate::campaign::render_campaign_page(&page.approaches[0].campaigns[0].page).unwrap();
+        assert!(campaign.contains("data-kind=\"band\" data-depth=\"2\""));
+        assert!(!campaign.contains("Terrain stratum 0"));
+        page.approaches[1].campaigns[0].page.attempts[0]
+            .geometry
+            .as_mut()
+            .unwrap()
+            .distance_m += 1.0;
+        assert!(render_comparison_page(&page).is_err());
+        page.approaches[0].campaigns[0].page.attempts[0].terrain_stratum = Some(0);
+        assert!(render_comparison_page(&page).is_err());
+    }
+
+    #[test]
     fn mission_hierarchy_merges_direction_and_keeps_attempts_and_coverage_identity() {
         let mut page = comparison();
         for approach in &mut page.approaches {
@@ -385,7 +436,7 @@ mod tests {
                 row.mission_index = index;
                 row.terrain_family = family.into();
                 row.direction = direction;
-                row.terrain_stratum = stratum;
+                row.terrain_stratum = Some(stratum);
                 campaign.attempts.push(row);
             }
             campaign.unique_scheduled_missions = 4;
@@ -439,7 +490,7 @@ mod tests {
                 crate::paired_review::coverage_label(
                     &r.terrain_family,
                     r.direction,
-                    r.terrain_stratum,
+                    r.terrain_stratum.unwrap(),
                 ),
                 r.mission_index,
                 &r.physical_sha256,

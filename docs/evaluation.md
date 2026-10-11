@@ -13,9 +13,11 @@ Use the saved-capture checks for read-only inspection.
 The neutral evaluator and Python reader accept both strict V1 and
 [challenging V2 collections](procedural_collections_v2.md). V2 retains excluded
 proposals as immutable input evidence and separates broad, stress and shift
-populations. The incumbent `pd-benchmark` report composition below currently
-consumes V1; V2 presentation integration and the budgeted comparison remain
-pending. Geometric admission is not flight qualification.
+populations. The incumbent `pd-benchmark` composition accepts strict V1/V2
+collections and uses measured morphology/barrier bands for V2 reports. The
+[existing-input development baseline](procedural_challenge_baseline.md) has its
+own fixed schedules; the larger fresh-input/stress proposal remains separate.
+Geometric admission is not flight qualification.
 
 The [independent-agent workflow](independent_agents.md) runs supplied approach
 factories through neutral `pd-eval`, using [immutable procedural collections](procedural_missions.md).
@@ -46,6 +48,15 @@ cap 24 is an experimental comparator, not a default-planner promotion.
 rtk proxy cargo run --release -p pd-benchmark -- --collection outputs/my-missions --output outputs/my-incumbent-raw --correction-cap 24
 rtk proxy cargo run --release -p pd-benchmark -- --collection outputs/my-missions --output outputs/my-incumbent-reflection --correction-cap 24 --mirror-leftward
 ```
+
+For V2, `--proposal-count N` selects admitted missions from the first N original
+proposal slots without refilling exclusions; `--count N` selects N admitted
+entries. `--plan` prints the exact request without flights or exposure writes.
+Save it before execution and use `--request FILE` to bind that fixed schedule.
+All flags preserve the unchanged adapter behavior. A fresh independent verifier
+is available through `pd-eval`'s `verify-collection` example, with arguments
+`COLLECTION SAVED_CAMPAIGN NEW_RECEIPT_JSON`; it replays saved commands and never
+imports the incumbent or planner.
 
 These new create-only campaigns write common captures, exposure receipts,
 approach-specific stop diagnostics, rich individual reports and a common batch

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::{
-    campaign::{escape, family_label},
+    campaign::{escape, family_label, mission_path, row_coverage_label},
     campaign_view,
     comparison::ComparisonPageV1,
 };
@@ -91,7 +91,7 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
     let mut missions = Vec::new();
     for (identity, rows) in &inventories[0] {
         for (occurrence, (row, _)) in rows.iter().enumerate() {
-            let label = coverage_label(&row.terrain_family, row.direction, row.terrain_stratum);
+            let label = row_coverage_label(row);
             let mut attempts = Vec::new();
             for (approach, inventory) in inventories.iter().enumerate() {
                 let (attempt, integrity) = inventory
@@ -144,19 +144,8 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
         // Coverage identities and mission ordinals remain stable. The hierarchy
         // groups both travel directions under the same terrain stratum.
         let row = inventories[0][mission.physical_sha256.as_str()][mission.occurrence].0;
-        let family = family_label(&row.terrain_family);
         let mut parent = None;
-        for (depth, (kind, key, label)) in [
-            ("family", row.terrain_family.clone(), family.to_owned()),
-            (
-                "stratum",
-                format!("{}/{}", row.terrain_family, row.terrain_stratum),
-                format!("Terrain stratum {}", row.terrain_stratum),
-            ),
-        ]
-        .into_iter()
-        .enumerate()
-        {
+        for (depth, (kind, key, label)) in mission_path(row).into_iter().enumerate() {
             let id = branch_ids
                 .entry((kind, key))
                 .or_insert_with(|| {
@@ -180,7 +169,7 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
             groups.push(PairedGroupV1 {
                 id: id.clone(),
                 label: mission.label.clone(),
-                branch: mission.path[1].clone(),
+                branch: mission.path.last().expect("nonempty path").clone(),
                 direction: mission.direction,
             });
             id
@@ -196,13 +185,13 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
     // number. Direction remains seed variation, rather than a browsing axis.
     missions.sort_by(|a, b| {
         (
-            order[a.path[1].as_str()],
+            order[a.path.last().expect("nonempty path").as_str()],
             a.mission_index,
             a.occurrence,
             &a.physical_sha256,
         )
             .cmp(&(
-                order[b.path[1].as_str()],
+                order[b.path.last().expect("nonempty path").as_str()],
                 b.mission_index,
                 b.occurrence,
                 &b.physical_sha256,
@@ -241,11 +230,20 @@ pub fn controls(review: &PairedReviewV1) -> String {
         .map(|(i, label)| format!("<option value=\"{i}\">{}</option>", escape(label)))
         .collect::<String>();
     let direction_filter = campaign_view::render_direction_filter("review-direction");
-    format!(
+    let html = format!(
         "<p class=\"section-note\">Complete procedural transfers → terrain family → terrain stratum → mission. Controller results sit inside each mission.</p><div class=\"paired-controls\"><label>Show results for<select id=\"review-view\">{options}</select></label><label>Find mission<input id=\"review-search\" type=\"search\" placeholder=\"Number, terrain or physical identity\"></label><label>Match outcome<select id=\"review-outcome\"><option value=\"all\">All outcomes</option><option value=\"misses\">No verified landing</option>{}</select></label><label>Match approach<select id=\"review-approach\"><option value=\"all\">Any approach</option>{options}</select></label></div>{direction_filter}<div class=\"paired-controls hierarchy-controls\"><button type=\"button\" data-paired-depth=\"1\">Expand families</button><button type=\"button\" data-paired-depth=\"3\">Browse missions</button><button type=\"button\" data-paired-action=\"collapse\">Collapse</button><button type=\"button\" data-paired-action=\"reset\">Reset filters</button></div><p class=\"section-note\">Open one stratum at a time. Browse 12 missions per page; summary counts cover every match.</p><p id=\"review-count\" aria-live=\"polite\"></p><details class=\"comparison-options\"><summary>Preview comparison options</summary><div class=\"paired-controls\"><label>Compare A<select id=\"review-a\">{options}</select></label><label>Compare B<select id=\"review-b\">{options}</select></label></div><p class=\"section-note\">Expand a mission to inspect all saved controller attempts and compare two previews with shared axes. Filters retain every scheduled occurrence.</p></details>",
         campaign_view::DisplayOutcome::ALL
             .into_iter()
             .map(|o| format!("<option value=\"{}\">{}</option>", o.key(), o.label()))
             .collect::<String>()
-    )
+    );
+    if review.branches.iter().any(|b| b.kind == "band") {
+        html.replace(
+            "terrain stratum",
+            "measured morphology → chord-barrier band",
+        )
+        .replace("one stratum", "one terrain band")
+    } else {
+        html
+    }
 }

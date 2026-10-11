@@ -83,6 +83,10 @@ The [20,000-input calibration](procedural_challenge_calibration.md) now records
 the V2 distributions, resolution warnings, bounded rich previews and coverage
 limits. The [freeze/unchanged-incumbent proposal](procedural_challenge_comparison_plan.md)
 defines a separately scoped budget; no new flight or learning allocation occurred.
+The subsequent [existing-input controller baseline](procedural_challenge_baseline.md)
+now measures the unchanged incumbent on predeclared V2 calibration inputs,
+with raw/reflected adapters and separate backend rates. It is development
+evidence; fresh-input qualification and stress populations remain separate.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.

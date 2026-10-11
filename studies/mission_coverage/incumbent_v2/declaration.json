@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "kind": "existing-exposed-development-baseline",
+  "source_checkpoint_before_integration": "f7b0f0f3eaf1da1ec2ada1866537a83f0ffc829b",
+  "wall_limit_s": 7200,
+  "max_scheduled_attempts": 8224,
+  "integrity_and_independent_replay_required": true,
+  "interval_method": "Wilson 95 percent, z=1.959963984540054; development draws conditional on prior geometric admission",
+  "input_resolution": "sealed 4 m physical polyline; sampled reference warnings retained",
+  "populations": [
+    {
+      "id": "layered",
+      "collection": "outputs/procedural-challenge/run-20261011T093222Z-pilot/layered-broad",
+      "manifest_sha256": "c4e36c8bd78f383fce07eb6dcedf61b660453d21e0fe35bb2c12ca557a4a3c12",
+      "proposal_count": 2048,
+      "proposal_accounting": {
+        "accepted": 1645,
+        "insufficient_challenge": 403
+      },
+      "admitted_count": 1645
+    },
+    {
+      "id": "value",
+      "collection": "outputs/procedural-challenge/run-20261011T093222Z-pilot/value-broad",
+      "manifest_sha256": "0e4f7dedfd370e3158ac6e689b45289ddc7757569a371366d47e24f3f8642f92",
+      "proposal_count": 2048,
+      "proposal_accounting": {
+        "accepted": 1666,
+        "insufficient_challenge": 382
+      },
+      "admitted_count": 1666
+    }
+  ],
+  "binaries": {
+    "target/release/pd-benchmark": "48d44ca18ef75599db18f9a46ec39aff7369ceb00b2768b9d3dc7a692f8e08c0",
+    "target/release/examples/verify-collection": "d2c91dd059d63433f3ebc56142c42de983d70a6909388a687b5920430697d9c7",
+    "target/release/examples/refine_comparison": "fe78bae847675edf1810cb3554efa8029b762529cada45ea950ba4d91ebe7f50"
+  },
+  "requests": {
+    "studies/mission_coverage/incumbent_v2/integration-layered-raw.json": "1fdba5761e0c03af39494136d50f71de13adafe5405e560a3d00a37fae14e3ff",
+    "studies/mission_coverage/incumbent_v2/main-layered-raw.json": "f59376fb2dec9feb187fd433a73a8f86b9664eedefae05efceb29a6243473c59",
+    "studies/mission_coverage/incumbent_v2/integration-layered-reflection.json": "c89a8fb60e0e7e6731b1b0639f4dd9f37a16df3450f62b54b4f9e0028b98ae10",
+    "studies/mission_coverage/incumbent_v2/main-layered-reflection.json": "179da8609d5e9e837b024aaf87a048d7850ef9da218fe4e2e2b7bfc4b842aeb7",
+    "studies/mission_coverage/incumbent_v2/integration-value-raw.json": "5d5779ec990f881b379252bb9253434e11ca7d60d1426f3a97292edda58acf11",
+    "studies/mission_coverage/incumbent_v2/main-value-raw.json": "44477c680cd6cef6b92f254331fdc4198d75b3e92e35c20c9163faedbd4abcad",
+    "studies/mission_coverage/incumbent_v2/integration-value-reflection.json": "7db219f01e22ea7e2739ab4a2769a300bb4aca9fe3c3402efdc3a1e1b22a2575",
+    "studies/mission_coverage/incumbent_v2/main-value-reflection.json": "5a4a0003ade5b6b8423dc297bb1516b13f97ccc982628481948a452c4482ad65"
+  },
+  "runner_sha256": "8ce94d1b53222f219695ff01d0165dc094e7cf16e72cbd8dca198f93ea77c56f",
+  "new_inputs": 0,
+  "training_transitions": 0
+}

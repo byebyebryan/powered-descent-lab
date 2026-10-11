@@ -6,7 +6,7 @@ use pd_core::{BoundedRunStopCauseV1, MissionOutcome, PhysicalOutcome};
 use pd_run::AgentDescriptorV1;
 use serde::{Deserialize, Serialize};
 
-use crate::campaign_view::{self, CampaignPresentationV1};
+use crate::campaign_view::{self, CampaignGeometryV2, CampaignPresentationV1};
 use crate::{batch, batch_tree};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -17,7 +17,10 @@ pub struct CampaignRowV1 {
     pub physical_sha256: String,
     pub terrain_family: String,
     pub direction: i32,
-    pub terrain_stratum: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terrain_stratum: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geometry: Option<CampaignGeometryV2>,
     pub disposition: String,
     pub detail: Option<String>,
     pub stop: Option<BoundedRunStopCauseV1>,
@@ -94,7 +97,48 @@ pub(crate) fn family_label(version: &str) -> &str {
     match version {
         "pd-missions/value-noise-rest-v1" => "Value noise",
         "pd-missions/layered-perlin-rest-v1" => "Layered Perlin",
+        "pd-missions/value-noise-rest-v2" => "Value noise",
+        "pd-missions/layered-perlin-rest-v2" => "Layered Perlin",
         other => other,
+    }
+}
+
+pub(crate) fn mission_path(row: &CampaignRowV1) -> Vec<(&'static str, String, String)> {
+    let family = row.terrain_family.clone();
+    let mut path = vec![("family", family.clone(), family_label(&family).to_owned())];
+    if let Some(g) = &row.geometry {
+        let key = format!("{family}/{}", g.morphology);
+        path.push(("morphology", key.clone(), g.morphology.clone()));
+        path.push((
+            "band",
+            format!("{key}/{}", g.barrier_band()),
+            g.barrier_band().into(),
+        ));
+    } else if let Some(stratum) = row.terrain_stratum {
+        path.push((
+            "stratum",
+            format!("{family}/{stratum}"),
+            format!("Terrain stratum {stratum}"),
+        ));
+    }
+    path
+}
+
+pub(crate) fn row_coverage_label(row: &CampaignRowV1) -> String {
+    if let Some(g) = &row.geometry {
+        format!(
+            "{} · {} · {} · {}",
+            family_label(&row.terrain_family),
+            g.morphology,
+            g.barrier_band(),
+            if row.direction < 0 { "left" } else { "right" }
+        )
+    } else {
+        crate::paired_review::coverage_label(
+            &row.terrain_family,
+            row.direction,
+            row.terrain_stratum.expect("validated V1 stratum"),
+        )
     }
 }
 
@@ -111,6 +155,14 @@ pub(crate) fn validate_campaign_page(page: &CampaignPageV1) -> Result<(), String
             .attempts
             .iter()
             .any(|r| r.presentation.as_ref().is_some_and(|view| !view.validate()))
+        || page
+            .attempts
+            .iter()
+            .any(|r| match (&r.geometry, r.terrain_stratum) {
+                (Some(g), None) => !g.validate(),
+                (None, Some(_)) => false,
+                _ => true,
+            })
     {
         return Err("invalid common campaign projection or incomplete landing tuple".into());
     }
@@ -163,38 +215,39 @@ fn render_campaign_with_links(
         "<section class=\"header-overview\"><h2>Outcomes</h2>{}<button type=\"button\" data-campaign-reset>Show all scheduled attempts</button></section>",
         campaign_view::render_outcome_bar("Scheduled missions", &outcome_rows, 0)
     );
-    let mut groups: BTreeMap<(String, u32), Vec<&CampaignRowV1>> = BTreeMap::new();
+    let mut groups: BTreeMap<Vec<(&str, String, String)>, Vec<&CampaignRowV1>> = BTreeMap::new();
     for row in &page.attempts {
-        groups
-            .entry((row.terrain_family.clone(), row.terrain_stratum))
-            .or_default()
-            .push(row);
+        groups.entry(mission_path(row)).or_default().push(row);
     }
     let headers = "<th>Mission / saved flight</th><th>Outcome / stop</th><th>Flight time</th><th>Fuel remaining</th><th>Evidence</th>";
     let mut coverage_rows = String::new();
     let mut tree_rows = String::new();
-    let mut families = BTreeMap::new();
-    for (ordinal, ((family, stratum), rows)) in groups.iter_mut().enumerate() {
+    let mut branches = BTreeMap::new();
+    for (ordinal, (path, rows)) in groups.iter_mut().enumerate() {
         rows.sort_by_key(|row| (row.mission_index, row.attempt_index));
-        let label = format!("{} · stratum {stratum}", family_label(family));
+        let label = path
+            .iter()
+            .map(|(_, _, label)| label.as_str())
+            .collect::<Vec<_>>()
+            .join(" · ");
         let group = format!("campaign-group-{ordinal}");
-        let parent = format!("campaign-axis-0-{}", families.len());
-        if !families.contains_key(family) {
-            let family_rows: Vec<_> = page
-                .attempts
-                .iter()
-                .filter(|row| &row.terrain_family == family)
-                .collect();
-            let landed = family_rows
-                .iter()
-                .filter(|row| page.integrity_passed && verified(row))
-                .count();
-            tree_rows.push_str(&batch::render_row(Some("summary-row"),
-                &format!("data-group=\"{parent}\" data-kind=\"family\" data-depth=\"0\" aria-expanded=\"false\" tabindex=\"0\""),
-                &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",escape(family_label(family)),family_rows.len())));
-            families.insert(family.clone(), parent);
+        let mut parent = None;
+        for (depth, (kind, key, branch_label)) in path.iter().enumerate() {
+            let branch_key = (*kind, key.clone());
+            let id = branches.get(&branch_key).cloned().unwrap_or_else(|| {
+                let id = if depth + 1 == path.len() { group.clone() } else { format!("campaign-axis-{depth}-{}", branches.len()) };
+                let branch_rows: Vec<_> = page.attempts.iter().filter(|r| mission_path(r).get(depth).is_some_and(|p| p.0 == *kind && p.1 == *key)).collect();
+                let landed = branch_rows.iter().filter(|r| page.integrity_passed && verified(r)).count();
+                let parent_attr = parent.as_ref().map_or_else(String::new, |id| format!(" data-parent=\"{id}\""));
+                tree_rows.push_str(&batch::render_row(Some("summary-row"),
+                    &format!("data-group=\"{id}\"{parent_attr} data-kind=\"{kind}\" data-depth=\"{depth}\" aria-expanded=\"false\" tabindex=\"0\""),
+                    &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>", escape(branch_label), branch_rows.len())));
+                branches.insert(branch_key, id.clone());
+                id
+            });
+            parent = Some(id);
         }
-        let parent = &families[family];
+        let parent = parent.expect("validated nonempty hierarchy");
         let landed = if page.integrity_passed {
             rows.iter().filter(|r| verified(r)).count()
         } else {
@@ -208,12 +261,9 @@ fn render_campaign_with_links(
                 &format!("{landed}/{}", rows.len()),
             ),
         ));
-        tree_rows.push_str(&batch::render_row(Some("summary-row"),
-            &format!("data-group=\"{group}\" data-parent=\"{parent}\" data-kind=\"stratum\" data-depth=\"1\" aria-expanded=\"false\" tabindex=\"0\""),
-            &format!("<td><span class=\"expander\">+</span> Terrain stratum {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",rows[0].terrain_stratum,rows.len())));
         for row in rows {
             tree_rows.push_str(&batch::render_row(Some("campaign-row"),
-                &format!("data-parent=\"{group}\" data-depth=\"2\" data-direction=\"{}\" data-outcome=\"{}\" data-search=\"{}\"",row.direction,campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,format_args!("{label} {}",if row.direction < 0 {"left"} else if row.direction > 0 {"right"} else {"vertical"})))),
+                &format!("data-parent=\"{parent}\" data-depth=\"{}\" data-direction=\"{}\" data-outcome=\"{}\" data-search=\"{}\"",path.len(),row.direction,campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,format_args!("{label} {}",if row.direction < 0 {"left"} else if row.direction > 0 {"right"} else {"vertical"})))),
                 &format!("<td class=\"tree-label\">{}</td><td>{}</td><td>{} s</td><td>{} kg</td><td>{}</td>",
                     campaign_view::render_mission_cell(row),campaign_view::render_outcome_cell(row,page.integrity_passed),number(row.sim_time_s),number(row.fuel_kg),campaign_view::render_evidence_cell(row,page.integrity_passed))));
         }
@@ -222,7 +272,7 @@ fn render_campaign_with_links(
         "All scheduled inputs remain in each denominator, including unsupported inputs.",
         "",
         &batch::render_coverage_table(
-            "Family / terrain stratum",
+            "Terrain / measured geometry",
             "<th>Verified landing / scheduled</th>",
             &coverage_rows,
         ),
@@ -230,7 +280,7 @@ fn render_campaign_with_links(
     let tree = batch::render_review_tree_section(
         &batch_tree::render_controls("Attempts", false),
         &format!(
-            "<p>Terrain family → terrain stratum → mission and saved flight. Summary totals cover the full collection.</p>{}<p id=\"campaign-filter-count\" aria-live=\"polite\"></p>",
+            "<p>Terrain family → input geometry → mission and saved flight. V2 uses morphology and chord-barrier bands; V1 retains its authored strata. Summary totals cover the full collection.</p>{}<p id=\"campaign-filter-count\" aria-live=\"polite\"></p>",
             campaign_view::render_direction_filter("campaign-direction")
         ),
         &batch::render_review_tree_table("procedural-campaign", headers, &tree_rows),
@@ -270,8 +320,8 @@ fn render_campaign_with_links(
         appendix_html: &format!("<script>{}</script>", campaign_view::SCRIPT),
         body_class: "procedural-campaign campaign-view",
         tree: batch::BatchTreeOptions {
-            max_depth: 2,
-            depth_by_kind: &[("family", 0), ("stratum", 1)],
+            max_depth: if page.attempts.iter().any(|r| r.geometry.is_some()) { 3 } else { 2 },
+            depth_by_kind: &[("family", 0), ("stratum", 1), ("morphology", 1), ("band", 2)],
             leaf_selector: "tr.campaign-row",
             default_expansion: 0,
         },
@@ -306,7 +356,8 @@ mod tests {
                 physical_sha256: "1".repeat(64),
                 terrain_family: "layered".into(),
                 direction: 1,
-                terrain_stratum: 0,
+                terrain_stratum: Some(0),
+                geometry: None,
                 disposition: "executed".into(),
                 detail: None,
                 stop: Some(BoundedRunStopCauseV1::MissionTerminal),

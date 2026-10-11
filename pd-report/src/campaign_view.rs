@@ -4,6 +4,59 @@ use serde::{Deserialize, Serialize};
 
 use crate::campaign::{CampaignRowV1, escape, verified};
 
+/// Measured V2 input metadata. Labels and bands organize browsing only.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CampaignGeometryV2 {
+    pub schema_version: u32,
+    pub morphology: String,
+    pub chord_barrier_m: f64,
+    pub distance_m: f64,
+    pub signed_pad_rise_m: f64,
+    pub source_width_m: f64,
+    pub target_width_m: f64,
+    pub crest_count: usize,
+}
+
+impl CampaignGeometryV2 {
+    pub(crate) fn validate(&self) -> bool {
+        self.schema_version == 2
+            && matches!(
+                self.morphology.as_str(),
+                "Mixed morphology"
+                    | "Unclassified"
+                    | "Mountain crossing"
+                    | "Broad massif"
+                    | "Successive ridges"
+                    | "Elevation transition"
+            )
+            && [
+                self.chord_barrier_m,
+                self.distance_m,
+                self.signed_pad_rise_m,
+                self.source_width_m,
+                self.target_width_m,
+            ]
+            .into_iter()
+            .all(f64::is_finite)
+            && self.distance_m > 0.0
+            && self.source_width_m > 0.0
+            && self.target_width_m > 0.0
+    }
+
+    pub fn barrier_band(&self) -> &'static str {
+        if self.chord_barrier_m < 100.0 {
+            "Chord barrier <100 m"
+        } else if self.chord_barrier_m < 200.0 {
+            "Chord barrier 100–<200 m"
+        } else if self.chord_barrier_m < 400.0 {
+            "Chord barrier 200–<400 m"
+        } else {
+            "Chord barrier ≥400 m"
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CampaignPresentationV1 {
@@ -310,7 +363,8 @@ mod tests {
             physical_sha256: "1".repeat(64),
             terrain_family: "test".into(),
             direction: 1,
-            terrain_stratum: 0,
+            terrain_stratum: Some(0),
+            geometry: None,
             disposition: "executed".into(),
             detail: None,
             stop: Some(BoundedRunStopCauseV1::MissionTerminal),

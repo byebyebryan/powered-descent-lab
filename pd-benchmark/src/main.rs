@@ -5,6 +5,8 @@ use clap::Parser;
 use pd_benchmark::IncumbentAdapterV1;
 use pd_eval::{AttemptDispositionV1, CollectionEvaluationRequestV1, EvidenceScope};
 
+mod presentation;
+
 #[derive(Parser)]
 #[command(about = "Create-only common native incumbent campaign; no publication")]
 struct Args {
@@ -16,31 +18,53 @@ struct Args {
     mirror_leftward: bool,
     #[arg(long, default_value_t = 24)]
     correction_cap: usize,
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["request", "proposal_count"])]
     count: Option<usize>,
+    /// Fixed original proposal prefix, before V2 challenge exclusions.
+    #[arg(long, conflicts_with = "request")]
+    proposal_count: Option<usize>,
+    /// Exact predeclared campaign request; descriptor and manifest must match.
+    #[arg(long)]
+    request: Option<PathBuf>,
+    /// Print the resolved evaluation request without recording exposure or flying.
+    #[arg(long)]
+    plan: bool,
 }
 
 fn main() -> Result<(), String> {
     let args = Args::parse();
     let adapter = IncumbentAdapterV1::new(args.mirror_leftward, args.correction_cap)?;
-    let manifest = pd_missions::read_collection_manifest(&args.collection)?;
-    let count = args.count.unwrap_or(manifest.entries.len());
-    if count == 0 || count > manifest.entries.len() {
-        return Err("count must select a nonempty declared prefix".into());
-    }
-    let request = CollectionEvaluationRequestV1 {
+    let manifest = pd_missions::read_versioned_collection_manifest(&args.collection)?;
+    let indices = presentation::schedule(&manifest, args.count, args.proposal_count)?;
+    let generated_request = CollectionEvaluationRequestV1 {
         schema_version: 1,
         manifest_sha256: pd_missions::sha256(
             &std::fs::read(args.collection.join("manifest.json")).map_err(|e| e.to_string())?,
         ),
         agent: adapter.descriptor(),
-        attempt_indices: manifest
-            .entries
-            .iter()
-            .take(count)
-            .map(|e| e.index)
-            .collect(),
+        attempt_indices: indices,
     };
+    let request = if let Some(path) = &args.request {
+        let request: CollectionEvaluationRequestV1 =
+            serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        if request.agent != generated_request.agent
+            || request.manifest_sha256 != generated_request.manifest_sha256
+        {
+            return Err("declared request differs from manifest or unchanged adapter".into());
+        }
+        request
+    } else {
+        generated_request
+    };
+    if args.plan {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&request).map_err(|e| e.to_string())?
+        );
+        return Ok(());
+    }
+    let metadata = presentation::metadata(&args.collection, &manifest, &request.attempt_indices)?;
     let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace")
@@ -64,7 +88,9 @@ fn main() -> Result<(), String> {
     }
     let scope = EvidenceScope {
         sources,
-        inputs: vec![],
+        inputs: std::iter::once(std::env::current_exe().map_err(|e| e.to_string())?)
+            .chain(args.request.clone())
+            .collect(),
     };
     let mut details = Vec::new();
     let result = pd_eval::evaluate_collection_with_executor(
@@ -84,25 +110,23 @@ fn main() -> Result<(), String> {
     let mut failed = 0;
     let mut rows = Vec::new();
     let entries: std::collections::BTreeMap<_, _> = manifest
-        .entries
+        .entries()
         .iter()
         .map(|entry| (entry.index, entry))
         .collect();
     for attempt in &result.attempts {
         let entry = entries[&attempt.mission_index];
+        let input = &metadata[&attempt.mission_index];
         let disposition = serde_json::to_value(&attempt.disposition).map_err(|e| e.to_string())?;
         let mut row = pd_report::campaign::CampaignRowV1 {
             presentation: None,
             attempt_index: attempt.attempt_index,
             mission_index: attempt.mission_index,
             physical_sha256: entry.physical_sha256.clone(),
-            terrain_family: manifest.request.recipe.generator_version.clone(),
-            direction: if (attempt.mission_index / 4).is_multiple_of(2) {
-                1
-            } else {
-                -1
-            },
-            terrain_stratum: (attempt.mission_index % 4) as u32,
+            terrain_family: input.family.clone(),
+            direction: input.direction,
+            terrain_stratum: input.stratum,
+            geometry: input.geometry.clone(),
             disposition: disposition["kind"].as_str().unwrap_or("invalid").to_owned(),
             detail: disposition["detail"].as_str().map(str::to_owned),
             stop: None,
@@ -140,6 +164,11 @@ fn main() -> Result<(), String> {
                 row.fuel_kg = Some(episode.final_state.fuel_kg);
                 row.wall_time_us = Some(evaluation.execution.performance.wall_time_us);
                 row.report_href = Some(format!("{capture}/report.html"));
+                row.presentation = Some(presentation::write_preview(
+                    &args.output,
+                    attempt.attempt_index,
+                    &evaluation,
+                )?);
                 let html = pd_report::render_agent_run_report(
                     &evaluation.scenario,
                     &evaluation.execution,
@@ -169,7 +198,7 @@ fn main() -> Result<(), String> {
             schema_version: 1,
             title: format!(
                 "Procedural incumbent · {:?} · {} · cap {}",
-                manifest.request.role,
+                manifest.role(),
                 if args.mirror_leftward {
                     "reflected"
                 } else {
@@ -181,7 +210,7 @@ fn main() -> Result<(), String> {
             integrity_passed: result.integrity_passed,
             unique_scheduled_missions: result.unique_scheduled_missions,
             manifest_sha256: result.request.manifest_sha256.clone(),
-            collection_role: format!("{:?}", manifest.request.role),
+            collection_role: format!("{:?}", manifest.role()),
             prior_training_or_tuning: Some(usage.iter().any(|receipt| {
                 matches!(
                     receipt.exposure,
