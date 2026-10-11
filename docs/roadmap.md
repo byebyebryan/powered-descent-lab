@@ -45,6 +45,16 @@ a negative learning result, not a replacement controller or default promotion.
 The [next recommendation](procedural_learning_next.md) begins with distribution
 coverage, then a controlled curriculum over complete procedural missions.
 
+### Report presentation refinement
+
+The [presentation plan](report_presentation_refinement_plan.md) is the next
+usability pass. Restore procedural campaign previews, provide paired mission
+inspection, put outcome visualizations and review actions first, and refine the
+existing rich detail pages. Keep shared templates, original physical/evidence
+data and historical report editions. The owner launched implementation and
+create-only rendering; the [run record](report_presentation_refinement_results.md)
+tracks accepted milestones and browser validation.
+
 ### Active planner evaluation and reporting
 
 The accepted native V2 evaluation workflow is `planner_v2_lab_suite`: omitting
@@ -981,6 +991,12 @@ If the lab needs a browser runtime before the core is stable, the split has
 already failed.
 
 ## 7. Recommended Immediate Next Step
+
+Prioritize the [report presentation refinement](report_presentation_refinement_plan.md)
+before another learning allocation. Reports are the main flight-inspection
+interface; the new procedural views need their missing previews and meaningful
+mission-level comparison restored. The bounded pass extends maintained views,
+with explicit visual/interaction acceptance and a create-only rendered edition.
 
 The first [procedural learning contract](procedural_learning_plan.md) is complete;
 read its [measured results](procedural_learning_results.md) before another

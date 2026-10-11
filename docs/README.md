@@ -18,6 +18,16 @@ later code and documentation housekeeping does not create a new flight capture.
 | Generate independent procedural inputs and immutable collections | [Procedural missions](procedural_missions.md) |
 | Implement an independent agent and verify its saved commands | [Independent agents](independent_agents.md) |
 
+## Report presentation refinement
+
+The [refinement plan](report_presentation_refinement_plan.md) repairs missing
+procedural mission previews and restores direct paired-mission review through
+the maintained tree and rich detail templates. Outcome visualizations and review
+actions come first; coverage, configuration and evidence stay accessible. This
+is the launched usability pass; its
+[run record](report_presentation_refinement_results.md) tracks implementation and
+browser acceptance. Existing report/navigation/server work remains separately owned.
+
 ## Independent approach platform
 
 The [platform restructure plan](platform_restructure_plan.md) and
