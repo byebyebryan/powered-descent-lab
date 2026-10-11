@@ -16,6 +16,11 @@ declarations; input calibration and qualification remain pending. The neutral
 [geometry contract](procedural_geometry.md) is implemented independently of V1
 generation and provides physically bound, versioned coverage descriptors.
 
+The [native input audit](procedural_input_audit.md) now supplies proposed/admitted
+statistics, selected joints, pad/concentration diagnostics, bounded reference QA
+and preview selections. Its create-only runner uses the committed development
+pilot; report projection and calibration review remain pending.
+
 ## Initial distribution: `pd-missions/value-noise-rest-v1`
 
 The first tier is a complete source-pad-rest to target-pad mission with Earth

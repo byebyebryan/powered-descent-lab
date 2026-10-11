@@ -44,7 +44,7 @@ define an exhaustive universe or admission quotas.
 
 Reserve a new create-only output directory. Use seed 20261011031 for layered
 development proposals and 20261011032 for value-noise proposals, each with
-  10,000 scheduled indices and at most eight structural attempts per index.
+10,000 scheduled indices and at most eight structural attempts per index.
 Alternate physical direction by index; random parameter draws are index-local.
 These seeds and all generated previews are exposed development inputs.
 Do not generate held-out inputs until the recipe/admission/metric definitions
@@ -171,9 +171,28 @@ or guaranteed solvability. Document unresolved gaps before input promotion.
   verifies its bound files, native request validation and balanced regular QA
   schedule: 125 rightward and 125 leftward indices per backend. Review corrected
   a stride/parity blind spot before committing or running the full pilot.
-  Input generation remains pending until its declaration commit is complete.
+  Declaration commit `9fc5335` precedes input generation.
   These are exposed development seeds, with zero flight/training allocation and
   no held-out generation or benchmark freeze.
-- Pending: native bounded audit/maintained reporting, the 10,000-index development
+- Native bounded input audit: implemented under its [contract](procedural_input_audit.md).
+  Separate proposed/admitted marginals, joints, observed-pair correlations,
+  conditional directions, overlapping labels/paths, endpoint/pad effects and
+  coarse shape concentration remain independent of admission. Bounded reference
+  and preview selection follows the declared schedule. Review prevents occupied
+  joint cells from starving rare morphology groups within the preview budget.
+- Native audit checks: ten new analytical, empty/constant/missing-statistic,
+  order/coordinate, sampling-budget and saved-input checks pass, including
+  repeated audit equality, excluded-input corruption and unchanged physical
+  bytes under finer reference QA. Six runner checks join the eleven historical
+  audit checks; create-only dangling paths fail before build/generation.
+  All eighteen maintained checks pass with source unchanged during the
+  [gate](../outputs/procedural-challenge/run-20261011T092340Z-input-audit/gate.log)
+  ([result](../outputs/procedural-challenge/run-20261011T092340Z-input-audit/gate-result.json)).
+  [Release validation](../outputs/procedural-challenge/run-20261011T092340Z-input-audit/frontdoor-validation.json)
+  preflights both complete 10,000-index requests without generation, then verifies
+  small seed-981 audits for both backends, population reconciliation and refusal
+  to reuse an artifact before recording further exposure. Reserved pilot seeds
+  have not yet been generated.
+- Pending: maintained coverage reporting, the 10,000-index development
   stream per backend, resolution/joint coverage review, and the separate
   freeze/comparison-budget readiness record.

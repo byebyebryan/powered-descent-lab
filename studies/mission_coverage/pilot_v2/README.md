@@ -35,7 +35,10 @@ normalized and original direction retained as metadata. Candidate queues are
 ordered marginal extremes/10th/50th/90th percentiles, occupied joint cells,
 morphology groups (including mixed/unclassified), and admission boundaries.
 Each queue breaks ties by index; take one unseen input from each nonempty queue
-in that order per round until the union reaches its budget. Mission navigation
+in that order per round until the union reaches its budget. Use one outer queue
+per marginal axis, joint pair, morphology group and the
+boundary ordering. Occupied cells take turns inside their joint queue, so many
+cells cannot starve rare morphology groups within the preview budget. Navigation
 is collection → morphology group → measured band → mission, one open band and
 twelve rows per page. Full summary counts and bounded preview counts must remain
 distinguishable. Labels/bands/display never change collection membership.

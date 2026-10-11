@@ -7,6 +7,11 @@ The committed [V2 pilot declaration](pilot_v2/README.md) owns the next input-onl
 calibration. Its native recipes and metric/admission/projection specs are distinct
 from this historical saved-input audit. No new flights or training are scheduled.
 
+`run_pilot_v2.py --plan` inspects that declaration without generation.
+The [native audit workflow](../../docs/procedural_input_audit.md) owns the
+create-only collection/QA run; the script orchestrates native tools without
+implementing another terrain generator or controller.
+
 `audit.py` reads saved manifest-bound missions, authenticates selected file
 bytes and emits geometry summaries to stdout. It runs no generator, strategy,
 flight, native replay or external game code, and writes no files. The default

@@ -77,6 +77,10 @@ and the [implementation loop](procedural_challenge_execution.md) for input-pilot
 native/Python episode parity for the [V2 proposal frontdoors](procedural_generation_v2.md).
 It does not install a bridge into the RL environment or allocate training.
 
+The [native input audit](procedural_input_audit.md) has ten statistical,
+selection, coordinate and saved-input checks. The coverage study's Python checks
+also validate the bounded runner's declaration, scope and create-only boundaries.
+
 ## Optional retained flight regression
 
 Only when local accepted evidence is available and flight-affecting changes

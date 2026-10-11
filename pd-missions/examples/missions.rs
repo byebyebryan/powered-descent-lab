@@ -14,6 +14,24 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Operation {
+    /// Validate complete V2 input/audit declarations without generating inputs.
+    CheckV2 {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        audit_spec: Option<PathBuf>,
+    },
+    /// Inspect every saved V2 proposal; bounded reference QA and no flights.
+    AuditV2 {
+        #[arg(long)]
+        collection: PathBuf,
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        usage_id: String,
+    },
     /// Reserve a challenging V2 collection from its complete serialized request.
     Collect {
         #[arg(long)]
@@ -262,6 +280,63 @@ fn characterize(
 
 fn main() -> Result<(), String> {
     match Args::parse().command {
+        Operation::CheckV2 {
+            request,
+            audit_spec,
+        } => {
+            let mut request: CollectionRequestV2 =
+                serde_json::from_slice(&proposal_json(&request)?).map_err(|e| e.to_string())?;
+            request.indices.sort_unstable();
+            request.validate()?;
+            if let Some(path) = audit_spec {
+                let spec: InputAuditSpecV1 =
+                    serde_json::from_slice(&proposal_json(&path)?).map_err(|e| e.to_string())?;
+                spec.validate(&request)?;
+            }
+            println!(
+                "Validated V2 declarations for {} scheduled indices; no generation",
+                request.indices.len()
+            );
+        }
+        Operation::AuditV2 {
+            collection,
+            spec,
+            output,
+            usage_id,
+        } => {
+            let spec: InputAuditSpecV1 =
+                serde_json::from_slice(&proposal_json(&spec)?).map_err(|e| e.to_string())?;
+            let manifest = read_collection_manifest_v2(&collection)?;
+            spec.validate(&manifest.request)?;
+            // Reserve the artifact before exposure or expensive inspection.
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&output)
+                .map_err(|e| format!("reserve audit {}: {e}", output.display()))?;
+            record_collection_usage(
+                &collection,
+                &usage_id,
+                CollectionExposureV1::InputInspection,
+                "Complete saved-input coverage audit and bounded reference QA; exposed development geometry",
+            )?;
+            let audit = audit_collection_v2(&collection, spec)?;
+            let bytes = json_bytes(&audit)?;
+            if bytes.len() > 128 * 1024 * 1024 {
+                return Err("audit artifact exceeds bounded size".into());
+            }
+            file.write_all(&bytes)
+                .and_then(|_| file.sync_all())
+                .map_err(|e| e.to_string())?;
+            println!(
+                "Audited {} resolved proposals, {} admitted inputs, {} reference QA inputs, {} preview selections",
+                audit.proposed.count,
+                audit.admitted.count,
+                audit.reference_qa.len(),
+                audit.preview_indices.len()
+            );
+        }
         Operation::Collect { request, output } => {
             let request: CollectionRequestV2 =
                 serde_json::from_slice(&proposal_json(&request)?).map_err(|e| e.to_string())?;
