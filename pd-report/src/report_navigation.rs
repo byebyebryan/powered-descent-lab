@@ -1196,6 +1196,10 @@ fn entry_row_with_links(
 }
 
 fn page(title: &str, heading: &str, intro: &str, body: &str) -> String {
+    let body = format!(
+        "{body}<style>.mission-report-group,.subject-secondary{{margin:18px 0;border:1px solid var(--line);border-radius:12px;padding:14px}}.mission-report-group>summary,.subject-secondary>summary{{cursor:pointer;font-weight:700}}.mission-report-count{{font-size:.8rem;color:var(--muted);margin-left:12px}}.mission-report-group[hidden]{{display:none}}@media(min-width:1000px){{.mission-core-grid{{grid-template-columns:repeat(3,minmax(0,1fr))}}}}</style><script>{}</script>",
+        include_str!("mission_navigation.js")
+    );
     format!(
         r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title><style>{CSS}</style></head><body><main class="page"><header class="hero"><a class="brand" href="/reports/index.html">Powered Descent Lab · Reports</a><h1>{}</h1><p>{}</p></header>{}<footer><a href="/reports/index.html">Reports home</a><a href="/reports/library/index.html">Browse all reports</a><a href="/reports/data/index.html">Raw data</a></footer></main></body></html>"#,
         escape_html(title),

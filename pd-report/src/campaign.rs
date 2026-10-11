@@ -184,8 +184,58 @@ fn render_campaign_with_links(
     let headers = "<th>Mission / saved flight</th><th>Outcome / stop</th><th>Flight time</th><th>Fuel remaining</th><th>Evidence</th>";
     let mut coverage_rows = String::new();
     let mut tree_rows = String::new();
+    let mut families = BTreeMap::new();
+    let mut directions = BTreeMap::new();
     for (ordinal, (label, rows)) in groups.iter().enumerate() {
         let group = format!("campaign-group-{ordinal}");
+        let example = rows[0];
+        let mut parent = String::new();
+        for depth in 0..2 {
+            let key = if depth == 0 {
+                example.terrain_family.clone()
+            } else {
+                format!("{}/{}", example.terrain_family, example.direction)
+            };
+            let ids = if depth == 0 {
+                &mut families
+            } else {
+                &mut directions
+            };
+            let new_id = format!("campaign-axis-{depth}-{}", ids.len());
+            if !ids.contains_key(&key) {
+                let axis_rows: Vec<_> = page
+                    .attempts
+                    .iter()
+                    .filter(|r| {
+                        r.terrain_family == example.terrain_family
+                            && (depth == 0 || r.direction == example.direction)
+                    })
+                    .collect();
+                let landed = axis_rows
+                    .iter()
+                    .filter(|r| page.integrity_passed && verified(r))
+                    .count();
+                let axis_label = if depth == 0 {
+                    family_label(&example.terrain_family)
+                } else if example.direction < 0 {
+                    "Travel left"
+                } else if example.direction > 0 {
+                    "Travel right"
+                } else {
+                    "Vertical"
+                };
+                let parent_attr = if depth == 0 {
+                    String::new()
+                } else {
+                    format!(" data-parent=\"{parent}\"")
+                };
+                tree_rows.push_str(&batch::render_row(Some("summary-row"),
+                    &format!("data-group=\"{new_id}\" data-kind=\"{}\" data-depth=\"{depth}\"{parent_attr} aria-expanded=\"false\" tabindex=\"0\"", if depth == 0 { "family" } else { "direction" }),
+                    &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",escape(axis_label),axis_rows.len())));
+                ids.insert(key.clone(), new_id);
+            }
+            parent = ids[&key].clone();
+        }
         let landed = if page.integrity_passed {
             rows.iter().filter(|r| verified(r)).count()
         } else {
@@ -200,11 +250,11 @@ fn render_campaign_with_links(
             ),
         ));
         tree_rows.push_str(&batch::render_row(Some("summary-row"),
-            &format!("data-group=\"{group}\" data-kind=\"group\" data-depth=\"0\" aria-expanded=\"false\" tabindex=\"0\""),
-            &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",escape(label),rows.len())));
+            &format!("data-group=\"{group}\" data-parent=\"{parent}\" data-kind=\"stratum\" data-depth=\"2\" aria-expanded=\"false\" tabindex=\"0\""),
+            &format!("<td><span class=\"expander\">+</span> Terrain stratum {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>",rows[0].terrain_stratum,rows.len())));
         for row in rows {
             tree_rows.push_str(&batch::render_row(Some("campaign-row"),
-                &format!("data-parent=\"{group}\" data-depth=\"1\" data-outcome=\"{}\" data-search=\"{}\"",campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,label))),
+                &format!("data-parent=\"{group}\" data-depth=\"3\" data-outcome=\"{}\" data-search=\"{}\"",campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,label))),
                 &format!("<td class=\"tree-label\">{}</td><td>{}</td><td>{} s</td><td>{} kg</td><td>{}</td>",
                     campaign_view::render_mission_cell(row),campaign_view::render_outcome_cell(row,page.integrity_passed),number(row.sim_time_s),number(row.fuel_kg),campaign_view::render_evidence_cell(row,page.integrity_passed))));
         }
@@ -220,7 +270,7 @@ fn render_campaign_with_links(
     );
     let tree = batch::render_review_tree_section(
         &batch_tree::render_controls("Attempts", false),
-        "<p>Expand a coverage group to inspect every scheduled attempt and its saved native evidence.</p>",
+        "<p>Terrain family → travel direction → terrain stratum → mission and saved flight.</p>",
         &batch::render_review_tree_table("procedural-campaign", headers, &tree_rows),
     );
     let config = escape(&serde_json::to_string_pretty(&page.agent).map_err(|e| e.to_string())?);
@@ -244,7 +294,7 @@ fn render_campaign_with_links(
             "<span class=\"chip\"><strong>{landings}/{scheduled}</strong> verified target landings</span>"
         ),
         actions_html: &actions,
-        before_hero_html: &format!("<style>{}</style>{}", campaign_view::STYLE,collection_href.map_or_else(String::new,|href|format!("<nav class=\"review-detail-nav\"><a href=\"{}\">Back to paired comparison</a></nav>",escape(href)))),
+        before_hero_html: &format!("<style>{}</style>{}", campaign_view::STYLE,collection_href.map_or_else(String::new,|href|format!("<nav class=\"review-detail-nav\"><a href=\"{}\">Back to mission collection</a></nav>",escape(href)))),
         after_hero_html: "",
         overview_html: &overview,
         planner_html: "",
@@ -258,8 +308,8 @@ fn render_campaign_with_links(
         appendix_html: &format!("<script>{}</script>", campaign_view::SCRIPT),
         body_class: "procedural-campaign campaign-view",
         tree: batch::BatchTreeOptions {
-            max_depth: 1,
-            depth_by_kind: &[("group", 0)],
+            max_depth: 3,
+            depth_by_kind: &[("family", 0), ("direction", 1), ("stratum", 2)],
             leaf_selector: "tr.campaign-row",
             default_expansion: 0,
         },
@@ -321,7 +371,7 @@ mod tests {
         let edition =
             render_campaign_edition_page(&page, "campaign-input.json", "report.html").unwrap();
         assert!(edition.contains("href=\"campaign-input.json\""));
-        assert!(edition.contains("Back to paired comparison"));
+        assert!(edition.contains("Back to mission collection"));
         assert!(render_campaign_edition_page(&page, "../other.json", "report.html").is_err());
         assert!(render_campaign_edition_page(&page, "input.json", "javascript:bad").is_err());
         let mut bad = page;

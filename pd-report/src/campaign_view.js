@@ -18,7 +18,7 @@
     requestAnimationFrame(update);
   };
   new MutationObserver(schedule).observe(root, {
-    subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'aria-expanded'],
+    subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'aria-expanded', 'open'],
   });
   window.PdCampaignPreviews = {loadVisible: schedule};
   document.addEventListener('pd-batch-ready', () => {

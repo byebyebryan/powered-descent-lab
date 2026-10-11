@@ -22,12 +22,15 @@ later code and documentation housekeeping does not create a new flight capture.
 ## Report presentation refinement
 
 The [refinement plan](report_presentation_refinement_plan.md) repairs missing
-procedural mission previews and restores direct paired-mission review through
-the maintained tree and rich detail templates. Outcome visualizations and review
-actions come first; coverage, configuration and evidence stay accessible. This
+procedural mission previews and restores direct mission review through
+the maintained tree and rich detail templates. Mission structure and previews
+lead; outcomes, comparison, coverage and evidence stay accessible. This
 is the completed usability pass; its
 [run record](report_presentation_refinement_results.md) links the full rendered
 edition and desktop/phone browser acceptance. Existing report/navigation/server work remains separately owned.
+The owner's follow-up [mission hierarchy correction](report_mission_hierarchy_results.md)
+restores mission structure as the primary navigation in report trees and the
+report home/library; controller comparisons remain secondary.
 
 ## Independent approach platform
 

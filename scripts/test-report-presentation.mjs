@@ -57,3 +57,24 @@ test('detail navigation rejects an external return URL and filters neighbours',a
   await run('https://outside.example/report.html');
   assert.equal(back.href,'/edition/report.html#mission-0');
 });
+
+test('parent family and direction focus preserve descendants and repeats',()=>{
+  const nested={...mission,path:['family-0','direction-0','coverage-0']};
+  assert(matches(nested,{...all,group:'family-0'}));
+  assert(matches(nested,{...all,group:'direction-0',outcome:'landed',approach:'1'}));
+  assert(!matches(nested,{...all,group:'direction-1'}));
+  assert(matches({...nested,occurrence:1},{...all,group:'family-0'}));
+});
+
+test('report navigation groups known input collections, independently of controller results',()=>{
+  const ctx=vm.createContext({});
+  vm.runInContext(readFileSync(new URL('../pd-report/src/mission_navigation.js',import.meta.url),'utf8'),ctx);
+  const {family}=ctx.PdMissionNavigationModel;
+  assert.equal(family('/reports/eval/terminal_bot_lab_suite/index.html'),'terminal');
+  assert.equal(family('/reports/eval/transfer_route_angle_radius_suite/index.html'),'transfer');
+  assert.equal(family('/reports/eval/transfer_waypoint_sequence_route_angle_radius_smoke/index.html'),'waypoint');
+  assert.equal(family('/procedural-learning/run/held-out-evaluation/report.html'),'procedural');
+  assert.equal(family('/reports/eval/procedural-learning/presentation/report.html'),'procedural');
+  assert.equal(family('/eval/planner_v2_random_terrain/capture/index.html'),'planner');
+  assert.equal(family('/reports/eval/unknown_study/index.html'),'other');
+});

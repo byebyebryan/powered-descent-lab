@@ -84,3 +84,26 @@
 .outcome-cards { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 10px 0; }
 .outcome-cards .outcome-card { margin: 0; min-width: 0; }
 @media(max-width:900px) { .outcome-cards { grid-template-columns: 1fr; } }
+
+/* Mission dimensions precede controller children in the procedural review. */
+.paired-table { min-width: 850px; }
+.paired-table th:first-child { width: 300px; }
+.paired-group-row > td:first-child,
+.paired-mission-row > td:first-child { padding-left: calc(14px + var(--mission-depth,0) * 12px); }
+.paired-group-row[data-kind="direction"] { background: #f3eee5; }
+.paired-group-row[data-kind="stratum"] { background: #f8f4ed; font-weight: 600; }
+.paired-attempt-row > td:first-child { padding-left: 62px; }
+.paired-mission-row .mission-preview { display: block; width: 190px; max-width: 100%; margin-top: 8px; }
+.paired-mission-row .mission-preview img { display: block; width: 100%; height: auto; }
+.mission-context-row { background: #f8f4ed; }
+.mission-path { display: block; color: var(--muted); font-size: .8rem; margin-bottom: 8px; }
+.controller-overview, .comparison-options { margin: 10px 0; }
+.controller-overview > summary, .comparison-options > summary,
+.mission-comparison > summary { cursor: pointer; font-weight: 600; }
+.mission-comparison .paired-previews { margin-top: 12px; }
+@media(max-width:700px) {
+  .paired-table th:first-child { width: 200px; }
+  .paired-group-row > td:first-child,
+  .paired-mission-row > td:first-child { padding-left: calc(8px + var(--mission-depth,0) * 7px); }
+  .paired-attempt-row > td:first-child { padding-left: 36px; }
+}

@@ -54,6 +54,9 @@ fallback. The linked 2,048-mission/five-approach edition has ten campaign compan
 and 10,240 detail pages, with desktop/phone and preservation acceptance. Original
 physics, evidence, accepted selectors and other-writer navigation/server work
 remain unchanged. See the [presentation workflow](report_presentations.md).
+The owner's follow-up [hierarchy correction](report_mission_hierarchy_results.md)
+makes mission structure primary in the tree and home/library navigation;
+controller comparisons are secondary within that structure.
 
 ### Active planner evaluation and reporting
 

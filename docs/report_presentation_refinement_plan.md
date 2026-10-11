@@ -10,6 +10,13 @@ This document scopes the presentation and quality-of-life pass.
 Reports are the lab's main inspection interface for individual flights and whole
 experiments. Their usability is a product requirement, not optional polish.
 
+Owner review correction: mission hierarchy takes precedence over controller
+comparison, in both the report tree and report navigation. The
+[hierarchy refinement](report_mission_hierarchy_results.md) supersedes the
+comparison-first attention criteria below. Preserve each corpus's meaningful
+input axes; controller results are children or optional comparisons within a
+mission, rather than the organizing principle of the report.
+
 ## Goal and attention flow
 
 Make it easy to answer, in order: what happened overall, which missions need
@@ -20,7 +27,7 @@ system. Retain the established palette, tree interactions and rich detail pages.
 | Surface | First impression | Main inspection | Secondary detail |
 | --- | --- | --- | --- |
 | Batch / campaign | Population, landing rate and outcome distribution | Focused mission tree with terrain/flight previews | Coverage, performance, configuration and receipts |
-| Paired comparison | Each approach's outcomes on the same population | Same mission, different approaches, aligned previews | Stratified coverage, descriptors and pairing evidence |
+| Multi-approach collection | Mission population and meaningful input hierarchy | Mission structure and saved-flight previews, with selectable results | Controller outcome comparisons, stratified coverage and pairing evidence |
 | Flight detail | Outcome, actual stop and key endpoint/contact measurements | Prominent trajectory, terrain and linked time plots | Sample inspection, events, optional planner/controller diagnostics and raw artifacts |
 
 Aggregate pages should lead with a compact overview and a visual outcome

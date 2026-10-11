@@ -9,20 +9,35 @@ planner, solver or learning package. Existing projections remain readable;
 optional versioned preview metadata adds terrain, recorded flight and endpoint
 context when available. Missing data stays explicitly unavailable.
 
-## Read a procedural comparison
+## Browse missions first
+
+The report home leads with terminal control, direct transfers and complete
+procedural terrain. Authored waypoint routes and planner probes remain separate
+approach-specific diagnostics. The library groups saved reports by mission
+family; discovery, search, availability and ordering still work within those
+groups. Approach/subject navigation and recent reports remain available below
+the mission entrypoints.
+
+## Read a procedural mission collection
 
 Outcome bars count every scheduled attempt, including unsupported and failed
 attempts. Integrity and complete replay are reported separately. Only the complete
 physical/mission/execution/integrity/replay tuple qualifies as a verified landing.
-Click an outcome or a review shortcut to select missions, then expand a coverage
-group and a mission. Every approach remains available for that input. Compare A/B
-selects two previews with shared axes; it does not select the best repeat.
+The review tree preserves terrain family → travel direction → terrain stratum
+→ individual mission. Each mission row has a saved-flight preview and the result
+for **Show results for**, which defaults to the first declared approach rather
+than choosing a winner. Expand a mission for its controller attempts. Controller
+outcome bars and paired preview comparisons are optional disclosures; they do
+not replace the mission hierarchy. Compare A/B uses shared axes without choosing
+the best repeat. Existing synthetic trees retain their applicable mission,
+arrival/route, condition, vehicle, arc, velocity and seed structure.
 
 Coverage cells focus their exact family, direction, stratum and approach. Search
 accepts a mission number, terrain label or physical identity. The URL retains
 filters, comparison choices, open groups and the selected mission. Detail links
 restore that context; previous/next follows matched missions for the same
-approach. Unsupported details show terrain and the target without inventing a
+approach. Family/direction focus includes descendants and repeated occurrences.
+Unsupported details show terrain and the target without inventing a
 flight. Recorded but unstarted episodes are a separate outcome.
 
 Rich details lead with outcome and endpoint context, then the trajectory and time
@@ -86,7 +101,8 @@ rtk proxy node scripts/check-report-presentation.mjs \
   --output-dir NEW_BROWSER_RECEIPT_DIRECTORY
 ```
 
-It checks desktop/mobile accounting, lazy previews, exact coverage focus,
+It checks desktop/mobile mission hierarchy, mission-first home/library navigation,
+accounting, lazy previews, exact coverage focus,
 filter/search behavior, shared mission review, context round trips, rich tools,
 unsupported status and deliberately blocked Plotly fallback. Screenshots and
 five warm interaction timings per viewport are retained with the receipt.

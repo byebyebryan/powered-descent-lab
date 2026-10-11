@@ -263,7 +263,7 @@ fn main() -> Result<()> {
             let source_campaign_href =
                 format!("{base}{}", original.approaches[a].campaigns[c].report_href);
             let nav = format!(
-                "<nav class=\"review-detail-nav\" aria-label=\"Paired mission navigation\"><a href=\"{edition}report.html#{}\" data-back-review>Back to paired review</a><a href=\"#\" data-review-previous hidden>Previous matched mission</a><a href=\"#\" data-review-next hidden>Next matched mission</a><a href=\"{}\">Original campaign</a></nav>",
+                "<nav class=\"review-detail-nav\" aria-label=\"Paired mission navigation\"><a href=\"{edition}report.html#{}\" data-back-review>Back to mission review</a><a href=\"#\" data-review-previous hidden>Previous matched mission</a><a href=\"#\" data-review-next hidden>Next matched mission</a><a href=\"{}\">Original campaign</a></nav>",
                 mission.id,
                 pd_report::escape_html(&source_campaign_href)
             );
@@ -417,7 +417,7 @@ fn main() -> Result<()> {
         )
     } else {
         format!(
-            "Procedural mission comparison · {} missions / {} approaches",
+            "Procedural terrain missions · {} inputs / {} approaches",
             review.missions.len(),
             review.labels.len()
         )

@@ -30,16 +30,25 @@ export async function checkPresentation({rootUrl,cdpUrl,editionPath,outputDir}) 
       await client.send('Emulation.setDeviceMetricsOverride',{...size,deviceScaleFactor:1});
       const report=new URL('report.html',base).href;
       await navigate(report);await wait('!!window.PdPairedReview');await noOverflow(size.name);
-      const initial=await client.evaluate('({missions:PdPairedReview.data.missions.length,groups:PdPairedReview.data.groups.length,rows:document.querySelectorAll("#review-tree-root tbody tr").length,images:document.querySelectorAll("#review-tree-root img[src]").length,cards:[...document.querySelectorAll(".outcome-card")].map(c=>c.innerText),order:[...document.querySelectorAll("#report-page > section,#report-page > details")].map(e=>e.className)})');
-      assert.equal(initial.missions,receipt.scheduled_missions);assert.equal(initial.rows,initial.groups);assert.equal(initial.images,0);
-      if(!size.mobile) assert(await client.evaluate('[...document.querySelectorAll(".outcome-card")].every(c=>c.getBoundingClientRect().bottom<=innerHeight)'), 'all approach outcomes should fit above the desktop fold');
+      const initial=await client.evaluate('({missions:PdPairedReview.data.missions.length,groups:PdPairedReview.data.groups.length,families:PdPairedReview.data.branches.filter(b=>b.parent===null).length,rows:document.querySelectorAll("#review-tree-root tbody tr").length,images:document.querySelectorAll("#review-tree-root img[src]").length,cards:[...document.querySelectorAll(".outcome-card")].map(c=>c.textContent),order:[...document.querySelectorAll("#report-page > section,#report-page > details")].map(e=>e.className)})');
+      assert.equal(initial.missions,receipt.scheduled_missions);assert.equal(initial.rows,initial.families);assert.equal(initial.images,0);
+      assert(await client.evaluate('!document.querySelector(".controller-overview").open&&document.querySelectorAll(".paired-attempt-row").length===0'), 'controller comparison should be secondary');
+      assert(await client.evaluate('[...document.querySelectorAll("[data-paired-group]")].every(r=>r.dataset.kind==="family")'));
+      await client.evaluate('document.querySelector("[data-paired-group]").click()');
+      assert(await client.evaluate('document.querySelectorAll("[data-kind=direction]").length>0&&document.querySelectorAll("[data-paired-mission]").length===0'));
+      await client.evaluate('document.querySelector("[data-kind=direction]").click()');
+      assert(await client.evaluate('document.querySelectorAll("[data-kind=stratum]").length>0&&document.querySelectorAll("[data-paired-mission]").length===0'));
+      await client.evaluate('document.querySelector("[data-kind=stratum]").click();document.querySelector("[data-paired-mission]").scrollIntoView({block:"center"})');
+      await wait('[...document.querySelectorAll(".mission-preview img")].some(i=>i.complete&&i.naturalWidth>0)');
+      assert(await client.evaluate('document.querySelectorAll(".paired-attempt-row").length===0'));
+      await screenshot(`${size.name}-mission-hierarchy.png`);
       assert(initial.order.findIndex(c=>c.includes('review-tree'))<initial.order.findIndex(c=>c.includes('paired-coverage')));
       expected.forEach((e,i)=>assert(initial.cards[i].includes(`${e.landed}/${e.total}`),`accounting: ${e.label}`));
       await screenshot(`${size.name}-outcomes.png`);
       const focus=await client.evaluate('(()=>{const b=document.querySelector("[data-paired-focus]");b.closest("details").open=true;b.click();return {group:b.dataset.pairedFocus,approach:b.dataset.approach,expected:PdPairedReview.data.missions.filter(m=>m.group===b.dataset.pairedFocus).length}})()');
       const actual=await client.evaluate('({group:PdPairedReview.state.group,approach:PdPairedReview.state.approach,groups:document.querySelectorAll("[data-paired-group]").length,missions:document.querySelectorAll("[data-paired-mission]").length})');
-      assert.equal(actual.group,focus.group);assert.equal(actual.approach,focus.approach);assert.equal(actual.groups,1);assert.equal(actual.missions,focus.expected);
-      await client.evaluate('document.querySelector("[data-paired-mission]").click();document.querySelector(".paired-preview-row").scrollIntoView({block:"start"})');
+      assert.equal(actual.group,focus.group);assert.equal(actual.approach,focus.approach);assert.equal(actual.groups,3);assert.equal(actual.missions,focus.expected);
+      await client.evaluate('document.querySelector("[data-paired-mission]").click();document.querySelector(".mission-comparison").open=true;document.querySelector(".paired-preview-row").scrollIntoView({block:"start"})');
       await wait('[...document.querySelectorAll(".pair-card img")].length===2&&[...document.querySelectorAll(".pair-card img")].every(i=>i.complete&&i.naturalWidth>0)');
       assert.equal(await client.evaluate('document.querySelectorAll("tr.paired-attempt-row").length'),expected.length);await noOverflow(`${size.name}/pair`);
       await screenshot(`${size.name}-paired-mission.png`);
@@ -59,10 +68,10 @@ export async function checkPresentation({rootUrl,cdpUrl,editionPath,outputDir}) 
       const unsupported=await client.evaluate('(()=>{const m=PdPairedReview.data.missions.find(m=>m.attempts.some(a=>a.outcome==="unsupported"));if(!m)return null;return {id:m.id,href:new URL(m.attempts.find(a=>a.outcome==="unsupported").href,location.href).href}})()');
       if(unsupported){await navigate(unsupported.href);assert(await client.evaluate('!document.getElementById("chart-spatial")&&document.body.innerText.includes("No simulator trajectory")'));await noOverflow(`${size.name}/unsupported`);await screenshot(`${size.name}-unsupported.png`);}
       const campaignUrl=new URL(projection.approaches[0].campaigns[0].report_href,base);campaignUrl.searchParams.set('presentation-check',size.name);await navigate(campaignUrl.href);
-      assert(await client.evaluate('!!document.querySelector("[data-batch-template=common-v1]")&&document.body.innerText.includes("Back to paired comparison")'));
+      assert(await client.evaluate('!!document.querySelector("[data-batch-template=common-v1]")&&document.body.innerText.includes("Back to mission collection")'));
       const projectionLink=await client.evaluate('[...document.querySelectorAll(".hero-actions a")].find(a=>a.textContent==="Report projection")?.href');assert(projectionLink&&projectionLink.includes('campaign-a0-c0-input.json'));
       assert.equal(await client.evaluate('document.querySelectorAll("img[src]").length'),0);
-      await client.evaluate('document.querySelector("tr.summary-row").click();document.querySelector("tr.campaign-row:not([hidden])").scrollIntoView({block:"center"})');
+      await client.evaluate('for(let i=0;i<3;i++)document.querySelector("tr.summary-row:not([hidden])[aria-expanded=false]").click();document.querySelector("tr.campaign-row:not([hidden])").scrollIntoView({block:"center"})');
       await wait('[...document.querySelectorAll("tr.campaign-row:not([hidden]) img")].some(i=>i.complete&&i.naturalWidth>0)');await noOverflow(`${size.name}/campaign`);await screenshot(`${size.name}-campaign.png`);
       const camp=await client.evaluate('({previewVisible:[...document.querySelectorAll("tr.campaign-row:not([hidden]) img")].some(i=>i.naturalWidth&&i.getBoundingClientRect().left>=0&&i.getBoundingClientRect().right<=document.documentElement.clientWidth),detail:document.querySelector("tr.campaign-row:not([hidden]) .mission-link").href})');assert(camp.previewVisible);assert(new URL(camp.detail).pathname.startsWith(base.pathname+'details/'));
       await client.evaluate('document.querySelector("[data-review-outcome]").click()');
@@ -73,9 +82,20 @@ export async function checkPresentation({rootUrl,cdpUrl,editionPath,outputDir}) 
     const homeNavigation=[];
     for(const path of ['/', '/reports/']) {
       await navigate(new URL(path,root).href);
+      assert(await client.evaluate('!!document.getElementById("mission-navigation")&&document.getElementById("mission-navigation").compareDocumentPosition(document.getElementById("latest-work"))&Node.DOCUMENT_POSITION_FOLLOWING'));
       const link=await client.evaluate(`[...document.querySelectorAll('a')].find(a=>a.href===${JSON.stringify(new URL('report.html',base).href)})?.href`);
       assert(link,'completed edition missing from report home '+path);
       await navigate(link);await wait('!!window.PdPairedReview');homeNavigation.push(path);
+    }
+    for(const size of [{name:'desktop',width:1440,height:900},{name:'mobile',width:390,height:844}]) {
+      await client.send('Emulation.setDeviceMetricsOverride',{...size,mobile:size.name==='mobile',deviceScaleFactor:1});
+      await navigate(new URL('/reports/',root).href);await noOverflow(size.name+'/home');await screenshot(size.name+'-mission-home.png');
+      await navigate(new URL('/reports/library/index.html?mission=procedural',root).href);
+      assert(await client.evaluate('document.getElementById("mission-filter").value==="procedural"&&[...document.querySelectorAll(".report-row:not([hidden])")].every(r=>r.dataset.mission==="procedural")'));
+      assert(await client.evaluate('document.querySelector("[data-mission-family=procedural]").open'));
+      await noOverflow(size.name+'/library');await screenshot(size.name+'-mission-library.png');
+      await client.evaluate('document.getElementById("order-filter").value="name";document.getElementById("order-filter").dispatchEvent(new Event("change"))');
+      assert(await client.evaluate('[...document.querySelectorAll(".report-row:not([hidden])")].every(r=>r.closest("[data-mission-family=procedural]"))'));
     }
     const ordinaryErrors=client.errors.length;
     await client.send('Network.setBlockedURLs',{urls:['*cdn.plot.ly*']});

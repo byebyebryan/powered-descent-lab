@@ -118,8 +118,16 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             escape(&descriptor)
         ));
     }
+    let incumbent = page
+        .approaches
+        .iter()
+        .position(|a| a.label.to_lowercase().contains("reflection"))
+        .unwrap_or(page.approaches.len() - 1);
+    let shortcuts = format!(
+        "<div class=\"review-shortcuts\"><button type=\"button\" data-review-outcome=\"misses\" data-approach=\"{incumbent}\">Review incumbent misses</button><button type=\"button\" data-review-outcome=\"unsupported\" data-approach=\"all\">Review unsupported inputs</button><button type=\"button\" data-review-outcome=\"not-launched\" data-approach=\"all\">Review stopped before departure</button></div>"
+    );
     let overview = format!(
-        "<section class=\"header-overview\"><h2>Outcomes across all scheduled missions</h2><p class=\"section-note\">Each bar uses the full scheduled denominator. Click an outcome to find those missions. Replay proof is separate from the physical outcome.</p><div class=\"outcome-cards\">{cards}</div><details><summary>Schedule accounting</summary><div class=\"table-wrap\">{}</div></details></section>",
+        "<section class=\"header-overview\"><h2>Complete procedural missions</h2><p class=\"section-note\">Source-pad rest → target-pad landing, with procedural terrain along the complete transfer. Browse the mission structure below, then inspect saved controller results for each input.</p><details class=\"controller-overview\"><summary>Controller outcomes across this mission set</summary>{shortcuts}<p class=\"section-note\">Each bar uses the full scheduled denominator. Click an outcome to find those missions. Replay proof is separate from the physical outcome.</p><div class=\"outcome-cards\">{cards}</div><details><summary>Schedule accounting</summary><div class=\"table-wrap\">{}</div></details></details></section>",
         batch::render_overview_table(
             "<th>Approach</th><th>Scheduled attempts</th><th>Unique physical inputs</th><th>Verified landings</th>",
             &accounting
@@ -159,21 +167,13 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             )
         )
     );
-    let incumbent = page
-        .approaches
-        .iter()
-        .position(|a| a.label.to_lowercase().contains("reflection"))
-        .unwrap_or(page.approaches.len() - 1);
-    let shortcuts = format!(
-        "<div class=\"review-shortcuts\"><button type=\"button\" data-review-outcome=\"misses\" data-approach=\"{incumbent}\">Review incumbent misses</button><button type=\"button\" data-review-outcome=\"unsupported\" data-approach=\"all\">Review unsupported inputs</button><button type=\"button\" data-review-outcome=\"not-launched\" data-approach=\"all\">Review stopped before departure</button></div>"
-    );
     let tree = batch::render_review_tree_section(
         "",
         &crate::paired_review::controls(&review),
         &batch::render_table(
             "scenario-table paired-table",
             "data-tree-table=\"paired-missions\"",
-            "<th>Mission / approach</th><th>Outcome / stop</th><th>Flight / endpoint</th><th>Evidence</th>",
+            "<th>Mission / saved flight</th><th>Outcome / stop</th><th>Flight / endpoint</th><th>Evidence</th>",
             "",
         ),
     );
@@ -199,11 +199,8 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             "<a href=\"#review-tree-root\">Inspect missions</a><a href=\"/\">Report library</a><a href=\"{}\">Experiment provenance</a><a href=\"comparison-input.json\">Report projection</a>",
             escape(&page.provenance_href)
         ),
-        before_hero_html: &format!(
-            "<style>{} .paired-table th:first-child {{ width:230px; }}</style>",
-            crate::campaign_view::STYLE
-        ),
-        after_hero_html: &shortcuts,
+        before_hero_html: &format!("<style>{}</style>", crate::campaign_view::STYLE),
+        after_hero_html: "",
         overview_html: &overview,
         planner_html: "",
         coverage_html: &coverage,
@@ -371,5 +368,56 @@ mod tests {
                 .attempt_index,
             20
         );
+    }
+
+    #[test]
+    fn mission_hierarchy_uses_recorded_axes_and_keeps_controller_attempts_at_leaves() {
+        let mut page = comparison();
+        for approach in &mut page.approaches {
+            let campaign = &mut approach.campaigns[0].page;
+            for (index, family, direction, stratum) in [
+                (1, "pd-missions/value-noise-rest-v1", -1, 2),
+                (2, "pd-missions/layered-perlin-rest-v1", 1, 0),
+            ] {
+                let mut row = campaign.attempts[0].clone();
+                row.physical_sha256 = format!("{index:064x}");
+                row.mission_index = index;
+                row.terrain_family = family.into();
+                row.direction = direction;
+                row.terrain_stratum = stratum;
+                campaign.attempts.push(row);
+            }
+            campaign.unique_scheduled_missions = 3;
+        }
+        let review = crate::paired_review::build(&page).unwrap();
+        assert_eq!(
+            review
+                .branches
+                .iter()
+                .filter(|b| b.parent.is_none())
+                .count(),
+            2
+        );
+        for mission in &review.missions {
+            let path: Vec<_> = mission
+                .path
+                .iter()
+                .map(|id| review.branches.iter().find(|b| &b.id == id).unwrap())
+                .collect();
+            assert_eq!(
+                path.iter().map(|b| b.kind.as_str()).collect::<Vec<_>>(),
+                ["family", "direction", "stratum"]
+            );
+            assert_eq!(path[1].parent.as_ref(), Some(&path[0].id));
+            assert_eq!(path[2].parent.as_ref(), Some(&path[1].id));
+            assert_eq!(path[2].id, mission.group);
+            assert_eq!(mission.attempts.len(), page.approaches.len());
+        }
+        let campaign =
+            crate::campaign::render_campaign_page(&page.approaches[0].campaigns[0].page).unwrap();
+        assert!(campaign.contains("data-kind=\"family\" data-depth=\"0\""));
+        assert!(campaign.contains("data-kind=\"direction\" data-depth=\"1\""));
+        assert!(campaign.contains("data-kind=\"stratum\" data-depth=\"2\""));
+        assert!(campaign.contains("data-depth=\"3\" data-outcome="));
     }
 }

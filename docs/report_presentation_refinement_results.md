@@ -7,6 +7,11 @@ Status: complete, October 10, 2026. The owner authorized the implementation goal
 and milestone commits. The delivered create-only edition covers the retained
 2,048-mission/five-approach comparison, with desktop and phone acceptance.
 
+The owner's subsequent review found the flattened tree and comparison-first
+navigation too disruptive. The [mission hierarchy correction](report_mission_hierarchy_results.md)
+supersedes that presentation; this record retains the original pass's delivery
+and measurements.
+
 ## Baseline
 
 Starting source is `952176568b2b0fe1a11ec0765961e3c276a2e321`. The three planning
