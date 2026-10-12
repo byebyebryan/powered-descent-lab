@@ -112,8 +112,8 @@ remains a separately scoped follow-up.
 
 ## Reports and retained verification
 
-The latest [layered browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r4/report.html)
-and [value browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r4/report.html)
+The latest [layered browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r5/report.html)
+and [value browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r5/report.html)
 add the [focused browsing refinement](report_mission_browsing_qol_results.md)
 with unchanged results and evidence. The original verified editions below remain
 retained as the initial reporting checkpoint.

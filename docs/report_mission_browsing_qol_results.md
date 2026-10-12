@@ -8,8 +8,10 @@ October 11, 2026. The owner found the browsing entry ambiguous and noted that
 collapsed sibling groups accumulated above the active group, separating it from
 the group controls. Presentation commit `df03dac` makes the current mission group
 the primary browsing surface while retaining the full mission hierarchy.
+The [r5 correction](#view-preservation-and-local-collapse-r5) below preserves the
+chosen tree view during navigation and fixes branch collapse.
 
-## Behavior
+## Initial behavior (r4)
 
 - **Start browsing** opens the first matching group. **Resume browsing** returns
   to the current group and page; it does not restart or advance the collection.
@@ -28,7 +30,7 @@ the primary browsing surface while retaining the full mission hierarchy.
 - Twelve mission occurrences per page, viewport preview loading, rich details,
   physical-direction metadata and context-preserving returns remain in place.
 
-## Current editions
+## Retained editions (r4)
 
 | Backend | Mission review | Scheduled attempts | Rich details | Unsupported statuses |
 | --- | --- | ---: | ---: | ---: |
@@ -62,3 +64,41 @@ Screenshots retain the last group and navigation while scrolling.
 The [maintained gate log](../outputs/procedural-challenge/baseline-20261011T181000Z/browsing-development-gate.log)
 records all 18 checks passing, including 85 Node tests. Source-fixture tests cover
 V1 and V2 hierarchy visibility without requiring retained campaign evidence.
+
+## View preservation and local collapse (r5)
+
+Presentation commit `0d2ce86`. The owner confirmed two views of the same
+hierarchy: the full tree and the focused current group. Previous/next group
+controls, the group selector and
+Resume browsing now preserve that view. The view survives reload and a return
+from a rich detail page.
+
+The **−** control previously cleared the entire open path when closing its active
+branch. It now closes only that branch and its descendants. Parent levels and
+unrelated expanded branches remain open. Current group/page selection survives
+collapse, reopening and reload, including a fully collapsed family. Resume
+browsing reopens the current path without resetting its page. The matched-count
+caption identifies a collapsed current group instead of claiming visible rows.
+
+Latest reports: [layered](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r5/report.html)
+and [value](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r5/report.html).
+These are fresh presentation editions of the same saved campaign; the r4
+reports and their evidence remain retained.
+
+The [layered browser check](../outputs/procedural-challenge/baseline-20261011T181000Z/browser-layered-tree-modes-r5-2/browser-result.json)
+and [value browser check](../outputs/procedural-challenge/baseline-20261011T181000Z/browser-value-tree-modes-r5-2/browser-result.json)
+pass at desktop and mobile sizes. They exercise the actual expanders at all
+three levels, previous/next controls in both views, the full-tree selector and
+footer, collapse/reopen on page two, reload with collapsed branches, Resume and
+rich-detail return. All 11 layered and 12 value groups remain reachable with
+at most twelve mission rows per page and three hierarchy rows in focused mode.
+Both receipts contain 14 screenshots and no browser errors.
+
+The [preservation receipt](../outputs/procedural-challenge/baseline-20261011T181000Z/tree-modes-preservation-r5.json)
+binds the source checkpoint, renderer and browser receipts. Compared with r4,
+the report input and navigation files are byte-identical; capture bindings,
+saved rich payloads, preview hashes, shared bounds, campaign proofs and outcome
+counts match. It records zero new flights and zero new replays. The
+[development gate log](../outputs/procedural-challenge/baseline-20261011T181000Z/tree-modes-development-gate.log)
+records all 18 checks passing, including 86 Node tests. Final documentation-link
+and whitespace checks also pass.
