@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const context=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../pd-report/src/paired_model.js',import.meta.url),'utf8'),context);
-const {matches,normalizeScope,pageMissions,pageSize}=context.PdPairedReviewModel;
+const {matches,normalizeScope,pageMissions,pageSize,visibleBranches}=context.PdPairedReviewModel;
 const mission={id:'mission-0',mission_index:5,direction:-1,path:['family-0','stratum-0'],label:'Value noise · left · stratum 0',group:'coverage-0',physical_sha256:'abcdef01234',attempts:[{approach:0,outcome:'timed-out'},{approach:1,outcome:'landed'},{approach:2,outcome:'unsupported'}]};
 const all={q:'',group:'',outcome:'all',approach:'all',direction:'all'};
 
@@ -119,6 +119,30 @@ test('family and merged stratum focus preserve descendants and repeats',()=>{
   assert(matches(nested,{...all,group:'stratum-0',outcome:'landed',approach:'1'}));
   assert(!matches(nested,{...all,group:'stratum-1'}));
   assert(matches({...nested,occurrence:1},{...all,group:'family-0'}));
+});
+
+test('browsing every V2 group keeps only its hierarchy without accumulating siblings',()=>{
+  const branches=[{id:'family-0',parent:null},...Array.from({length:50},(_,i)=>[
+    {id:`morphology-${i}`,parent:'family-0'},
+    {id:`band-${i}`,parent:`morphology-${i}`}
+  ]).flat()];
+  const before=JSON.stringify(branches);
+  for(let i=0;i<50;i++){
+    const visible=visibleBranches(branches,`band-${i}`);
+    assert.deepEqual(Array.from(visible,b=>b.id),['family-0',`morphology-${i}`,`band-${i}`]);
+  }
+  assert.equal(JSON.stringify(branches),before);
+  assert.equal(visibleBranches(branches,'band-49',true),branches);
+});
+
+test('overview, group picker and legacy strata retain their complete hierarchy',()=>{
+  const branches=[{id:'family-0',parent:null},{id:'stratum-0',parent:'family-0'},
+    {id:'family-1',parent:null},{id:'stratum-1',parent:'family-1'}];
+  assert.equal(visibleBranches(branches),branches);
+  assert.equal(visibleBranches(branches,'missing'),branches);
+  assert.equal(visibleBranches(branches,'stratum-1',true),branches);
+  assert.deepEqual(Array.from(visibleBranches(branches,'stratum-1'),b=>b.id),['family-1','stratum-1']);
+  assert(matches({...mission,path:['family-1','stratum-1']},{...all,group:'stratum-1'}));
 });
 
 test('report navigation groups known input collections, independently of controller results',()=>{

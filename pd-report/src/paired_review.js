@@ -1,6 +1,6 @@
 /* Mission hierarchy owns navigation; controller attempts are mission children. */
 (() => {
-  const {matches, normalizeScope, pageMissions} = globalThis.PdPairedReviewModel;
+  const {matches, normalizeScope, pageMissions, visibleBranches} = globalThis.PdPairedReviewModel;
   if (typeof document === 'undefined') return;
   const start = () => {
     const dataNode = document.getElementById('paired-review-data');
@@ -10,9 +10,12 @@
     const tbody = root.querySelector('tbody');
     const browser = document.createElement('nav');
     browser.className='mission-browser';browser.setAttribute('aria-label','Browse mission strata');
-    document.getElementById('review-count').after(browser);
+    const browserAnchor = document.createElement('div');browserAnchor.className='mission-browser-anchor';
+    document.getElementById('review-count').after(browserAnchor);browserAnchor.after(browser);
     const footer = document.createElement('nav');
-    footer.className='mission-browser mission-browser-footer';footer.setAttribute('aria-label','Mission pages');root.after(footer);
+    footer.className='mission-browser mission-browser-footer';footer.setAttribute('aria-label','Mission group and page navigation');root.after(footer);
+    const revealBrowser = () => browserAnchor.scrollIntoView({block:'start'});
+    const startButton = document.querySelector('[data-paired-depth="3"]');
     const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const controls = Object.fromEntries(['q','outcome','approach','direction','view','a','b'].map(key => [key,document.getElementById(key==='q'?'review-search':'review-'+key)]));
     const params = new URLSearchParams(location.search);
@@ -54,13 +57,13 @@
       const link=detailHref(attempt,mission);
       return `<article class="pair-card"><strong>${esc(data.labels[attempt.approach])}</strong><span class="outcome-badge outcome-${esc(attempt.outcome)}">${esc(controls.outcome.querySelector(`option[value="${attempt.outcome}"]`)?.textContent || attempt.outcome)}</span>${link?`<a class="run-preview" href="${link}">${preview(attempt)}</a>`:preview(attempt)}<p class="preview-caption muted">${esc(attempt.caption)}</p></article>`;
     };
-    let available=[], pageInfo=pageMissions([]);
+    let available=[], pageInfo=pageMissions([]), showGroupTree=false;
     const chooseStratum = id => {
-      leaves.forEach(b=>opened.delete(b.id));
+      opened.clear();showGroupTree=false;
       state.stratum=id;state.page=1;state.mission='';
       if(id)ancestors(id).forEach(parent=>opened.add(parent));
     };
-    const pageControls = () => `<div class="mission-page-controls"><button type="button" data-review-page="previous"${pageInfo.page<=1?' disabled':''}>Previous page</button><span aria-live="polite">Missions ${pageInfo.start}–${pageInfo.end} of ${pageInfo.total} · page ${pageInfo.page} of ${pageInfo.pages}</span><button type="button" data-review-page="next"${pageInfo.page>=pageInfo.pages?' disabled':''}>Next page</button></div>`;
+    const pageControls = () => `<div class="mission-page-controls"><button type="button" data-review-page="previous"${pageInfo.page<=1?' disabled':''}>Previous page</button><span aria-live="polite">Page ${pageInfo.page} of ${pageInfo.pages} · missions ${pageInfo.start}–${pageInfo.end} of ${pageInfo.total} in this group</span><button type="button" data-review-page="next"${pageInfo.page>=pageInfo.pages?' disabled':''}>Next page</button></div>`;
     const render = () => {
       Object.assign(state,normalizeScope(state,data.groups));
       for (const [key,input] of Object.entries(controls))input.value=state[key];
@@ -73,15 +76,20 @@
       else state.mission='';
       if(state.stratum&&!available.some(b=>b.id===state.stratum))state.stratum=available[0]?.id || '';
       leaves.forEach(b=>{if(b.id!==state.stratum)opened.delete(b.id);});
+      if(state.stratum&&!showGroupTree)opened.clear();
       if(state.stratum)ancestors(state.stratum).forEach(id=>opened.add(id));
       pageInfo=pageMissions(bins.get(state.stratum) || [],state.page,state.mission);state.page=pageInfo.page;
       updateUrl();
       browser.hidden=footer.hidden=!state.stratum;
+      if(startButton){startButton.textContent=state.stratum?'Resume browsing':'Start browsing';startButton.title=state.stratum?'Return to the current group and page. Use Next group to advance.':'Open the first group matching these filters.';}
       if(state.stratum){
         const index=available.findIndex(b=>b.id===state.stratum);
         const label=b=>ancestors(b.id).map(id=>byId.get(id).label).join(' → ');
-        browser.innerHTML=`<div class="stratum-controls"><button type="button" data-review-stratum="previous"${index<=0?' disabled':''}>Previous ${unit}</button><label>Current ${unit}<select data-review-stratum-select>${available.map(b=>`<option value="${esc(b.id)}"${b.id===state.stratum?' selected':''}>${esc(label(b))} · ${bins.get(b.id).length} missions</option>`).join('')}</select></label><button type="button" data-review-stratum="next"${index>=available.length-1?' disabled':''}>Next ${unit}</button></div>${pageControls()}`;
-        footer.innerHTML=pageControls();
+        const groupControls=`<div class="stratum-controls"><button type="button" data-review-stratum="previous" aria-label="Previous ${unit}"${index<=0?' disabled':''}>Previous group</button><label>Group ${index+1} of ${available.length} · ${unit}<select data-review-stratum-select aria-label="Current mission group">${available.map(b=>`<option value="${esc(b.id)}"${b.id===state.stratum?' selected':''}>${esc(label(b))} · ${bins.get(b.id).length} missions</option>`).join('')}</select></label><button type="button" data-review-stratum="next" aria-label="Next ${unit}"${index>=available.length-1?' disabled':''}>Next group</button></div>`;
+        const scope=state.group?`<p class="mission-group-scope">Focused on ${esc(byId.get(state.group)?.label || state.group)}. <button type="button" data-review-scope="clear">Show all matching groups</button></p>`:'';
+        const heading=`<div class="mission-browser-heading"><strong>Mission browsing</strong><button type="button" data-review-tree aria-pressed="${showGroupTree}">${showGroupTree?'Focus current group':'Show group tree'}</button></div>${scope}`;
+        browser.innerHTML=`${heading}${groupControls}${pageControls()}`;
+        footer.innerHTML=`${groupControls}${pageControls()}`;
       }else{browser.innerHTML='';footer.innerHTML='';}
       const missionRow = mission => {
         const open=state.mission===mission.id;
@@ -97,7 +105,8 @@
         html+=`<tr class="paired-preview-row"><td colspan="4"><details class="mission-comparison"><summary>Compare controller previews for this mission</summary><div class="paired-previews">${pairCard(mission.attempts[Number(state.a)],mission)}${state.a!==state.b?pairCard(mission.attempts[Number(state.b)],mission):''}</div></details></td></tr>`;
         return html;
       };
-      const branchRows = parent => branches.filter(b=>b.parent===parent).map(branch=>{
+      const displayedBranches=visibleBranches(branches,state.stratum,showGroupTree);
+      const branchRows = parent => displayedBranches.filter(b=>b.parent===parent).map(branch=>{
         const missions=bins.get(branch.id);if(!missions.length)return '';
         const expanded=opened.has(branch.id);
         const landed=missions.filter(m=>m.attempts[Number(state.view)].outcome==='landed').length;
@@ -108,6 +117,7 @@
       tbody.innerHTML=branchRows(null)||'<tr><td colspan="4">No missions match these filters. Reset to review every scheduled input.</td></tr>';
       document.getElementById('review-count').textContent=`${selected.length} / ${data.missions.length} scheduled mission occurrences matched${state.stratum?` · showing ${pageInfo.items.length} from one ${unit}`:''}`;
       window.PdCampaignPreviews?.loadVisible();
+      root.style.setProperty('--review-navigation-height',`${browser.hidden?0:browser.getBoundingClientRect().height+20}px`);
       window.dispatchEvent(new CustomEvent('pd-review-updated'));
       return selected.length;
     };
@@ -134,26 +144,34 @@
     };
     root.addEventListener('click',e=>activate(e.target));
     root.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){if(e.target.matches('[data-paired-group],[data-paired-mission]')){e.preventDefault();activate(e.target);}}});
-    const focus = (group,approach) => {Object.assign(state,{group,direction:'all',approach:String(approach),view:String(approach),outcome:'all',q:''},normalizeScope({group,direction:'all'},data.groups));opened.clear();const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');render();browser.scrollIntoView({block:'start'});root.querySelector(`[data-paired-group="${state.group}"]`)?.focus({preventScroll:true});};
+    const focus = (group,approach) => {Object.assign(state,{group,direction:'all',approach:String(approach),view:String(approach),outcome:'all',q:''},normalizeScope({group,direction:'all'},data.groups));opened.clear();const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');render();revealBrowser();root.querySelector(`[data-paired-group="${state.group}"]`)?.focus({preventScroll:true});};
     document.querySelectorAll('[data-paired-focus]').forEach(button=>button.addEventListener('click',()=>focus(button.dataset.pairedFocus,button.dataset.approach)));
     document.querySelectorAll('[data-review-outcome]').forEach(button=>button.addEventListener('click',()=>{state.outcome=button.dataset.reviewOutcome;state.approach=button.dataset.approach || 'all';if(state.approach!=='all')state.view=state.approach;state.group='';state.direction='all';state.q='';chooseStratum('');opened.clear();render();root.scrollIntoView({block:'start'});}));
     document.querySelectorAll('[data-paired-depth]').forEach(button=>button.addEventListener('click',()=>{
-      const depth=Number(button.dataset.pairedDepth);opened.clear();chooseStratum('');
-      branches.filter(b=>!leafIds.has(b.id)&&b.depth<depth).forEach(b=>opened.add(b.id));
-      if(depth>=3){const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');}
+      const depth=Number(button.dataset.pairedDepth);
+      if(depth>=3){
+        showGroupTree=false;
+        if(!state.stratum){const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');}
+      }else{
+        opened.clear();chooseStratum('');
+        branches.filter(b=>!leafIds.has(b.id)&&b.depth<depth).forEach(b=>opened.add(b.id));
+      }
       render();
+      if(depth>=3&&state.stratum)revealBrowser();
     }));
     document.querySelectorAll('[data-paired-action]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.pairedAction==='reset')Object.assign(state,{q:'',outcome:'all',approach:'all',direction:'all',group:''});chooseStratum('');opened.clear();render();}));
     for(const nav of [browser,footer]){
       nav.addEventListener('click',event=>{
+        if(event.target.closest('[data-review-tree]')){showGroupTree=!showGroupTree;render();revealBrowser();browser.querySelector('[data-review-tree]').focus({preventScroll:true});return;}
+        if(event.target.closest('[data-review-scope="clear"]')){state.group='';render();revealBrowser();return;}
         const page=event.target.closest('[data-review-page]');const stratum=event.target.closest('[data-review-stratum]');
         if(page&&!page.disabled){state.mission='';state.page+=page.dataset.reviewPage==='next'?1:-1;}
         else if(stratum&&!stratum.disabled){const index=available.findIndex(b=>b.id===state.stratum);chooseStratum(available[index+(stratum.dataset.reviewStratum==='next'?1:-1)].id);}
         else return;
-        render();browser.scrollIntoView({block:'start'});
+        render();revealBrowser();
         browser.querySelector(page?`[data-review-page="${page.dataset.reviewPage}"]`:`[data-review-stratum="${stratum.dataset.reviewStratum}"]`)?.focus({preventScroll:true});
       });
-      nav.addEventListener('change',event=>{if(event.target.matches('[data-review-stratum-select]')){chooseStratum(event.target.value);render();browser.querySelector('select').focus({preventScroll:true});}});
+      nav.addEventListener('change',event=>{if(event.target.matches('[data-review-stratum-select]')){chooseStratum(event.target.value);render();revealBrowser();browser.querySelector('select').focus({preventScroll:true});}});
     }
     window.PdPairedReview={data,state,render,focus,matches,opened,get pageInfo(){return pageInfo;}};
     render();

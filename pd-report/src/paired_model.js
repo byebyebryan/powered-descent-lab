@@ -27,5 +27,15 @@
     return {page, pages, total: missions.length, start: missions.length ? offset + 1 : 0,
       end: Math.min(offset + pageSize, missions.length), items: missions.slice(offset, offset + pageSize)};
   };
-  globalThis.PdPairedReviewModel = {matches, normalizeScope, pageMissions, pageSize};
+  // Browsing keeps the active hierarchy visible without stacking its siblings.
+  // The full tree remains available for deliberately choosing another group.
+  const visibleBranches = (branches, activeId = '', showTree = false) => {
+    if (!activeId || showTree) return branches;
+    const byId = new Map(branches.map(b => [b.id, b]));
+    if (!byId.has(activeId)) return branches;
+    const active = new Set();
+    for (let b = byId.get(activeId); b && !active.has(b.id); b = byId.get(b.parent)) active.add(b.id);
+    return branches.filter(b => active.has(b.id));
+  };
+  globalThis.PdPairedReviewModel = {matches, normalizeScope, pageMissions, pageSize, visibleBranches};
 })();

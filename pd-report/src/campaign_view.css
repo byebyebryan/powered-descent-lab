@@ -103,17 +103,27 @@
 .controller-overview > summary, .comparison-options > summary,
 .mission-comparison > summary { cursor: pointer; font-weight: 600; }
 .mission-comparison .paired-previews { margin-top: 12px; }
-.mission-browser { border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin: 12px 0; background: var(--paper); }
+.mission-browser { border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin: 12px 0; background: var(--paper,var(--surface,#fffdf8)); }
 .mission-browser[hidden] { display: none; }
+.mission-browser:not(.mission-browser-footer) { position: sticky; top: 8px; z-index: 5; box-shadow: 0 3px 12px #30251a12; }
+.mission-browser-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: .85rem; }
+.mission-group-scope { margin: 0 0 8px; font-size: .8rem; color: var(--muted); }
+.paired-mission-row, .paired-group-row { scroll-margin-top: var(--review-navigation-height,20px); }
 .stratum-controls, .mission-page-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.stratum-controls { margin-bottom: 10px; }
+.stratum-controls { display: grid; grid-template-columns: auto minmax(0,1fr) auto; margin-bottom: 10px; }
 .stratum-controls label { flex: 1 1 220px; min-width: 0; font-size: .75rem; }
-.stratum-controls select { display: block; width: 100%; margin-top: 4px; padding: 7px; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
+.stratum-controls select { display: block; width: 100%; margin-top: 4px; padding: 7px; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--paper,var(--surface,#fffdf8)); color: var(--ink); }
 .mission-page-controls span { flex: 1 1 160px; font-size: .8rem; text-align: center; }
-.mission-browser button { cursor: pointer; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: var(--ink); }
+.mission-browser button { cursor: pointer; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--paper,var(--surface,#fffdf8)); color: var(--ink); }
 .mission-browser button:disabled { cursor: default; opacity: .45; }
+.mission-browser .stratum-controls > button { font-weight: 600; }
+.mission-browser [data-review-stratum="next"]:not(:disabled) { color: #fffdf8; background: var(--accent); border-color: var(--accent); }
 .mission-browser button:focus-visible, .mission-browser select:focus-visible { outline: 3px solid #3568a8; outline-offset: 2px; }
 @media(max-width:700px) {
+  .stratum-controls { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .stratum-controls label { grid-column: 1 / -1; grid-row: 1; }
+  .mission-page-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .mission-page-controls span { grid-column: 1 / -1; grid-row: 1; }
   .paired-table th:first-child { width: 200px; }
   .paired-group-row > td:first-child,
   .paired-mission-row > td:first-child { padding-left: calc(8px + var(--mission-depth,0) * 7px); }

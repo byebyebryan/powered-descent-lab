@@ -25,7 +25,9 @@ the mission entrypoints.
 Outcome bars count every scheduled attempt, including unsupported and failed
 attempts. Integrity and complete replay are reported separately. Only the complete
 physical/mission/execution/integrity/replay tuple qualifies as a verified landing.
-The review tree preserves terrain family → terrain stratum → individual mission.
+The review tree preserves terrain family → terrain stratum → individual mission
+for V1, and terrain family → measured morphology → chord-barrier band → mission
+for challenging V2 inputs.
 Leftward and rightward travel share the same stratum; direction appears as mission
 metadata and an optional **More filters** control, defaulting to all directions.
 Preview plots normalize left/right for comparison. Each mission row has a
@@ -37,17 +39,28 @@ not replace the mission hierarchy. Compare A/B uses shared axes without choosing
 the best repeat. Existing synthetic trees retain their applicable mission,
 arrival/route, condition, vehicle, arc, velocity and seed structure.
 
-**Browse missions** opens one terrain stratum, with twelve mission occurrences
-per page. Opening a different stratum closes the previous one. Previous/next
-stratum controls and a stratum selector navigate the matched collection; page
-controls appear above and below the table. Family/stratum counts and
+**Start browsing** opens the first matching group, with twelve mission occurrences
+per page. Once a group is active, **Resume browsing** returns to the current
+group and page. **Previous group / Next group** switch terrain groups;
+**Previous page / Next page** stay within the current group. Both controls and
+the full-path group selector appear above and below the missions. The top
+navigation stays visible while scrolling; moving to another group reveals its
+first page beside those controls.
+
+Browsing shows only the active family/morphology/band path above the mission
+rows, so previous groups do not accumulate. **Show group tree** exposes the full
+hierarchy and its summary counts for choosing another group; **Focus current
+group** returns to the compact view. Choosing a group also restores that view.
+Family/stratum counts and
 coverage totals always describe all matches, not just the current page.
 Previews receive their image URLs only near the viewport. Expanding summaries
 does not materialize the whole mission inventory or request every preview.
 
 Coverage cells focus their exact family, direction, stratum and approach using
 the merged stratum and direction filter. Old coverage selectors retain their
-original membership. Mission identities remain stable; within a stratum,
+original membership. A focused-group notice exposes this restriction;
+**Show all matching groups** clears only that group restriction and retains
+direction, outcome, approach and search filters. Mission identities remain stable; within a stratum,
 missions follow mission-number order across both directions. Search
 accepts a mission number, terrain label or physical identity. The URL retains
 filters, comparison choices, open groups, stratum, page and the selected mission.
@@ -134,3 +147,16 @@ unsupported status and deliberately blocked Plotly fallback. Screenshots and
 five warm interaction timings per viewport are retained with the receipt.
 Numerical preservation, archived compatibility and source identity checks remain
 separate from this browser evidence.
+
+For the challenging V2 development reports, the maintained check additionally
+visits every group at desktop/mobile sizes and verifies the active hierarchy and
+first missions stay beside the group controls, with no growing list of sibling
+groups. It checks footer group navigation, the full-tree option, explicit group
+focus, resume/page state and rich-detail returns:
+
+```sh
+rtk proxy node scripts/check-challenge-baseline-browser.mjs \
+  --browser-ws ws://127.0.0.1:PORT/devtools/browser/ID \
+  --report http://127.0.0.1:8000/NEW_EDITION_ON_REPORT_SERVER/report.html \
+  --output NEW_BROWSER_RECEIPT_DIRECTORY
+```

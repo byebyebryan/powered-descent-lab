@@ -36,13 +36,49 @@ try {
     await noOverflow();assert.equal(await client.evaluate('document.querySelectorAll("#review-tree-root img").length'),0);
     assert(await client.evaluate('PdPairedReview.data.missions.every(m=>m.path.length===3)&&PdPairedReview.data.branches.some(b=>b.kind==="morphology")&&PdPairedReview.data.branches.some(b=>b.kind==="band")&&!PdPairedReview.data.branches.some(b=>b.kind==="stratum")'));
     await screenshot(`${size.name}-overview.png`);
+    assert.equal(await client.evaluate('document.querySelector("[data-paired-depth=\\"3\\"]").textContent'),'Start browsing');
+    const traversal=await client.evaluate(`(()=>{
+      document.querySelector('[data-paired-depth="3"]').click();
+      const ids=[...document.querySelector('.mission-browser [data-review-stratum-select]').options].map(o=>o.value);
+      const visited=[];let maximumGroups=0;
+      for(let i=0;i<ids.length;i++){
+        const d=PdPairedReview.data;const current=d.branches.find(b=>b.id===PdPairedReview.state.stratum);
+        const groups=[...document.querySelectorAll('[data-paired-group]')];maximumGroups=Math.max(maximumGroups,groups.length);
+        if(current.id!==ids[i]||groups.length!==3)throw Error('Group navigation accumulated siblings or skipped a group');
+        const next=document.querySelector('.mission-browser [data-review-stratum=next]');
+        const control=next.getBoundingClientRect();const active=document.querySelector('[data-paired-group="'+current.id+'"]').getBoundingClientRect();
+        const mission=document.querySelector('[data-paired-mission]').getBoundingClientRect();
+        if(control.top<0||control.bottom>innerHeight||active.top<control.bottom||active.bottom>innerHeight||mission.top>=innerHeight)throw Error('Group navigation and active missions left the viewport');
+        if(document.querySelectorAll('[data-paired-mission]').length>12)throw Error('Unbounded mission page');
+        visited.push(current.id);if(i<ids.length-1)next.click();else if(!next.disabled)throw Error('Last group remains advanceable');
+      }
+      return {visited,maximumGroups};
+    })()`);
+    await noOverflow();await screenshot(`${size.name}-last-group.png`);
+    assert.equal(await client.evaluate('document.querySelector(".mission-browser-footer [data-review-stratum=next]").disabled'),true);
+    await client.evaluate('document.querySelector(".mission-browser-footer [data-review-stratum=previous]").click()');
+    assert.equal(await client.evaluate('PdPairedReview.state.stratum'),traversal.visited.at(-2));
+    await client.evaluate('document.querySelector("[data-review-tree]").click()');
+    assert(await client.evaluate('document.querySelectorAll("[data-paired-group]").length>3'));
+    await client.evaluate('document.querySelector("[data-review-tree]").click()');
+    assert.equal(await client.evaluate('document.querySelectorAll("[data-paired-group]").length'),3);
     const selected=await client.evaluate(`(()=>{const d=PdPairedReview.data;const leaves=d.branches.filter(b=>!d.branches.some(c=>c.parent===b.id));const b=leaves.map(b=>({id:b.id,count:d.missions.filter(m=>m.path.includes(b.id)).length})).sort((a,b)=>b.count-a.count)[0];PdPairedReview.focus(b.id,'0');document.querySelector('[data-paired-mission]').scrollIntoView({block:'start'});return b;})()`);
+    assert(await client.evaluate('document.querySelector("[data-review-scope=clear]")&&document.querySelector(".mission-browser [data-review-stratum=next]").disabled'));
+    await client.evaluate('document.querySelector("[data-review-scope=clear]").click()');
+    assert.equal(await client.evaluate('PdPairedReview.state.stratum'),selected.id);
+    assert.equal(await client.evaluate('PdPairedReview.state.group'),'');
     assert.equal(await client.evaluate('document.querySelectorAll("[data-paired-mission]").length'),Math.min(12,selected.count));
     await wait('[...document.querySelectorAll(".mission-preview img")].slice(0,2).every(i=>i.complete&&i.naturalWidth>0)');
     await noOverflow();await screenshot(`${size.name}-terrain-band.png`);
+    await client.evaluate('[...document.querySelectorAll("[data-paired-mission]")].at(-1).scrollIntoView({block:"center"})');
+    assert(await client.evaluate('(()=>{const n=document.querySelector(".mission-browser");const r=n.getBoundingClientRect();return r.top>=0&&r.bottom<innerHeight&&getComputedStyle(n).position==="sticky"&&!["transparent","rgba(0, 0, 0, 0)"].includes(getComputedStyle(n).backgroundColor);})()'));
+    await screenshot(`${size.name}-sticky-navigation.png`);
     if(selected.count>12){
       await client.evaluate('document.querySelector(".mission-browser [data-review-page=next]").click()');
       assert.equal(await client.evaluate('PdPairedReview.pageInfo.page'),2);
+      await client.evaluate('document.querySelector("[data-paired-depth=\\"3\\"]").click()');
+      assert.equal(await client.evaluate('PdPairedReview.pageInfo.page'),2);
+      assert.equal(await client.evaluate('PdPairedReview.state.stratum'),selected.id);
       const url=await client.evaluate('location.href');await client.send('Page.navigate',{url});await wait('!!window.PdPairedReview&&PdPairedReview.pageInfo.page===2');
       assert(await client.evaluate('document.querySelectorAll("[data-paired-mission]").length<=12'));
     }
@@ -63,7 +99,7 @@ try {
     assert(await client.evaluate(`PdPairedReview.data.missions.find(m=>m.id===location.hash.slice(1)).path.includes(${JSON.stringify(selected.id)})`));
     assert(await client.evaluate('document.querySelectorAll("[data-paired-mission]").length<=12'));
     await noOverflow();
-    checks.push({viewport:size.name,largest_band:selected.count,materialized_bound:12,pagination_exercised:selected.count>12,three_level_geometry:true,detail_static_and_rich:true,detail_back_context:true});
+    checks.push({viewport:size.name,largest_band:selected.count,materialized_bound:12,pagination_exercised:selected.count>12,groups_visited:traversal.visited.length,maximum_visible_group_rows:traversal.maximumGroups,group_controls_with_active_missions:true,sticky_navigation_readable:true,footer_group_navigation:true,full_group_tree_available:true,resume_preserves_page:true,three_level_geometry:true,detail_static_and_rich:true,detail_back_context:true});
   }
   assert.deepEqual(client.errors,[]);
   const result={schema_version:1,passed:true,report:report.href,shared_preview_bounds_checked:bounds.size,checks,screenshots,errors:client.errors};
