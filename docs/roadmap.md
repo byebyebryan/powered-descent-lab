@@ -1036,6 +1036,11 @@ hypothesis, budget, sampling/selection and final-test release rule. Curriculum,
 control representation, controller improvements and optimizer training belong
 to those later contracts; sparse stress coverage remains an explicit limitation.
 
+The next RL branch proposal is the [overnight experiment](rl_overnight_experiment_plan.md),
+with its [planning review](rl_overnight_experiment_review.md): a bounded complete-mission
+curriculum comparison, one conditional control representation, three seeds and
+native-proof validation. It remains unlaunched and reserves the final-test cohorts.
+
 The [report presentation refinement](report_presentation_refinement_results.md)
 is complete. Use its full paired edition to inspect saved procedural outcomes
 before defining another learning allocation. Further presentation changes should

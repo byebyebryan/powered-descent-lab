@@ -104,6 +104,11 @@ checkpoint. The owner has launched its default allocation under the
 V2 interoperability, rich integration review and two isolated worktrees at
 `51c143c`. Algorithm work and training remain later allocations with their own
 experiment contracts.
+The [overnight RL experiment plan](rl_overnight_experiment_plan.md), with its
+[source-backed review](rl_overnight_experiment_review.md), proposes an eight-hour
+V2 curriculum/uniform comparison and one conditional control-representation test.
+It is not launched; training, native proof, all-seed validation and readable
+reports have explicit budgets, while final-test inputs remain reserved.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.
