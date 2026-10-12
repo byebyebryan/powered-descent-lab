@@ -1,0 +1,62 @@
+{
+  "collections": [
+    {
+      "file": "stress-support-a.json",
+      "id": "stress-support-a",
+      "proposals": 128,
+      "role": "development",
+      "seed": 20261012041,
+      "sha256": "f8267c8208f6f1b94386f056794f7d798b9aaae417a99bcefaaec61046cf1f25"
+    },
+    {
+      "file": "stress-support-b.json",
+      "id": "stress-support-b",
+      "proposals": 128,
+      "role": "development",
+      "seed": 20261012042,
+      "sha256": "9943908c780612773f82304652b7c0cb63d6aded94ef666beb498072c1518c28"
+    },
+    {
+      "file": "layered-validation.json",
+      "id": "layered-validation",
+      "proposals": 512,
+      "role": "validation",
+      "seed": 20261012043,
+      "sha256": "9fd513f6a682d995e9cc40e215a78fc6b54f0e481d3d76b00fad819924f97edf"
+    },
+    {
+      "file": "value-validation.json",
+      "id": "value-validation",
+      "proposals": 512,
+      "role": "validation",
+      "seed": 20261012044,
+      "sha256": "4bab496597985fc1fee14e903124dd8ec0d69d9c0bde3cbb2d5672ed2d91a997"
+    },
+    {
+      "file": "layered-final-test.json",
+      "id": "layered-final-test",
+      "proposals": 2048,
+      "role": "held_out",
+      "seed": 20261012045,
+      "sha256": "833f94925bf3392198ad358c63260f4c0b98d6c660aa39049faf8a72ee85f767"
+    },
+    {
+      "file": "value-final-test.json",
+      "id": "value-final-test",
+      "proposals": 2048,
+      "role": "held_out",
+      "seed": 20261012046,
+      "sha256": "34822d2a6aa1677b920b3ffcce3a1c2ce040ba63f0f5e01bdbc428f4315619d5"
+    }
+  ],
+  "exposure_inventory_sha256": "14483bb01b44ef85935a6a8825d3c48ce8befaaa46eefa16b52e210066e3940e",
+  "final_test_access": "native structural/hash verification and identity reconciliation only",
+  "final_test_flights": 0,
+  "initial_proposal_slots": 5376,
+  "optional_resolution_slots": 128,
+  "remaining_stress_slots": 512,
+  "schema_version": 1,
+  "stress_seed": 20261012047,
+  "stress_selection": "max minimum unique matching panel count, then sum, then A",
+  "training_transitions": 0
+}
