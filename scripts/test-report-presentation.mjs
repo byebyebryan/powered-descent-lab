@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const context=vm.createContext({});
 vm.runInContext(readFileSync(new URL('../pd-report/src/paired_model.js',import.meta.url),'utf8'),context);
-const {matches,normalizeScope,pageMissions,pageSize,visibleBranches}=context.PdPairedReviewModel;
+const {matches,normalizeScope,pageMissions,pageSize,visibleBranches,collapseBranch}=context.PdPairedReviewModel;
 const mission={id:'mission-0',mission_index:5,direction:-1,path:['family-0','stratum-0'],label:'Value noise · left · stratum 0',group:'coverage-0',physical_sha256:'abcdef01234',attempts:[{approach:0,outcome:'timed-out'},{approach:1,outcome:'landed'},{approach:2,outcome:'unsupported'}]};
 const all={q:'',group:'',outcome:'all',approach:'all',direction:'all'};
 
@@ -143,6 +143,20 @@ test('overview, group picker and legacy strata retain their complete hierarchy',
   assert.equal(visibleBranches(branches,'stratum-1',true),branches);
   assert.deepEqual(Array.from(visibleBranches(branches,'stratum-1'),b=>b.id),['family-1','stratum-1']);
   assert(matches({...mission,path:['family-1','stratum-1']},{...all,group:'stratum-1'}));
+});
+
+test('collapsing any tree level preserves its parents and unrelated expanded branches',()=>{
+  const branches=[{id:'family-0',parent:null},{id:'morphology-0',parent:'family-0'},
+    {id:'band-0',parent:'morphology-0'},{id:'morphology-1',parent:'family-0'},
+    {id:'band-1',parent:'morphology-1'},{id:'family-1',parent:null},
+    {id:'stratum-1',parent:'family-1'}];
+  const opened=new Set(branches.map(b=>b.id));const before=[...opened];
+  for(const [id,closed] of [['band-0',['band-0']],['morphology-0',['morphology-0','band-0']],
+    ['family-0',['family-0','morphology-0','band-0','morphology-1','band-1']],['stratum-1',['stratum-1']]]){
+    assert.deepEqual([...collapseBranch(branches,opened,id)],before.filter(id=>!closed.includes(id)));
+  }
+  assert.deepEqual([...collapseBranch(branches,opened,'missing')],before);
+  assert.deepEqual([...opened],before);
 });
 
 test('report navigation groups known input collections, independently of controller results',()=>{

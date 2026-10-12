@@ -1,6 +1,6 @@
 /* Mission hierarchy owns navigation; controller attempts are mission children. */
 (() => {
-  const {matches, normalizeScope, pageMissions, visibleBranches} = globalThis.PdPairedReviewModel;
+  const {matches, normalizeScope, pageMissions, visibleBranches, collapseBranch} = globalThis.PdPairedReviewModel;
   if (typeof document === 'undefined') return;
   const start = () => {
     const dataNode = document.getElementById('paired-review-data');
@@ -36,12 +36,14 @@
     const opened = new Set((params.get('open') || '').split(',').map(branchId).filter(id=>byId.has(id)));
     // Old expand-all URLs remain readable, with one materialized stratum.
     if (!state.stratum) state.stratum=[...opened].find(id=>leafIds.has(id)) || '';
+    if(state.stratum&&!params.has('open'))ancestors(state.stratum).forEach(id=>opened.add(id));
     if (state.mission) {const m=data.missions.find(m=>m.id===state.mission);if(m)path(m).forEach(id=>opened.add(id));else state.mission='';}
     const updateUrl = () => {
       const p = new URLSearchParams();
       for (const key of ['q','outcome','approach','direction','group','mission','stratum','view','a','b']) if(state[key]&&state[key]!=='all')p.set(key,state[key]);
       if(state.stratum&&state.page>1)p.set('page',String(state.page));
-      if(opened.size)p.set('open',[...opened].join(','));
+      if(opened.size||state.stratum)p.set('open',[...opened].join(','));
+      if(showGroupTree)p.set('tree','full');
       history.replaceState(null,'',location.pathname+(p.size?'?'+p:'')+(state.mission?'#'+state.mission:''));
     };
     const detailHref = (attempt, mission) => {
@@ -57,9 +59,8 @@
       const link=detailHref(attempt,mission);
       return `<article class="pair-card"><strong>${esc(data.labels[attempt.approach])}</strong><span class="outcome-badge outcome-${esc(attempt.outcome)}">${esc(controls.outcome.querySelector(`option[value="${attempt.outcome}"]`)?.textContent || attempt.outcome)}</span>${link?`<a class="run-preview" href="${link}">${preview(attempt)}</a>`:preview(attempt)}<p class="preview-caption muted">${esc(attempt.caption)}</p></article>`;
     };
-    let available=[], pageInfo=pageMissions([]), showGroupTree=false;
+    let available=[], pageInfo=pageMissions([]), showGroupTree=params.get('tree')==='full';
     const chooseStratum = id => {
-      opened.clear();showGroupTree=false;
       state.stratum=id;state.page=1;state.mission='';
       if(id)ancestors(id).forEach(parent=>opened.add(parent));
     };
@@ -74,10 +75,9 @@
       const current=selected.find(m=>m.id===state.mission);
       if(current){state.stratum=path(current).at(-1);ancestors(state.stratum).forEach(id=>opened.add(id));}
       else state.mission='';
-      if(state.stratum&&!available.some(b=>b.id===state.stratum))state.stratum=available[0]?.id || '';
+      if(state.stratum&&!available.some(b=>b.id===state.stratum))chooseStratum(available[0]?.id || '');
       leaves.forEach(b=>{if(b.id!==state.stratum)opened.delete(b.id);});
-      if(state.stratum&&!showGroupTree)opened.clear();
-      if(state.stratum)ancestors(state.stratum).forEach(id=>opened.add(id));
+      if(state.stratum&&!showGroupTree){const active=new Set(ancestors(state.stratum));for(const id of opened)if(!active.has(id))opened.delete(id);}
       pageInfo=pageMissions(bins.get(state.stratum) || [],state.page,state.mission);state.page=pageInfo.page;
       updateUrl();
       browser.hidden=footer.hidden=!state.stratum;
@@ -115,7 +115,8 @@
         return html;
       }).join('');
       tbody.innerHTML=branchRows(null)||'<tr><td colspan="4">No missions match these filters. Reset to review every scheduled input.</td></tr>';
-      document.getElementById('review-count').textContent=`${selected.length} / ${data.missions.length} scheduled mission occurrences matched${state.stratum?` · showing ${pageInfo.items.length} from one ${unit}`:''}`;
+      const groupVisible=state.stratum&&ancestors(state.stratum).every(id=>opened.has(id));
+      document.getElementById('review-count').textContent=`${selected.length} / ${data.missions.length} scheduled mission occurrences matched${state.stratum?groupVisible?` · showing ${pageInfo.items.length} from one ${unit}`:' · current group collapsed':''}`;
       window.PdCampaignPreviews?.loadVisible();
       root.style.setProperty('--review-navigation-height',`${browser.hidden?0:browser.getBoundingClientRect().height+20}px`);
       window.dispatchEvent(new CustomEvent('pd-review-updated'));
@@ -134,10 +135,12 @@
       const group=target.closest('[data-paired-group]');const mission=target.closest('[data-paired-mission]');
       let focusId;
       if(group){const id=group.dataset.pairedGroup;
-        if(leafIds.has(id))chooseStratum(opened.has(id)?'':id);
-        else if(opened.has(id)){
-          branches.filter(b=>ancestors(b.id).includes(id)).forEach(b=>opened.delete(b.id));
-          if(ancestors(state.stratum).includes(id))chooseStratum('');
+        if(opened.has(id)){
+          const remaining=collapseBranch(branches,opened,id);opened.clear();remaining.forEach(id=>opened.add(id));
+          if(ancestors(state.stratum).includes(id))state.mission='';
+        }else if(leafIds.has(id)){
+          if(state.stratum===id)ancestors(id).forEach(parent=>opened.add(parent));
+          else chooseStratum(id);
         }else opened.add(id);
         focusId=id;render();root.querySelector(`[data-paired-group="${focusId}"]`)?.focus({preventScroll:true});}
       else if(mission){state.mission=state.mission===mission.dataset.pairedMission?'':mission.dataset.pairedMission;focusId=mission.id;render();document.getElementById(focusId)?.focus({preventScroll:true});}
@@ -150,8 +153,8 @@
     document.querySelectorAll('[data-paired-depth]').forEach(button=>button.addEventListener('click',()=>{
       const depth=Number(button.dataset.pairedDepth);
       if(depth>=3){
-        showGroupTree=false;
         if(!state.stratum){const first=data.missions.find(m=>matches(m,state));chooseStratum(first?path(first).at(-1):'');}
+        else ancestors(state.stratum).forEach(id=>opened.add(id));
       }else{
         opened.clear();chooseStratum('');
         branches.filter(b=>!leafIds.has(b.id)&&b.depth<depth).forEach(b=>opened.add(b.id));
@@ -165,7 +168,7 @@
         if(event.target.closest('[data-review-tree]')){showGroupTree=!showGroupTree;render();revealBrowser();browser.querySelector('[data-review-tree]').focus({preventScroll:true});return;}
         if(event.target.closest('[data-review-scope="clear"]')){state.group='';render();revealBrowser();return;}
         const page=event.target.closest('[data-review-page]');const stratum=event.target.closest('[data-review-stratum]');
-        if(page&&!page.disabled){state.mission='';state.page+=page.dataset.reviewPage==='next'?1:-1;}
+        if(page&&!page.disabled){state.mission='';state.page+=page.dataset.reviewPage==='next'?1:-1;ancestors(state.stratum).forEach(id=>opened.add(id));}
         else if(stratum&&!stratum.disabled){const index=available.findIndex(b=>b.id===state.stratum);chooseStratum(available[index+(stratum.dataset.reviewStratum==='next'?1:-1)].id);}
         else return;
         render();revealBrowser();
@@ -173,7 +176,7 @@
       });
       nav.addEventListener('change',event=>{if(event.target.matches('[data-review-stratum-select]')){chooseStratum(event.target.value);render();revealBrowser();browser.querySelector('select').focus({preventScroll:true});}});
     }
-    window.PdPairedReview={data,state,render,focus,matches,opened,get pageInfo(){return pageInfo;}};
+    window.PdPairedReview={data,state,render,focus,matches,opened,get pageInfo(){return pageInfo;},get showGroupTree(){return showGroupTree;}};
     render();
     if(state.mission)document.getElementById(state.mission)?.scrollIntoView({block:'start'});
   };

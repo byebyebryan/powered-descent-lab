@@ -37,5 +37,18 @@
     for (let b = byId.get(activeId); b && !active.has(b.id); b = byId.get(b.parent)) active.add(b.id);
     return branches.filter(b => active.has(b.id));
   };
-  globalThis.PdPairedReviewModel = {matches, normalizeScope, pageMissions, pageSize, visibleBranches};
+  // Closing a branch removes only that branch and its descendants. Parents and
+  // independently expanded siblings retain their state in either tree view.
+  const collapseBranch = (branches, opened, id) => {
+    const byId = new Map(branches.map(b => [b.id, b]));
+    return new Set([...opened].filter(openId => {
+      const visited = new Set();
+      for (let b = byId.get(openId); b && !visited.has(b.id); b = byId.get(b.parent)) {
+        if (b.id === id) return false;
+        visited.add(b.id);
+      }
+      return true;
+    }));
+  };
+  globalThis.PdPairedReviewModel = {matches, normalizeScope, pageMissions, pageSize, visibleBranches, collapseBranch};
 })();

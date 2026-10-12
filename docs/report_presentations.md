@@ -50,7 +50,11 @@ first page beside those controls.
 Browsing shows only the active family/morphology/band path above the mission
 rows, so previous groups do not accumulate. **Show group tree** exposes the full
 hierarchy and its summary counts for choosing another group; **Focus current
-group** returns to the compact view. Choosing a group also restores that view.
+group** returns to the compact view. Previous/next group controls and the group
+selector preserve the selected view. The view also survives reload and detail
+returns. A branch's **−** closes only that branch and its descendants, retaining
+its expanded parent levels and the current group/page selection. **Resume
+browsing** reopens the current path without resetting the page.
 Family/stratum counts and
 coverage totals always describe all matches, not just the current page.
 Previews receive their image URLs only near the viewport. Expanding summaries
