@@ -13,6 +13,13 @@ controller or planner. Core contact, fuel and mission horizons are authoritative
 The checked-in `uv.lock` pins Python dependencies; the project uses Python 3.12
 and CPU PyTorch. The Rust bridge pins PyO3 0.29.3. From the repository root:
 
+Use a dedicated environment/output namespace for new work. Set
+`UV_PROJECT_ENVIRONMENT` when using another worktree or preserving an installed
+runtime bound to historical captures. `build_native.py --output NEW_BUILD_DIR`
+builds the installed bridge, checks source stability and retains a matching
+native-module/ABI/source receipt for evaluation. Keep old environments/receipts
+unchanged; paths are part of their evidence.
+
 ```sh
 rtk proxy uv sync --project experiments/rl --python 3.12 --locked
 rtk proxy uv run --project experiments/rl maturin develop --release --manifest-path pd-python/Cargo.toml
