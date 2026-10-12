@@ -52,6 +52,22 @@ class ReportServerTests(unittest.TestCase):
                 signature = server.fingerprint(repo, outputs)
             self.assertEqual(len(signature), 1)
 
+    def test_challenge_collection_changes_trigger_discovery_without_reading_details(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = pathlib.Path(temporary)
+            outputs = repo / "outputs"
+            directory = outputs / "procedural-challenge/run-01/combined-review"
+            directory.mkdir(parents=True)
+            page = directory / "report.html"
+            page.write_text("combined mission collection")
+            first = server.fingerprint(repo, outputs)
+            self.assertEqual(len(first), 1)
+            (directory / "details").mkdir()
+            (directory / "details/report.html").write_text("saved mission")
+            self.assertEqual(first, server.fingerprint(repo, outputs))
+            page.write_text("new combined mission collection")
+            self.assertNotEqual(first, server.fingerprint(repo, outputs))
+
     def test_navigation_refresh_is_cached_retries_failure_and_never_runs_flights(self):
         with tempfile.TemporaryDirectory() as temporary:
             repo = pathlib.Path(temporary)

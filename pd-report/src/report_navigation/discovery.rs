@@ -11,6 +11,7 @@ const SCOPES: &[&str] = &[
     "reports/replays",
     "eval",
     "research",
+    "procedural-challenge",
 ];
 const SKIP: &[&str] = &[
     "latest",

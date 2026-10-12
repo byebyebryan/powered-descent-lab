@@ -1843,6 +1843,31 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn challenge_collection_is_discovered_without_scanning_its_mission_details() {
+        let root = fixture_root();
+        let relative = "procedural-challenge/run-01/combined-review/report.html";
+        let directory = root.join("outputs/procedural-challenge/run-01/combined-review");
+        fs::create_dir_all(directory.join("details")).unwrap();
+        fs::write(
+            directory.join("report.html"),
+            "<title>Complete procedural terrain</title>",
+        )
+        .unwrap();
+        fs::write(directory.join("details/report.html"), "mission sentinel").unwrap();
+        ReportSite::new(&root).refresh_home().unwrap();
+        for name in ["outputs/index.html", "outputs/reports/library/index.html"] {
+            let html = fs::read_to_string(root.join(name)).unwrap();
+            assert!(html.contains(&format!("href=\"/{relative}\"")));
+            assert!(!html.contains("combined-review/details/report.html"));
+        }
+        assert_eq!(
+            fs::read_to_string(directory.join("details/report.html")).unwrap(),
+            "mission sentinel"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[cfg(unix)]
     #[test]
     fn automatic_discovery_skips_symlinks_mission_bundles_and_source_clones() {

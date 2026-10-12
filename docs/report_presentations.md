@@ -28,6 +28,11 @@ physical/mission/execution/integrity/replay tuple qualifies as a verified landin
 The review tree preserves terrain family → terrain stratum → individual mission
 for V1, and terrain family → measured morphology → chord-barrier band → mission
 for challenging V2 inputs.
+Several verified terrain populations can share one browsing report, with each
+terrain family as a top-level branch. Headline rates, outcome bars and schedule
+accounting retain each family's own denominator. Selecting a family outcome
+also restricts the review to that family. Provenance links retain the constituent
+source inventories and verification receipts.
 Leftward and rightward travel share the same stratum; direction appears as mission
 metadata and an optional **More filters** control, defaulting to all directions.
 Preview plots normalize left/right for comparison. Each mission row has a
@@ -114,6 +119,16 @@ limits mission indices within each constituent campaign and does not become a
 full-population result. Use `refine_campaign` for a single saved campaign; its
 three arguments are the source directory, new output directory and source URL
 base. A campaign-only edition keeps original detail links.
+
+To combine disjoint saved populations for the same approaches, append
+`--additional-source OTHER_SAVED_DIRECTORY /OTHER_SOURCE_URL_BASE/` (repeatable).
+Approaches are aligned by their unique labels and must have identical agent
+descriptors across sources; each source must pass its own inventory and retained
+verification checks. Overlapping physical inputs are rejected, while repeat
+occurrences within a source remain intact. The new edition generates one tree,
+common rich details with unified return/previous/next navigation, campaign
+companions, `provenance.html` and a receipt binding every source. Use absolute
+filesystem paths for source directories to match the retained campaign proof.
 
 Branches materialize on demand and previews load near the viewport. The
 comparison carries compact outcome/metric projections, without full trajectory

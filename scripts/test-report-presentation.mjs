@@ -167,6 +167,7 @@ test('report navigation groups known input collections, independently of control
   assert.equal(family('/reports/eval/transfer_route_angle_radius_suite/index.html'),'transfer');
   assert.equal(family('/reports/eval/transfer_waypoint_sequence_route_angle_radius_smoke/index.html'),'waypoint');
   assert.equal(family('/procedural-learning/run/held-out-evaluation/report.html'),'procedural');
+  assert.equal(family('/procedural-challenge/run/combined-review/report.html'),'procedural');
   assert.equal(family('/reports/eval/procedural-learning/presentation/report.html'),'procedural');
   assert.equal(family('/eval/planner_v2_random_terrain/capture/index.html'),'planner');
   assert.equal(family('/reports/eval/unknown_study/index.html'),'other');

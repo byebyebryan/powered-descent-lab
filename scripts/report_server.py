@@ -10,7 +10,7 @@ import threading
 import time
 import urllib.parse
 
-SCOPES = ("reports/eval", "reports/setups", "reports/runs", "reports/replays", "eval", "research")
+SCOPES = ("reports/eval", "reports/setups", "reports/runs", "reports/replays", "eval", "research", "procedural-challenge")
 SKIP = {"latest", "cache", "runs", "cases", "details", "previews", "candidate", "source", "inputs", "baseline", "bin"}
 
 

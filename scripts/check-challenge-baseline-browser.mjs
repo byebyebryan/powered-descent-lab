@@ -35,15 +35,35 @@ try {
     await client.send('Page.navigate',{url:report.href});await wait('document.readyState==="complete"&&!!window.PdPairedReview');
     await noOverflow();assert.equal(await client.evaluate('document.querySelectorAll("#review-tree-root img").length'),0);
     assert(await client.evaluate('PdPairedReview.data.missions.every(m=>m.path.length===3)&&PdPairedReview.data.branches.some(b=>b.kind==="morphology")&&PdPairedReview.data.branches.some(b=>b.kind==="band")&&!PdPairedReview.data.branches.some(b=>b.kind==="stratum")'));
+    const families=await client.evaluate(`(()=>{
+      const d=PdPairedReview.data;return d.branches.filter(b=>!b.parent).map(b=>({id:b.id,label:b.label,
+        missions:d.missions.filter(m=>m.path[0]===b.id).length}));
+    })()`);
+    if(receipt.sources?.length>1){
+      assert.equal(families.length,receipt.sources.length);
+      assert.deepEqual(families.map(f=>f.missions).sort((a,b)=>a-b),receipt.sources.map(s=>s.scheduled_missions).sort((a,b)=>a-b));
+      assert.equal(await client.evaluate('[...document.querySelectorAll("span.chip")].filter(c=>c.textContent.includes("verified landings")).length'),families.length);
+      await client.evaluate(`(()=>{
+        const d=PdPairedReview.data;
+        for(const family of d.branches.filter(b=>!b.parent)){
+          const button=document.querySelector('[data-outcome-family="'+family.id+'"] [data-review-outcome=landed]');
+          if(!button)throw Error('Missing independent backend outcome bar');button.click();
+          const selected=d.missions.filter(m=>PdPairedReview.matches(m,PdPairedReview.state));
+          if(!selected.length||PdPairedReview.state.group!==family.id||selected.some(m=>m.path[0]!==family.id))throw Error('Backend outcome included another population');
+          document.querySelector('[data-paired-action=reset]').click();
+        }
+      })()`);
+    }
     await screenshot(`${size.name}-overview.png`);
     assert.equal(await client.evaluate('document.querySelector("[data-paired-depth=\\"3\\"]").textContent'),'Start browsing');
     const traversal=await client.evaluate(`(()=>{
       document.querySelector('[data-paired-depth="3"]').click();
       const ids=[...document.querySelector('.mission-browser [data-review-stratum-select]').options].map(o=>o.value);
-      const visited=[];let maximumGroups=0;
+      const visited=[];const visitedFamilies=new Set();let maximumGroups=0;
       for(let i=0;i<ids.length;i++){
         const d=PdPairedReview.data;const current=d.branches.find(b=>b.id===PdPairedReview.state.stratum);
         const groups=[...document.querySelectorAll('[data-paired-group]')];maximumGroups=Math.max(maximumGroups,groups.length);
+        visitedFamilies.add(d.missions.find(m=>m.path.at(-1)===current.id).path[0]);
         if(current.id!==ids[i]||groups.length!==3)throw Error('Group navigation accumulated siblings or skipped a group');
         const next=document.querySelector('.mission-browser [data-review-stratum=next]');
         const control=next.getBoundingClientRect();const active=document.querySelector('[data-paired-group="'+current.id+'"]').getBoundingClientRect();
@@ -52,8 +72,9 @@ try {
         if(document.querySelectorAll('[data-paired-mission]').length>12)throw Error('Unbounded mission page');
         visited.push(current.id);if(i<ids.length-1)next.click();else if(!next.disabled)throw Error('Last group remains advanceable');
       }
-      return {visited,maximumGroups};
+      return {visited,maximumGroups,visitedFamilies:[...visitedFamilies]};
     })()`);
+    assert.equal(traversal.visitedFamilies.length,families.length);
     await noOverflow();await screenshot(`${size.name}-last-group.png`);
     assert.equal(await client.evaluate('document.querySelector(".mission-browser-footer [data-review-stratum=next]").disabled'),true);
     await client.evaluate('document.querySelector(".mission-browser-footer [data-review-stratum=previous]").click()');
@@ -148,7 +169,30 @@ try {
     assert(await client.evaluate('document.querySelectorAll("[data-paired-mission]").length<=12'));
     assert(await client.evaluate('PdPairedReview.showGroupTree'));
     await noOverflow();
-    checks.push({viewport:size.name,largest_band:selected.count,materialized_bound:12,pagination_exercised:selected.count>12,groups_visited:traversal.visited.length,maximum_visible_group_rows:traversal.maximumGroups,group_controls_with_active_missions:true,sticky_navigation_readable:true,footer_group_navigation:true,full_group_tree_available:true,group_navigation_preserves_view:true,collapse_preserves_parents_and_selection:true,collapsed_state_and_view_survive_reload:true,collapse_preserves_page:true,resume_preserves_page:true,three_level_geometry:true,detail_static_and_rich:true,detail_back_context:true,detail_return_preserves_view:true});
+    if(families.length>1){
+      const transition=await client.evaluate(`(()=>{
+        document.querySelector('[data-paired-action=reset]').click();
+        const missions=PdPairedReview.data.missions;
+        const index=missions.findIndex((m,i)=>i>0&&m.path[0]!==missions[i-1].path[0]);
+        const previous=missions[index-1];const next=missions[index];
+        PdPairedReview.state.mission=previous.id;PdPairedReview.render();
+        return {href:document.querySelector('.paired-detail').href,next:next.id,family:next.path[0]};
+      })()`);
+      await client.send('Page.navigate',{url:transition.href});await wait('document.querySelector(".review-detail-nav")?.dataset.contextReady==="true"');
+      const nextDetail=await client.evaluate('document.querySelector("[data-review-next]").href');
+      await client.send('Page.navigate',{url:nextDetail});await wait('document.querySelector(".review-detail-nav")?.dataset.contextReady==="true"');
+      assert.equal(await client.evaluate('document.body.dataset.reviewMission'),transition.next);
+      const returnUrl=await client.evaluate('document.querySelector("[data-back-review]").href');
+      assert.equal(new URL(returnUrl).pathname,report.pathname);
+      await client.send('Page.navigate',{url:returnUrl});await wait('!!window.PdPairedReview');
+      assert(await client.evaluate(`PdPairedReview.showGroupTree&&PdPairedReview.state.mission===${JSON.stringify(transition.next)}&&PdPairedReview.data.missions.find(m=>m.id===PdPairedReview.state.mission).path[0]===${JSON.stringify(transition.family)}`));
+      await screenshot(`${size.name}-cross-family-detail-return.png`);
+      await client.send('Page.navigate',{url:new URL('/reports/library/index.html?mission=procedural',report).href});
+      await wait('!!document.getElementById("mission-filter")');
+      assert(await client.evaluate(`(()=>{const a=document.querySelector('a.report-title[href="'+${JSON.stringify(report.pathname)}+'"]');const row=a?.closest('.report-row');return row&&!row.hidden&&row.dataset.mission==='procedural'&&row.closest('.mission-report-group').open;})()`));
+      await noOverflow();await screenshot(`${size.name}-unified-report-library.png`);
+    }
+    checks.push({viewport:size.name,families,backend_outcomes_scoped:families.length>1,family_boundary_navigation:families.length>1,cross_family_detail_return:families.length>1,procedural_library_entry:families.length>1,largest_band:selected.count,materialized_bound:12,pagination_exercised:selected.count>12,groups_visited:traversal.visited.length,maximum_visible_group_rows:traversal.maximumGroups,group_controls_with_active_missions:true,sticky_navigation_readable:true,footer_group_navigation:true,full_group_tree_available:true,group_navigation_preserves_view:true,collapse_preserves_parents_and_selection:true,collapsed_state_and_view_survive_reload:true,collapse_preserves_page:true,resume_preserves_page:true,three_level_geometry:true,detail_static_and_rich:true,detail_back_context:true,detail_return_preserves_view:true});
   }
   assert.deepEqual(client.errors,[]);
   const result={schema_version:1,passed:true,report:report.href,shared_preview_bounds_checked:bounds.size,checks,screenshots,errors:client.errors};

@@ -28,7 +28,11 @@ guides before recent reports. Links use the current server host;
 you do not need to copy capture URLs from chat or edit a fixture for each run.
 
 Discovery scans up to three collection/edition directory levels beneath
-`outputs/eval`, `outputs/research` and `outputs/reports/{eval,setups,runs,replays}`.
+`outputs/eval`, `outputs/research`, `outputs/procedural-challenge` and
+`outputs/reports/{eval,setups,runs,replays}`. Challenging procedural collections
+appear under **Complete procedural terrain**; a combined edition can browse
+several terrain families while keeping their statistics and provenance separate.
+See the [saved presentation workflow](report_presentations.md).
 It finds `index.html` and `report.html`, deduplicates existing curated links,
 skips symlinks, caches, mission `runs`/`cases`, `details`/`previews` assets,
 source clones and hidden paths,

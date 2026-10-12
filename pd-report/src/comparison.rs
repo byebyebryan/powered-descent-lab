@@ -1,5 +1,5 @@
 //! Paired saved-campaign comparison without importing an evaluator or strategy.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -65,7 +65,7 @@ fn inventory(approach: &ComparisonApproachV1) -> Result<InputInventory, String> 
     Ok(result)
 }
 
-pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String> {
+fn validate_comparison(page: &ComparisonPageV1) -> Result<InputInventory, String> {
     if page.schema_version != 1 || page.approaches.len() < 2 {
         return Err("comparison requires at least two declared approaches".into());
     }
@@ -78,6 +78,49 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             );
         }
     }
+    Ok(reference)
+}
+
+/// Compose disjoint saved populations, retaining each campaign and approach.
+/// Labels align approaches; descriptors and physical inventories remain checked.
+pub fn combine_comparison_pages(pages: &[ComparisonPageV1]) -> Result<ComparisonPageV1, String> {
+    let first = pages.first().ok_or("no saved comparisons supplied")?;
+    let mut combined = first.clone();
+    let mut identities = BTreeSet::new();
+    let labels: BTreeSet<_> = first.approaches.iter().map(|a| a.label.as_str()).collect();
+    for (ordinal, page) in pages.iter().enumerate() {
+        let inputs = validate_comparison(page)?;
+        let current: BTreeSet<_> = page.approaches.iter().map(|a| a.label.as_str()).collect();
+        if current != labels || current.len() != page.approaches.len() {
+            return Err("saved comparisons require the same unique approach labels".into());
+        }
+        for identity in inputs.keys() {
+            if !identities.insert(identity.clone()) {
+                return Err("saved populations overlap in physical identity".into());
+            }
+        }
+        if ordinal > 0 {
+            for approach in &mut combined.approaches {
+                let source = page
+                    .approaches
+                    .iter()
+                    .find(|a| a.label == approach.label)
+                    .unwrap();
+                if source.campaigns[0].page.agent != approach.campaigns[0].page.agent {
+                    return Err("saved comparisons change an approach descriptor".into());
+                }
+                approach.campaigns.extend(source.campaigns.iter().cloned());
+            }
+        }
+    }
+    validate_comparison(&combined)?;
+    Ok(combined)
+}
+
+pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String> {
+    let reference = validate_comparison(page)?;
+    let families: BTreeSet<_> = reference.values().map(|v| v.0.as_str()).collect();
+    let multiple_families = families.len() > 1;
     let review = crate::paired_review::build(page)?;
     let mut cards = String::new();
     let mut accounting = String::new();
@@ -89,18 +132,43 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             .iter()
             .flat_map(|c| c.page.attempts.iter().map(|r| (r, integrity)))
             .collect();
-        let scheduled = rows.len();
-        let landed = rows.iter().filter(|(r, ok)| *ok && verified(r)).count();
-        cards.push_str(&crate::campaign_view::render_outcome_bar(
-            &approach.label,
-            &rows,
-            ordinal,
-        ));
-        accounting.push_str(&format!(
-            "<tr><td>{}</td><td>{scheduled}</td><td>{}</td><td>{landed}/{scheduled}</td></tr>",
-            escape(&approach.label),
-            reference.len()
-        ));
+        for family in &families {
+            let family_rows: Vec<_> = rows
+                .iter()
+                .copied()
+                .filter(|(r, _)| &r.terrain_family == family)
+                .collect();
+            let scheduled = family_rows.len();
+            let landed = family_rows
+                .iter()
+                .filter(|(r, ok)| *ok && verified(r))
+                .count();
+            let label = if multiple_families {
+                format!("{} · {}", family_label(family), approach.label)
+            } else {
+                approach.label.clone()
+            };
+            let bar = crate::campaign_view::render_outcome_bar(&label, &family_rows, ordinal);
+            if multiple_families {
+                let branch = review
+                    .missions
+                    .iter()
+                    .find(|m| m.physical_sha256 == family_rows[0].0.physical_sha256)
+                    .expect("validated family branch");
+                cards.push_str(&format!(
+                    "<section data-outcome-family=\"{}\">{bar}</section>",
+                    branch.path[0]
+                ));
+            } else {
+                cards.push_str(&bar);
+            }
+            let unique = reference.values().filter(|v| &v.0 == family).count();
+            accounting.push_str(&format!(
+                "<tr>{}<td>{}</td><td>{scheduled}</td><td>{unique}</td><td>{landed}/{scheduled}</td></tr>",
+                if multiple_families {format!("<td>{}</td>", escape(family_label(family)))} else {String::new()},
+                escape(&approach.label)
+            ));
+        }
         let descriptor = serde_json::to_string_pretty(&approach.campaigns[0].page.agent)
             .map_err(|e| e.to_string())?;
         let links = approach
@@ -139,23 +207,49 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
             .iter()
             .flat_map(|c| &c.page.attempts)
             .collect();
-        let landed = rows.iter().filter(|row| integrity && verified(row)).count();
-        format!(
-            "<span class=\"chip\">{}: {landed}/{} verified landings ({:.1}%)</span>",
-            escape(&approach.label),
-            rows.len(),
-            100.0 * landed as f64 / rows.len().max(1) as f64
-        )
+        families
+            .iter()
+            .map(|family| {
+                let rows: Vec<_> = rows
+                    .iter()
+                    .filter(|row| &row.terrain_family == family)
+                    .collect();
+                let landed = rows.iter().filter(|row| integrity && verified(row)).count();
+                format!(
+                    "<span class=\"chip\">{}{}: {landed}/{} verified landings ({:.1}%)</span>",
+                    if multiple_families {
+                        format!("{} · ", escape(family_label(family)))
+                    } else {
+                        String::new()
+                    },
+                    escape(&approach.label),
+                    rows.len(),
+                    100.0 * landed as f64 / rows.len().max(1) as f64
+                )
+            })
+            .collect::<String>()
     } else {
         String::new()
     };
     let shortcuts = format!(
         "<div class=\"review-shortcuts\"><button type=\"button\" data-review-outcome=\"misses\" data-approach=\"{incumbent}\">Review incumbent misses</button><button type=\"button\" data-review-outcome=\"unsupported\" data-approach=\"all\">Review unsupported inputs</button><button type=\"button\" data-review-outcome=\"not-launched\" data-approach=\"all\">Review stopped before departure</button></div>"
     );
+    let denominator_note = if multiple_families {
+        "Each terrain family is scored separately. Each bar uses that family's full scheduled denominator."
+    } else {
+        "Each bar uses the full scheduled denominator."
+    };
     let overview = format!(
-        "<section class=\"header-overview\"><h2>Complete procedural missions</h2><p class=\"section-note\">Source-pad rest → target-pad landing, with procedural terrain along the complete transfer. Browse the mission structure below, then inspect saved controller results for each input.</p><details class=\"controller-overview\"><summary>Controller outcomes across this mission set</summary>{shortcuts}<p class=\"section-note\">Each bar uses the full scheduled denominator. Click an outcome to find those missions. Replay proof is separate from the physical outcome.</p><div class=\"outcome-cards\">{cards}</div><details><summary>Schedule accounting</summary><div class=\"table-wrap\">{}</div></details></details></section>",
+        "<section class=\"header-overview\"><h2>Complete procedural missions</h2><p class=\"section-note\">Source-pad rest → target-pad landing, with procedural terrain along the complete transfer. Browse the mission structure below, then inspect saved controller results for each input.</p><details class=\"controller-overview\"><summary>Controller outcomes across this mission set</summary>{shortcuts}<p class=\"section-note\">{denominator_note} Click an outcome to find those missions. Replay proof is separate from the physical outcome.</p><div class=\"outcome-cards\">{cards}</div><details><summary>Schedule accounting</summary><div class=\"table-wrap\">{}</div></details></details></section>",
         batch::render_overview_table(
-            "<th>Approach</th><th>Scheduled attempts</th><th>Unique physical inputs</th><th>Verified landings</th>",
+            &format!(
+                "{}<th>Approach</th><th>Scheduled attempts</th><th>Unique physical inputs</th><th>Verified landings</th>",
+                if multiple_families {
+                    "<th>Terrain family</th>"
+                } else {
+                    ""
+                }
+            ),
             &accounting
         )
     );
@@ -325,6 +419,113 @@ mod tests {
         assert!(html.contains("<td>first</td><td>1</td><td>1</td><td>1/1</td>"));
         assert!(html.contains("<td>second</td><td>1</td><td>1</td><td>0/1</td>"));
         assert!(html.contains("href=\"second/report.html\""));
+    }
+
+    fn population(family: &str, identity: &str, repeats: usize) -> ComparisonPageV1 {
+        let mut page = comparison();
+        page.approaches[0].label = "Incumbent reflection".into();
+        for approach in &mut page.approaches {
+            let campaign = &mut approach.campaigns[0].page;
+            let row = &mut campaign.attempts[0];
+            row.physical_sha256 = identity.repeat(64);
+            row.terrain_family = family.into();
+            row.terrain_stratum = None;
+            row.geometry = Some(crate::campaign_view::CampaignGeometryV2 {
+                schema_version: 2,
+                morphology: "Mixed morphology".into(),
+                chord_barrier_m: 400.0,
+                distance_m: 1200.0,
+                signed_pad_rise_m: -300.0,
+                source_width_m: 40.0,
+                target_width_m: 50.0,
+                crest_count: 3,
+            });
+            let row = row.clone();
+            for occurrence in 1..repeats {
+                let mut repeat = row.clone();
+                repeat.attempt_index = occurrence as u64;
+                campaign.attempts.push(repeat);
+            }
+        }
+        page
+    }
+
+    #[test]
+    fn joined_populations_keep_backend_rates_repeats_and_approach_alignment() {
+        let layered = population("pd-missions/layered-perlin-rest-v2", "b", 2);
+        let mut value = population("pd-missions/value-noise-rest-v2", "c", 1);
+        value.approaches.reverse();
+        let sources = [layered, value];
+        let before = serde_json::to_value(&sources).unwrap();
+        let combined = combine_comparison_pages(&sources).unwrap();
+        assert_eq!(combined.approaches[0].label, "Incumbent reflection");
+        assert_eq!(combined.approaches[0].campaigns.len(), 2);
+        let review = crate::paired_review::build(&combined).unwrap();
+        assert_eq!(review.missions.len(), 3);
+        assert_eq!(
+            review
+                .branches
+                .iter()
+                .filter(|b| b.parent.is_none())
+                .count(),
+            2
+        );
+        assert_eq!(
+            review.missions.iter().filter(|m| m.occurrence == 1).count(),
+            1
+        );
+        assert!(
+            review
+                .missions
+                .iter()
+                .all(|m| m.path.len() == 3 && m.attempts.len() == 2)
+        );
+        let html = render_comparison_page(&combined).unwrap();
+        assert!(html.contains("Layered Perlin · Incumbent reflection: 2/2 verified landings"));
+        assert!(html.contains("Value noise · Incumbent reflection: 1/1 verified landings"));
+        assert!(!html.contains("3/3 verified landings"));
+        assert_eq!(html.matches("data-outcome-family=").count(), 4);
+        assert!(html.contains(
+            "<td>Layered Perlin</td><td>Incumbent reflection</td><td>2</td><td>1</td><td>2/2</td>"
+        ));
+        assert!(html.contains(
+            "<td>Value noise</td><td>Incumbent reflection</td><td>1</td><td>1</td><td>1/1</td>"
+        ));
+        assert_eq!(serde_json::to_value(&sources).unwrap(), before);
+    }
+
+    #[test]
+    fn joining_rejects_overlap_descriptor_changes_missing_approaches_and_unpaired_sources() {
+        let layered = population("pd-missions/layered-perlin-rest-v2", "b", 2);
+        let value = population("pd-missions/value-noise-rest-v2", "c", 1);
+        assert!(combine_comparison_pages(&[]).is_err());
+        assert!(
+            combine_comparison_pages(&[layered.clone(), layered.clone()])
+                .unwrap_err()
+                .contains("overlap")
+        );
+        let mut changed = value.clone();
+        changed.approaches[0].campaigns[0].page.agent.configuration =
+            serde_json::json!({"changed":true});
+        assert!(
+            combine_comparison_pages(&[layered.clone(), changed])
+                .unwrap_err()
+                .contains("descriptor")
+        );
+        let mut changed = value.clone();
+        changed.approaches[0].label = "different".into();
+        assert!(
+            combine_comparison_pages(&[layered.clone(), changed])
+                .unwrap_err()
+                .contains("labels")
+        );
+        let mut changed = value;
+        changed.approaches[1].campaigns[0].page.attempts[0].physical_sha256 = "d".repeat(64);
+        assert!(
+            combine_comparison_pages(&[layered, changed])
+                .unwrap_err()
+                .contains("same physical inputs")
+        );
     }
 
     #[test]

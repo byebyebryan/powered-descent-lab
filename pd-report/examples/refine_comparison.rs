@@ -101,33 +101,26 @@ fn verify_summary(page: &CampaignPageV1, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+struct SavedComparison {
+    page: ComparisonPageV1,
+    directories: Vec<Vec<PathBuf>>,
+    campaign_hrefs: Vec<Vec<String>>,
+    bindings: Vec<serde_json::Value>,
+    receipt: serde_json::Value,
+}
+
+fn safe_base(href: &str) -> Result<()> {
     ensure!(
-        args.len() == 4 || args.len() == 6,
-        "usage: refine_comparison SAVED_COMPARISON_DIR NEW_EDITION_DIR SOURCE_HREF_BASE EDITION_HREF_BASE [--mission-limit N]"
+        href.starts_with('/')
+            && !href.starts_with("//")
+            && !href.contains(['\\', '?', '#', ':'])
+            && href.ends_with('/'),
+        "href bases must be local absolute directory URLs"
     );
-    let source = PathBuf::from(&args[0]);
-    let output = PathBuf::from(&args[1]);
-    let base = &args[2];
-    let edition = &args[3];
-    for href in [base, edition] {
-        ensure!(
-            href.starts_with('/')
-                && !href.starts_with("//")
-                && !href.contains(['\\', '?', '#', ':'])
-                && href.ends_with('/'),
-            "href bases must be local absolute directory URLs"
-        );
-    }
-    let limit = if args.len() == 6 {
-        ensure!(args[4] == "--mission-limit", "unknown inspection option");
-        let n = args[5].parse::<u64>()?;
-        ensure!(n > 0, "inspection limit must be positive");
-        Some(n)
-    } else {
-        None
-    };
+    Ok(())
+}
+
+fn load_comparison(source: &Path, base: &str, limit: Option<u64>) -> Result<SavedComparison> {
     let input = read_regular(&source.join("comparison-input.json"), 32 * 1024 * 1024)?;
     let mut page: ComparisonPageV1 = serde_json::from_slice(&input)?;
     pd_report::comparison::render_comparison_page(&page).map_err(anyhow::Error::msg)?;
@@ -144,11 +137,13 @@ fn main() -> Result<()> {
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("missing retained campaign verification"))?;
     let mut sources = Vec::new();
+    let mut campaign_hrefs = Vec::new();
     let mut campaign_bindings = Vec::new();
     for approach in &mut page.approaches {
         let mut directories = Vec::new();
+        let mut hrefs = Vec::new();
         for campaign in &mut approach.campaigns {
-            let directory = source_directory(&source, &campaign.report_href)?;
+            let directory = source_directory(source, &campaign.report_href)?;
             let bytes = read_regular(&directory.join("summary.json"), 16 * 1024 * 1024)?;
             let identity = digest(&bytes);
             verify_summary(&campaign.page, &bytes)?;
@@ -167,6 +162,7 @@ fn main() -> Result<()> {
             );
             campaign_bindings
                 .push(serde_json::json!({"directory":directory,"summary_sha256":identity}));
+            hrefs.push(format!("{base}{}", campaign.report_href));
             if let Some(n) = limit {
                 campaign.page.attempts.retain(|r| r.mission_index < n);
                 campaign.page.unique_scheduled_missions = campaign
@@ -181,9 +177,95 @@ fn main() -> Result<()> {
             directories.push(directory);
         }
         sources.push(directories);
+        campaign_hrefs.push(hrefs);
+    }
+    let receipt = serde_json::json!({"directory":source,"source_base_href":base,
+        "source_projection_sha256":digest(&input),"independent_verification_sha256":digest(&verification_bytes),
+        "provenance_href":format!("{base}{}",page.provenance_href),
+        "scheduled_missions":page.approaches[0].campaigns.iter().map(|c|c.page.attempts.len()).sum::<usize>()});
+    Ok(SavedComparison {
+        page,
+        directories: sources,
+        campaign_hrefs,
+        bindings: campaign_bindings,
+        receipt,
+    })
+}
+
+fn main() -> Result<()> {
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    ensure!(
+        args.len() >= 4,
+        "usage: refine_comparison SAVED_COMPARISON_DIR NEW_EDITION_DIR SOURCE_HREF_BASE EDITION_HREF_BASE [--mission-limit N] [--additional-source DIR HREF_BASE]..."
+    );
+    let source = PathBuf::from(&args[0]);
+    let output = PathBuf::from(&args[1]);
+    let base = &args[2];
+    let edition = &args[3];
+    safe_base(base)?;
+    safe_base(edition)?;
+    let mut source_args = vec![(source.clone(), base.clone())];
+    let mut limit = None;
+    let mut index = 4;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--mission-limit" if index + 1 < args.len() && limit.is_none() => {
+                let n = args[index + 1].parse::<u64>()?;
+                ensure!(n > 0, "inspection limit must be positive");
+                limit = Some(n);
+                index += 2;
+            }
+            "--additional-source" if index + 2 < args.len() => {
+                safe_base(&args[index + 2])?;
+                source_args.push((PathBuf::from(&args[index + 1]), args[index + 2].clone()));
+                index += 3;
+            }
+            _ => anyhow::bail!("unknown, duplicate or incomplete presentation option"),
+        }
+    }
+    let loaded: Vec<_> = source_args
+        .iter()
+        .map(|(source, base)| load_comparison(source, base, limit))
+        .collect::<Result<_>>()?;
+    let source_receipts: Vec<_> = loaded.iter().map(|s| s.receipt.clone()).collect();
+    let mut page = if loaded.len() == 1 {
+        loaded[0].page.clone()
+    } else {
+        pd_report::comparison::combine_comparison_pages(
+            &loaded.iter().map(|s| s.page.clone()).collect::<Vec<_>>(),
+        )
+        .map_err(anyhow::Error::msg)?
+    };
+    let mut sources = vec![Vec::new(); page.approaches.len()];
+    let mut source_hrefs = vec![Vec::new(); page.approaches.len()];
+    let mut campaign_bindings = Vec::new();
+    for saved in &loaded {
+        campaign_bindings.extend(saved.bindings.iter().cloned());
+        for (a, approach) in page.approaches.iter().enumerate() {
+            let ordinal = saved
+                .page
+                .approaches
+                .iter()
+                .position(|p| p.label == approach.label)
+                .expect("validated approach label");
+            sources[a].extend(saved.directories[ordinal].iter().cloned());
+            source_hrefs[a].extend(saved.campaign_hrefs[ordinal].iter().cloned());
+        }
+    }
+    let review = paired_review::build(&page).map_err(anyhow::Error::msg)?;
+    if loaded.len() > 1 {
+        page.title = format!(
+            "Complete procedural terrain · {}",
+            review
+                .branches
+                .iter()
+                .filter(|b| b.parent.is_none())
+                .map(|b| b.label.as_str())
+                .collect::<Vec<_>>()
+                .join(" / ")
+        );
     }
     let original = page.clone();
-    let review = paired_review::build(&page).map_err(anyhow::Error::msg)?;
     let maps: Vec<BTreeMap<String, Vec<(usize, usize)>>> = original
         .approaches
         .iter()
@@ -204,14 +286,16 @@ fn main() -> Result<()> {
             .parent()
             .ok_or_else(|| anyhow::anyhow!("missing output parent"))?,
     )?;
-    ensure!(
-        !output
-            .parent()
-            .expect("checked parent")
-            .canonicalize()?
-            .starts_with(source.canonicalize()?),
-        "edition must be outside original capture"
-    );
+    for (source, _) in &source_args {
+        ensure!(
+            !output
+                .parent()
+                .expect("checked parent")
+                .canonicalize()?
+                .starts_with(source.canonicalize()?),
+            "edition must be outside every original capture"
+        );
+    }
     fs::create_dir(&output)?;
     let started = Instant::now();
     let mut capture_bindings = Vec::new();
@@ -260,12 +344,11 @@ fn main() -> Result<()> {
             let row = &original.approaches[a].campaigns[c].page.attempts[r];
             let preview = format!("previews/{}-a{a}.svg", mission.id);
             let detail = format!("details/{}-a{a}.html", mission.id);
-            let source_campaign_href =
-                format!("{base}{}", original.approaches[a].campaigns[c].report_href);
+            let source_campaign_href = &source_hrefs[a][c];
             let nav = format!(
                 "<nav class=\"review-detail-nav\" aria-label=\"Paired mission navigation\"><a href=\"{edition}report.html#{}\" data-back-review>Back to mission review</a><a href=\"#\" data-review-previous hidden>Previous matched mission</a><a href=\"#\" data-review-next hidden>Next matched mission</a><a href=\"{}\">Original campaign</a></nav>",
                 mission.id,
-                pd_report::escape_html(&source_campaign_href)
+                pd_report::escape_html(source_campaign_href)
             );
             let integrity = original.approaches[a]
                 .campaigns
@@ -389,10 +472,11 @@ fn main() -> Result<()> {
     }
     for (a, approach) in page.approaches.iter_mut().enumerate() {
         for (c, campaign) in approach.campaigns.iter_mut().enumerate() {
-            let href = &original.approaches[a].campaigns[c].report_href;
             campaign.page.summary_href = format!(
-                "{base}{}summary.json",
-                href.strip_suffix("report.html").expect("validated suffix")
+                "{}summary.json",
+                source_hrefs[a][c]
+                    .strip_suffix("report.html")
+                    .expect("validated suffix")
             );
             let projection_href = format!("campaign-a{a}-c{c}-input.json");
             campaign.report_href = format!("campaign-a{a}-c{c}.html");
@@ -409,7 +493,28 @@ fn main() -> Result<()> {
             )?;
         }
     }
-    page.provenance_href = format!("{base}{}", original.provenance_href);
+    page.provenance_href = if loaded.len() == 1 {
+        source_receipts[0]["provenance_href"]
+            .as_str()
+            .expect("source href")
+            .into()
+    } else {
+        let links = source_receipts.iter().map(|s|format!(
+            "<li><a href=\"{}\">{}</a> · <a href=\"{}independent-verification.json\">Retained independent verification</a></li>",
+            pd_report::escape_html(s["provenance_href"].as_str().expect("source href")),
+            pd_report::escape_html(s["directory"].as_str().expect("source directory").rsplit('/').next().unwrap()),
+            pd_report::escape_html(s["source_base_href"].as_str().expect("source base"))
+        )).collect::<String>();
+        let html = pd_report::batch::render_status_page(
+            "Saved population provenance",
+            "<a href=\"report.html\">Back to mission review</a>",
+            &format!(
+                "<p>Each terrain family retains its own population, denominator and verification. This presentation creates no flights or replay evidence.</p><ul>{links}</ul><p><a href=\"render.json\">Presentation receipt and source hashes</a></p>"
+            ),
+        );
+        write_new(&output.join("provenance.html"), html.as_bytes())?;
+        "provenance.html".into()
+    };
     page.title = if limit.is_some() {
         format!(
             "Procedural comparison · inspection slice ({})",
@@ -456,7 +561,17 @@ fn main() -> Result<()> {
     )?;
     let html = pd_report::comparison::render_comparison_page(&page).map_err(anyhow::Error::msg)?;
     write_new(&output.join("report.html"), html.as_bytes())?;
-    let receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"renderer_executable_sha256":digest(&fs::read(std::env::current_exe()?)?),"source_projection_sha256":digest(&input),"independent_verification_sha256":digest(&verification_bytes),"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"campaign_pages":campaign_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
+    let source_hash = |key: &str| -> Result<serde_json::Value> {
+        Ok(if source_receipts.len() == 1 {
+            source_receipts[0][key].clone()
+        } else {
+            digest(&serde_json::to_vec(
+                &source_receipts.iter().map(|s| &s[key]).collect::<Vec<_>>(),
+            )?)
+            .into()
+        })
+    };
+    let receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"sources":source_receipts,"renderer_executable_sha256":digest(&fs::read(std::env::current_exe()?)?),"source_projection_sha256":source_hash("source_projection_sha256")?,"independent_verification_sha256":source_hash("independent_verification_sha256")?,"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"campaign_pages":campaign_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
     write_new(
         &output.join("render.json"),
         &serde_json::to_vec_pretty(&receipt)?,

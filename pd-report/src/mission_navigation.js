@@ -11,7 +11,7 @@
   // Classify known collection/pack identities, never scores or controller labels.
   const family = (href, topic='') => {
     const p=(href || '').split(/[?#]/)[0].toLowerCase();
-    if (/\/(?:procedural-learning|procedural-missions)\//.test(p)) return 'procedural';
+    if (/\/(?:procedural-learning|procedural-missions|procedural-challenge)\//.test(p)) return 'procedural';
     if (/\/(?:terminal[^/]*)(?:\/|$)/.test(p)) return 'terminal';
     if (/\/(?:transfer[^/]*|waypoint[^/]*)(?:\/|$)/.test(p) && /waypoint/.test(p)) return 'waypoint';
     if (/\/transfer[^/]*(?:\/|$)/.test(p)) return 'transfer';
