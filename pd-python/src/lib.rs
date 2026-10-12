@@ -361,6 +361,7 @@ fn describe_collection(path: &str, indices: Vec<u64>) -> PyResult<String> {
     json(&serde_json::json!({"schema_version":1,
         "family":pd_missions::collection_family(&manifest), "role":manifest.role(),
         "population":population, "immutable_files":manifest.immutable_files(),
+        "cohort":pd_missions::collection_context_metadata(&manifest).map_err(error)?,
         "complete_verification_error":verification_error,
         "metadata":metadata, "metadata_errors":metadata_errors}))
 }

@@ -15,6 +15,22 @@ def mission():
 
 
 class EnvironmentContracts(unittest.TestCase):
+    def test_v2_policy_observations_and_commands_ignore_orchestration_metadata(self):
+        original = json.loads(pd_native.generate_mission("layered-v2", 981, 0))["mission"]
+        altered = json.loads(json.dumps(original))
+        altered.update(direction=-original["direction"], geometry={"hidden": "labels"},
+                       proposal={"seed": 99999, "index": 111}, recipe={"backend": "hidden"})
+        left = ProceduralLandingEnv(fixed_missions=[original])
+        right = ProceduralLandingEnv(fixed_missions=[altered])
+        np.testing.assert_array_equal(left.reset()[0], right.reset()[0])
+        for _ in range(8):
+            action = np.zeros(2, dtype=np.float32)
+            a, b = left.step(action), right.step(action)
+            np.testing.assert_array_equal(a[0], b[0])
+            np.testing.assert_array_equal(left.raw, right.raw)
+            self.assertEqual(a[1:4], b[1:4])
+            if a[2]: break
+
     def test_gym_contract_and_observations_exclude_metadata(self):
         original = mission()
         altered = json.loads(json.dumps(original))
@@ -61,6 +77,11 @@ class EnvironmentContracts(unittest.TestCase):
             verify = json.loads(pd_native.verify_capture(str(Path(temp)/"capture")))
             self.assertTrue(verify["replay"]["complete_episode_verified"])
             self.assertIn("Trajectory", (Path(temp)/"capture/report.html").read_text())
+            view = result["presentation"]
+            self.assertEqual(view["preview_href"], "preview.svg")
+            self.assertTrue((Path(temp)/"capture/preview.svg").is_file())
+            self.assertAlmostEqual(view["target_horizontal_offset_m"], abs(captured.raw[11]))
+            self.assertAlmostEqual(view["endpoint_speed_mps"], np.hypot(captured.raw[4], captured.raw[5]))
             source = Path(temp)/"capture/evaluation.json"
             source.write_text(source.read_text()+" ")
             with self.assertRaises(ValueError):

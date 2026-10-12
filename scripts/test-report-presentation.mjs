@@ -9,6 +9,17 @@ const {matches,normalizeScope,pageMissions,pageSize,visibleBranches,collapseBran
 const mission={id:'mission-0',mission_index:5,direction:-1,path:['family-0','stratum-0'],label:'Value noise · left · stratum 0',group:'coverage-0',physical_sha256:'abcdef01234',attempts:[{approach:0,outcome:'timed-out'},{approach:1,outcome:'landed'},{approach:2,outcome:'unsupported'}]};
 const all={q:'',group:'',outcome:'all',approach:'all',direction:'all'};
 
+test('unavailable input direction is separate from valid vertical geometry',()=>{
+  const unknown={...mission,direction:0,direction_unavailable:true};
+  const vertical={...mission,direction:0};
+  assert(matches(unknown,{...all,direction:'unavailable'}));
+  assert(!matches(unknown,{...all,direction:'0'}));
+  assert(matches(vertical,{...all,direction:'0'}));
+  assert(!matches(vertical,{...all,direction:'unavailable'}));
+  const scope=normalizeScope({...all,group:'unknown'},[{id:'unknown',branch:'input-errors',direction:0,direction_unavailable:true}]);
+  assert.equal(scope.direction,'unavailable');
+});
+
 test('coverage focus and selected outcome approach are exact intersections',()=>{
   assert(matches(mission,all));
   assert(matches(mission,{...all,group:'coverage-0',outcome:'landed',approach:'1'}));

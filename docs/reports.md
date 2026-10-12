@@ -15,6 +15,14 @@ browsing with twelve lazy previews in one open band. These local pages have no
 flight outcomes and do not refresh accepted editions, home/library navigation or
 the report server. A geometry band is a presentation threshold, not difficulty.
 
+Saved agent campaigns use native V1/V2 metadata and the common preview/endpoint
+projection. Explicitly unavailable input metadata appears as a failed scheduled
+input with unknown direction, separate from valid unclassified geometry or a
+missing measurement. It supplies no flight proof or fabricated preview.
+New comparison declarations keep collection roles and broad/stress/shift
+populations separate, with recipe/admission/geometry consistency within each
+backend. These safeguards extend the maintained mission tree and rich templates.
+
 ## Report Serving
 
 Start at `/` or `/reports/`: **Browse missions** leads with terminal control,

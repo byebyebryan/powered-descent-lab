@@ -16,6 +16,8 @@ def verify_campaign(directory):
     projection = json.loads((directory/"report-input.json").read_text())
     if not summary["integrity_passed"] or summary["evidence_before"] != summary["evidence_after"]:
         raise ValueError("campaign evidence changed during execution")
+    if projection["agent"] != summary["request"]["agent"] or not projection["integrity_passed"]:
+        raise ValueError("report differs from declared approach or campaign integrity")
     schedule, attempts, rows = summary["request"]["attempt_indices"], summary["attempts"], projection["attempts"]
     if len(schedule) != len(attempts) or len(rows) != len(attempts):
         raise ValueError("campaign lost scheduled attempts")
@@ -27,6 +29,19 @@ def verify_campaign(directory):
     if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != manifests[0]["sha256"]:
         raise ValueError("original collection manifest changed")
     manifest = json.loads(manifest_path.read_text())
+    description = json.loads(pd_native.describe_collection(str(manifest_path.parent), schedule))
+    if description["complete_verification_error"] is not None:
+        raise ValueError("complete original collection verification failed, including exclusions")
+    bindings = {item["path"]: item["sha256"] for item in summary["evidence_before"]["input_files"]}
+    for name in description["immutable_files"]:
+        path = manifest_path.parent/name
+        if str(path) not in bindings or hashlib.sha256(path.read_bytes()).hexdigest() != bindings[str(path)]:
+            raise ValueError("campaign did not bind the complete immutable input inventory")
+    if "cohort" in projection and projection["cohort"] != description["cohort"]:
+        raise ValueError("report changes collection population/recipe/admission declaration")
+    role = lambda value: value.lower().replace("-", "_").replace("heldout", "held_out")
+    if role(projection["collection_role"]) != manifest["request"]["role"] or projection["manifest_sha256"] != summary["request"]["manifest_sha256"]:
+        raise ValueError("report changes collection role or manifest identity")
     entries = {entry["index"]: entry for entry in manifest["entries"]}
     captures, landings, unsupported = 0, 0, 0
     timeout_endpoints, incoming_speeds = [], []
@@ -36,6 +51,11 @@ def verify_campaign(directory):
         entry = entries[mission_index]
         if row["physical_sha256"] != entry["physical_sha256"]:
             raise ValueError("projected physical input differs from scheduled collection input")
+        metadata = description["metadata"][str(mission_index)]
+        if (row["terrain_family"] != metadata["family"] or row["direction"] != metadata["direction"]
+                or row.get("terrain_stratum") != metadata["stratum"]
+                or row.get("geometry") != metadata["geometry"] or row.get("input_metadata_unavailable") is not None):
+            raise ValueError("report changes independently verified input metadata")
         if hashlib.sha256((manifest_path.parent/entry["file"]).read_bytes()).hexdigest() != entry["sha256"]:
             raise ValueError("original resolved input bytes changed")
         disposition = attempt["disposition"]
@@ -51,6 +71,11 @@ def verify_campaign(directory):
         evaluation = json.loads((capture/"evaluation.json").read_text())
         if evaluation["physical_sha256"] != row["physical_sha256"] or evaluation["execution"]["descriptor"] != summary["request"]["agent"]:
             raise ValueError("capture differs from projected physical input or declared approach")
+        episode = evaluation["execution"]["episode"]
+        physical = {"stop": episode["stop"], "physical_outcome": episode["run"]["manifest"]["physical_outcome"],
+                    "mission_outcome": episode["run"]["manifest"]["mission_outcome"]}
+        if any(disposition[key] != value or row[key] != value for key, value in physical.items()) or row["execution_valid"] != (episode["failure"] is None):
+            raise ValueError("report changes saved native outcome or execution validity")
         expected = {"integrity_passed": disposition["integrity_passed"],
                     "physical_replay_verified": disposition["physical_replay_verified"],
                     "complete_replay_verified": disposition["complete_replay_verified"],

@@ -1,7 +1,7 @@
 (() => {
   const matches = (mission, state) => {
     if (state.group && mission.group !== state.group && !mission.path?.includes(state.group)) return false;
-    if (state.direction && state.direction !== 'all' && String(mission.direction) !== state.direction) return false;
+    if (state.direction && state.direction !== 'all' && (mission.direction_unavailable ? 'unavailable' : String(mission.direction)) !== state.direction) return false;
     const q = (state.q || '').trim().toLowerCase();
     if (q && (/^\d+$/.test(q) ? mission.mission_index !== Number(q) : !`${mission.mission_index} ${mission.label} ${mission.physical_sha256}`.toLowerCase().includes(q))) return false;
     const attempts = state.approach === 'all' ? mission.attempts : mission.attempts.filter(a => String(a.approach) === state.approach);
@@ -12,7 +12,7 @@
   const normalizeScope = (state, groups = []) => {
     const coverage = groups.find(g => g.id === state.group && g.branch);
     return coverage ? {...state, group:coverage.branch,
-      direction:state.direction && state.direction !== 'all' ? state.direction : String(coverage.direction)} : {...state};
+      direction:state.direction && state.direction !== 'all' ? state.direction : coverage.direction_unavailable ? 'unavailable' : String(coverage.direction)} : {...state};
   };
   const pageSize = 12;
   // Page a presentation slice without filtering or deduplicating the inventory.

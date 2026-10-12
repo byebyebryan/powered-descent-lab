@@ -26,11 +26,17 @@ pub struct PairedMissionV1 {
     pub group: String,
     pub path: Vec<String>,
     pub direction: i32,
+    #[serde(skip_serializing_if = "metadata_available")]
+    pub direction_unavailable: bool,
     pub label: String,
     pub mission_index: u64,
     pub physical_sha256: String,
     pub occurrence: usize,
     pub attempts: Vec<PairedAttemptV1>,
+}
+
+fn metadata_available(unavailable: &bool) -> bool {
+    !unavailable
 }
 
 #[derive(Serialize)]
@@ -39,6 +45,8 @@ pub struct PairedGroupV1 {
     pub label: String,
     pub branch: String,
     pub direction: i32,
+    #[serde(skip_serializing_if = "metadata_available")]
+    pub direction_unavailable: bool,
 }
 
 #[derive(Serialize)]
@@ -119,6 +127,7 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
                 group: label.clone(),
                 path: Vec::new(),
                 direction: row.direction,
+                direction_unavailable: row.input_metadata_unavailable.is_some(),
                 label,
                 mission_index: row.mission_index,
                 physical_sha256: (*identity).into(),
@@ -171,6 +180,7 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
                 label: mission.label.clone(),
                 branch: mission.path.last().expect("nonempty path").clone(),
                 direction: mission.direction,
+                direction_unavailable: mission.direction_unavailable,
             });
             id
         });

@@ -21,6 +21,9 @@ pub struct CampaignRowV1 {
     pub terrain_stratum: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub geometry: Option<CampaignGeometryV2>,
+    /// Explicit input failure; absence preserves the original V1/V2 encoding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_metadata_unavailable: Option<String>,
     pub disposition: String,
     pub detail: Option<String>,
     pub stop: Option<BoundedRunStopCauseV1>,
@@ -50,12 +53,55 @@ pub struct CampaignPageV1 {
     pub manifest_sha256: String,
     #[serde(default = "unrecorded_role")]
     pub collection_role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cohort: Option<CampaignCohortV1>,
     #[serde(default)]
     pub prior_training_or_tuning: Option<bool>,
     #[serde(default)]
     pub recorded_input_inspection: Option<bool>,
     pub attempts: Vec<CampaignRowV1>,
     pub summary_href: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CampaignCohortV1 {
+    pub schema_version: u32,
+    pub population: String,
+    pub population_sha256: String,
+    pub recipe_sha256: String,
+    pub geometry_spec_sha256: Option<String>,
+    pub challenge_rule_sha256: Option<String>,
+    pub morphology_spec_sha256: Option<String>,
+}
+
+impl CampaignCohortV1 {
+    fn validate(&self) -> bool {
+        let digest = |s: &str| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit());
+        self.schema_version == 1
+            && matches!(
+                self.population.as_str(),
+                "legacy_v1" | "broad" | "stress" | "shift"
+            )
+            && digest(&self.recipe_sha256)
+            && digest(&self.population_sha256)
+            && [
+                &self.geometry_spec_sha256,
+                &self.challenge_rule_sha256,
+                &self.morphology_spec_sha256,
+            ]
+            .into_iter()
+            .flatten()
+            .all(|s| digest(s))
+            && (self.population == "legacy_v1"
+                || [
+                    &self.geometry_spec_sha256,
+                    &self.challenge_rule_sha256,
+                    &self.morphology_spec_sha256,
+                ]
+                .into_iter()
+                .all(|v| v.is_some()))
+    }
 }
 
 fn unrecorded_role() -> String {
@@ -120,12 +166,23 @@ pub(crate) fn mission_path(row: &CampaignRowV1) -> Vec<(&'static str, String, St
             format!("{family}/{stratum}"),
             format!("Terrain stratum {stratum}"),
         ));
+    } else if row.input_metadata_unavailable.is_some() {
+        path.push((
+            "metadata",
+            format!("{family}/unavailable"),
+            "Input metadata unavailable".into(),
+        ));
     }
     path
 }
 
 pub(crate) fn row_coverage_label(row: &CampaignRowV1) -> String {
-    if let Some(g) = &row.geometry {
+    if row.input_metadata_unavailable.is_some() {
+        format!(
+            "{} · input metadata unavailable",
+            family_label(&row.terrain_family)
+        )
+    } else if let Some(g) = &row.geometry {
         format!(
             "{} · {} · {} · {}",
             family_label(&row.terrain_family),
@@ -145,6 +202,7 @@ pub(crate) fn row_coverage_label(row: &CampaignRowV1) -> String {
 pub(crate) fn validate_campaign_page(page: &CampaignPageV1) -> Result<(), String> {
     page.agent.validate()?;
     if page.schema_version != 1
+        || page.cohort.as_ref().is_some_and(|c| !c.validate())
         || page.attempts.is_empty()
         || page.unique_scheduled_missions > page.attempts.len()
         || page
@@ -155,14 +213,34 @@ pub(crate) fn validate_campaign_page(page: &CampaignPageV1) -> Result<(), String
             .attempts
             .iter()
             .any(|r| r.presentation.as_ref().is_some_and(|view| !view.validate()))
-        || page
-            .attempts
-            .iter()
-            .any(|r| match (&r.geometry, r.terrain_stratum) {
-                (Some(g), None) => !g.validate(),
-                (None, Some(_)) => false,
+        || page.attempts.iter().any(|r| {
+            match (
+                &r.geometry,
+                r.terrain_stratum,
+                &r.input_metadata_unavailable,
+            ) {
+                (Some(g), None, None) => !g.validate(),
+                (None, Some(_), None) => false,
+                (None, None, Some(reason)) => {
+                    reason.trim().is_empty()
+                        || r.direction != 0
+                        || r.disposition != "input_invalid"
+                        || r.stop.is_some()
+                        || r.physical_outcome.is_some()
+                        || r.mission_outcome.is_some()
+                        || r.execution_valid
+                        || r.integrity_passed
+                        || r.physical_replay_verified
+                        || r.complete_replay_verified
+                        || r.verified_target_landing
+                        || r.sim_time_s.is_some()
+                        || r.fuel_kg.is_some()
+                        || r.report_href.is_some()
+                        || r.presentation.is_some()
+                }
                 _ => true,
-            })
+            }
+        })
     {
         return Err("invalid common campaign projection or incomplete landing tuple".into());
     }
@@ -262,8 +340,13 @@ fn render_campaign_with_links(
             ),
         ));
         for row in rows {
+            let direction_key = if row.input_metadata_unavailable.is_some() {
+                "unavailable".into()
+            } else {
+                row.direction.to_string()
+            };
             tree_rows.push_str(&batch::render_row(Some("campaign-row"),
-                &format!("data-parent=\"{parent}\" data-depth=\"{}\" data-direction=\"{}\" data-outcome=\"{}\" data-search=\"{}\"",path.len(),row.direction,campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,format_args!("{label} {}",if row.direction < 0 {"left"} else if row.direction > 0 {"right"} else {"vertical"})))),
+                &format!("data-parent=\"{parent}\" data-depth=\"{}\" data-direction=\"{}\" data-outcome=\"{}\" data-search=\"{}\"",path.len(),direction_key,campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,format_args!("{label} {}",if row.input_metadata_unavailable.is_some() {"direction unavailable"} else if row.direction < 0 {"left"} else if row.direction > 0 {"right"} else {"vertical"})))),
                 &format!("<td class=\"tree-label\">{}</td><td>{}</td><td>{} s</td><td>{} kg</td><td>{}</td>",
                     campaign_view::render_mission_cell(row),campaign_view::render_outcome_cell(row,page.integrity_passed),number(row.sim_time_s),number(row.fuel_kg),campaign_view::render_evidence_cell(row,page.integrity_passed))));
         }
@@ -332,9 +415,8 @@ fn render_campaign_with_links(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn invalid_campaign_cannot_promote_individually_verified_landings() {
-        let page = CampaignPageV1 {
+    fn fixture_page() -> CampaignPageV1 {
+        CampaignPageV1 {
             schema_version: 1,
             title: "A <campaign>".into(),
             agent: AgentDescriptorV1 {
@@ -347,6 +429,7 @@ mod tests {
             unique_scheduled_missions: 1,
             manifest_sha256: "0".repeat(64),
             collection_role: "Development".into(),
+            cohort: None,
             prior_training_or_tuning: Some(false),
             recorded_input_inspection: Some(false),
             summary_href: "summary.json".into(),
@@ -358,6 +441,7 @@ mod tests {
                 direction: 1,
                 terrain_stratum: Some(0),
                 geometry: None,
+                input_metadata_unavailable: None,
                 disposition: "executed".into(),
                 detail: None,
                 stop: Some(BoundedRunStopCauseV1::MissionTerminal),
@@ -374,7 +458,12 @@ mod tests {
                 report_href: Some("attempt-000000/report.html".into()),
                 presentation: None,
             }],
-        };
+        }
+    }
+
+    #[test]
+    fn invalid_campaign_cannot_promote_individually_verified_landings() {
+        let page = fixture_page();
         let html = render_campaign_page(&page).unwrap();
         assert!(html.contains("data-batch-template=\"common-v1\""));
         assert!(html.contains("0/1</strong> verified target landings"));
@@ -390,5 +479,38 @@ mod tests {
         let mut bad = page;
         bad.attempts[0].complete_replay_verified = false;
         assert!(render_campaign_page(&bad).is_err());
+    }
+
+    #[test]
+    fn unavailable_input_metadata_requires_explicit_failure_without_a_flight() {
+        let mut page = fixture_page();
+        let row = &mut page.attempts[0];
+        row.terrain_stratum = None;
+        row.direction = 0;
+        row.disposition = "input_invalid".into();
+        row.detail = Some("Original input bytes unavailable".into());
+        row.stop = None;
+        row.physical_outcome = None;
+        row.mission_outcome = None;
+        row.execution_valid = false;
+        row.integrity_passed = false;
+        row.physical_replay_verified = false;
+        row.complete_replay_verified = false;
+        row.verified_target_landing = false;
+        row.sim_time_s = None;
+        row.fuel_kg = None;
+        row.report_href = None;
+        assert!(render_campaign_page(&page).is_err());
+        page.attempts[0].input_metadata_unavailable = Some("Input cannot be verified".into());
+        let html = render_campaign_page(&page).unwrap();
+        assert!(html.contains("Input metadata unavailable"));
+        assert!(html.contains("Direction unavailable"));
+        assert!(!html.contains("Terrain stratum 0"));
+        assert!(!html.contains("Travel right"));
+        page.attempts[0].direction = 1;
+        assert!(render_campaign_page(&page).is_err());
+        page.attempts[0].direction = 0;
+        page.attempts[0].sim_time_s = Some(0.0);
+        assert!(render_campaign_page(&page).is_err());
     }
 }

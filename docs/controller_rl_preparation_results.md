@@ -3,7 +3,7 @@
 [Plan](controller_rl_preparation_plan.md) · [Execution](controller_rl_preparation_execution.md) ·
 [Documentation home](README.md)
 
-October 12, 2026. Input preparation is complete; application interoperability,
+October 12, 2026. Input preparation and application interoperability are complete;
 integration and branch readiness remain in progress. No training or measured
 preparation flight has occurred at this checkpoint.
 
@@ -68,3 +68,37 @@ These gaps do not establish complete stress coverage or justify refilling.
 Actual new proposal allocation is **5,888/6,016**; the optional 128 resolution
 slots are unused. Final-test flights, training transitions and measured smoke
 attempts remain zero. The platform is not yet ready for the branch split.
+
+## Shared interoperability
+
+`pd-missions` now owns the verified versioned metadata cache and collection
+context. Its recipe/geometry/challenge hashes reuse the native identity methods.
+The incumbent and Python adapters consume this neutral projection; no shared
+crate or Python module imports executable incumbent strategy packages.
+`pd-report` owns the saved-flight preview/endpoint projection used by both paths.
+
+Python campaigns bind excluded proposals and a create-only collection-evidence
+sidecar, preserving the native V1 campaign-summary shape. Independent verification
+checks the whole inventory, original metadata and actual native outcomes. Explicit
+missing metadata retains an input-failure row, separate from valid unclassified
+geometry or vertical direction. The incumbent front door also verifies complete
+sealed inputs before capture. New comparison declarations reject mixed roles,
+populations and changed recipe/admission/geometry within a backend.
+
+The untrained constant-action integration policy exercises the existing feature,
+action and launch path; no historical sampler/reward or policy behavior changed.
+An exact request binds its descriptor and index schedule. Inline verification is
+still the default; this smoke will defer Python's inline check and use exactly one
+fresh independent pass after capture. Native incumbent composition already loads
+and independently verifies each saved capture before projecting its report.
+
+Validation: all 18 maintained development checks passed, including 87 Node tests;
+14 Python tests passed. Actual temporary native application fixtures covered V1/V2
+capture/report/replay, missing selected inputs, excluded-file corruption, native
+preflight rejection and altered geometry rejection. These software checks use a
+mocked SDK scan and are not measured study/qualification evidence. Their
+[receipt](../outputs/controller-rl-preparation/run-20261012T072437Z/python-composition-check-r4.json)
+and the [development gate](../outputs/controller-rl-preparation/run-20261012T072437Z/interoperability-development-gate-r3.log)
+are retained. The new Python environment is isolated; the
+[historical module check](../outputs/controller-rl-preparation/run-20261012T072437Z/historical-native-module-preservation.json)
+confirms the original installed extension/wrapper bytes remain unchanged.

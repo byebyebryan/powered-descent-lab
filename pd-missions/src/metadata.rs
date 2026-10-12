@@ -31,6 +31,55 @@ pub struct CollectionInputMetadataV1 {
     pub geometry: Option<InputGeometryMetadataV2>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CollectionContextMetadataV1 {
+    pub schema_version: u32,
+    pub population: String,
+    pub population_sha256: String,
+    pub recipe_sha256: String,
+    pub geometry_spec_sha256: Option<String>,
+    pub challenge_rule_sha256: Option<String>,
+    pub morphology_spec_sha256: Option<String>,
+}
+
+pub fn collection_context_metadata(
+    manifest: &VersionedCollectionManifest,
+) -> Result<CollectionContextMetadataV1, String> {
+    let hash = |v| {
+        serde_json::to_vec(&v)
+            .map(|b| crate::sha256(&b))
+            .map_err(|e| e.to_string())
+    };
+    match manifest {
+        VersionedCollectionManifest::V1(m) => Ok(CollectionContextMetadataV1 {
+            schema_version: 1,
+            population: "legacy_v1".into(),
+            population_sha256: hash(serde_json::json!("legacy_v1"))?,
+            recipe_sha256: m.request.recipe.identity()?,
+            geometry_spec_sha256: None,
+            challenge_rule_sha256: None,
+            morphology_spec_sha256: None,
+        }),
+        VersionedCollectionManifest::V2(m) => Ok(CollectionContextMetadataV1 {
+            schema_version: 1,
+            population: m.request.population.key().into(),
+            population_sha256: hash(
+                serde_json::to_value(&m.request.population).map_err(|e| e.to_string())?,
+            )?,
+            recipe_sha256: m.request.recipe.identity()?,
+            geometry_spec_sha256: Some(m.request.geometry_spec.identity()?),
+            challenge_rule_sha256: Some(
+                m.request
+                    .challenge_rule
+                    .identity(&m.request.geometry_spec)?,
+            ),
+            morphology_spec_sha256: Some(hash(
+                serde_json::to_value(&m.request.morphology_spec).map_err(|e| e.to_string())?,
+            )?),
+        }),
+    }
+}
+
 pub fn collection_family(manifest: &VersionedCollectionManifest) -> &str {
     match manifest {
         VersionedCollectionManifest::V1(m) => &m.request.recipe.generator_version,
@@ -137,6 +186,18 @@ mod tests {
             let m = write_collection_v2(&root, CollectionRequestV2::broad(recipe, 981, 8)).unwrap();
             let manifest = VersionedCollectionManifest::V2(Box::new(m));
             let entry = &manifest.entries()[0];
+            let VersionedCollectionManifest::V2(collection) = &manifest else {
+                panic!()
+            };
+            let context = collection_context_metadata(&manifest).unwrap();
+            assert_eq!(
+                context.recipe_sha256,
+                collection.request.recipe.identity().unwrap()
+            );
+            assert_eq!(
+                context.geometry_spec_sha256,
+                Some(collection.request.geometry_spec.identity().unwrap())
+            );
             let meta = collection_input_metadata(&root, &manifest, entry.index).unwrap();
             assert_eq!(meta.family, expected);
             assert!(meta.geometry.is_some());

@@ -71,10 +71,20 @@ complete landing or extend the original scenario horizon.
 
 Frozen PPO campaigns use `experiments/rl/evaluate.py` and the same saved native
 evidence schema. Its [workflow](../experiments/rl/README.md) separates training
-selection, broad summary confirmations and native capture/replay. Common saved
-campaigns can be combined through `pd-report::comparison`: it checks identical
+selection, broad summary confirmations and native capture/replay.
+Python V2 campaigns now use native backend/geometry metadata, bind excluded
+proposal files and preserve truthful unavailable-input failures. An exact
+`--request` can select the predeclared schedule; `--test-policy` supplies an
+explicitly untrained integration policy. Deferring inline verification requires
+one subsequent fresh `verify.py` pass; it is not acceptance without replay.
+
+Common saved campaigns can be combined through `pd-report::comparison`: it checks identical
 physical input inventories and repeat counts across approaches, keeps unsupported
 inputs in the denominator, and links the rich campaign/individual reports.
+New cohort projections also bind population, recipe, geometry/admission and
+morphology declarations. Comparisons reject mixed collection roles/populations
+and incompatible declarations within a backend. Backend branches may share a
+tree; broad/stress and validation/final-test remain separate views and rates.
 The create-only `pd-report` example `comparison` accepts a comparison projection
 and a new HTML path. It performs no evaluation or publication.
 

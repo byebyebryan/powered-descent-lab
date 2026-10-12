@@ -136,9 +136,32 @@ Its report exporter must be built with
 `rtk proxy cargo build --release -p pd-report --example campaign`.
 These commands create local evidence and never publish it.
 
+Both V1 and V2 collections use native verified metadata. V2 backend identity,
+morphology and measured geometry replace inferred V1 strata. The campaign binds
+all immutable proposal files, including exclusions, plus a create-only
+`collection-evidence.json` sidecar. Full collection verification is required for
+aggregate integrity. Missing inputs retain their scheduled failure, with explicit
+unavailable metadata and no invented direction/geometry/flight. Rich captures
+include saved previews and exact endpoint context.
+
+`--request CAMPAIGN_REQUEST_JSON` uses the exact predeclared descriptor/manifest/
+index schedule, including repeated occurrences; it conflicts with `--count`.
+`--test-policy` replaces `--checkpoint` with a named untrained constant-action
+integration policy. It does not train or imply a PPO checkpoint. The historical
+V1 training aliases, samplers, actions and reward designs remain unchanged.
+`--defer-independent-verification` skips the default inline saved-capture replay;
+run `verify.py` once in a fresh process before accepting that integration run.
+
+New projections declare their role, population and recipe/admission/geometry
+identities. Comparisons reject incompatible roles/populations and changed
+declarations within a backend. Broad/stress and validation/final-test rates stay
+in separate views; backend branches can share the maintained mission tree.
+
 `verify.py --campaign CAMPAIGN --output NEW_VERIFICATION_JSON` independently
 replays saved native commands and checks their projection against the campaign
 schedule and descriptor. It imports no learning library and loads no checkpoint.
+It also checks the complete original collection inventory and independently
+reconciles V1/V2 input metadata and declared cohort context.
 Supply `--campaign` repeatedly to verify the full paired inventory in a fresh
 process, including the incumbent captures. Unsupported inputs remain accounted
 for; any capture or campaign integrity failure rejects the final inventory.

@@ -64,6 +64,9 @@ fn main() -> Result<(), String> {
         );
         return Ok(());
     }
+    // Validate exclusions against the sealed receipt before capturing anything;
+    // before/after byte stability alone cannot certify a corrupted starting input.
+    pd_missions::verify_versioned_collection(&args.collection)?;
     let metadata = presentation::metadata(&args.collection, &manifest, &request.attempt_indices)?;
     let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -127,6 +130,7 @@ fn main() -> Result<(), String> {
             direction: input.direction,
             terrain_stratum: input.stratum,
             geometry: input.geometry.clone(),
+            input_metadata_unavailable: None,
             disposition: disposition["kind"].as_str().unwrap_or("invalid").to_owned(),
             detail: disposition["detail"].as_str().map(str::to_owned),
             stop: None,
@@ -211,6 +215,13 @@ fn main() -> Result<(), String> {
             unique_scheduled_missions: result.unique_scheduled_missions,
             manifest_sha256: result.request.manifest_sha256.clone(),
             collection_role: format!("{:?}", manifest.role()),
+            cohort: Some(
+                serde_json::from_value(
+                    serde_json::to_value(pd_missions::collection_context_metadata(&manifest)?)
+                        .map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?,
+            ),
             prior_training_or_tuning: Some(usage.iter().any(|receipt| {
                 matches!(
                     receipt.exposure,

@@ -97,7 +97,7 @@
         const href=detailHref(attempt,mission);
         const depth=path(mission).length;
         const label=`Mission ${mission.mission_index}${mission.occurrence?` · repeat ${mission.occurrence+1}`:''}`;
-        const direction=mission.direction<0?'Travel left':mission.direction>0?'Travel right':'Vertical';
+        const direction=mission.direction_unavailable?'Direction unavailable':mission.direction<0?'Travel left':mission.direction>0?'Travel right':'Vertical';
         let html=`<tr class="paired-mission-row" id="${mission.id}" data-paired-mission="${mission.id}" data-direction="${mission.direction}" tabindex="0" aria-expanded="${open}" style="--mission-depth:${depth}"><td><span class="expander">${open?'−':'+'}</span> ${label}<span class="row-note mission-direction">${direction}</span>${href?`<a class="run-preview mission-preview" href="${href}">${preview(attempt)}</a>`:preview(attempt)}</td>${attempt.cells}</tr>`;
         if(!open)return html;
         html+=`<tr class="mission-context-row"><td colspan="4"><span class="mission-path">${path(mission).map(id=>esc(byId.get(id).label)).join(' → ')} → ${label}</span><details class="row-evidence"><summary>Physical input and pairing</summary><p><code>${esc(mission.physical_sha256)}</code> · occurrence ${mission.occurrence+1}. Pairing uses physical identity and scheduled occurrence, without best-repeat selection.</p></details><strong>Controller attempts for this mission</strong></td></tr>`;

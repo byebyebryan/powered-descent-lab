@@ -42,7 +42,7 @@ partial or failed stages remain evidence and do not authorize replacement inputs
 | P0 physical contract and reference identity | Complete; physical grid retained, warnings/limits recorded |
 | P1 exposure inventory and complete requests | Complete; requests committed before generation |
 | P2 verified sealed cohorts and stress accounting | Complete; no audited collisions, sparse quotas retained |
-| P3 neutral V2 Python/evidence/report interoperability | In progress |
+| P3 neutral V2 Python/evidence/report interoperability | Complete; maintained, Python and actual fault-fixture checks passed |
 | P4 48-slot integration and browser acceptance | Pending |
 | P5 common checkpoint and isolated branch handoffs | Pending |
 

@@ -70,6 +70,53 @@ fn validate_comparison(page: &ComparisonPageV1) -> Result<InputInventory, String
         return Err("comparison requires at least two declared approaches".into());
     }
     let reference = inventory(&page.approaches[0])?;
+    let canonical_role = |role: &str| {
+        let role = role.to_ascii_lowercase().replace('-', "_");
+        if role == "heldout" {
+            "held_out".into()
+        } else {
+            role
+        }
+    };
+    let campaigns: Vec<_> = page
+        .approaches
+        .iter()
+        .flat_map(|a| a.campaigns.iter())
+        .collect();
+    let role = canonical_role(&campaigns[0].page.collection_role);
+    if campaigns
+        .iter()
+        .any(|c| canonical_role(&c.page.collection_role) != role)
+    {
+        return Err("comparison cannot pool different collection roles".into());
+    }
+    let declared = campaigns.iter().any(|c| c.page.cohort.is_some());
+    if declared {
+        let mut per_family = BTreeMap::new();
+        let mut population = None;
+        for campaign in &campaigns {
+            let cohort = campaign
+                .page
+                .cohort
+                .as_ref()
+                .ok_or("comparison mixes declared and unrecorded populations")?;
+            let key = (&cohort.population, &cohort.population_sha256);
+            if population.is_some_and(|p| p != key) {
+                return Err("comparison cannot pool different declared populations".into());
+            }
+            population = Some(key);
+            for row in &campaign.page.attempts {
+                if let Some(previous) = per_family.insert(&row.terrain_family, cohort)
+                    && previous != cohort
+                {
+                    return Err(
+                        "comparison changes recipe/admission/geometry declaration within a backend"
+                            .into(),
+                    );
+                }
+            }
+        }
+    }
     for approach in &page.approaches[1..] {
         if inventory(approach)? != reference {
             return Err(
@@ -370,6 +417,7 @@ mod tests {
                     unique_scheduled_missions: 1,
                     manifest_sha256: "a".repeat(64),
                     collection_role: "HeldOut".into(),
+                    cohort: None,
                     prior_training_or_tuning: Some(false),
                     recorded_input_inspection: Some(false),
                     summary_href: "summary.json".into(),
@@ -381,6 +429,7 @@ mod tests {
                         direction: 1,
                         terrain_stratum: Some(0),
                         geometry: None,
+                        input_metadata_unavailable: None,
                         disposition: "executed".into(),
                         detail: None,
                         stop: Some(BoundedRunStopCauseV1::MissionTerminal),
@@ -409,6 +458,46 @@ mod tests {
             provenance_href: "freeze.json".into(),
             approaches: vec![approach("first", true), approach("second", false)],
         }
+    }
+
+    #[test]
+    fn role_population_and_backend_contracts_cannot_be_pooled() {
+        use crate::campaign::CampaignCohortV1;
+        let mut page = comparison();
+        page.approaches[1].campaigns[0].page.collection_role = "held_out".into();
+        assert!(render_comparison_page(&page).is_ok());
+        page.approaches[1].campaigns[0].page.collection_role = "validation".into();
+        assert!(render_comparison_page(&page).is_err());
+        page.approaches[1].campaigns[0].page.collection_role = "HeldOut".into();
+        let cohort = CampaignCohortV1 {
+            schema_version: 1,
+            population: "broad".into(),
+            population_sha256: "0".repeat(64),
+            recipe_sha256: "1".repeat(64),
+            geometry_spec_sha256: Some("2".repeat(64)),
+            challenge_rule_sha256: Some("3".repeat(64)),
+            morphology_spec_sha256: Some("4".repeat(64)),
+        };
+        for a in &mut page.approaches {
+            a.campaigns[0].page.cohort = Some(cohort.clone());
+        }
+        assert!(render_comparison_page(&page).is_ok());
+        let mut disjoint = page.clone();
+        for a in &mut disjoint.approaches {
+            a.campaigns[0].page.attempts[0].physical_sha256 = "c".repeat(64);
+            let c = a.campaigns[0].page.cohort.as_mut().unwrap();
+            c.population = "stress".into();
+            c.population_sha256 = "5".repeat(64);
+        }
+        assert!(combine_comparison_pages(&[page.clone(), disjoint.clone()]).is_err());
+        for a in &mut disjoint.approaches {
+            let c = a.campaigns[0].page.cohort.as_mut().unwrap();
+            *c = cohort.clone();
+            c.recipe_sha256 = "6".repeat(64);
+        }
+        assert!(combine_comparison_pages(&[page.clone(), disjoint]).is_err());
+        page.approaches[1].campaigns[0].page.cohort = None;
+        assert!(render_comparison_page(&page).is_err());
     }
 
     #[test]
