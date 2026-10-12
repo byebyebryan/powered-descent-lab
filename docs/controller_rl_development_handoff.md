@@ -3,9 +3,10 @@
 [Preparation results](controller_rl_preparation_results.md) ·
 [Architecture](architecture.md) · [Development workflow](development.md)
 
-October 12, 2026. Shared input/interoperability/integration gates are complete.
-The two worktree environments are being prepared; the final source/artifact
-receipt will record their actual commits, paths and installed builds.
+October 12, 2026. Shared preparation is complete. Both worktrees start at
+`51c143c`, with separate installed environments/builds and verified input copies.
+The [readiness index](../studies/controller_rl_preparation/readiness.json) binds
+their actual paths, commits, native/source/ABI receipts and verification.
 
 ## Common contract
 
@@ -35,10 +36,17 @@ new outputs separate. Use `experiments/rl/build_native.py` after `uv sync --lock
 in that environment to create a fresh path-bound native/source/ABI receipt.
 Historical environments, captures and receipts are immutable evidence.
 
-Reserved worktree paths are `../powered-descent-lab-controller-v2` and
+Prepared worktree paths are `../powered-descent-lab-controller-v2` and
 `../powered-descent-lab-rl-v2`; branch names are `dev/controller-v2-20261012` and
 `dev/rl-v2-20261012`. Neither starts optimization or controller tuning merely by
 being created.
+
+From either worktree, its environment is `experiments/rl/.venv`, Cargo artifacts
+are in its own `target/`, and local assets/receipts are in
+`outputs/shared-preparation/`. The controller worktree also has its release
+`pd-benchmark` executable. Both installed bridges fully verified their local
+validation/stress collections and passed all 14 Python tests. No branch-specific
+algorithm allocation has started.
 
 ## Input assets
 

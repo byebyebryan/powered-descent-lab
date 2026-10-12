@@ -43,8 +43,8 @@ partial or failed stages remain evidence and do not authorize replacement inputs
 | P1 exposure inventory and complete requests | Complete; requests committed before generation |
 | P2 verified sealed cohorts and stress accounting | Complete; no audited collisions, sparse quotas retained |
 | P3 neutral V2 Python/evidence/report interoperability | Complete; maintained, Python and actual fault-fixture checks passed |
-| P4 48-slot integration and browser acceptance | Captures/verification complete; final terrain-frame browser check in progress |
-| P5 common checkpoint and isolated branch handoffs | In progress |
+| P4 48-slot integration and browser acceptance | Complete; 40 captures verified, 8 unsupported, desktop/mobile acceptance |
+| P5 common checkpoint and isolated branch handoffs | Complete; two isolated worktrees/builds/input copies verified |
 
 This run creates no controller improvement or RL qualification claim. Completion
 requires actual maintained gates, input/evidence checks, fresh smoke verification
@@ -53,3 +53,10 @@ ceiling with outstanding requirements leaves the goal incomplete.
 
 The [run record](controller_rl_preparation_results.md) binds completed inputs,
 physical/reference receipts, exposure limits and outstanding readiness gates.
+
+Completed within the eight-hour wall ceiling. The
+[handoff](controller_rl_development_handoff.md) and
+[readiness index](../studies/controller_rl_preparation/readiness.json) bind common
+source checkpoint `51c143c`. Actual allocation: 5,888 proposals, 48 scheduled
+attempts, 40 captures/fresh verifications, zero training and zero final-test
+flights. Algorithm development remains separately scoped.

@@ -3,9 +3,9 @@
 [Plan](controller_rl_preparation_plan.md) · [Execution](controller_rl_preparation_execution.md) ·
 [Documentation home](README.md)
 
-October 12, 2026. Input preparation, interoperability and bounded integration
-are complete. Isolated branch environments and the final handoff are in progress.
-No training or final-test flight has occurred.
+October 12, 2026. Shared preparation is complete at common source checkpoint
+`51c143c`. Both isolated branch environments and input copies passed validation.
+No training, controller tuning or final-test flight has occurred.
 
 ## Physical task and retained reference
 
@@ -130,5 +130,30 @@ presentation only, preserving captured commands, outcomes and source provenance.
 
 The [development handoff](controller_rl_development_handoff.md) records ownership,
 input roles, immutable assets, isolated builds and required future experiment
-contracts. Worktree setup receipts and final browser/gate links follow when the
-remaining P5 exit is complete.
+contracts. The [final paired review](../outputs/controller-rl-preparation/run-20261012T072437Z/smoke-review-r3/report.html)
+and [browser receipt](../outputs/controller-rl-preparation/run-20261012T072437Z/browser-check-r3/browser-result.json)
+passed desktop/mobile hierarchy, previews, full-tree/focused browsing, collapse,
+rich detail and cross-family context returns. The owned QA server exposed only
+the new report/campaign paths; existing library navigation was explicitly outside
+this check. No user server restart or accepted-selector publication occurred.
+
+## Final readiness
+
+All 18 maintained checks and 87 Node tests pass at the common checkpoint.
+The two worktrees have distinct Cargo targets, Python/native environments and
+new outputs. Both installed bridges fully verified exact validation/stress copies
+and passed 14 Python tests; the controller worktree also built `pd-benchmark`.
+Development regression assets retain original shared paths/manifests. Final-test
+assets remain central with zero usage receipts and no copied developer inputs.
+
+The [readiness index](../studies/controller_rl_preparation/readiness.json) binds
+the [complete source/artifact receipt](../outputs/controller-rl-preparation/run-20261012T072437Z/readiness.json).
+All original learning and smoke native-module bytes remain retained, and the
+final report was verified through the existing HTTP service without changing it.
+Later presentation source does not relabel the smoke's original flight checkpoint.
+
+The goal ends at this handoff: 5,888/6,016 proposals, 48/48 scheduled attempts,
+40 captured executions/fresh checks, eight unsupported inputs, zero optimizer
+transitions and zero final-test flights. Sparse stress and exposure-history limits
+remain explicit. Controller improvements and a V2 RL experiment can now proceed
+under their separately declared branch contracts.

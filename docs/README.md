@@ -98,11 +98,12 @@ The October 12 [shared preparation plan](controller_rl_preparation_plan.md) and
 bounded step before independent controller/RL development: fixed task/cohorts,
 V2 application interoperability, an integration smoke and a common branch
 checkpoint. The owner has launched its default allocation under the
-[execution declaration](controller_rl_preparation_execution.md). Algorithm work
-and training remain outside preparation. The
-[run record](controller_rl_preparation_results.md) tracks completed cohort gates
-and integration/handoff work. The [branch handoff](controller_rl_development_handoff.md)
-records the common contract, ownership and future experiment requirements.
+[execution declaration](controller_rl_preparation_execution.md). The
+[completed run record](controller_rl_preparation_results.md) and
+[branch handoff](controller_rl_development_handoff.md) now bind verified cohorts,
+V2 interoperability, rich integration review and two isolated worktrees at
+`51c143c`. Algorithm work and training remain later allocations with their own
+experiment contracts.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "ready for separately declared controller and RL development",
+  "common_source_checkpoint": "51c143cd0b5054bf52c0f105c31194738fea243c",
+  "readiness_receipt": "outputs/controller-rl-preparation/run-20261012T072437Z/readiness.json",
+  "readiness_sha256": "50b852044344c417445c43717f1c8aa92a56cda9d5915f78401f8e857c4096a4",
+  "branch_handoffs": [
+    {
+      "owner": "controller",
+      "branch": "dev/controller-v2-20261012",
+      "worktree": "/home/bryan/code/powered-descent-lab-controller-v2",
+      "source_commit": "51c143cd0b5054bf52c0f105c31194738fea243c",
+      "native_build_receipt_sha256": "f27859e24359ceba41726ce31ff3167f11c215bb7568617162ef8aa7ce647725",
+      "input_verification_sha256": "76b35e49ea40db6509af35ef21876386a938ba400464ba34c324402727361c87",
+      "python_tests_passed": 14
+    },
+    {
+      "owner": "rl",
+      "branch": "dev/rl-v2-20261012",
+      "worktree": "/home/bryan/code/powered-descent-lab-rl-v2",
+      "source_commit": "51c143cd0b5054bf52c0f105c31194738fea243c",
+      "native_build_receipt_sha256": "dc5460a3d4747e01e666aee46e988cf4eb67e0f61bbae20405d839b2760649d0",
+      "input_verification_sha256": "76b35e49ea40db6509af35ef21876386a938ba400464ba34c324402727361c87",
+      "python_tests_passed": 14
+    }
+  ],
+  "training_transitions": 0,
+  "final_test_flights": 0
+}

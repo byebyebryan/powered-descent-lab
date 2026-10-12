@@ -64,14 +64,15 @@ integrated. Fresh qualification/stress inputs and another RL allocation remain
 future work; the baseline does not promote a default or freeze that proposal.
 
 The October 12 [shared preparation plan](controller_rl_preparation_plan.md),
-with its [review](controller_rl_preparation_review.md), is the proposed next
-bounded goal before parallel incumbent/RL development. It preserves the shared
-physical/evidence contract, seals role-separated cohorts, completes V2 Python
-composition and records a validated branch checkpoint. Its default is 48
-integration attempt slots and zero training/final-test flights. The owner has
-launched shared preparation under its
-[execution declaration](controller_rl_preparation_execution.md); algorithm
-development remains a later allocation.
+with its [review](controller_rl_preparation_review.md), is
+[complete](controller_rl_preparation_results.md) under the default
+[execution declaration](controller_rl_preparation_execution.md). Common checkpoint
+`51c143c` binds role-separated cohorts, neutral V2 Python/report consumption,
+a verified 48-slot integration and two isolated branch builds/input copies.
+Actual new input allocation was 5,888 proposals. The
+[handoff](controller_rl_development_handoff.md) records owners,
+readiness receipts and remaining stress/exposure limits. No controller tuning,
+optimizer training or final-test flights were part of preparation.
 
 ### Report presentation refinement
 
@@ -1028,13 +1029,12 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-The next proposed implementation goal is the reviewed
-[shared controller/RL preparation](controller_rl_preparation_plan.md).
-Complete its task/cohort, interoperability and checkpoint gates before splitting
-the two development worktrees. The [review](controller_rl_preparation_review.md)
-records current source gaps and the bounded integration allocation. Curriculum,
+The [shared controller/RL preparation](controller_rl_preparation_results.md) is
+complete. Use the [branch handoff](controller_rl_development_handoff.md) to start
+independent development from `51c143c`. Each branch first declares its experiment
+hypothesis, budget, sampling/selection and final-test release rule. Curriculum,
 control representation, controller improvements and optimizer training belong
-to later branch-specific contracts.
+to those later contracts; sparse stress coverage remains an explicit limitation.
 
 The [report presentation refinement](report_presentation_refinement_results.md)
 is complete. Use its full paired edition to inspect saved procedural outcomes
