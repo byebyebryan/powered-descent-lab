@@ -63,6 +63,14 @@ neutral geometry-based reports and independent native verification are now
 integrated. Fresh qualification/stress inputs and another RL allocation remain
 future work; the baseline does not promote a default or freeze that proposal.
 
+The October 12 [shared preparation plan](controller_rl_preparation_plan.md),
+with its [review](controller_rl_preparation_review.md), is the proposed next
+bounded goal before parallel incumbent/RL development. It preserves the shared
+physical/evidence contract, seals role-separated cohorts, completes V2 Python
+composition and records a validated branch checkpoint. Its default is 48
+integration attempt slots and zero training/final-test flights; it has not
+launched preparation or either development branch.
+
 ### Report presentation refinement
 
 The [presentation pass](report_presentation_refinement_results.md) is complete:
@@ -1017,6 +1025,14 @@ If the lab needs a browser runtime before the core is stable, the split has
 already failed.
 
 ## 7. Recommended Immediate Next Step
+
+The next proposed implementation goal is the reviewed
+[shared controller/RL preparation](controller_rl_preparation_plan.md).
+Complete its task/cohort, interoperability and checkpoint gates before splitting
+the two development worktrees. The [review](controller_rl_preparation_review.md)
+records current source gaps and the bounded integration allocation. Curriculum,
+control representation, controller improvements and optimizer training belong
+to later branch-specific contracts.
 
 The [report presentation refinement](report_presentation_refinement_results.md)
 is complete. Use its full paired edition to inspect saved procedural outcomes

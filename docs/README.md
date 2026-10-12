@@ -93,6 +93,12 @@ The subsequent [existing-input controller baseline](procedural_challenge_baselin
 now measures the unchanged incumbent on predeclared V2 calibration inputs,
 with raw/reflected adapters and separate backend rates. It is development
 evidence; fresh-input qualification and stress populations remain separate.
+The October 12 [shared preparation plan](controller_rl_preparation_plan.md) and
+[source-backed review](controller_rl_preparation_review.md) now define the next
+bounded step before independent controller/RL development: fixed task/cohorts,
+V2 application interoperability, an integration smoke and a common branch
+checkpoint. This is a reviewed proposal; preparation and algorithm work have
+not started.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.
