@@ -40,6 +40,9 @@ while retaining full summary counts and viewport preview loading.
 The [direction filter correction](report_direction_facets_results.md) merges
 left/right missions within each terrain stratum, retaining direction as metadata
 and an optional filter rather than a navigation branch.
+The [focused browsing refinement](report_mission_browsing_qol_results.md) clarifies
+start/resume, separates group and page navigation, and keeps the active hierarchy
+beside sticky controls while retaining the full group tree on demand.
 
 ## Independent approach platform
 

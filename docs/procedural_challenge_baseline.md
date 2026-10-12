@@ -112,6 +112,12 @@ remains a separately scoped follow-up.
 
 ## Reports and retained verification
 
+The latest [layered browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r4/report.html)
+and [value browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r4/report.html)
+add the [focused browsing refinement](report_mission_browsing_qol_results.md)
+with unchanged results and evidence. The original verified editions below remain
+retained as the initial reporting checkpoint.
+
 - [Layered Perlin mission review](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r2/report.html)
 - [Value-noise mission review](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r2/report.html)
 - [Layered metrics and input accounting](../outputs/procedural-challenge/baseline-20261011T181000Z/layered/metrics.json)
