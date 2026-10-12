@@ -43,8 +43,8 @@ partial or failed stages remain evidence and do not authorize replacement inputs
 | P1 exposure inventory and complete requests | Complete; requests committed before generation |
 | P2 verified sealed cohorts and stress accounting | Complete; no audited collisions, sparse quotas retained |
 | P3 neutral V2 Python/evidence/report interoperability | Complete; maintained, Python and actual fault-fixture checks passed |
-| P4 48-slot integration and browser acceptance | Pending |
-| P5 common checkpoint and isolated branch handoffs | Pending |
+| P4 48-slot integration and browser acceptance | Captures/verification complete; final terrain-frame browser check in progress |
+| P5 common checkpoint and isolated branch handoffs | In progress |
 
 This run creates no controller improvement or RL qualification claim. Completion
 requires actual maintained gates, input/evidence checks, fresh smoke verification

@@ -199,6 +199,15 @@ pub fn preview_projection_with_bounds(
     href: String,
     bounds: &[pd_core::Vec2],
 ) -> Result<(String, CampaignPresentationV1)> {
+    preview_projection_with_frame(value, href, bounds, false)
+}
+
+pub fn preview_projection_with_frame(
+    value: &SavedEvaluation,
+    href: String,
+    bounds: &[pd_core::Vec2],
+    terrain_frame: bool,
+) -> Result<(String, CampaignPresentationV1)> {
     let scenario = &value.scenario;
     let episode = &value.execution.episode;
     let mut samples = episode.run.samples.clone();
@@ -216,13 +225,24 @@ pub fn preview_projection_with_bounds(
         });
     }
     let manifest = &episode.run.manifest;
-    let svg = pd_report::build_saved_flight_preview_svg_with_context(
-        scenario,
-        Some(manifest),
-        &samples,
-        &[],
-        bounds,
-    );
+    let (svg, outside) = if terrain_frame {
+        pd_report::build_saved_flight_preview_svg_in_terrain_frame(
+            scenario,
+            Some(manifest),
+            &samples,
+        )
+    } else {
+        (
+            pd_report::build_saved_flight_preview_svg_with_context(
+                scenario,
+                Some(manifest),
+                &samples,
+                &[],
+                bounds,
+            ),
+            false,
+        )
+    };
     let target = scenario
         .world
         .landing_pad(scenario.mission.goal.target_pad_id());
@@ -230,7 +250,11 @@ pub fn preview_projection_with_bounds(
     let view = CampaignPresentationV1 {
         schema_version: 1,
         preview_href: href,
-        caption: if state.physics_step == 0 {
+        caption: if terrain_frame && outside {
+            "Terrain frame · flight leaves this extent; full trace in detail".into()
+        } else if terrain_frame {
+            "Recorded terrain and flight · terrain frame".into()
+        } else if state.physics_step == 0 {
             "Recorded initial state · no departure recorded".into()
         } else if projected {
             "Recorded flight · saved endpoint added for display".into()

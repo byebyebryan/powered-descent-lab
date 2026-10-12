@@ -3,9 +3,9 @@
 [Plan](controller_rl_preparation_plan.md) · [Execution](controller_rl_preparation_execution.md) ·
 [Documentation home](README.md)
 
-October 12, 2026. Input preparation and application interoperability are complete;
-integration and branch readiness remain in progress. No training or measured
-preparation flight has occurred at this checkpoint.
+October 12, 2026. Input preparation, interoperability and bounded integration
+are complete. Isolated branch environments and the final handoff are in progress.
+No training or final-test flight has occurred.
 
 ## Physical task and retained reference
 
@@ -67,7 +67,7 @@ These gaps do not establish complete stress coverage or justify refilling.
 
 Actual new proposal allocation is **5,888/6,016**; the optional 128 resolution
 slots are unused. Final-test flights, training transitions and measured smoke
-attempts remain zero. The platform is not yet ready for the branch split.
+attempts were zero at the input freeze; the bounded smoke below has since run.
 
 ## Shared interoperability
 
@@ -102,3 +102,33 @@ and the [development gate](../outputs/controller-rl-preparation/run-20261012T072
 are retained. The new Python environment is isolated; the
 [historical module check](../outputs/controller-rl-preparation/run-20261012T072437Z/historical-native-module-preservation.json)
 confirms the original installed extension/wrapper bytes remain unchanged.
+
+## Measured integration and presentation
+
+All **48** predeclared slots completed on 16 exposed physical inputs. There were
+40 captured executions with complete integrity/replay and eight raw leftward
+unsupported dispositions. Reflected reference: 7/8 per backend; raw: 4/8 per
+backend with four unsupported; untrained Python policy: 0/8 per backend. These
+input-selected integration subsets do not replace the 3,311-input baseline.
+
+The [proof accounting](../outputs/controller-rl-preparation/run-20261012T072437Z/smoke-proof-accounting.json)
+records one fresh verification per executed capture: native composition loads
+and verifies saved commands before report projection; Python uses a fresh
+`verify.py` process after deferring its inline check. Report accounting and
+refinement perform no additional replay. Rightward raw/reflected commands,
+states, fuel and clocks match exactly; their declared adapter name is the sole
+episode-label exclusion. The initial overbroad label comparison and browser
+library-scope failure were corrected without new measured attempts.
+
+The rich paired edition retains 40 complete detail payloads, eight status pages,
+native endpoint context, previews, backend hierarchy and bounded navigation.
+Its heading identifies exposed-input preparation scope and the untrained policy.
+High untrained flights revealed unreadable all-flight thumbnails; the new optional
+terrain frame keeps mission geometry visible and discloses out-of-extent flight.
+Full spatial traces remain in both rich details and static fallback. This changes
+presentation only, preserving captured commands, outcomes and source provenance.
+
+The [development handoff](controller_rl_development_handoff.md) records ownership,
+input roles, immutable assets, isolated builds and required future experiment
+contracts. Worktree setup receipts and final browser/gate links follow when the
+remaining P5 exit is complete.

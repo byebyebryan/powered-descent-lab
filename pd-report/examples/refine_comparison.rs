@@ -196,7 +196,7 @@ fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     ensure!(
         args.len() >= 4,
-        "usage: refine_comparison SAVED_COMPARISON_DIR NEW_EDITION_DIR SOURCE_HREF_BASE EDITION_HREF_BASE [--mission-limit N] [--additional-source DIR HREF_BASE]..."
+        "usage: refine_comparison SAVED_COMPARISON_DIR NEW_EDITION_DIR SOURCE_HREF_BASE EDITION_HREF_BASE [--mission-limit N] [--scope-note TEXT] [--additional-source DIR HREF_BASE]..."
     );
     let source = PathBuf::from(&args[0]);
     let output = PathBuf::from(&args[1]);
@@ -206,9 +206,24 @@ fn main() -> Result<()> {
     safe_base(edition)?;
     let mut source_args = vec![(source.clone(), base.clone())];
     let mut limit = None;
+    let mut scope_note = None;
+    let mut terrain_previews = false;
     let mut index = 4;
     while index < args.len() {
         match args[index].as_str() {
+            "--terrain-previews" if !terrain_previews => {
+                terrain_previews = true;
+                index += 1;
+            }
+            "--scope-note" if index + 1 < args.len() && scope_note.is_none() => {
+                let note = args[index + 1].trim();
+                ensure!(
+                    !note.is_empty() && note.len() <= 2048,
+                    "scope note must be bounded nonempty text"
+                );
+                scope_note = Some(note.to_owned());
+                index += 2;
+            }
             "--mission-limit" if index + 1 < args.len() && limit.is_none() => {
                 let n = args[index + 1].parse::<u64>()?;
                 ensure!(n > 0, "inspection limit must be positive");
@@ -314,7 +329,7 @@ fn main() -> Result<()> {
             if row.disposition == "executed" {
                 let directory = capture_directory(&sources[a][c], row)?;
                 let (value, identity) = read_capture(&directory, campaign, row)?;
-                for point in value
+                let flight_points: Vec<_> = value
                     .execution
                     .episode
                     .run
@@ -324,7 +339,21 @@ fn main() -> Result<()> {
                     .chain(std::iter::once(
                         value.execution.episode.final_state.position_m,
                     ))
-                {
+                    .collect();
+                let frame_points: Vec<_> = if terrain_previews {
+                    value
+                        .scenario
+                        .world
+                        .terrain
+                        .points()
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once(value.scenario.initial_state.position_m))
+                        .collect()
+                } else {
+                    flight_points
+                };
+                for point in frame_points {
                     lower.x = lower.x.min(point.x);
                     lower.y = lower.y.min(point.y);
                     upper.x = upper.x.max(point.x);
@@ -356,8 +385,12 @@ fn main() -> Result<()> {
                 .all(|c| c.page.integrity_passed);
             let mut view = None;
             let html = if let Some((directory, value, identity)) = &captures[a] {
-                let (svg, presentation) =
-                    preview_projection_with_bounds(value, preview.clone(), &bounds)?;
+                let (svg, presentation) = preview_projection_with_frame(
+                    value,
+                    preview.clone(),
+                    &bounds,
+                    terrain_previews,
+                )?;
                 write_new(&output.join(&preview), svg.as_bytes())?;
                 let original_bytes = read_regular(&directory.join("report.html"), 8 * 1024 * 1024)?;
                 let original_html = std::str::from_utf8(&original_bytes)?;
@@ -366,11 +399,20 @@ fn main() -> Result<()> {
                 let handoff_count = original_data["flightAnnotations"]["corrections"]
                     .as_array()
                     .map_or(0, Vec::len);
+                let full_preview = if terrain_previews {
+                    Some(preview_projection_with_bounds(value, preview.clone(), &[])?)
+                } else {
+                    None
+                };
+                let (fallback_svg, fallback_caption) = full_preview.as_ref().map_or(
+                    (svg.as_str(), presentation.caption.as_str()),
+                    |(full, view)| (full.as_str(), view.caption.as_str()),
+                );
                 let refined = pd_report::detail_view::with_static_fallback(
                     original_html,
-                    &svg,
+                    fallback_svg,
                     &pd_report::detail_view::metric_fallback(&value.execution.episode.run.samples),
-                    &presentation.caption,
+                    fallback_caption,
                 )?;
                 let endpoint = format!(
                     "<h1>Mission {} · {}</h1><p>{}</p><p>Endpoint: target horizontal offset {} m · height above upright touchdown {} m · speed {} m/s.</p><p>{}</p>",
@@ -559,7 +601,22 @@ fn main() -> Result<()> {
         &output.join("comparison-input.json"),
         &serde_json::to_vec(&page)?,
     )?;
-    let html = pd_report::comparison::render_comparison_page(&page).map_err(anyhow::Error::msg)?;
+    let mut html =
+        pd_report::comparison::render_comparison_page(&page).map_err(anyhow::Error::msg)?;
+    if let Some(note) = &scope_note {
+        ensure!(
+            html.matches("</h1>").count() == 1,
+            "ambiguous common report heading"
+        );
+        html = html.replacen(
+            "</h1>",
+            &format!(
+                "</h1><p class=\"section-note presentation-scope\">{}</p>",
+                pd_report::escape_html(note)
+            ),
+            1,
+        );
+    }
     write_new(&output.join("report.html"), html.as_bytes())?;
     let source_hash = |key: &str| -> Result<serde_json::Value> {
         Ok(if source_receipts.len() == 1 {
@@ -571,7 +628,14 @@ fn main() -> Result<()> {
             .into()
         })
     };
-    let receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"sources":source_receipts,"renderer_executable_sha256":digest(&fs::read(std::env::current_exe()?)?),"source_projection_sha256":source_hash("source_projection_sha256")?,"independent_verification_sha256":source_hash("independent_verification_sha256")?,"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"campaign_pages":campaign_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
+    let mut receipt = serde_json::json!({"schema_version":1,"kind":"saved_procedural_presentation_refinement","source":source,"sources":source_receipts,"renderer_executable_sha256":digest(&fs::read(std::env::current_exe()?)?),"source_projection_sha256":source_hash("source_projection_sha256")?,"independent_verification_sha256":source_hash("independent_verification_sha256")?,"campaigns":campaign_bindings,"source_base_href":base,"edition_base_href":edition,"inspection_limit":limit,"scheduled_missions":refined.missions.len(),"scheduled_attempts":refined.missions.len()*refined.labels.len(),"native_details":capture_bindings.len(),"campaign_pages":campaign_bindings.len(),"status_details":status_count,"captures":capture_bindings,"report_sha256":digest(html.as_bytes()),"elapsed_s":started.elapsed().as_secs_f64(),"new_flights":0,"new_replays":0,"saved_rich_payloads_preserved":true});
+    if let Some(note) = scope_note {
+        receipt["scope_note"] = note.into();
+    }
+    if terrain_previews {
+        receipt["preview_frame"] = "terrain".into();
+        receipt["detail_spatial_frame"] = "full_recorded_flight".into();
+    }
     write_new(
         &output.join("render.json"),
         &serde_json::to_vec_pretty(&receipt)?,

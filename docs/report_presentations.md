@@ -173,6 +173,22 @@ first missions stay beside the group controls, with no growing list of sibling
 groups. It checks footer group navigation, the full-tree option, explicit group
 focus, resume/page state and rich-detail returns:
 
+For an owned standalone integration edition, `--report-only` skips the existing
+report-library entry check and records that omission in the browser receipt.
+The default still checks the library. It preserves all desktop/mobile tree,
+preview, rich-detail and context-return checks. The readonly `refine_comparison`
+example also accepts `--scope-note TEXT` to put a bounded escaped scope caption
+below the common heading, bound in its presentation receipt. Use it to label
+small integration subsets clearly without changing saved flight data or the
+maintained report template.
+
+`--terrain-previews` keeps mission thumbnails framed by physical terrain/pads
+and the initial state, so high flight outliers do not flatten the terrain. Each
+out-of-extent flight is explicitly captioned. The rich detail and its static
+spatial fallback keep the full recorded flight; samples/outcomes remain intact.
+The default still fits all recorded flights. The receipt records both frame
+choices, and every approach within a mission uses the same terrain extent.
+
 ```sh
 rtk proxy node scripts/check-challenge-baseline-browser.mjs \
   --browser-ws ws://127.0.0.1:PORT/devtools/browser/ID \

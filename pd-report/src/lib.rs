@@ -297,6 +297,7 @@ struct PreviewRenderSeries<'a> {
 
 #[derive(Clone, Copy)]
 struct PreviewOptions {
+    fit_terrain: bool,
     show_context: bool,
     show_waypoints: bool,
     show_waypoint_guides: bool,
@@ -307,6 +308,7 @@ struct PreviewOptions {
 impl PreviewOptions {
     const fn full() -> Self {
         Self {
+            fit_terrain: false,
             show_context: true,
             show_waypoints: true,
             show_waypoint_guides: true,
@@ -317,6 +319,7 @@ impl PreviewOptions {
 
     const fn aggregate_lane() -> Self {
         Self {
+            fit_terrain: false,
             show_context: true,
             show_waypoints: true,
             show_waypoint_guides: false,
@@ -327,6 +330,7 @@ impl PreviewOptions {
 
     const fn saved_flight() -> Self {
         Self {
+            fit_terrain: false,
             show_context: true,
             show_waypoints: false,
             show_waypoint_guides: false,
@@ -407,6 +411,61 @@ pub fn build_saved_flight_preview_svg_with_context(
         handoffs,
         comparison_positions,
     )
+}
+
+/// Fixed physical-terrain frame for a mission-first preview. Flight data remains
+/// unchanged; the returned flag identifies positions outside the terrain extent.
+/// Callers must disclose that extent and retain the full trace in detail views.
+pub fn build_saved_flight_preview_svg_in_terrain_frame(
+    scenario: &ScenarioSpec,
+    manifest: Option<&RunManifest>,
+    samples: &[SampleRecord],
+) -> (String, bool) {
+    let frame = terrain_frame_points(scenario);
+    let lower = frame
+        .iter()
+        .fold(Vec2::new(f64::INFINITY, f64::INFINITY), |a, p| {
+            Vec2::new(a.x.min(p.x), a.y.min(p.y))
+        });
+    let upper = frame
+        .iter()
+        .fold(Vec2::new(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, p| {
+            Vec2::new(a.x.max(p.x), a.y.max(p.y))
+        });
+    let outside = samples.iter().any(|s| {
+        let p = s.observation.position_m;
+        p.x < lower.x || p.x > upper.x || p.y < lower.y || p.y > upper.y
+    });
+    let series = [PreviewRenderSeries {
+        scenario,
+        manifest,
+        trajectory: PreviewTrajectory::Samples(samples),
+        controller_updates: None,
+        route_plan: None,
+    }];
+    let mut options = PreviewOptions::saved_flight();
+    options.fit_terrain = true;
+    (
+        build_preview_svg_with_bounds(&series, options, &[], &[]),
+        outside,
+    )
+}
+
+fn terrain_frame_points(scenario: &ScenarioSpec) -> Vec<Vec2> {
+    scenario
+        .world
+        .terrain
+        .points()
+        .iter()
+        .copied()
+        .chain(std::iter::once(scenario.initial_state.position_m))
+        .chain(scenario.world.landing_pads.iter().flat_map(|p| {
+            [
+                Vec2::new(p.center_x_m - p.width_m * 0.5, p.surface_y_m),
+                Vec2::new(p.center_x_m + p.width_m * 0.5, p.surface_y_m),
+            ]
+        }))
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -858,6 +917,22 @@ fn build_preview_svg_with_bounds(
 
     for point in bounds.iter().filter(|p| p.x.is_finite() && p.y.is_finite()) {
         include_point(transform_x(point.x, first_flip_sign), point.y);
+    }
+
+    if options.fit_terrain
+        && let Some(first) = series.first()
+    {
+        min_x = f64::INFINITY;
+        max_x = f64::NEG_INFINITY;
+        min_y = f64::INFINITY;
+        max_y = f64::NEG_INFINITY;
+        for point in terrain_frame_points(first.scenario) {
+            let x = transform_x(point.x, first_flip_sign);
+            min_x = min_x.min(x);
+            max_x = max_x.max(x);
+            min_y = min_y.min(point.y);
+            max_y = max_y.max(point.y);
+        }
     }
 
     if !min_x.is_finite() || !max_x.is_finite() || !min_y.is_finite() || !max_y.is_finite() {
@@ -2497,6 +2572,44 @@ mod tests {
         // A completed waypoint-contract mission may still be airborne.
         manifest.physical_outcome = PhysicalOutcome::Flying;
         assert!(render(&manifest).contains("data-outcome=\"success\""));
+    }
+
+    #[test]
+    fn terrain_frame_keeps_geometry_readable_and_discloses_outlier_flight_without_mutation() {
+        let scenario = fixture_scenario();
+        let ctx = pd_core::RunContext::from_scenario(&scenario).unwrap();
+        let state = pd_core::SimulationState::new(&ctx).unwrap();
+        let sample = SampleRecord {
+            sim_time_s: 0.0,
+            physics_step: 0,
+            observation: state.build_observation(&ctx),
+            held_command: pd_core::Command::idle(),
+        };
+        let mut outlier = sample.clone();
+        outlier.observation.position_m.y = 100_000.0;
+        let samples = vec![sample.clone(), outlier];
+        let original = serde_json::to_value(&samples).unwrap();
+        let (ordinary, outside) =
+            build_saved_flight_preview_svg_in_terrain_frame(&scenario, None, &[sample]);
+        assert!(!outside);
+        let (framed, outside) =
+            build_saved_flight_preview_svg_in_terrain_frame(&scenario, None, &samples);
+        assert!(outside);
+        let terrain = |svg: &str| {
+            svg.lines()
+                .filter(|l| l.contains("#7a5d3e"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert!(!terrain(&ordinary).is_empty());
+        assert_eq!(terrain(&ordinary), terrain(&framed));
+        let full = build_saved_flight_preview_svg(&scenario, None, &samples, &[]);
+        assert_ne!(full, framed);
+        assert_eq!(
+            full,
+            build_saved_flight_preview_svg_with_context(&scenario, None, &samples, &[], &[])
+        );
+        assert_eq!(serde_json::to_value(&samples).unwrap(), original);
     }
 
     #[test]

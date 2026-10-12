@@ -101,7 +101,8 @@ checkpoint. The owner has launched its default allocation under the
 [execution declaration](controller_rl_preparation_execution.md). Algorithm work
 and training remain outside preparation. The
 [run record](controller_rl_preparation_results.md) tracks completed cohort gates
-and remaining integration/handoff work.
+and integration/handoff work. The [branch handoff](controller_rl_development_handoff.md)
+records the common contract, ownership and future experiment requirements.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.

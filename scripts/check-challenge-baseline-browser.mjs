@@ -6,7 +6,7 @@ import {resolve,join} from 'node:path';
 import {parseArgs} from 'node:util';
 import {cdpClient} from './planner-v2-browser-helpers.mjs';
 
-const {values}=parseArgs({options:{'browser-ws':{type:'string'},report:{type:'string'},output:{type:'string'}},strict:true});
+const {values}=parseArgs({options:{'browser-ws':{type:'string'},report:{type:'string'},output:{type:'string'},'report-only':{type:'boolean',default:false}},strict:true});
 assert(values['browser-ws']&&values.report&&values.output,'Require --browser-ws WS --report HTTP_URL --output NEW_QA_DIR');
 const report=new URL(values.report);assert(['127.0.0.1','localhost'].includes(report.hostname));
 const browserUrl=new URL(values['browser-ws']);assert.equal(browserUrl.hostname,'127.0.0.1');
@@ -187,15 +187,17 @@ try {
       await client.send('Page.navigate',{url:returnUrl});await wait('!!window.PdPairedReview');
       assert(await client.evaluate(`PdPairedReview.showGroupTree&&PdPairedReview.state.mission===${JSON.stringify(transition.next)}&&PdPairedReview.data.missions.find(m=>m.id===PdPairedReview.state.mission).path[0]===${JSON.stringify(transition.family)}`));
       await screenshot(`${size.name}-cross-family-detail-return.png`);
-      await client.send('Page.navigate',{url:new URL('/reports/library/index.html?mission=procedural',report).href});
-      await wait('!!document.getElementById("mission-filter")');
-      assert(await client.evaluate(`(()=>{const a=document.querySelector('a.report-title[href="'+${JSON.stringify(report.pathname)}+'"]');const row=a?.closest('.report-row');return row&&!row.hidden&&row.dataset.mission==='procedural'&&row.closest('.mission-report-group').open;})()`));
-      await noOverflow();await screenshot(`${size.name}-unified-report-library.png`);
+      if(!values['report-only']) {
+        await client.send('Page.navigate',{url:new URL('/reports/library/index.html?mission=procedural',report).href});
+        await wait('!!document.getElementById("mission-filter")');
+        assert(await client.evaluate(`(()=>{const a=document.querySelector('a.report-title[href="'+${JSON.stringify(report.pathname)}+'"]');const row=a?.closest('.report-row');return row&&!row.hidden&&row.dataset.mission==='procedural'&&row.closest('.mission-report-group').open;})()`));
+        await noOverflow();await screenshot(`${size.name}-unified-report-library.png`);
+      }
     }
-    checks.push({viewport:size.name,families,backend_outcomes_scoped:families.length>1,family_boundary_navigation:families.length>1,cross_family_detail_return:families.length>1,procedural_library_entry:families.length>1,largest_band:selected.count,materialized_bound:12,pagination_exercised:selected.count>12,groups_visited:traversal.visited.length,maximum_visible_group_rows:traversal.maximumGroups,group_controls_with_active_missions:true,sticky_navigation_readable:true,footer_group_navigation:true,full_group_tree_available:true,group_navigation_preserves_view:true,collapse_preserves_parents_and_selection:true,collapsed_state_and_view_survive_reload:true,collapse_preserves_page:true,resume_preserves_page:true,three_level_geometry:true,detail_static_and_rich:true,detail_back_context:true,detail_return_preserves_view:true});
+    checks.push({viewport:size.name,families,backend_outcomes_scoped:families.length>1,family_boundary_navigation:families.length>1,cross_family_detail_return:families.length>1,procedural_library_entry:values['report-only']?'not checked; owned report scope':families.length>1,largest_band:selected.count,materialized_bound:12,pagination_exercised:selected.count>12,groups_visited:traversal.visited.length,maximum_visible_group_rows:traversal.maximumGroups,group_controls_with_active_missions:true,sticky_navigation_readable:true,footer_group_navigation:true,full_group_tree_available:true,group_navigation_preserves_view:true,collapse_preserves_parents_and_selection:true,collapsed_state_and_view_survive_reload:true,collapse_preserves_page:true,resume_preserves_page:true,three_level_geometry:true,detail_static_and_rich:true,detail_back_context:true,detail_return_preserves_view:true});
   }
   assert.deepEqual(client.errors,[]);
-  const result={schema_version:1,passed:true,report:report.href,shared_preview_bounds_checked:bounds.size,checks,screenshots,errors:client.errors};
+  const result={schema_version:1,passed:true,report:report.href,report_only:values['report-only'],shared_preview_bounds_checked:bounds.size,checks,screenshots,errors:client.errors};
   writeFileSync(join(output,'browser-result.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx'});
   console.log(JSON.stringify(result,null,2));
 } finally {
