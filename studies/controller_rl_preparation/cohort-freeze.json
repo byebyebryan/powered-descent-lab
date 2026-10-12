@@ -1,0 +1,166 @@
+{
+  "additional_resolution_proposals": 0,
+  "cohorts": [
+    {
+      "admitted": 15,
+      "collect_log_sha256": "8881b9bd78c77950a3bf071fbb814191b64da0c2b89c995f38b4178f01b813c5",
+      "counts": {
+        "accepted": 15,
+        "insufficient_challenge": 30,
+        "physical_duplicate": 0,
+        "scheduled": 128,
+        "stress_excluded": 83,
+        "structural_exhaustion": 0
+      },
+      "manifest_sha256": "4c1281783f0d82116f9062ec1d084338bb267df52e5bfbad9bf48ad90ff235ac",
+      "population": "stress",
+      "role": "development",
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/stress-support-a",
+      "seed": 20261012041,
+      "verify_log_sha256": "5449a367263e7d889522589ef7f35ba7d84a148d9304b396ef054384deb8450e"
+    },
+    {
+      "admitted": 12,
+      "collect_log_sha256": "533e5a62dcc624aa1c47eb63fba17e206a96148f29dcea36a96df48e2e9dd91e",
+      "counts": {
+        "accepted": 12,
+        "insufficient_challenge": 13,
+        "physical_duplicate": 0,
+        "scheduled": 128,
+        "stress_excluded": 103,
+        "structural_exhaustion": 0
+      },
+      "manifest_sha256": "fe7e8d3cf63febe2bfb92a5a8d099acb8d03ccbb25723badf80e6775a175006b",
+      "population": "stress",
+      "role": "development",
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/stress-support-b",
+      "seed": 20261012042,
+      "verify_log_sha256": "350d5a9b3c9819d7abef5b2ee0bfd805769fb05f5c9ad78932893aca40cebee0"
+    },
+    {
+      "admitted": 424,
+      "collect_log_sha256": "9fe8b32a8faf1681c75bbea87a29f5e47ec8fb3f830d286a095fc51730a2b190",
+      "counts": {
+        "accepted": 424,
+        "insufficient_challenge": 88,
+        "physical_duplicate": 0,
+        "scheduled": 512,
+        "stress_excluded": 0,
+        "structural_exhaustion": 0
+      },
+      "manifest_sha256": "af38954f605daf6e86d30279c2e9c09c39a6482a06bc5714b1457677aaeebf92",
+      "population": "broad",
+      "role": "validation",
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/layered-validation",
+      "seed": 20261012043,
+      "verify_log_sha256": "48591dff6fc537ebecef1cfb598cda6eb70669d52cc5ae46a9a66d711c3f2697"
+    },
+    {
+      "admitted": 420,
+      "collect_log_sha256": "0bb12e7a9cc09879a33aed97da60a922aff81acace3d6b64719cdced2c8cbb80",
+      "counts": {
+        "accepted": 420,
+        "insufficient_challenge": 92,
+        "physical_duplicate": 0,
+        "scheduled": 512,
+        "stress_excluded": 0,
+        "structural_exhaustion": 0
+      },
+      "manifest_sha256": "efdcdae87084fd88c89747432d6152c4e361d4d2a3a506a2f44bdebbb4c76c7b",
+      "population": "broad",
+      "role": "validation",
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/value-validation",
+      "seed": 20261012044,
+      "verify_log_sha256": "3aa716c6d2eb2c35c0138e32a1b3d91f03caaff714780db50446de146279480c"
+    },
+    {
+      "admitted": 50,
+      "collect_log_sha256": "e355353ccc1c9c2422c6f6d1471351a39360105ee0da1b7dc368f5a7ae0f5013",
+      "counts": {
+        "accepted": 50,
+        "insufficient_challenge": 106,
+        "physical_duplicate": 0,
+        "scheduled": 512,
+        "stress_excluded": 356,
+        "structural_exhaustion": 0
+      },
+      "manifest_sha256": "1fcf5e8afb3075f1a53b1336f513d6c738433687cf49b686b6c0c960aff68ec9",
+      "population": "stress",
+      "role": "development",
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/layered-stress",
+      "seed": 20261012047,
+      "verify_log_sha256": "7423ad796c1a4cce3babd0fd9c8e7f22b79ce471b00837ae8d538d728d08c18e"
+    },
+    {
+      "admitted": 1669,
+      "collect_log_sha256": "0d5c028c969d632245d528f179c6c5968bca7e52f11284c3ba6c32651fe7aa24",
+      "counts": {
+        "accepted": 1669,
+        "insufficient_challenge": 379,
+        "physical_duplicate": 0,
+        "scheduled": 2048,
+        "stress_excluded": 0,
+        "structural_exhaustion": 0
+      },
+      "manifest_sha256": "9a84e3334c8f15f3041020c0f5e814e59a2736740fda2aebfe4a2d4a274c5d28",
+      "population": "broad",
+      "role": "held_out",
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/layered-final-test",
+      "seed": 20261012045,
+      "verify_log_sha256": "1c6673a698ddbd56e27d7f1885508956a35ac28e1ef050cfb12843b3fff512e5"
+    },
+    {
+      "admitted": 1668,
+      "collect_log_sha256": "7c8c35fba44b69a59356d5457f7a36095c322cd537d47ea54aa9b6a25b4cc2fa",
+      "counts": {
+        "accepted": 1668,
+        "insufficient_challenge": 380,
+        "physical_duplicate": 0,
+        "scheduled": 2048,
+        "stress_excluded": 0,
+        "structural_exhaustion": 0
+      },
+      "manifest_sha256": "5ec200b6018a3b8f4c3507a26ff6b95ddd2fa0f26a2dca8d530186b2268119c3",
+      "population": "broad",
+      "role": "held_out",
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/value-final-test",
+      "seed": 20261012046,
+      "verify_log_sha256": "08af1625cbd2253bdb5814b8528472a2e2d6e2f3305fc4c12ca855f91f6fd6b1"
+    }
+  ],
+  "final_test_usage_receipts": 0,
+  "identity_audit_passed": true,
+  "identity_audit_sha256": "e252bc7a998f540506bde633dbdc96201083206bf6a136ded6fe27b4885c8791",
+  "measured_flight_attempts": 0,
+  "physical_reference_contract_sha256": "8021a773f1b556a8f46e5c1f709d645b357fdf69cf192f49ae3e9741752e12a6",
+  "proposal_slots_consumed": 5888,
+  "schema_version": 1,
+  "scope": "audited unseen-input reservations; both backends known; no final-test score",
+  "stress": {
+    "counts": {
+      "accepted": 50,
+      "insufficient_challenge": 106,
+      "physical_duplicate": 0,
+      "scheduled": 512,
+      "stress_excluded": 356,
+      "structural_exhaustion": 0
+    },
+    "elapsed_s": 3.390810012817383,
+    "manifest_sha256": "1fcf5e8afb3075f1a53b1336f513d6c738433687cf49b686b6c0c960aff68ec9",
+    "native_complete_verification": true,
+    "quota_shortfalls": {
+      "long-sustained-obstruction": 24,
+      "narrow-target-close-approach": 57,
+      "tight-significant-crests": 61,
+      "wide-source-close-departure": 62
+    },
+    "selected_panel_memberships": {
+      "long-sustained-obstruction": 40,
+      "narrow-target-close-approach": 7,
+      "tight-significant-crests": 3,
+      "wide-source-close-departure": 2
+    },
+    "unique_union_denominator": 50
+  },
+  "training_transitions": 0
+}

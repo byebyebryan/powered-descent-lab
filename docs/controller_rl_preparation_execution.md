@@ -39,10 +39,10 @@ partial or failed stages remain evidence and do not authorize replacement inputs
 
 | Stage | Status |
 | --- | --- |
-| P0 physical contract and reference identity | In progress |
-| P1 exposure inventory and complete requests | Pending |
-| P2 verified sealed cohorts and stress accounting | Pending |
-| P3 neutral V2 Python/evidence/report interoperability | Pending |
+| P0 physical contract and reference identity | Complete; physical grid retained, warnings/limits recorded |
+| P1 exposure inventory and complete requests | Complete; requests committed before generation |
+| P2 verified sealed cohorts and stress accounting | Complete; no audited collisions, sparse quotas retained |
+| P3 neutral V2 Python/evidence/report interoperability | In progress |
 | P4 48-slot integration and browser acceptance | Pending |
 | P5 common checkpoint and isolated branch handoffs | Pending |
 
@@ -50,3 +50,6 @@ This run creates no controller improvement or RL qualification claim. Completion
 requires actual maintained gates, input/evidence checks, fresh smoke verification
 and browser acceptance, followed by a source/artifact handoff. Reaching the wall
 ceiling with outstanding requirements leaves the goal incomplete.
+
+The [run record](controller_rl_preparation_results.md) binds completed inputs,
+physical/reference receipts, exposure limits and outstanding readiness gates.

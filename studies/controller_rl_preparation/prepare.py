@@ -190,13 +190,16 @@ def reconcile(prior, roots):
         overlap = sorted(identities & seen)
         if overlap:
             collisions.append({"root": str(root), "physical_sha256": overlap})
-        seen.update(identities)
+        # Excluded proposals in earlier development/validation populations also
+        # constitute known inputs; a later admitted final-test identity must not
+        # collide with them. This reads manifest hashes, never individual worlds.
+        seen.update(e["physical_sha256"] for e in resolved_entries(manifest))
         cohorts.append({"root": str(root), "manifest_sha256": digest(Path(root)/"manifest.json"),
                         "role": manifest["request"]["role"], "seed": manifest["request"]["seed"],
                         "population": manifest["request"]["population"]["kind"],
                         "admitted": len(manifest["entries"]), "counts": manifest["counts"]})
     return {"cohorts": cohorts, "collisions": collisions, "passed": not collisions,
-            "scope": "admitted identities against declared historical inventory and all new roles"}
+            "scope": "admitted identities against historical inventory and all earlier resolved proposals"}
 
 
 def main():

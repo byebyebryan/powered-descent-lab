@@ -99,7 +99,9 @@ bounded step before independent controller/RL development: fixed task/cohorts,
 V2 application interoperability, an integration smoke and a common branch
 checkpoint. The owner has launched its default allocation under the
 [execution declaration](controller_rl_preparation_execution.md). Algorithm work
-and training remain outside preparation.
+and training remain outside preparation. The
+[run record](controller_rl_preparation_results.md) tracks completed cohort gates
+and remaining integration/handoff work.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.
