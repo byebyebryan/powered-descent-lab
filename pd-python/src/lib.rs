@@ -172,7 +172,7 @@ impl NativeEpisode {
         )
         .map_err(error)?;
         pd_eval::save_evaluation(Path::new(output), &evaluation).map_err(error)?;
-        if report {
+        let presentation = if report {
             let html = pd_report::render_agent_run_report(
                 &evaluation.scenario,
                 &evaluation.execution,
@@ -193,12 +193,28 @@ impl NativeEpisode {
                 .open(path)
                 .map_err(error)?;
             file.write_all(html.as_bytes()).map_err(error)?;
-        }
+            let (view, svg) = pd_report::campaign_preview::build_agent_campaign_preview(
+                &evaluation.scenario,
+                &evaluation.execution,
+                "preview.svg",
+            )
+            .map_err(error)?;
+            let mut preview = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(Path::new(output).join("preview.svg"))
+                .map_err(error)?;
+            preview.write_all(svg.as_bytes()).map_err(error)?;
+            Some(view)
+        } else {
+            None
+        };
         json(
             &serde_json::json!({"physical_sha256":evaluation.physical_sha256,
             "manifest":evaluation.execution.episode.run.manifest,"stop":evaluation.execution.episode.stop,
             "failure":evaluation.execution.episode.failure,"integrity_passed":evaluation.integrity_passed,
-            "replay":evaluation.replay,"verified_target_landing":evaluation.verified_target_landing}),
+            "replay":evaluation.replay,"verified_target_landing":evaluation.verified_target_landing,
+            "presentation":presentation}),
         )
     }
 }
@@ -303,12 +319,109 @@ fn pd_native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(evidence_snapshot, module)?)?;
     module.add_function(wrap_pyfunction!(verify_capture, module)?)?;
     module.add_function(wrap_pyfunction!(load_collection_missions, module)?)?;
+    module.add_function(wrap_pyfunction!(describe_collection, module)?)?;
     Ok(())
+}
+
+/// Offline orchestration access only. It does not create usage receipts or feed
+/// generator metadata into NativeEpisode observations. Full verification covers
+/// excluded files; selected failures retain unavailable metadata explicitly.
+#[pyfunction]
+fn describe_collection(path: &str, indices: Vec<u64>) -> PyResult<String> {
+    if indices.is_empty() || indices.len() > 100_000 {
+        return Err(error("metadata schedule requires 1..100000 indices"));
+    }
+    let root = Path::new(path);
+    let manifest = pd_missions::read_versioned_collection_manifest(root).map_err(error)?;
+    if indices
+        .iter()
+        .any(|i| !manifest.entries().iter().any(|e| e.index == *i))
+    {
+        return Err(error("scheduled metadata index is not admitted"));
+    }
+    let verification_error = pd_missions::verify_versioned_collection(root).err();
+    let mut metadata = std::collections::BTreeMap::new();
+    let mut metadata_errors = std::collections::BTreeMap::new();
+    for index in indices {
+        if !metadata.contains_key(&index) && !metadata_errors.contains_key(&index) {
+            match pd_missions::collection_input_metadata(root, &manifest, index) {
+                Ok(value) => {
+                    metadata.insert(index, value);
+                }
+                Err(value) => {
+                    metadata_errors.insert(index, value);
+                }
+            }
+        }
+    }
+    let population = match &manifest {
+        pd_missions::VersionedCollectionManifest::V1(_) => "legacy_v1",
+        pd_missions::VersionedCollectionManifest::V2(m) => m.request.population.key(),
+    };
+    json(&serde_json::json!({"schema_version":1,
+        "family":pd_missions::collection_family(&manifest), "role":manifest.role(),
+        "population":population, "immutable_files":manifest.immutable_files(),
+        "complete_verification_error":verification_error,
+        "metadata":metadata, "metadata_errors":metadata_errors}))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offline_description_binds_exclusions_and_preserves_selected_error_accounting() {
+        use pd_missions::*;
+        let root =
+            std::env::temp_dir().join(format!("pd-python-description-{}", std::process::id()));
+        let manifest = write_collection_v2(
+            &root,
+            CollectionRequestV2::broad(MissionRecipeV2::default(), 981, 8),
+        )
+        .unwrap();
+        let index = manifest.entries[0].index;
+        let excluded = manifest
+            .receipts
+            .iter()
+            .find(|r| r.proposal.is_some() && r.disposition != SelectionDispositionV2::Accepted)
+            .unwrap()
+            .proposal
+            .as_ref()
+            .unwrap();
+        Python::attach(|py| {
+            let module = PyModule::new(py, "pd_native_description_test").unwrap();
+            pd_native(&module).unwrap();
+            let describe = || {
+                let value: String = module
+                    .getattr("describe_collection")
+                    .unwrap()
+                    .call1((root.to_str().unwrap(), vec![index, index]))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                serde_json::from_str::<serde_json::Value>(&value).unwrap()
+            };
+            let original = describe();
+            assert!(original["complete_verification_error"].is_null());
+            assert_eq!(original["metadata"].as_object().unwrap().len(), 1);
+            assert!(
+                original["immutable_files"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&serde_json::json!(excluded.file))
+            );
+            std::fs::write(root.join(&excluded.file), b"{}").unwrap();
+            let drifted = describe();
+            assert!(drifted["complete_verification_error"].is_string());
+            assert_eq!(drifted["metadata"], original["metadata"]);
+            std::fs::write(root.join(&manifest.entries[0].file), b"{}").unwrap();
+            let failed = describe();
+            assert!(failed["metadata"].as_object().unwrap().is_empty());
+            assert!(failed["metadata_errors"][index.to_string()].is_string());
+            assert!(read_collection_usage(&root).unwrap().is_empty());
+        });
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn python_collection_reads_keep_v1_shape_and_consume_only_v2_admitted_inputs() {

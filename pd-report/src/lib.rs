@@ -16,6 +16,7 @@ use serde::Serialize;
 pub mod agent;
 pub mod batch;
 pub mod campaign;
+pub mod campaign_preview;
 pub mod campaign_view;
 pub mod comparison;
 pub mod detail_view;

@@ -73,6 +73,14 @@ uses it for the [independent PPO experiment](../experiments/rl/README.md).
 Its observation/action/reward and launch choices are approach-owned; there is
 no controller/planner dependency or fallback.
 
+Offline collection composition uses `pd_missions::collection_metadata` for
+verified V1/V2 family, physical direction and measured geometry/morphology.
+Python exposes `describe_collection`: it returns the complete immutable file
+inventory, full-verification status and per-index metadata/errors, including
+excluded V2 proposals. This is orchestration data, never an episode observation.
+The application must bind the inventory and gate campaign integrity on full
+verification; a selected-input metadata cache alone is insufficient.
+
 ## Rich reporting
 
 `pd_report::render_agent_run_report` uses the maintained common run template,
@@ -81,6 +89,12 @@ plots, telemetry, navigation and configuration panel. Evaluation supplies an
 nothing; the caller persists a new report create-only. Odd or unsampled endpoints
 are displayed from the saved final-state projection, with an explicit caption;
 raw samples, commands and proof records stay unchanged.
+
+`pd_report::campaign_preview::build_agent_campaign_preview` projects the saved
+episode and exact endpoint without running or verifying a policy. The incumbent
+adapter and Python capture writer share it. Python captures with reports include
+a relative `preview.svg` and returned endpoint presentation metadata; failed or
+uncaptured attempts cannot use that projection to imply a recorded flight.
 
 Report configuration parameters are JSON snapshots. Existing applications
 serialize their unchanged `ControllerSpec` at the rendering boundary. Historical
