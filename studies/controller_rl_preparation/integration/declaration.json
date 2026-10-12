@@ -1,0 +1,88 @@
+{
+  "captured_execution_ceiling": 48,
+  "collections": [
+    {
+      "backend": "layered",
+      "collection": "outputs/procedural-challenge/run-20261011T093222Z-pilot/layered-broad",
+      "coverage": [
+        "elevation_transition",
+        "mixed",
+        "successive_crests",
+        "sustained_barrier",
+        "unclassified"
+      ],
+      "directions": {
+        "-1": 4,
+        "1": 4
+      },
+      "indices": [
+        0,
+        3,
+        6,
+        9,
+        10,
+        11,
+        13,
+        34
+      ],
+      "manifest_sha256": "c4e36c8bd78f383fce07eb6dcedf61b660453d21e0fe35bb2c12ca557a4a3c12",
+      "physical_sha256": [
+        "9011ac5b13098633f6f23199a2b5bdb78f449276faa71317c503a5cb69af3ff1",
+        "304227531cb7be56f4d2471efd8908f419950ea1f4f1bae39b109c883401ce6d",
+        "0d7f514d58ccd4aa6af7723d10bcee0b62ad8e3f392d72ba35b69e8cf114ace7",
+        "2a293080acad680b321a45ef43d00fb90800f77fd2478a46871881d994091d90",
+        "8f89838cc08b2f457cdffff8944810ccdc3326e4e60c3dd12c715cce6616de76",
+        "f29265f2431a5766e273be9f0e20048a6ab610d861b374068049e1827e41ea1e",
+        "5782189d240adcd7eaec48ed8b903e7fce06a16bcb70f4dc6a6147ffe1e568e3",
+        "12b53dea2ba6b0bfd9a1b777cca1a35accaa9fd3fa085e22ead8ff32dc17c51d"
+      ]
+    },
+    {
+      "backend": "value",
+      "collection": "outputs/procedural-challenge/run-20261011T093222Z-pilot/value-broad",
+      "coverage": [
+        "elevation_transition",
+        "mixed",
+        "successive_crests",
+        "sustained_barrier",
+        "unclassified"
+      ],
+      "directions": {
+        "-1": 4,
+        "1": 4
+      },
+      "indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "manifest_sha256": "0e4f7dedfd370e3158ac6e689b45289ddc7757569a371366d47e24f3f8642f92",
+      "physical_sha256": [
+        "bedd3bb4f802ca6d1fc98313467bf1d28b302f04bec5c40e24128c17702dec40",
+        "27124682d349d7ec71f432ddfc43177f4a4c8829a9c0de982c147fbcbec799e1",
+        "97fb3d6d4739099125fcf1b2862b2949184547bbc1b557953d2a5cda7d19da48",
+        "90391935bb21caa344a77416bf77424762e15c996176c8954e98c71dfd2feae6",
+        "e9dca709631e291a564196f830d7819750da2728010a4801aadda5ef103863d3",
+        "e5b8e7680494780416ed7fe2e0e963eca6b9d4a1225e6269a90928f1c9af1d23",
+        "670d5b1f7782c4cf1e69dc6db9f4563d50748afe0926ae9e55932d759bdeaee3",
+        "97995a325cd1ab12ec2ba87849629004d0fb61f786ffa97704963764262d7d63"
+      ]
+    }
+  ],
+  "final_test_flights": 0,
+  "fresh_independent_verifications_per_executed_capture": 1,
+  "hypothesis": "Shared V2 integration and evidence/presentation work for three independent composition paths; no performance target",
+  "incumbent_verification": "Native composition load_verified_evaluation before report projection; no second replay pass",
+  "optional_validation_reference": false,
+  "python_inline_verification": false,
+  "scheduled_attempts": 48,
+  "schema_version": 1,
+  "selection": "Ascending exposed admitted indices under 2048; greedily cover mixed/unclassified and every common raw/prepared challenge path; four physical inputs per direction; fill remaining slots in ascending order. No controller outcomes used.",
+  "test_policy_source_sha256": "96073fd4441288608beb7f2364f7bc07d2be918ffa155dda436801354aec3b49",
+  "training_transitions": 0
+}

@@ -1,0 +1,37 @@
+{
+  "agent": {
+    "checkpoint_sha256": null,
+    "configuration": {
+      "action": "mirrored-thrust-angle-launch-v1",
+      "action_repeat": 6,
+      "attitude_limit_rad": 0.8,
+      "integration_policy": "constant normalized action [0, 0]; untrained",
+      "native_controller_hz": 60,
+      "native_physics_hz": 120,
+      "observation": "terrain-relative-v1",
+      "policy_inference": {
+        "batch_size": 1,
+        "deterministic": true,
+        "device": "cpu",
+        "torch_num_threads": 1
+      },
+      "potential_discount": 1.0,
+      "protected_upright_launch_s": 0.75,
+      "reward": "distance-progress-v1"
+    },
+    "implementation": "deterministic-integration-policy-v1",
+    "schema_version": 1
+  },
+  "attempt_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "manifest_sha256": "0e4f7dedfd370e3158ac6e689b45289ddc7757569a371366d47e24f3f8642f92",
+  "schema_version": 1
+}
