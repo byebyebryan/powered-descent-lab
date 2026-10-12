@@ -1,0 +1,31 @@
+{
+  "candidates": [
+    {
+      "manifest_sha256": "4c1281783f0d82116f9062ec1d084338bb267df52e5bfbad9bf48ad90ff235ac",
+      "matching_counts": {
+        "long-sustained-obstruction": 12,
+        "narrow-target-close-approach": 1,
+        "tight-significant-crests": 1,
+        "wide-source-close-departure": 1
+      },
+      "memberships": 15,
+      "minimum": 1,
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/stress-support-a"
+    },
+    {
+      "manifest_sha256": "fe7e8d3cf63febe2bfb92a5a8d099acb8d03ccbb25723badf80e6775a175006b",
+      "matching_counts": {
+        "long-sustained-obstruction": 5,
+        "narrow-target-close-approach": 1,
+        "tight-significant-crests": 3,
+        "wide-source-close-departure": 3
+      },
+      "memberships": 12,
+      "minimum": 1,
+      "root": "outputs/controller-rl-preparation/run-20261012T072437Z/stress-support-b"
+    }
+  ],
+  "selected": "outputs/controller-rl-preparation/run-20261012T072437Z/stress-support-a",
+  "selected_request_sha256": "e5ebd624652bb0a11405610935c19fe80da284e4a35bffc391245d8d97aae7c8",
+  "selection_artifact_sha256": "3451a0a20d31ef85b255e8917ee0747dd2b6e06b9a4efe5496ad70b422460150"
+}
