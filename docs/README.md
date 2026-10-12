@@ -43,6 +43,9 @@ and an optional filter rather than a navigation branch.
 The [focused browsing refinement](report_mission_browsing_qol_results.md) clarifies
 start/resume, separates group and page navigation, and keeps the active hierarchy
 beside sticky controls while retaining the full group tree on demand.
+The [unified procedural review](report_unified_procedural_results.md) now brings
+Layered Perlin and Value noise into one mission tree, keeping backend counts,
+rates and provenance separate and preserving cross-family detail navigation.
 
 ## Independent approach platform
 

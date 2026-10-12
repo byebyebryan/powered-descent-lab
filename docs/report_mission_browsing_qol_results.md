@@ -10,6 +10,8 @@ the group controls. Presentation commit `df03dac` makes the current mission grou
 the primary browsing surface while retaining the full mission hierarchy.
 The [r5 correction](#view-preservation-and-local-collapse-r5) below preserves the
 chosen tree view during navigation and fixes branch collapse.
+The subsequent [unified review](report_unified_procedural_results.md) retains
+these fixes while browsing both terrain families in one report.
 
 ## Initial behavior (r4)
 

@@ -30,7 +30,7 @@ or learning allocation is introduced.
   Interrupted campaigns retain partial files and are reported incomplete.
 - Every executed capture is independently replayed in a fresh neutral verifier
   process. Unsupported and preparation failures remain scheduled dispositions.
-- Layered Perlin and value noise have separate reports and rates. No combined
+- Layered Perlin and value noise retain separate population rates and proofs. No combined
   qualification headline, hidden direction exclusions or best-repeat selection.
 
 The [declaration and frozen requests](../studies/mission_coverage/incumbent_v2/README.md)
@@ -112,11 +112,14 @@ remains a separately scoped follow-up.
 
 ## Reports and retained verification
 
-The latest [layered browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r5/report.html)
-and [value browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r5/report.html)
-add the [focused browsing refinement](report_mission_browsing_qol_results.md)
-with unchanged results and evidence. The original verified editions below remain
-retained as the initial reporting checkpoint.
+The latest [unified browsing edition](../outputs/procedural-challenge/baseline-20261011T181000Z/combined-review-r2/report.html)
+puts both terrain families in one mission tree with separate results and
+provenance. Its [validation record](report_unified_procedural_results.md) retains
+the [focused browsing refinement](report_mission_browsing_qol_results.md) and
+verifies unchanged campaign evidence. The prior
+[layered edition](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r5/report.html),
+[value edition](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r5/report.html)
+and original verified editions below remain retained.
 
 - [Layered Perlin mission review](../outputs/procedural-challenge/baseline-20261011T181000Z/layered-review-r2/report.html)
 - [Value-noise mission review](../outputs/procedural-challenge/baseline-20261011T181000Z/value-review-r2/report.html)
