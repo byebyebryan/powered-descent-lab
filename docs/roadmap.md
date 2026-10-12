@@ -68,8 +68,10 @@ with its [review](controller_rl_preparation_review.md), is the proposed next
 bounded goal before parallel incumbent/RL development. It preserves the shared
 physical/evidence contract, seals role-separated cohorts, completes V2 Python
 composition and records a validated branch checkpoint. Its default is 48
-integration attempt slots and zero training/final-test flights; it has not
-launched preparation or either development branch.
+integration attempt slots and zero training/final-test flights. The owner has
+launched shared preparation under its
+[execution declaration](controller_rl_preparation_execution.md); algorithm
+development remains a later allocation.
 
 ### Report presentation refinement
 

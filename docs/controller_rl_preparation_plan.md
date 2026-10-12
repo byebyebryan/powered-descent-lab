@@ -4,7 +4,8 @@
 [Current development baseline](procedural_challenge_baseline.md) ·
 [Plan review](controller_rl_preparation_review.md)
 
-October 12, 2026. Status: reviewed proposal; execution has not started.
+October 12, 2026. Status: reviewed plan; the owner has launched the default
+allocation under the [execution declaration](controller_rl_preparation_execution.md).
 The owner requested a concrete plan and review before starting shared preparation
 and then splitting current-controller and independent RL development.
 

@@ -97,8 +97,9 @@ The October 12 [shared preparation plan](controller_rl_preparation_plan.md) and
 [source-backed review](controller_rl_preparation_review.md) now define the next
 bounded step before independent controller/RL development: fixed task/cohorts,
 V2 application interoperability, an integration smoke and a common branch
-checkpoint. This is a reviewed proposal; preparation and algorithm work have
-not started.
+checkpoint. The owner has launched its default allocation under the
+[execution declaration](controller_rl_preparation_execution.md). Algorithm work
+and training remain outside preparation.
 The [PPO package](../experiments/rl/README.md) provides the local training
 workflow; [evaluation](evaluation.md#independent-agents-on-procedural-missions)
 documents the common raw/reflected incumbent comparisons.
