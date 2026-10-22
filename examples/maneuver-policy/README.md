@@ -3,10 +3,14 @@
 [Implementation plan](../../docs/maneuver_controller_implementation_plan.md) · [Controller API](../../pd-control/src/maneuver/mod.rs) · [Evaluation workflow](../../docs/evaluation.md)
 
 `pd-maneuver-example` is the experimental planner/controller composition.
-An immediate, never or fixed-tick program chooses when to request landing.
-The reusable `TerminalLandingController` owns the request lifecycle and delegates
+The original V1 immediate, never or fixed-tick program chooses when to request landing.
+Its reusable `TerminalLandingController` owns the request lifecycle and delegates
 the entire ordinary landing implementation to the unchanged terminal backend.
 Native `Episode` owns every physical transition, clock, fuel budget and end.
+The separate V2 timed path exposes **Poly Landing**, the accepted finite
+polynomial burn. Activation starts the burn; the planner owns coasting and
+supplies absolute reference-end time. See the [design](../../docs/poly_landing_controller_plan.md),
+[flat task](../../docs/poly_landing_flat_recipe.md) and [execution record](../../docs/poly_landing_execution.md).
 
 ## Supported inputs
 
@@ -165,6 +169,63 @@ sample receives an exact one-sided binomial lower bound; an incomplete sample
 receives no passing reliability verdict. Internal forecast work and unavailable
 CPU timings stay unavailable. Report rendering is a separate explicit command
 with its own three proof passes; batch execution changes no report selectors.
+
+## Timed Poly Landing V2
+
+`run-timed --scenario FILE --program FILE --output NEW` selects only the explicit
+`polynomial_landing_v1` backend and timed V2 program. `verify-timed NEW` checks
+its independent native replay and controller/planner reconstruction.
+`report-timed NEW --output NEW.html` renders a rich single-flight report and
+performs another explicit three-pass verification. Existing `run`, `verify`,
+`report` and V1 prepared evaluations retain their original standalone backend.
+
+The [timed program](src/poly.rs) binds a native command-boundary activation,
+original absolute deadline, V2 request, optional exact historical prefix and
+declared rejection coast. It never rounds a historical handoff to the 10 Hz
+planner grid. Admission consumes that boundary's actual observation and builds
+one fixed reference. NoPlan, reference exhaustion and native end are separate
+dispositions; no fallback, settling or new duration policy is inserted.
+
+For the input-only flat task, write a reviewed recipe with the
+[V2 model](src/evaluation/timed/prepare.rs): schema 2, sampler
+`poly-flat-reference-defined-hash-v1`, phase `pilot`, a unique cohort/seed,
+`originals: 12`, `max_proposals: 96`, `development_extensions: false`,
+`release_gate: null`, `exposure_plans: []`, and an explicit finite budget. The
+[recipe document](../../docs/poly_landing_flat_recipe.md) fixes numeric bounds,
+correlations, admission, native shape observations and qualification limits.
+
+```sh
+rtk proxy cargo run --release -p pd-maneuver-example -- prepare-timed-evaluation \
+  --recipe /tmp/reviewed-poly-recipe.json \
+  --anchor fixtures/scenarios/flat_terminal_descent.json --output /tmp/new-poly-plan
+rtk proxy cargo run --release -p pd-maneuver-example -- run-timed-evaluation \
+  --plan /tmp/new-poly-plan --output /tmp/new-poly-results
+rtk proxy cargo run --release -p pd-maneuver-example -- check-timed-evaluation-results \
+  --plan /tmp/new-poly-plan --results /tmp/new-poly-results
+```
+
+Preparation retains every proposal/disposition and exact admitted schedule,
+including physical duplicates/exposure checks and underfill. Development
+enumerates raw corners and boundary axes, with 96 separate diagnostic originals
+and 48 named transformations when enabled. Confirmation requires an eligible
+bound development receipt at the same source epoch, an exposure binding to that
+plan, and exactly 600 independent original inputs.
+
+The V2 batch runner reuses native Episode, neutral evidence and the existing
+supervised-child lifetime/time-cap machinery. Budget/proof faults keep all
+remaining slots visible. A new `--continue-from OLD` destination can reference
+only matching complete, byte-bound results; those reused rows cause no new
+flight or replay. Partial original attempts require a separately declared
+replacement allowance. Result counters cover the complete logical campaign,
+including its referenced prior rows; reused work is not a fresh allocation.
+
+`report-timed-evaluation --spec FILE --output NEW` consumes a
+[report specification](src/evaluation/timed/report.rs) and saved proof receipts
+without new physics or replay. It retains the common mission tree, twelve-item
+pages, previews, complete rich flight details and matched detail navigation.
+Historical preservation, primary originals, transformations and diagnostics
+remain separate branches and denominators. No command publishes or changes a
+report selector/server.
 
 ## Software checks and next boundary
 

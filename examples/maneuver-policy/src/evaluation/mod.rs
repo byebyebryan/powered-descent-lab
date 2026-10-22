@@ -6,6 +6,7 @@ mod recipe;
 mod recovery;
 mod results;
 mod run;
+pub mod timed;
 mod worker;
 pub use audit::*;
 pub use prepare::*;

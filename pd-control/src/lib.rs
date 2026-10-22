@@ -4,6 +4,7 @@ mod controllers;
 mod guidance;
 pub mod kit;
 pub mod maneuver;
+pub mod poly_landing;
 mod terminal;
 mod transfer;
 

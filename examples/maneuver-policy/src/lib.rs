@@ -18,6 +18,7 @@ use pd_run::{
 use serde::{Deserialize, Serialize};
 
 pub mod evaluation;
+pub mod poly;
 pub mod trace;
 pub mod verify;
 use trace::*;

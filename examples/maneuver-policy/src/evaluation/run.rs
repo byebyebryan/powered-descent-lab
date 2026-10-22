@@ -64,7 +64,7 @@ struct AttemptSupervisor<'a> {
     continuation: Option<&'a Path>,
 }
 
-struct OwnedChild(std::process::Child);
+pub(super) struct OwnedChild(pub(super) std::process::Child);
 impl Drop for OwnedChild {
     fn drop(&mut self) {
         let _ = self.0.kill();

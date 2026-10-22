@@ -92,7 +92,7 @@ pub struct VerifiedBundleV1 {
     pub report: VerificationReportV1,
 }
 
-fn no_symlinks(path: &Path) -> Result<(), String> {
+pub(crate) fn no_symlinks(path: &Path) -> Result<(), String> {
     let absolute = if path.is_absolute() {
         path.to_owned()
     } else {
