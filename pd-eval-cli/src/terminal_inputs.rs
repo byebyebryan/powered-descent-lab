@@ -7,11 +7,38 @@ use pd_missions::{
 
 pub const TERMINAL_INPUT_RESOLVER: &str = "retained-terminal-native-inputs-v1";
 
+fn validate_input_count(pack: &ScenarioPackSpec) -> Result<()> {
+    let mut count = 0_usize;
+    for entry in &pack.entries {
+        let ScenarioPackEntry::TerminalMatrix(entry) = entry else {
+            bail!("terminal input export requires terminal-matrix entries only");
+        };
+        let arcs = selected_terminal_arc_specs(
+            entry,
+            terminal_arrival_family_spec(&entry.terminal_matrix)?,
+        )?
+        .len();
+        let slots = arcs
+            .checked_mul(TERMINAL_BANDS.len())
+            .and_then(|v| v.checked_mul(terminal_seed_specs(entry.seed_tier).len()))
+            .and_then(|v| v.checked_mul(entry.lanes.len()))
+            .ok_or_else(|| anyhow!("terminal input count overflow"))?;
+        count = count
+            .checked_add(slots)
+            .ok_or_else(|| anyhow!("terminal input count overflow"))?;
+        if count > pd_missions::MAX_SCENARIO_INPUTS {
+            bail!("too many terminal input slots before expansion");
+        }
+    }
+    Ok(())
+}
+
 pub fn resolve_terminal_inputs(
     pack: &ScenarioPackSpec,
     base_dir: &Path,
 ) -> Result<Vec<NativeScenarioInputV1>> {
     validate_pack(pack)?;
+    validate_input_count(pack)?;
     let mut inputs = Vec::new();
     for entry in &pack.entries {
         let ScenarioPackEntry::TerminalMatrix(entry) = entry else {
@@ -61,6 +88,7 @@ pub fn export_terminal_inputs(pack_path: &Path, output: &Path) -> Result<Scenari
         read_scenario_input_file(pack_path, 4 * 1024 * 1024).map_err(anyhow::Error::msg)?;
     let pack: ScenarioPackSpec = serde_json::from_slice(&pack_bytes)?;
     validate_pack(&pack)?;
+    validate_input_count(&pack)?;
     let base_dir = pack_path.parent().unwrap_or(Path::new("."));
     let mut sources = BTreeMap::new();
     sources.insert(fs::canonicalize(pack_path)?, sha256(&pack_bytes));
@@ -111,6 +139,30 @@ pub fn export_terminal_inputs(pack_path: &Path, output: &Path) -> Result<Scenari
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_slot_bound_is_checked_before_loading_any_base_scenario() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures/packs");
+        let mut pack = load_pack(&root.join("terminal_bot_lab_full.json")).unwrap();
+        pack.entries.truncate(1);
+        let ScenarioPackEntry::TerminalMatrix(entry) = &mut pack.entries[0] else {
+            unreachable!()
+        };
+        entry.base_scenario = "does-not-exist.json".into();
+        let lane = entry.lanes[0].clone();
+        entry.lanes = (0..1000)
+            .map(|index| TerminalMatrixLaneSpec {
+                id: format!("lane-{index}"),
+                ..lane.clone()
+            })
+            .collect();
+        assert!(
+            resolve_terminal_inputs(&pack, &root)
+                .unwrap_err()
+                .to_string()
+                .contains("too many terminal input slots")
+        );
+    }
 
     #[test]
     fn inputs_match_legacy_exactly_and_ignore_unavailable_controller_configuration() {

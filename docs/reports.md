@@ -25,6 +25,11 @@ backend. These safeguards extend the maintained mission tree and rich templates.
 
 ## Experimental maneuver reports
 
+Bounded maneuver evaluation does not render or publish reports as a side effect.
+Its sealed summary and per-attempt records link to ordinary bundles; render an
+explicit selected bundle through the command below. Each render performs three
+additional proof/reconstruction passes, which count against measured run limits.
+
 The [maneuver example](../examples/maneuver-policy/README.md) can render a single
 explicit bundle to a new HTML file through the maintained rich run template.
 It verifies the physical capture and separately prints companion byte,

@@ -701,6 +701,28 @@ mod direct_generation_cli_tests {
     }
 
     #[test]
+    fn terminal_input_export_requires_explicit_pack_and_new_destination() {
+        assert!(Cli::try_parse_from(["pd-eval", "export-terminal-inputs"]).is_err());
+        assert!(Cli::try_parse_from(["pd-eval", "export-terminal-inputs", "pack.json"]).is_err());
+        assert!(
+            matches!(Cli::try_parse_from(["pd-eval", "export-terminal-inputs", "pack.json", "--output", "new-set"]).unwrap().command,
+            Commands::ExportTerminalInputs { pack, output } if pack.as_path()==std::path::Path::new("pack.json") && output.as_path()==std::path::Path::new("new-set"))
+        );
+        assert!(
+            Cli::try_parse_from([
+                "pd-eval",
+                "export-terminal-inputs",
+                "pack.json",
+                "--output",
+                "new-set",
+                "--workers",
+                "4"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
     fn retired_frontdoors_are_absent_and_current_commands_remain() {
         use clap::CommandFactory;
 
@@ -711,6 +733,7 @@ mod direct_generation_cli_tests {
                 .map(|command| command.get_name())
                 .collect::<Vec<_>>(),
             [
+                "export-terminal-inputs",
                 "run-pack",
                 "check-planner-v2",
                 "publish-planner-v2",

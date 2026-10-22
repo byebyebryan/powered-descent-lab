@@ -122,6 +122,43 @@ landing rate. Structured/local recipes use the versioned typed
 [recipe model](src/evaluation/recipe.rs), including joint state correlations,
 explicit transforms, diagnostic overrides and separate independent cohort streams.
 
+## Execute and inspect a frozen evaluation
+
+```sh
+rtk proxy cargo run --release -p pd-maneuver-example -- run-evaluation \
+  --plan /tmp/new-controller-plan --output /tmp/new-controller-results
+rtk proxy cargo run --release -p pd-maneuver-example -- check-evaluation-results \
+  --plan /tmp/new-controller-plan --results /tmp/new-controller-results
+```
+
+The runner starts one supervised attempt subprocess at a time. Each executed
+attempt retains its ordinary bundle, neutral outcomes, companion proof,
+activation/cost counters and exact outer-plan/input identities. Direct parity
+uses the same native Episode and ordinary backend on both sides, comparing full
+artifacts and frames with only compute timing excluded. A verified failed
+landing remains a completed scientific attempt. Invalid/unsupported diagnostics
+retain their input disposition without a fabricated capture.
+
+Every scheduled slot gets a create-only result row. Wall-time interruption,
+storage exhaustion or proof/parity failure keeps incomplete evidence and marks
+the remaining slots not started. The complete row inventory and summary are
+sealed even when the phase is incomplete. `check-evaluation-results` validates
+byte bindings and aggregate accounting without replay; each saved attempt's
+original proof remains available through ordinary bundle verification.
+
+For a supervisor interruption, use a new destination and
+`run-evaluation --plan PLAN --output NEW --continue-from OLD`. Only exactly
+matching plan/source paths/executable/configuration can reuse completed attempts.
+Their native outcomes stay unchanged and re-verification is supervised and
+counted. Interrupted attempts cannot be replaced by a lucky rerun; partial
+bundles are never filled. Preserve the measured source epoch at its bound paths.
+
+Independent recipes require a frozen confirmation criterion. A complete fixed
+sample receives an exact one-sided binomial lower bound; an incomplete sample
+receives no passing reliability verdict. Internal forecast work and unavailable
+CPU timings stay unavailable. Report rendering is a separate explicit command
+with its own three proof passes; batch execution changes no report selectors.
+
 ## Software checks and next boundary
 
 ```sh

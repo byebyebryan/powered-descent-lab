@@ -10,13 +10,44 @@ use std::{
 };
 
 #[derive(Parser)]
-#[command(about = "Deterministic maneuver activation software example; no training or campaign")]
+#[command(
+    about = "Deterministic maneuver activation and bounded controller evaluation; no training"
+)]
 struct Args {
     #[command(subcommand)]
     operation: Operation,
 }
 #[derive(Subcommand)]
 enum Operation {
+    /// Execute a frozen schedule with supervised attempts and complete result rows.
+    RunEvaluation {
+        #[arg(long)]
+        plan: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        continue_from: Option<PathBuf>,
+    },
+    /// Validate saved result identities, seals and aggregate accounting without replay.
+    CheckEvaluationResults {
+        #[arg(long)]
+        plan: PathBuf,
+        #[arg(long)]
+        results: PathBuf,
+    },
+    #[command(hide = true)]
+    ExecutePreparedAttempt {
+        #[arg(long)]
+        plan: PathBuf,
+        #[arg(long)]
+        index: usize,
+        #[arg(long)]
+        plan_sha256: String,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long)]
+        reuse_from: Option<PathBuf>,
+    },
     /// Resolve an immutable evaluation schedule and coverage audit; no flights.
     PrepareEvaluation {
         #[arg(long)]
@@ -70,6 +101,70 @@ fn output_preflight(output: &Path, inputs: Vec<PathBuf>) -> Result<(), String> {
 
 fn main() -> Result<(), String> {
     match Args::parse().operation {
+        Operation::RunEvaluation {
+            plan,
+            output,
+            continue_from,
+        } => {
+            let summary = pd_maneuver_example::evaluation::run_evaluation(
+                &plan,
+                &output,
+                continue_from.as_deref(),
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())?
+            );
+            if !summary.complete {
+                return Err(
+                    "evaluation incomplete; evidence and every scheduled row retained".into(),
+                );
+            }
+        }
+        Operation::CheckEvaluationResults { plan, results } => {
+            let summary = pd_maneuver_example::evaluation::check_result_inventory(&plan, &results)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())?
+            );
+        }
+        Operation::ExecutePreparedAttempt {
+            plan,
+            index,
+            plan_sha256,
+            output,
+            reuse_from,
+        } => {
+            let result = if let Some(previous) = reuse_from {
+                pd_maneuver_example::evaluation::execute_reuse_attempt(
+                    &plan,
+                    index,
+                    &plan_sha256,
+                    &previous,
+                    &output,
+                )
+                .map(|_| ())
+            } else {
+                pd_maneuver_example::evaluation::execute_prepared_attempt(
+                    &plan,
+                    index,
+                    &plan_sha256,
+                    &output,
+                )
+                .map(|_| ())
+            };
+            if let Err(error) = result {
+                if output.is_dir() {
+                    let bounded = error.chars().take(4096).collect::<String>();
+                    let _ = pd_maneuver_example::evaluation::write_limited(
+                        &output.join("error.json"),
+                        &serde_json::json!({"error":bounded}),
+                        64 * 1024,
+                    );
+                }
+                return Err(error);
+            }
+        }
         Operation::PrepareEvaluation {
             recipe,
             inputs,

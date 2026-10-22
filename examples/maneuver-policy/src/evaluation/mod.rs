@@ -3,9 +3,16 @@
 mod audit;
 mod prepare;
 mod recipe;
+mod recovery;
+mod results;
+mod run;
+mod worker;
 pub use audit::*;
 pub use prepare::*;
 pub use recipe::*;
+pub use results::*;
+pub use run::*;
+pub use worker::{execute_prepared_attempt, execute_reuse_attempt};
 #[cfg(test)]
 mod tests;
 

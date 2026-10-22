@@ -88,6 +88,7 @@ pub(super) fn recipe() -> EvaluationRecipeV1 {
             ("vy_mps".into(), vec![-20.0, -5.0, 0.0]),
             ("fuel_kg".into(), vec![100.0, 2000.0, 5000.0]),
         ]),
+        confirmation: None,
         joint_groups: vec![vec![
             "touchdown_clearance_m".into(),
             "vy_mps".into(),
@@ -158,6 +159,10 @@ fn independent_streams_are_order_independent_disjoint_and_exposure_checked() {
         unreachable!()
     };
     *independent = true;
+    r.confirmation = Some(ConfirmationCriterionV1 {
+        minimum_reliability: 0.99,
+        significance: 0.05,
+    });
     diagnostics.clear();
     *transforms = vec![TransformV1::Identity {}];
     *indices = (0..32).collect();
@@ -234,6 +239,11 @@ fn transforms_preserve_parent_and_labels_cannot_change_physical_inputs() {
         original.scenario.vehicle.initial_fuel_kg
     );
     assert_eq!(translated.scenario.sim, original.scenario.sim);
+    let points = original.scenario.world.terrain.points();
+    assert!(
+        points.last().unwrap().x - points.first().unwrap().x < 5000.0,
+        "local inputs must not force a continental report viewport"
+    );
 }
 #[test]
 fn invalid_diagnostic_is_retained_and_never_assigned_a_native_budget() {
@@ -253,4 +263,40 @@ fn invalid_diagnostic_is_retained_and_never_assigned_a_native_budget() {
             .filter(|c| matches!(c.disposition, InputDispositionV1::Invalid(_)))
             .all(|c| c.native_limits.is_none())
     );
+}
+
+#[test]
+fn exact_binomial_limits_handle_zero_all_successes_and_nonzero_failures() {
+    let bound = one_sided_binomial_lower(300, 300, 0.05);
+    assert!((bound - 0.05_f64.powf(1.0 / 300.0)).abs() < 1e-13);
+    assert!(bound > 0.99);
+    assert!(one_sided_binomial_lower(599, 600, 0.05) > 0.99);
+    assert!(one_sided_binomial_lower(598, 600, 0.05) < 0.99);
+    assert_eq!(one_sided_binomial_lower(0, 300, 0.05), 0.0);
+    assert!((one_sided_binomial_lower(1, 1, 0.05) - 0.05).abs() < 1e-13);
+}
+
+#[test]
+fn supervised_sleep_fixture() {
+    if std::env::var_os("PD_CHARACTERIZATION_TEST_SLEEP").is_some() {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
+}
+
+#[test]
+fn supervisor_interrupts_and_reaps_a_real_hung_child() {
+    let start = std::time::Instant::now();
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "evaluation::tests::supervised_sleep_fixture"])
+        .env("PD_CHARACTERIZATION_TEST_SLEEP", "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let (status, interrupted) =
+        super::run::wait_supervised_child(&mut child, start, 10, 1).unwrap();
+    assert!(interrupted);
+    assert!(!status.success());
+    assert!(start.elapsed().as_secs() < 4);
+    assert!(child.try_wait().unwrap().is_some());
 }

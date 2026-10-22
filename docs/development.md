@@ -188,3 +188,11 @@ landing facade. It is a composition package; neutral platform crates and the
 checkpoint example remain independent of concrete strategies. Its build-time
 source ledger must match execution/reconstruction snapshots, so rebuild after
 editing participating source. It requires no archived PPO environment or runs.
+
+Its characterization layer prepares immutable native-input schedules and audits
+coverage without control updates. Bounded batch execution supervises one attempt
+at a time and retains every slot and proof disposition. Keep measured epochs
+at their original source paths: an archived executable alone cannot reconstruct
+source-bound controller/planner decisions. The
+[unattended execution record](controller_evaluation_execution.md) owns the current
+allocation; normal development checks run only software fixtures and tiny CLI panels.

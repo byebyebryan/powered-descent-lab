@@ -107,6 +107,13 @@ pub struct EvaluationBudgetV1 {
     pub max_bundle_bytes: u64,
     pub min_free_bytes: u64,
 }
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfirmationCriterionV1 {
+    pub minimum_reliability: f64,
+    pub significance: f64,
+}
 impl EvaluationBudgetV1 {
     pub fn validate(&self) -> Result<(), String> {
         if self.max_wall_seconds == 0
@@ -137,10 +144,21 @@ pub struct EvaluationRecipeV1 {
     pub exposure_inventories: Vec<super::BoundFileV1>,
     pub audit_bins: std::collections::BTreeMap<String, Vec<f64>>,
     pub joint_groups: Vec<Vec<String>>,
+    pub confirmation: Option<ConfirmationCriterionV1>,
 }
 impl EvaluationRecipeV1 {
     pub fn validate(&self) -> Result<(), String> {
         self.budget.validate()?;
+        if self.confirmation.as_ref().is_some_and(|c| {
+            !c.minimum_reliability.is_finite()
+                || !c.significance.is_finite()
+                || !(0.0..1.0).contains(&c.minimum_reliability)
+                || !(0.0..1.0).contains(&c.significance)
+                || c.minimum_reliability == 0.0
+                || c.significance == 0.0
+        }) {
+            return Err("invalid confirmation criterion".into());
+        }
         for (name, edges) in &self.audit_bins {
             if name.is_empty()
                 || edges.len() > 32
@@ -215,6 +233,9 @@ impl EvaluationRecipeV1 {
                     return Err(
                         "independent cohort forbids derived transforms and diagnostics".into(),
                     );
+                }
+                if *independent && self.confirmation.is_none() {
+                    return Err("independent confirmation needs a frozen criterion".into());
                 }
                 for transform in transforms {
                     if let TransformV1::Translate { x_m, y_m } = transform
@@ -424,7 +445,12 @@ pub fn local_case(
             )),
         ),
     };
-    let mut points = vec![Vec2::new(px - 100_000.0, 0.0)];
+    // Keep the complete local geometry visible in the maintained rich report.
+    // Flat extrapolation outside these endpoints remains native terrain behavior.
+    let far = (dx.abs() + 80.0)
+        .max(120.0)
+        .max(peak.map_or(0.0, |(x, _, width)| (x - px).abs() + width + 80.0));
+    let mut points = vec![Vec2::new(px - far, 0.0)];
     if let Some((x, height, width)) = peak {
         points.extend([
             Vec2::new(x - width, 0.0),
@@ -432,7 +458,7 @@ pub fn local_case(
             Vec2::new(x + width, 0.0),
         ]);
     }
-    points.push(Vec2::new(px + 100_000.0, 0.0));
+    points.push(Vec2::new(px + far, 0.0));
     s.world.terrain = TerrainDefinition::Heightfield { points_m: points };
     if diagnostic {
         match &diagnostics[(base_index / 5) as usize % diagnostics.len()] {

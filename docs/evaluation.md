@@ -102,6 +102,15 @@ see the example for counters, supported vehicle semantics and runnable commands.
 Summary library mode retains no trace and makes no saved-command proof claim.
 Software parity does not establish an operating envelope or authorize a campaign.
 
+Prepared evaluation commands extend this path: `prepare-evaluation` and
+`check-evaluation` resolve/audit inputs without flights; `run-evaluation` executes
+one frozen schedule with supervised attempts; `check-evaluation-results` checks
+saved byte bindings and inventory without replay. See the
+[example workflow](../examples/maneuver-policy/README.md#prepare-an-input-only-evaluation)
+for create-only destinations, exact continuation rules, limits and proof costs.
+A complete evaluation can contain verified failed landings. Fixed-size
+confirmation keeps its frozen criterion and reports incomplete evidence honestly.
+
 ## Native terminal inputs without flights
 
 The [native input interchange](native_scenario_inputs.md) exports complete retained

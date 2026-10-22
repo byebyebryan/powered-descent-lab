@@ -25,7 +25,7 @@ Unrelated research/report files and mixed documentation edits remain preserved.
 
 | Stage | Status and acceptance |
 | --- | --- |
-| A: software | Active: exact native input export, neutral interchange, recipes/audit/sampler and bounded execution/recovery; checkpoints require focused tests and final maintained gate |
+| A: software | Complete: exact input export/interchange, recipes/audit/sampler, supervised execution and recovery; all 19 maintained checks pass |
 | B: input freeze | Pending: input-only resolution and coverage; numeric populations and complete candidate lists must be declared before pilot flights |
 | C: pilot | Unallocated: at most twelve original executions including references; cost alone selects later counts |
 | D: retained parity | Unallocated: full 3,780 or fixed 945/315 source-slot panel; ordinary backend and native clocks on both sides |
@@ -82,3 +82,78 @@ overlap. Unknown history remains explicit.
 Four new focused tests cover deterministic preparation, coupled coverage,
 transforms/aliases, partial native deadlines, invalid/unsupported dispositions,
 exposure rejection and tampered scenarios. No measured allocation is yet released.
+
+## Checkpoint three: supervised execution
+
+The runner now executes one bounded child at a time, binds the outer schedule,
+preserves ordinary create-only bundles and records every scheduled slot. Native
+misses continue; proof, parity, resource and infrastructure faults retain evidence
+and mark the remaining schedule unstarted. A child guard reaps workers on error.
+Metadata is sealed for incomplete phases as well as completed ones. Output-byte
+reservations precede writes, and all original/reference/proof work is accounted
+for with unavailable counters explicit.
+
+Continuation requires exactly matching inputs, source paths and executable.
+Completed native failures can be reused after supervised fresh proof checks,
+without new original flights. Incomplete attempts are not replaced. Saved-result
+inventory checks verify payload byte bindings and aggregate accounting without
+extra native replay. Confirmation criteria are frozen recipe data and incomplete
+samples cannot receive a passing confidence result.
+
+The software panels exercise real subprocesses, exact direct/facade parity,
+failed landings, unsupported diagnostics, interruption/reaping, storage caps,
+input drift, payload tampering, continuation, a fixed negative confirmation and
+infrastructure failure before a flight. The maintained gate also checks the new
+explicit exporter frontdoor and rejects overlarge expansion before source I/O.
+
+Final software acceptance passes all 19 maintained developer checks, including
+17 maneuver library tests, two ordinary CLI tests, four batch CLI tests, all
+workspace tests, strict Clippy, Node/docs checks and dependency boundaries.
+The final log is
+`/home/bryan/code/.pd-controller-loop-20261022T043655Z/software-gate-r5.log`.
+The 174 inventoried plant/controller/planning/fixture files remain byte-identical
+to the starting inventory. No campaign landing result is implied by these checks.
+
+## Prospective local reference population
+
+Before any campaign flights, `declarations/local-reference-proposal.json` under
+`outputs/controller-characterization/loop-20261022T043655Z/` records this proposed
+task. It is a synthetic airborne local reference, not the distribution of actual
+launch/transfer handoffs. Its source-independent generator and all physical
+case/program schedules will be frozen before the cost pilot.
+
+| Factor | Prospective reference bounds |
+| --- | --- |
+| Initial clearance | 5 to 800 m relative to the target, with attitude-aware foot placement |
+| Lateral entry | Signed offset up to 0.75 times clearance; velocity toward target over `sqrt(2h/g)+2` s plus -6 to +6 m/s residual |
+| Descent | 0.1 to 0.85 times `sqrt(2 * net upright acceleration * clearance)` at original mass/fuel |
+| Attitude / rate | -0.25 to +0.25 rad; -0.15 to +0.15 rad/s |
+| Dry mass / fuel | 7,200 / 9,450 / 11,700 kg; independently varied positive fuel 1,000 to 6,300 kg |
+| Pad / original horizon | Width 24 to 60 m, surface 0 to 20 m; 60 to 90 s original horizon |
+| Terrain | Flat; approach ridge 12 m high; overshoot backstop 18 m high, with explicit placement/width rules |
+
+Generated terrain endpoints contain the entry, pad and declared obstacle with
+80 m padding and at least 120 m on each side. Native flat extrapolation is
+unchanged; the local extent keeps maintained rich report views readable.
+
+This couples braking/offset to clearance through native algebra without using
+the controller's predictions to admit winners. It extends the retained packs'
+fixed fuel/pad/deadline and zero-attitude coverage. The unchanged native validator
+and facade own valid/support dispositions. The native vehicle family is fixed.
+
+The maximum development panel has 256 development occurrences and 64 separately
+scored diagnostic occurrences. Four explicit transforms share each parent:
+identity, reflection, physical translation and label-only control. They are
+designed comparisons, not independent trials. Diagnostics cover near-empty fuel,
+partial deadlines, ascending entry, a narrow pad, unsupported gravity, a target
+above the entry, near-contact settling and attitude/rate stress. The 64 activation
+originals select identity cases from different development parents before flights.
+
+The prospective independent cohort instead uses separate counter-derived
+cohort/seed streams, continuous scalar draws, three mass levels and three terrain
+profiles, with identity transform only. Its policy is immediate activation.
+The working criterion is a one-sided 95% exact-binomial lower bound of at least
+99% for this one mixture; no per-stratum or whole-mission guarantee follows.
+The exact 600/300 allocation will be selected from pilot cost alone. All original
+retained inputs, development/pilot exposure and unknown historical coverage stay
+visible; no failed state will be silently removed or relabeled as a diagnostic.

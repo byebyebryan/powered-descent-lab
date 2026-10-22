@@ -12,6 +12,7 @@
     "min_free_bytes": 53687091200
   },
   "exposure_inventories": [],
+  "confirmation": null,
   "audit_bins": {
     "touchdown_clearance_m": [0, 10, 100, 500],
     "vy_mps": [-90, -30, -3, 0],
