@@ -11,6 +11,7 @@ available for exact options.
 | --- | --- |
 | [check-planner-development.mjs](check-planner-development.mjs) | Maintained Rust/CLI/Node/docs gate. Builds and tests locally; no capture publication. The 44-input external-baseline check is explicit opt-in. |
 | [check-docs.mjs](check-docs.mjs) | Read-only inline local Markdown links, ATX headings and explicit HTML IDs. No external fetch or generated-evidence requirement. |
+| [check-rl-retirement.mjs](check-rl-retirement.mjs) | Read-only hashes for archived PPO source and retired entrypoint checks. Optional isolated-worktree source inventory; no Python imports, flights, outputs or environment changes. |
 | [check-planner-v2-workflow.mjs](check-planner-v2-workflow.mjs) | Read-only acceptance and shared batch/detail/receipt checks for existing native evidence. Needs a compiled evaluator and saved captures. |
 | [check-planner-v2-integration.mjs](check-planner-v2-integration.mjs) | Explicit session/CLI modes: `native-parity`, `check-cli` and `check-replays` inspect saved evidence; `capture-cli` plans up to 44 flights; `replay-cli` executes up to 42 saved-command replays and writes a new receipt directory. Not part of the ordinary gate. |
 | [check-planner-v2-browser.mjs](check-planner-v2-browser.mjs) | Uses an existing server and explicitly supplied disposable local browser. Opens/closes its own tab; optional create-only screenshots/receipt, no report regeneration. |

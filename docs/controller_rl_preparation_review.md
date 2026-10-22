@@ -53,10 +53,10 @@ into the plan rather than left as a second task list.
 - [Incumbent presentation adapter](../pd-benchmark/src/presentation.rs) provides
   the working backend/morphology/geometry mapping. Shared extraction must not
   make Python or neutral crates depend on this concrete composition package.
-- [RL environment](../experiments/rl/pd_env.py),
-  [exporter](../experiments/rl/evaluate.py),
-  [independent verifier](../experiments/rl/verify.py) and
-  [exposure audit](../experiments/rl/analyze.py) anchor the remaining application work.
+- [RL environment](../studies/rl_procedural_ppo/pd_env.py),
+  [exporter](../studies/rl_procedural_ppo/evaluate.py),
+  [independent verifier](../studies/rl_procedural_ppo/verify.py) and
+  [exposure audit](../studies/rl_procedural_ppo/analyze.py) anchor the remaining application work.
 - [Campaign projection](../pd-report/src/campaign.rs) and
   [comparison renderer](../pd-report/src/comparison.rs) anchor presentation
   validity and the population-composition guard.

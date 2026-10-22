@@ -1,6 +1,7 @@
 """Actual application fault/parity checks on temporary native source fixtures.
 
-Requires the prepared Python environment and current native CLI/report examples.
+Historical integration check for the retired procedural PPO package.
+Requires its retained Python environment and compatible native CLI/report examples.
 These are software checks; no reserved cohort, checkpoint or optimizer is used.
 """
 import argparse
@@ -12,7 +13,7 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"experiments/rl"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]/"studies/rl_procedural_ppo"))
 import pd_native
 from evaluate import campaign
 from pd_env import native_module_paths

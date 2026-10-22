@@ -16,8 +16,9 @@ using a dated protocol as an implementation plan.
   Chrome debugging endpoint.
 - Git and RTK: the maintained gate invokes commands through `rtk proxy`.
 - Python 3.12 or newer with a linkable Python library for the workspace's PyO3
-  bridge. The optional learning experiment uses a uv-managed Python 3.12 local
-  environment and pinned CPU dependencies; see its [workflow](../experiments/rl/README.md).
+  bridge. The closed learning experiment retains its Python 3.12 environment
+  and pinned CPU dependencies; see its [archive](../studies/rl_procedural_ppo/README.md).
+  It is not a prerequisite or training recipe for a new approach.
 - Python 3 and tmux for the optional report server. Regenerating terminal-suite
   illustrations uses uv and Python 3.11 or newer, and rewrites tracked SVG assets
   as well as a local HTML preview; it is not needed for Rust tests.
@@ -57,6 +58,16 @@ comments, external URLs and generated `outputs/` evidence, which is intentionall
 absent from fresh checkouts. It is a small repository check, not a full Markdown
 parser or external-link checker; reference-style links are outside its coverage.
 It does not run historical commands or publish pages.
+
+The retired PPO package has an output-free source/entrypoint check:
+
+```sh
+rtk proxy node scripts/check-rl-retirement.mjs
+```
+
+Its tests run through the maintained Node-test discovery. The optional
+`--research-worktree PATH` also checks the separately retained source inventory;
+ordinary validation does not require that worktree or an installed learner.
 
 For changes to the optional procedural-terrain tooling, also run its pure and
 synthetic tests. These do not collect measured flights or require saved captures:

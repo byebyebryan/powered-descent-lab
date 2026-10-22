@@ -40,7 +40,7 @@ useful for coverage and implementation asymmetry checks. This browsing repair
 retains the existing hierarchy and does not introduce direction-specific control.
 Source boundaries are in [the native admission checks](../pd-planner/src/planner_flight/input.rs),
 [the reflection adapter](../pd-benchmark/src/lib.rs) and
-[the PPO environment](../experiments/rl/pd_env.py). The
+[the PPO environment](../studies/rl_procedural_ppo/pd_env.py). The
 [learning run record](procedural_learning_results.md) retains complete outcome
 and replay accounting.
 

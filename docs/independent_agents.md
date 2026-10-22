@@ -69,7 +69,7 @@ mutable evidence cache or whole-collection snapshot inside each episode.
 
 `assess_execution` applies the same physical/mission/integrity/replay contract
 to an externally driven ordinary native episode. The thin `pd-python` binding
-uses it for the [independent PPO experiment](../experiments/rl/README.md).
+uses it for the [retired independent PPO experiment](../studies/rl_procedural_ppo/README.md).
 Its observation/action/reward and launch choices are approach-owned; there is
 no controller/planner dependency or fallback.
 

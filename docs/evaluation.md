@@ -69,10 +69,11 @@ report. They do not refresh indexes, publish or change accepted selectors.
 An early solver stop preserves its finite executed prefix; it does not become a
 complete landing or extend the original scenario horizon.
 
-Frozen PPO campaigns use `experiments/rl/evaluate.py` and the same saved native
-evidence schema. Its [workflow](../experiments/rl/README.md) separates training
+The retired procedural PPO evaluator is preserved at
+`studies/rl_procedural_ppo/evaluate.py` with the same saved native evidence schema.
+Its [historical package workflow](../studies/rl_procedural_ppo/README.md) separates training
 selection, broad summary confirmations and native capture/replay.
-Python V2 campaigns now use native backend/geometry metadata, bind excluded
+That implementation's Python V2 campaigns use native backend/geometry metadata, bind excluded
 proposal files and preserve truthful unavailable-input failures. An exact
 `--request` can select the predeclared schedule; `--test-policy` supplies an
 explicitly untrained integration policy. Deferring inline verification requires

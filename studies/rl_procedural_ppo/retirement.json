@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "status": "retired",
+  "original_package": "experiments/rl",
+  "archive_package": "studies/rl_procedural_ppo",
+  "source_head": "8fbb4ebe0a5a216d313825307011f7bd470cfefa",
+  "source_worktree_was_dirty": true,
+  "recovery_archive_sha256": "6ede2faa6b107be145719cc231eea32cec69a39be6ed5409cac4f4af89913a82",
+  "recovery_snapshot_members": 2286,
+  "entries": [
+    {
+      "source_path": "experiments/rl/.gitignore",
+      "archive_path": "studies/rl_procedural_ppo/.gitignore",
+      "sha256": "240872b86d8ccd44e667299d648b4d6e4dbe5b72f873afea488ecae3e0109758",
+      "bytes": 19,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/README.md",
+      "archive_path": "studies/rl_procedural_ppo/README.historical.md.txt",
+      "sha256": "5d91a6e208487deaae421ba7c00e87d808e95541a194fa251a5889b985bb6ecc",
+      "bytes": 12237,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/analyze.py",
+      "archive_path": "studies/rl_procedural_ppo/analyze.py",
+      "sha256": "5bb9716549f9fe590dbdfc681bc7d4bfd28bef6e6402c310eab763cc07979fe1",
+      "bytes": 8080,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/build_native.py",
+      "archive_path": "studies/rl_procedural_ppo/build_native.py",
+      "sha256": "3672008c243109b34d589eac84c9f599c91ed20db392334e25e23fe5e871450c",
+      "bytes": 3859,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/confirm.py",
+      "archive_path": "studies/rl_procedural_ppo/confirm.py",
+      "sha256": "80e77eedd324c641b7159938adbd13e033d8ea91534f566bbf3b7b0a85ded4de",
+      "bytes": 3606,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/evaluate.py",
+      "archive_path": "studies/rl_procedural_ppo/evaluate.py",
+      "sha256": "eab11eb796b1c3ac8154a7c3014e683a71a0c53859f96d9998d8a5e70c75742c",
+      "bytes": 17879,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/freeze.py",
+      "archive_path": "studies/rl_procedural_ppo/freeze.py",
+      "sha256": "6057c3f65422c682b9ff38f9b52e437de94948bca1e25df88f53a0a15d002600",
+      "bytes": 5765,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/integration_policy.py",
+      "archive_path": "studies/rl_procedural_ppo/integration_policy.py",
+      "sha256": "96073fd4441288608beb7f2364f7bc07d2be918ffa155dda436801354aec3b49",
+      "bytes": 406,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/pd_env.py",
+      "archive_path": "studies/rl_procedural_ppo/pd_env.py",
+      "sha256": "0fb8e666a7c51372f503606385cc72ede699e66bde92fb48ff40631204252166",
+      "bytes": 8572,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/pd_env_v2.py",
+      "archive_path": "studies/rl_procedural_ppo/pd_env_v2.py",
+      "sha256": "fdf051b3b4024b52c0a744142a2f234a83a038619cbeb4b9797a0e2fdf5155e6",
+      "bytes": 1939,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/pd_env_v3.py",
+      "archive_path": "studies/rl_procedural_ppo/pd_env_v3.py",
+      "sha256": "13ced687ef21d19104b08f861a4c5a6ed33b18e1c19e9ad65be455f6cdc2414c",
+      "bytes": 1093,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/provenance.py",
+      "archive_path": "studies/rl_procedural_ppo/provenance.py",
+      "sha256": "ab2da445b08107330bc3fb4b0f128ca9e01d741249eafc004171375e143753c3",
+      "bytes": 1188,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/pyproject.toml",
+      "archive_path": "studies/rl_procedural_ppo/pyproject.toml",
+      "sha256": "7df6dfedd14c7fb8374b1c5ae8c6a818e11bf1645645c0e999aebfd2f96d0922",
+      "bytes": 369,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/test_analysis.py",
+      "archive_path": "studies/rl_procedural_ppo/test_analysis.py",
+      "sha256": "e03c88609b2f4406ed5834ac98bf3edf8edafb823e507d9e4c29edaea95e9921",
+      "bytes": 1656,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/test_environment.py",
+      "archive_path": "studies/rl_procedural_ppo/test_environment.py",
+      "sha256": "366e271cd2d6066d9e028d4520bf08e8c5079fb66096d06c2ca237db9e444d19",
+      "bytes": 5252,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/test_evaluation.py",
+      "archive_path": "studies/rl_procedural_ppo/test_evaluation.py",
+      "sha256": "6ea3cd452b711c68e56cd091958f22d4372115734d4f4b3ff6bf55d470170def",
+      "bytes": 2808,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/test_freeze.py",
+      "archive_path": "studies/rl_procedural_ppo/test_freeze.py",
+      "sha256": "19a586a9f058eb5d0377c9f5fcedf9c1ab16997350f460721c5e865cad1f4b45",
+      "bytes": 2295,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/test_reward_designs.py",
+      "archive_path": "studies/rl_procedural_ppo/test_reward_designs.py",
+      "sha256": "1bca1262dfb62fdab4539125e3506e181c9b7cecc6feba2f9980f44bedb7d192",
+      "bytes": 3001,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/train.py",
+      "archive_path": "studies/rl_procedural_ppo/train.py",
+      "sha256": "a527eceb7e4b442ea8e627a793e441ea42a610842359a5c6b12fb7ded3c1c634",
+      "bytes": 10159,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/uv.lock",
+      "archive_path": "studies/rl_procedural_ppo/uv.lock",
+      "sha256": "d5e571b49aff6059f7e9b268bdf1d9d7096a825516f6ea7e76484be21db0c520",
+      "bytes": 26101,
+      "mode": 420
+    },
+    {
+      "source_path": "experiments/rl/verify.py",
+      "archive_path": "studies/rl_procedural_ppo/verify.py",
+      "sha256": "7d999d17c7351102b54fb767d88c9ec6bcdeddae2bcd422be9f13e888c7d8b3d",
+      "bytes": 9016,
+      "mode": 420
+    }
+  ],
+  "research_inventory_sha256": "c804984951bbcaa969cc131f35f12a70911c956b8c8e9e3ed5724aab611688c0",
+  "retained_in_place": [
+    "experiments/rl/.venv",
+    "powered-descent-lab-rl-v2 source, environments and outputs"
+  ],
+  "outputs_deleted": false,
+  "flight_behavior_changed": false
+}

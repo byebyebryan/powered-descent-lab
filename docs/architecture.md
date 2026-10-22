@@ -71,7 +71,7 @@ boundaries; the maintained solver extraction is complete.
 | `pd-eval` | Generic execution accounting, capture, integrity and replay assessment | Core, runtime, missions |
 | `pd-report` | Rich saved-artifact projections, navigation and common templates | Core, runtime |
 | `pd-python` | Thin native episode, terrain query and capture binding | Core, runtime, missions, evaluation, reports |
-| `experiments/rl` | PPO features/actions/rewards/sampler/optimizer and checkpoint selection | Native Python binding; no incumbent imports |
+| `studies/rl_procedural_ppo` | Retired PPO source, readers and exact historical configuration | Native Python binding; no incumbent imports |
 | `pd-benchmark` | Explicit raw/reflected incumbent adapters and common campaigns | Concrete solver plus neutral platform |
 | `pd-control` | Maintained feedback implementations and legacy specification registry | Core, runtime |
 | `pd-plan` | Pure planning mathematics and geometry | Core |

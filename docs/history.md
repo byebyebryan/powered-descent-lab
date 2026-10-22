@@ -13,6 +13,11 @@ Links to generated `outputs/` evidence require the local retained artifacts;
 those files are deliberately absent from a fresh checkout. Retired source links
 use immutable Git revisions where available; they are not current module owners.
 
+The [code retirement](rl_code_retirement_results.md) moves the closed procedural
+PPO package into a byte-preserved historical study, retires its old entrypoint
+and retains the isolated research source at its bound paths. Source inventory
+and recovery checks precede the proposed controller implementation.
+
 ## Selected milestones
 
 These records explain how the current design was reached. Their dated "next"

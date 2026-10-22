@@ -442,6 +442,10 @@ automatic consequence of a weak timing result.
 
 ## Ownership and next implementation boundary
 
+The [controller-first design pass](maneuver_controller_design.md) details the
+backend replacement boundary, first facade, command mapping and native
+acceptance work. It is a follow-up draft rather than an implemented interface.
+
 Reusable deterministic execution belongs in `pd-control`, preserving existing
 controller IDs, defaults and serialized contracts. Approach composition, planner
 logic and any Python binding that depends on controllers belong in the approach

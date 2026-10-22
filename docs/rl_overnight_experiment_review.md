@@ -45,20 +45,20 @@ it has not established a replacement controller.
 
 - [RL branch handoff](controller_rl_development_handoff.md) binds task, ownership,
   cohorts, worktree environments and final-test access rules.
-- [Training entry point](../experiments/rl/train.py) anchors fixed V1 seeds,
+- [Training entry point](../studies/rl_procedural_ppo/train.py) anchors fixed V1 seeds,
   PPO settings, summary-only selection and current source-binding behavior.
-- [Physical environment](../experiments/rl/pd_env.py),
-  [braking potential](../experiments/rl/pd_env_v2.py), and
-  [aligned potential](../experiments/rl/pd_env_v3.py) anchor the existing
+- [Physical environment](../studies/rl_procedural_ppo/pd_env.py),
+  [braking potential](../studies/rl_procedural_ppo/pd_env_v2.py), and
+  [aligned potential](../studies/rl_procedural_ppo/pd_env_v3.py) anchor the existing
   features, direct actions, launch primitive and objective.
-- [Reward tests](../experiments/rl/test_reward_designs.py) check discounted
+- [Reward tests](../studies/rl_procedural_ppo/test_reward_designs.py) check discounted
   cancellation and unchanged physical execution under identical actions.
 - [V2 recipe validation](../pd-missions/src/recipe_v2.rs),
   [generation](procedural_generation_v2.md) and
   [collections](procedural_collections_v2.md) anchor stage controls, physical
   sampling bounds and controller-independent broad admission.
-- [Policy exporter](../experiments/rl/evaluate.py),
-  [checkpoint-free verifier](../experiments/rl/verify.py) and
+- [Policy exporter](../studies/rl_procedural_ppo/evaluate.py),
+  [checkpoint-free verifier](../studies/rl_procedural_ppo/verify.py) and
   [comparison guard](../pd-report/src/comparison.rs) anchor configuration,
   source/native binding, accounting and role/population separation.
 - [Earlier results](procedural_learning_results.md) establish the measured
