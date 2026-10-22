@@ -160,3 +160,6 @@ matched back/next navigation, focused flight camera, intact full-terrain data,
 and zero browser errors. The final presentation is 3,237,953,998 bytes and its
 source copy is retained under `presentation-source/`. The report's served bytes
 and final workspace preservation checks are recorded in the closure receipt.
+
+The subsequent [stopping-rule comparison](rl_coast_ignite_stopping_execution.md)
+uses the frozen weights on new inputs and keeps this 600-arc result unchanged.
