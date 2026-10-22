@@ -15,6 +15,12 @@ and its conditional scope. The existing standalone facade remains available.
 The subsequent [execution declaration](poly_landing_execution.md) owns the
 authorized loop, resource limits, gate status and measured allocations.
 
+The subsequent [coast and ignition study](rl_coast_ignite_execution.md) completes
+the first hybrid experiment using this fixed burn: 589/600 verified fresh target
+landings. Its [plan](rl_coast_ignite_plan.md) keeps coast actuation controller-owned
+and supplies the absolute touchdown/reference time from the mission. Generalized
+control remains separate from this supplied-arc task.
+
 ## 1. Correct the baseline before another evaluation
 
 The intended reference is the accepted planner's finite terminal burn, not
