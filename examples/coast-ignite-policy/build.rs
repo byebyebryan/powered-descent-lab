@@ -47,7 +47,13 @@ fn main() {
         append(&root.join(package).join("Cargo.toml"), &mut files);
         append(&root.join(package).join("src"), &mut files);
     }
-    for name in ["coast_ignite.py", "run_loop.py"] {
+    for name in [
+        "coast_ignite.py",
+        "run_loop.py",
+        "stopping_policy.py",
+        "run_stopping.py",
+        "render_stopping.py",
+    ] {
         let path = root.join("experiments/coast-ignite").join(name);
         if path.exists() {
             append(&path, &mut files);
