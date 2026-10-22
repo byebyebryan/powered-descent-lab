@@ -26,8 +26,8 @@ Unrelated research/report files and mixed documentation edits remain preserved.
 | Stage | Status and acceptance |
 | --- | --- |
 | A: software | Complete: exact input export/interchange, recipes/audit/sampler, supervised execution and recovery; all 19 maintained checks pass |
-| B: input freeze | Pending: input-only resolution and coverage; numeric populations and complete candidate lists must be declared before pilot flights |
-| C: pilot | Unallocated: at most twelve original executions including references; cost alone selects later counts |
+| B: input freeze | Complete: prospective declaration, exact candidate plans and native audits sealed before flights |
+| C: pilot | Allocated: three preselected originals under immediate/direct parity, never and tick 120; twelve original executions including references, 30 minutes maximum |
 | D: retained parity | Unallocated: full 3,780 or fixed 945/315 source-slot panel; ordinary backend and native clocks on both sides |
 | E: characterization | Unallocated: fixed 320/160/80 development/diagnostic slots, roles retained |
 | F: activation | Unallocated: fixed 64/32/16 originals with immediate, never and ticks 12/60/120/240/480 |
@@ -121,6 +121,48 @@ the anchor unchanged and rejects those stale labels; native physical identities
 are unchanged. The earlier detached software candidate is retained unused, and
 the first measured source epoch will include this correction. No measurement
 repair allowance has been consumed.
+
+## Input freeze and pilot release
+
+The first measured epoch uses source `0378812`, retained at
+`epochs/epoch-2-source`, and its release executable at
+`epochs/epoch-2-bin/pd-maneuver-example` under the loop root. Executable SHA256 is
+`996fb0da0fb9eca5c7d73d8a09744332cf14e59da5f293f066eb23e0af17c5be`.
+All 19 maintained checks passed again after the provenance correction.
+
+`declarations/local-reference-declaration-v1.json` supersedes only the ordering
+of the earlier proposal. Its SHA256 is
+`199d0a702621433eef78411d3e595206df303670c5665a050ba8ad212c2fa9fd`.
+Development grid order is `j = (21*i) mod 64`, with four development parents and
+one diagnostic parent per block, each retaining all four transforms. Prefixes
+80/160/320 therefore preserve the 4:1 role ratio and primary factor levels.
+The data-only retained adapter copies exact native payload bytes and round-robins
+15 equal source groups; no physical generator or controller is reimplemented.
+Its manifest SHA256 is
+`0679f7ed3b517034bb8b0e91ace275a71ad0087fdde50afb2c804e8d372cbbb7`.
+
+The frozen Rust loader and audit accept these complete candidate schedules:
+
+| Candidate | Cases / attempts | Input dispositions and identity |
+| --- | --- | --- |
+| Retained parity | 3,780 / 3,780 | All supported; 3,672 distinct physical states, source aliases retained |
+| Structured local | 320 / 320 | 256 development, 64 diagnostics; 312 supported and 8 explicitly unsupported gravity diagnostics; 240 distinct physical states |
+| Paired activation | 64 / 448 | All supported identity originals; seven fixed programs per original |
+| Independent confirmation | 600 / 600 | All supported; 600 distinct physical states and parents; zero overlap with declared development and retained identities |
+
+The exact recipes, scenarios, programs, coverage cells, limits and hashes are in
+`plans/candidates-v1/` and `declarations/input-freeze-receipt-v1.json`. Input
+inspection exposure is recorded separately. Historical exposure is incomplete;
+the independent cohort is fresh relative to the declared audited inventory.
+
+`declarations/pilot-declaration-v1.json` releases only three identity cases,
+indices 0/104/312, at low/middle/high primary grid coordinates. Each receives
+immediate, never and tick-120 activation; immediate also has one direct reference
+execution per case. This totals twelve original executions, with all additional
+proof work counted. Each of the three phase caps is 600 seconds and 512 MiB;
+the attempt cap is 180 seconds, bundle cap 96 MiB and free-space floor 50 GiB.
+Only pilot wall/byte measurements determine later allocations. All later sample
+sizes remain unallocated until that cost boundary.
 
 ## Prospective local reference population
 
