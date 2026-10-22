@@ -33,6 +33,24 @@ impl std::fmt::Display for SimulationError {
 
 impl std::error::Error for SimulationError {}
 
+/// Read-only projection of existing geometry and the authoritative classifier.
+/// This does not advance a state or alter any persisted flight DTO.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContactDiagnosticsV1 {
+    pub schema_version: u32,
+    pub classification: ContactClassification,
+    pub touchdown_points_m: [Vec2; 2],
+    pub min_touchdown_clearance_m: f64,
+    pub max_touchdown_clearance_m: f64,
+    pub min_hull_clearance_m: f64,
+    pub normal_speed_mps: f64,
+    pub tangential_speed_mps: f64,
+    pub attitude_error_rad: f64,
+    pub angular_rate_radps: f64,
+    pub on_target: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct SimulationState {
     pub sim_time_s: f64,
@@ -295,6 +313,23 @@ impl SimulationState {
         }
 
         ContactClassification::Crash
+    }
+
+    pub fn contact_diagnostics(&self, ctx: &RunContext) -> ContactDiagnosticsV1 {
+        let snapshot = self.landing_snapshot(ctx);
+        ContactDiagnosticsV1 {
+            schema_version: 1,
+            classification: self.detect_contact_classification(ctx),
+            touchdown_points_m: self.touchdown_points_world(ctx),
+            min_touchdown_clearance_m: snapshot.min_touchdown_clearance_m,
+            max_touchdown_clearance_m: snapshot.max_touchdown_clearance_m,
+            min_hull_clearance_m: snapshot.min_hull_clearance_m,
+            normal_speed_mps: snapshot.normal_speed_mps,
+            tangential_speed_mps: snapshot.tangential_speed_mps,
+            attitude_error_rad: snapshot.attitude_error_rad,
+            angular_rate_radps: snapshot.angular_rate_radps,
+            on_target: snapshot.on_target,
+        }
     }
 
     fn landing_snapshot(&self, ctx: &RunContext) -> LandingSnapshot {
@@ -1689,6 +1724,32 @@ mod tests {
         assert_eq!(replayed.manifest, original.manifest);
         assert_eq!(replayed.events, original.events);
         assert_eq!(replayed.actions, original.actions);
+    }
+
+    #[test]
+    fn contact_diagnostics_reuses_classification_and_does_not_mutate_state() {
+        let mut scenario = smoke_scenario();
+        scenario.vehicle.geometry.hull_width_m = 8.0;
+        scenario.vehicle.geometry.hull_height_m = 10.0;
+        scenario.vehicle.geometry.touchdown_half_span_m = 4.0;
+        scenario.vehicle.geometry.touchdown_base_offset_m = 5.0;
+        let ctx = RunContext::from_scenario(&scenario).unwrap();
+        let mut state = SimulationState::new(&ctx).unwrap();
+        state.position_m = Vec2::new(0.0, 5.174028317942052);
+        state.velocity_mps = Vec2::new(-0.17546007229443514, -1.9933464166130632);
+        state.attitude_rad = 0.04804665354374844;
+        state.angular_rate_radps = 0.0;
+        let before = SimulationStateSnapshotV1::from_state(&state);
+        let diagnostic = state.contact_diagnostics(&ctx);
+        assert_eq!(
+            diagnostic.classification,
+            state.detect_contact_classification(&ctx)
+        );
+        assert_eq!(diagnostic.classification, ContactClassification::Crash);
+        assert!((diagnostic.max_touchdown_clearance_m - 0.37191108961429975).abs() < 1e-12);
+        assert!(diagnostic.normal_speed_mps < 3.0);
+        assert!(diagnostic.attitude_error_rad < 0.15);
+        assert_eq!(before, SimulationStateSnapshotV1::from_state(&state));
     }
 
     #[test]

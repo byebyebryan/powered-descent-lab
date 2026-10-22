@@ -136,5 +136,13 @@ fn rejected_ignition_is_one_attempt_and_preserves_coast_until_native_end() {
         assert_eq!(info["decisions"].as_array().unwrap().len(), 1);
         assert_eq!(info["feedback"]["constructions"], 1);
         assert!(info["feedback"]["accepted"].is_null());
+        let diagnostic = episode.diagnostics.as_ref().unwrap();
+        assert_eq!(diagnostic["admission"]["kind"], "no_plan");
+        assert!(diagnostic["admission"]["reason"].is_string());
+        assert_eq!(diagnostic["native_forecast_steps"], 0);
+        assert_eq!(
+            diagnostic["incoming_contact"]["geometry"]["classification"],
+            diagnostic["incoming_contact"]["recorded"]["classification"]
+        );
     });
 }

@@ -1,4 +1,5 @@
 //! Approach-specific Python binding; the neutral physical bridge stays independent.
+mod diagnostics;
 mod generator;
 mod report;
 #[cfg(test)]
@@ -56,6 +57,9 @@ struct CoastEpisode {
     evidence_scope: Option<EvidenceScope>,
     evidence_before: Option<EvidenceSnapshotV1>,
     work_limit: u64,
+    admission: Option<AdmissionV2>,
+    activation: Option<Observation>,
+    diagnostics: Option<serde_json::Value>,
 }
 
 #[pymethods]
@@ -116,6 +120,9 @@ impl CoastEpisode {
             evidence_scope,
             evidence_before,
             work_limit: u64::MAX,
+            admission: None,
+            activation: None,
+            diagnostics: None,
         })
     }
 
@@ -142,7 +149,8 @@ impl CoastEpisode {
         self.decisions.push((tick, action));
         if action == 1 {
             let obs = self.live()?.observation();
-            self.controller.ignite(&obs).map_err(error)?;
+            self.admission = Some(self.controller.ignite(&obs).map_err(error)?);
+            self.activation = Some(obs);
             self.committed = true;
         } else if tick == 960 {
             self.committed = true;
@@ -192,6 +200,10 @@ impl CoastEpisode {
 
     fn status_json(&self) -> PyResult<String> {
         json(&self.info()?)
+    }
+
+    fn diagnostics_json(&self) -> PyResult<String> {
+        json(&self.diagnostics)
     }
 
     fn finish_json(&mut self) -> PyResult<String> {
@@ -299,6 +311,17 @@ impl CoastEpisode {
         self.controller
             .native_end((&result.summary).into())
             .map_err(error)?;
+        self.diagnostics = Some(
+            diagnostics::project(
+                &self.scenario,
+                self.end,
+                self.admission.as_ref(),
+                self.activation.as_ref(),
+                self.controller.feedback().as_ref(),
+                &result.summary,
+            )
+            .map_err(error)?,
+        );
         self.closed = true;
         let mut info = info;
         info["feedback"] = serde_json::to_value(self.controller.feedback()).map_err(error)?;
