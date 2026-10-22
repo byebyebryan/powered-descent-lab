@@ -72,6 +72,14 @@ class Tests(unittest.TestCase):
         self.assertAlmostEqual(lo, 0.025**(1 / 600))
         lo, hi = binomial_interval(300, 600)
         self.assertAlmostEqual(lo, 1 - hi)
+        from collections import Counter
+        budget = object.__new__(Budget)
+        budget.counts, budget.started = Counter(original_native_steps=12), __import__("time").monotonic()
+        with tempfile.TemporaryDirectory() as folder:
+            budget.root = Path(folder)
+            receipt = budget.receipt(counts={"RL": 1})
+            self.assertEqual(receipt["counts"], {"RL": 1})
+            self.assertEqual(receipt["resource_counts"], {"original_native_steps": 12})
 
     def test_saved_model_native_control_and_physical_proofs_and_input_drift(self):
         import gymnasium as gym

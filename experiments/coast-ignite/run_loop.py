@@ -65,7 +65,8 @@ class Budget:
                     raise RuntimeError("outer artifact budget exhausted")
 
     def receipt(self, **fields):
-        return {"counts": dict(self.counts), "wall_seconds": time.monotonic() - self.started,
+        return {"counts": dict(self.counts), "resource_counts": dict(self.counts),
+                "wall_seconds": time.monotonic() - self.started,
                 "bytes": sum(p.stat().st_size for p in self.root.rglob("*") if p.is_file()), **fields}
 
 
