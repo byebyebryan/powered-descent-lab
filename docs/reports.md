@@ -23,6 +23,16 @@ New comparison declarations keep collection roles and broad/stress/shift
 populations separate, with recipe/admission/geometry consistency within each
 backend. These safeguards extend the maintained mission tree and rich templates.
 
+## Experimental maneuver reports
+
+The [maneuver example](../examples/maneuver-policy/README.md) can render a single
+explicit bundle to a new HTML file through the maintained rich run template.
+It verifies the physical capture and separately prints companion byte,
+controller and planner checks. This command performs replay/reconstruction;
+its resource receipt accounts for those passes. The report's landing claim
+still requires the neutral physical/mission/integrity/replay tuple. Rendering
+does not refresh a collection, navigation selector, publication or server.
+
 ## Report Serving
 
 Start at `/` or `/reports/`: **Browse missions** leads with terminal control,

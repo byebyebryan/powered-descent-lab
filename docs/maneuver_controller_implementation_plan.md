@@ -2,19 +2,22 @@
 
 [Controller design](maneuver_controller_design.md) · [Planner and controller design](maneuver_execution_design.md) · [Design review](planner_controller_design_review.md)
 
-October 21, 2026. **Proposed software implementation pass.** Build the terminal
-landing controller interface, exercise it through one native episode, and retain
-independent physical and decision reconstruction. Completion means a runnable,
-tested deterministic composition ready for bounded characterization. The
+October 21, 2026. **Implemented experimental software pass.** The
+[implementation record](maneuver_controller_implementation_results.md) owns final
+checks and scope clarifications. The retained plan below defines the terminal
+landing controller interface, one native episode and independent physical/decision
+reconstruction. Completion means a runnable, tested deterministic composition
+ready for bounded characterization. The
 operating envelope remains a subsequent measurement task.
 
 ## Post cleanup starting point
 
 The [RL code retirement](rl_code_retirement_results.md) is complete, with all
 18 maintained developer checks passing. That establishes the platform baseline;
-the maneuver facade and `pd-maneuver-example` are still unimplemented.
-The controller/backend behavior and supported first goal remain unchanged by
-the cleanup, so the four implementation slices below still apply.
+at that checkpoint the maneuver facade and `pd-maneuver-example` were unimplemented.
+The four slices are now implemented. Cleanup preserved the controller/backend
+behavior and supported first goal; the following slices define the accepted
+software scope.
 
 Start from the checkpoint containing the reviewed retirement and follow-up
 design, rather than the earlier design-only commit `8fbb4eb`. Record the effective
@@ -253,7 +256,7 @@ controllers, fixtures, historical receipts and report selectors are unchanged.
 | --- | --- |
 | Lifecycle and requests | Same-boundary acceptance; Keep/duplicate/rejection preserve state; conflicting ID, unsupported goal/mission, cancellation, stale tick and malformed input have distinct dispositions; no post-end command |
 | Backend independence | A deterministic alternate test implementation satisfies the contract without terminal internals; it supplies no landing-capability claim |
-| Native parity | Predeclared small panel covering nominal and loaded descent, lateral cleanup, nonzero attitude, terrain prediction, near-contact settling, low/zero fuel, short deadline and difficult entries; compare direct default backend with immediate facade activation |
+| Native parity | Predeclared small panel covering nominal and loaded descent, lateral cleanup, nonzero attitude, terrain prediction, near-contact settling, low fuel/exhaustion, short deadline and difficult entries; compare direct default backend with immediate facade activation |
 | Exact comparator | Underlying commands, states, actions/events/samples, fuel, clocks, contact and outcomes match, including failures; original backend telemetry matches; compare explicit identity/timing additions separately with a narrow field list |
 | Tick handling | Native end at an odd physics tick; activation at zero and a later decision tick; deadline before activation; already-stopped bounded episode makes no decision or frame call |
 | Capture modes | Summary and captured modes have identical physical summaries; only captured execution makes saved-command replay claims |
@@ -293,11 +296,10 @@ rtk proxy cargo test -p pd-maneuver-example
 rtk proxy node scripts/check-planner-development.mjs
 ```
 
-These are planned commands; `pd-maneuver-example` does not exist yet. The
-retirement check already passes. For the first library checkpoint, run the
-retirement check and `pd-control` tests without selecting the not-yet-added
-example package, then use the maintained gate for its final review. The retained
-44-case planner capture remains optional under the existing `--parity-capture`
+These commands are now runnable. The first library checkpoint passed the
+retirement/controller checks and full maintained gate before adding the example.
+The retained 44-case planner capture remains optional under the existing
+`--parity-capture`
 workflow and is not a substitute for terminal adapter parity.
 
 Stop on the first unexplained command/state mismatch, lifecycle/clock violation,

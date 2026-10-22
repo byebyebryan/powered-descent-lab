@@ -133,6 +133,15 @@ export function buildPlannerDevelopmentSteps({
     }));
   }
 
+  steps.push(step(root, 'maneuver example composition dependency tree', [
+    'cargo', 'tree', '-p', 'pd-maneuver-example', '--all-features', '--edges', 'normal',
+  ], {
+    captureOutput: true,
+    validateOutput: output => assert.doesNotMatch(output,
+      /\bpd-(?:plan|planner|benchmark|eval-cli|python|policy-example) v\d/,
+      'maneuver example must not import planners, legacy composition or Python'),
+  }));
+
   steps.push(step(root, 'solver normal dependency tree', [
     'cargo', 'tree', '-p', 'pd-planner', '--all-features', '--edges', 'normal',
   ], {

@@ -181,3 +181,10 @@ adapters; add behavior to its implementation owner. Current Cargo selectors use
 `-p pd-eval-cli` for the installed `pd-eval` binary. Frozen copied-source builds
 select the package present in their own source tree, and saved receipts keep the
 original build command and identity.
+
+The experimental [maneuver example](../examples/maneuver-policy/README.md) owns
+a native Episode and deterministic activation program above `pd-control`'s
+landing facade. It is a composition package; neutral platform crates and the
+checkpoint example remain independent of concrete strategies. Its build-time
+source ledger must match execution/reconstruction snapshots, so rebuild after
+editing participating source. It requires no archived PPO environment or runs.

@@ -13,6 +13,7 @@ members = [
   "pd-eval",
   "pd-eval-cli",
   "examples/checkpoint-policy",
+  "examples/maneuver-policy",
 ]
 resolver = "2"
 

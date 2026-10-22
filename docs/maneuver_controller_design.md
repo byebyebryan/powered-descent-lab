@@ -3,9 +3,11 @@
 [Planner and controller design](maneuver_execution_design.md) · [Research and validation review](planner_controller_design_review.md) · [Current guidance](guidance.md)
 
 October 21, 2026. Source-backed follow-up to design commit `8fbb4eb`.
-**Design draft; no production interface or new flight evidence.** The terminal
-backend is the better-established starting point. Its maneuver lifecycle and
-operating envelope still need validation before a planner can rely on them.
+**Experimental interface implemented; no operating-envelope qualification.**
+The [software record](maneuver_controller_implementation_results.md) owns the
+implementation checks. The terminal backend is the better-established starting
+point. Its operating envelope still needs validation before a planner can rely
+on it.
 
 ## What already exists
 
@@ -20,8 +22,10 @@ operating envelope still need validation before a planner can rely on them.
 
 Existing tests cover terminal command generation, several difficult landing
 regressions, reset, hysteresis, retained plans and configuration reconstruction.
-They do not exercise the proposed maneuver facade. This pass reviewed source and
-tests; it did not rerun a controller campaign or establish a new landing rate.
+Those pre-existing tests did not exercise the proposed maneuver facade. The
+initial design pass reviewed source and tests. The later software pass adds
+facade/parity tests; it does not rerun a
+controller campaign or establish a new landing rate.
 
 ## The replacement boundary
 

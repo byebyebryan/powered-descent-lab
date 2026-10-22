@@ -89,6 +89,19 @@ tree; broad/stress and validation/final-test remain separate views and rates.
 The create-only `pd-report` example `comparison` accepts a comparison projection
 and a new HTML path. It performs no evaluation or publication.
 
+## Experimental maneuver composition
+
+The [maneuver example](../examples/maneuver-policy/README.md) runs one explicit
+airborne route-free landing scenario with an immediate, never or fixed-tick
+activation program. It uses 120/60/10 Hz physics/controller/planner scheduling
+and the unchanged ordinary terminal backend. Its new create-only bundle binds
+native capture, request trace, compiled sources, executable and inputs.
+`verify` reports physical replay, controller reconstruction and planner
+reconstruction independently. Each invocation performs explicit proof passes;
+see the example for counters, supported vehicle semantics and runnable commands.
+Summary library mode retains no trace and makes no saved-command proof claim.
+Software parity does not establish an operating envelope or authorize a campaign.
+
 ## Planner Evaluation (V2 Default)
 
 The latest opt-in [combined safety checkpoint](ballistic_combined_validation_results.md)

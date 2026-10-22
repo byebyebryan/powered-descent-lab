@@ -3,6 +3,7 @@ use pd_core::{Observation, RunContext, SimulationError};
 mod controllers;
 mod guidance;
 pub mod kit;
+pub mod maneuver;
 mod terminal;
 mod transfer;
 

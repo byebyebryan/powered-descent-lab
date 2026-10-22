@@ -73,6 +73,13 @@ test('ordinary and explicit parity plans preserve feature and test discovery bou
         /must not import concrete strategies/);
       assert.doesNotThrow(() => boundary.validateOutput(`${packageName} v0.1.0\n└── pd-run v0.1.0`));
     }
+    const maneuverBoundary = find('maneuver example composition dependency tree');
+    assert(maneuverBoundary.args.includes('--all-features'));
+    for (const forbidden of ['pd-plan', 'pd-planner', 'pd-benchmark', 'pd-eval-cli', 'pd-python', 'pd-policy-example']) {
+      assert.throws(() => maneuverBoundary.validateOutput(`pd-maneuver-example v0.1.0\n└── ${forbidden} v0.1.0`),
+        /must not import planners/);
+    }
+    assert.doesNotThrow(() => maneuverBoundary.validateOutput('pd-maneuver-example v0.1.0\n└── pd-control v0.1.0\n└── pd-eval v0.1.0'));
     const solverBoundary = find('solver normal dependency tree');
     assert(solverBoundary.args.includes('--all-features'));
     for (const forbidden of ['pd-eval', 'pd-eval-cli', 'pd-report', 'pd-missions']) {

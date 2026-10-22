@@ -7,6 +7,4 @@ edition = "2024"
 pd-core = { path = "../pd-core" }
 pd-run = { path = "../pd-run" }
 serde.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true

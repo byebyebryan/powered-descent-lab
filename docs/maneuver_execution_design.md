@@ -444,7 +444,9 @@ automatic consequence of a weak timing result.
 
 The [controller-first design pass](maneuver_controller_design.md) details the
 backend replacement boundary, first facade, command mapping and native
-acceptance work. It is a follow-up draft rather than an implemented interface.
+acceptance work. The experimental landing facade and deterministic example are
+implemented; the [software record](maneuver_controller_implementation_results.md)
+separates that acceptance from subsequent flight characterization and learning.
 
 Reusable deterministic execution belongs in `pd-control`, preserving existing
 controller IDs, defaults and serialized contracts. Approach composition, planner
