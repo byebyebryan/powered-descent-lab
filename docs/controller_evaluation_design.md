@@ -2,7 +2,10 @@
 
 [Software implementation](maneuver_controller_implementation_results.md) · [Controller contract](maneuver_controller_design.md) · [Evaluation workflow](evaluation.md)
 
-October 21, 2026. **Proposed next pass; no measured allocation is launched.**
+October 21, 2026 design. **The [characterization pass is complete](controller_evaluation_results.md):
+598/600 fresh local-reference landings, but the predeclared 99% reliability
+criterion fails its one-sided confidence bound.** Whole-mission handoff
+qualification and RL training remain separate work.
 The [implementation plan](controller_evaluation_implementation_plan.md) defines
 an unattended loop through input access, coverage audit, bounded execution,
 characterization, activation comparisons and eligible fixed-size confirmation.

@@ -2,8 +2,11 @@
 
 [Evaluation design](controller_evaluation_design.md) · [Implemented controller](maneuver_controller_implementation_results.md) · [Development workflow](development.md)
 
-October 21, 2026. **Approved and launched unattended loop.** The
-[execution record](controller_evaluation_execution.md) owns active limits and stage status.
+October 21, 2026. **The unattended loop is complete.** The
+[results](controller_evaluation_results.md) record software acceptance, exact
+retained parity, corrected local characterization and the failed 99% confirmation
+criterion. The [execution record](controller_evaluation_execution.md) retains
+limits, prospective releases, technical invalidation and stage status.
 Start from the reviewed maneuver software `83303da` and evaluation design
 `8adf2db`. Build the tools to measure the unchanged landing controller before
 choosing another controller implementation or an RL task. One launch should carry

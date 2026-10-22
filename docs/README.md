@@ -25,6 +25,17 @@ later code and documentation housekeeping does not create a new flight capture.
 | Inspect primary research, source review and bounded contract validation | [Design review](planner_controller_design_review.md) |
 | Define controller characterization and confirmation before RL | [Controller evaluation design](controller_evaluation_design.md) |
 | Implement and run an unattended controller characterization pass | [Controller characterization plan](controller_evaluation_implementation_plan.md) |
+| Inspect controller coverage, activation value and qualification limits | [Controller characterization results](controller_evaluation_results.md) |
+
+## Current controller checkpoint
+
+The [completed characterization](controller_evaluation_results.md) verifies
+945/945 exact adapter comparisons. Fresh local-reference landing is 598/600,
+but the one-sided 95% bound is 98.954%, so the predeclared 99% criterion fails.
+Immediate activation lands 61/64 versus a 62/64 hindsight timing-grid union.
+The harness is implemented; actual mission-handoff qualification and RL remain
+later work. The result and [execution ledger](controller_evaluation_execution.md)
+own the measured controller status.
 
 ## Report presentation refinement
 

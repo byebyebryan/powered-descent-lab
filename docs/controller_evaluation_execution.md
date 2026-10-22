@@ -29,10 +29,10 @@ Unrelated research/report files and mixed documentation edits remain preserved.
 | B: input freeze | Complete: prospective declaration, exact candidate plans and native audits sealed before flights |
 | C: pilot | Complete: twelve original executions including references, all nine facade results verified; inventory checks pass |
 | D: retained parity | Complete: 945/945 exact direct/facade comparisons and proofs; 865 target landings, 80 native crashes retained |
-| E: characterization | V1 quarantined; corrected V2 released with all 320 slots |
-| F: activation | V1 quarantined; corrected V2 released with all 64 originals / 448 attempts |
-| G: confirmation | V1 interrupted and quarantined; sole technical restart released as fresh V2 cohort, fixed N=600 |
-| H: closeout | Pending: code review, validation, complete inventory, failure/coverage/cost analysis and bounded new local rich reports |
+| E: characterization | Complete V2: 244/256 primary landings, diagnostics separate; V1 quarantined |
+| F: activation | Complete V2: all 448 attempts verify; immediate 61/64, hindsight union 62/64; V1 quarantined |
+| G: confirmation | Complete V2: 598/600, 95% lower bound 98.954%, predeclared 99% criterion failed; V1 interrupted/quarantined |
+| H: closeout | Complete: reviewed code, maintained checks, sealed inventories, analysis, twelve rich reports and preservation/resource audit; see results |
 
 At the pilot boundary, record immutable recipes and allocations under a new
 generated root and update this ledger. Preserve original outcomes, all aliases,
@@ -282,6 +282,48 @@ their fixed stage names are E2/F2/G2. Including all old artifacts, every new pha
 cap and a 512 MiB overhead reserve gives 39,429,015,893 bytes, below the global
 40 GiB ceiling. Old cost evidence remains available without making a capability
 claim for its inconsistent scenes. No extra pilot or enlarged sample is released.
+
+## Final acceptance and closeout
+
+The [results](controller_evaluation_results.md) close this loop with separate
+software, retained-parity, local-reliability, activation and handoff verdicts.
+Every selected corrected schedule completes and its inventory verifies. There
+are no proof/parity faults in valid phases. The corrected 600-case confirmation
+has two physical crashes and a valid negative criterion result; an independent
+binomial calculation confirms the lower bound. No additional sample is launched.
+
+The corrected primary structured panel lands 244/256, representing 61 of 64
+parents; its twelve crashes are transformed copies of three failed originals.
+All 78 executed label pairs are exact, and reflection/translation change no
+landing verdict. Immediate and 0.1 s delayed activation each land 61/64; the
+hindsight seven-program union lands 62/64. Both fresh failures retain fuel and
+reach ground beyond the target with excessive lateral speed. These are exposed
+development cases for a future controller pass, not reusable final tests.
+
+Twelve explicitly selected local reports use the maintained rich template, each
+with three fresh proof passes and no original flight. A fresh failure and the
+delayed-activation comparison were visually checked in headless Chrome. Reports,
+screenshots, selection and proof receipts remain local; publication, accepted
+selectors and servers are untouched. Existing report zero CPU/post-contact
+speed cards have the limitations documented in the result; the analysis keeps
+CPU unavailable and uses incoming contact states.
+
+`declarations/closeout-accounting-v1.json` records 4,248 completed original
+executions including references, plus one interrupted attempt with unavailable
+counts. Known proof work is 23,136 passes, including 36 report passes. At that
+closeout snapshot, artifacts use 13,786,310,410 bytes of the 40 GiB allowance.
+Retained epoch material plus all main-target files modified since launch totals
+8,553,253,308 bytes, a conservative retained-material bound below 20 GiB.
+The global wall clock includes software tests, investigation, invalidated work,
+analysis and reports and remains below the 12-hour ceiling. Free capacity remains
+above 50 GiB. Final preservation records bind the unchanged 174 protected files
+and unrelated baseline work; source/executable epochs remain at their bound paths.
+
+One measurement repair and the sole technical confirmation restart were used.
+No controller tuning, RL training, push, default promotion or report publication
+occurred. The next decision is mission-handoff requirements and a bounded
+controller failure/preservation comparison, with another independent confirmation
+only after a newly frozen controller/task. Timing-only RL is not launched.
 
 ## Prospective local reference population
 

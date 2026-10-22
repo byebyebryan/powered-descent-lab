@@ -21,6 +21,15 @@ Success means:
 
 ## 1.1 Current status
 
+### Controller characterization
+
+The [completed controller pass](controller_evaluation_results.md) now owns the
+measured local checkpoint: exact adapter parity on 945 retained cases, 598/600
+fresh local-reference landings and a failed predeclared 99% confidence criterion.
+Immediate activation achieves 61/64 against a 62/64 hindsight timing-grid union.
+The harness is ready for bounded controller comparisons; whole-mission handoffs
+and a useful learned decision advantage remain unqualified.
+
 ### Independent approach platform
 
 Controller tuning is parked at the combined-safety development checkpoint.
@@ -1029,11 +1038,13 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-The owner has launched the [controller characterization loop](controller_evaluation_execution.md).
-It extends the [implemented maneuver facade](maneuver_controller_implementation_results.md)
-through input audits, bounded local-control measurements, activation comparisons
-and eligible fresh confirmation. The ordinary backend remains frozen; this does
-not launch RL training or qualify whole-mission handoffs.
+The [controller characterization loop](controller_evaluation_results.md) is complete.
+The harness and exact adapter parity pass; 598/600 fresh landings do not meet the
+predeclared 99% reliability criterion, and timing alone adds one hindsight landing
+over immediate activation. Next define mission-generated handoff requirements
+and compare a bounded controller correction on preserved failures and paired
+controls before another independent confirmation. No RL training or promotion
+is launched by these results.
 
 The [shared controller/RL preparation](controller_rl_preparation_results.md) is
 complete. Use the [branch handoff](controller_rl_development_handoff.md) to start
