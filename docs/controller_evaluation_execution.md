@@ -27,11 +27,11 @@ Unrelated research/report files and mixed documentation edits remain preserved.
 | --- | --- |
 | A: software | Complete: exact input export/interchange, recipes/audit/sampler, supervised execution and recovery; all 19 maintained checks pass |
 | B: input freeze | Complete: prospective declaration, exact candidate plans and native audits sealed before flights |
-| C: pilot | Allocated: three preselected originals under immediate/direct parity, never and tick 120; twelve original executions including references, 30 minutes maximum |
-| D: retained parity | Unallocated: full 3,780 or fixed 945/315 source-slot panel; ordinary backend and native clocks on both sides |
-| E: characterization | Unallocated: fixed 320/160/80 development/diagnostic slots, roles retained |
-| F: activation | Unallocated: fixed 64/32/16 originals with immediate, never and ticks 12/60/120/240/480 |
-| G: confirmation | Unallocated: fixed 600/300 independent primary-population missions, immediate activation; no performance-based extension |
+| C: pilot | Complete: twelve original executions including references, all nine facade results verified; inventory checks pass |
+| D: retained parity | Allocated: 945 source slots, seeds 0/1/6, all 15 source groups; exact direct/facade comparison |
+| E: characterization | Allocated: all 320 development/diagnostic slots, roles retained |
+| F: activation | Allocated: all 64 originals with immediate, never and ticks 12/60/120/240/480, 448 attempts |
+| G: confirmation | Allocated: fixed 600 independent primary-population missions, immediate activation; no performance-based extension |
 | H: closeout | Pending: code review, validation, complete inventory, failure/coverage/cost analysis and bounded new local rich reports |
 
 At the pilot boundary, record immutable recipes and allocations under a new
@@ -163,6 +163,37 @@ proof work counted. Each of the three phase caps is 600 seconds and 512 MiB;
 the attempt cap is 180 seconds, bundle cap 96 MiB and free-space floor 50 GiB.
 Only pilot wall/byte measurements determine later allocations. All later sample
 sizes remain unallocated until that cost boundary.
+
+## Cost boundary and measurement allocation
+
+The pilot completed all nine scheduled facade attempts plus three direct
+references. Its inventories verify, and all three direct comparisons are exact.
+The largest supervised child took 0.281197 seconds; the largest complete attempt
+directory used 5,237,210 bytes. Every original, reference and proof pass remains
+in the separate resource counters. CPU time and internal backend forecast work
+remain explicitly unavailable.
+
+At 05:59:49 UTC, `declarations/allocation-declaration-v1.json` froze every later
+count using resource fields only. The conservative per-attempt estimates are
+0.562394 seconds and 10,539,956 bytes, including a doubled metadata allowance.
+After input/pilot bytes, 512 MiB is reserved for further preparation, analysis
+and bounded rich reports; 900 seconds is reserved at the measurement boundary.
+The remaining wall/artifact allowances are split 30/20/20/30 percent.
+
+| Stage | Fixed allocation | Wall cap | Output cap, bytes |
+| --- | --- | --- | --- |
+| D | 945 direct/facade pairs, seeds 0/1/6 | 10,117 s | 12,695,507,726 |
+| E | 256 development + 64 diagnostic occurrences | 6,745 s | 8,463,671,817 |
+| F | 64 originals times seven activation programs | 6,745 s | 8,463,671,817 |
+| G | 600 independent originals, immediate policy | 10,117 s | 12,695,507,726 |
+
+The full 3,780-pair option exceeds D's prospective storage share under the frozen
+two-times cost estimate; its other 2,835 source slots remain unallocated. The
+selected 945-case panel retains every arc, velocity band and source group. E/F/G
+receive their largest declared panels. Their exact plans and passing audits are
+in `plans/allocated-v1/`. G additionally binds all inspected development physical
+and parent identities and has zero overlap. No count or policy can expand after
+observing performance; interruptions remain incomplete panels.
 
 ## Prospective local reference population
 
