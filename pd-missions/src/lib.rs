@@ -15,6 +15,7 @@ mod metadata;
 mod pads_v2;
 mod population;
 mod recipe_v2;
+mod scenario_inputs;
 mod terrain_v2;
 mod versions;
 pub use admission::*;
@@ -30,6 +31,7 @@ pub use metadata::*;
 pub use pads_v2::*;
 pub use population::*;
 pub use recipe_v2::*;
+pub use scenario_inputs::*;
 pub use versions::*;
 
 use sha2::{Digest, Sha256};

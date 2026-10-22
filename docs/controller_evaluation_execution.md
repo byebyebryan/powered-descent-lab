@@ -51,3 +51,18 @@ local reference result. It cannot qualify launch/transfer integration.
 
 No RL training, controller tuning, default promotion, report publication,
 selector updates, report refreshes or server lifecycle changes are included.
+
+## Checkpoint one: native input access
+
+The neutral [native input set](native_scenario_inputs.md) and explicit evaluator
+exporter are implemented. Four pre-extraction ordered scenario/descriptor
+fingerprints remain exact across 4,725 smoke/full source occurrences. The
+maintained authored-waypoint input fingerprints also remain exact. The new
+controller-free path matches every original terminal scenario and resolved
+parameter, including both horizons; it works when the lane config is unavailable
+while legacy resolution retains that error.
+
+Four neutral interchange tests cover exact round-trip/aliases, create-only
+destinations, incomplete/corrupt sets, invalid inputs, bounded files and symlink
+ancestors. Focused resolver tests and strict affected-package Clippy pass.
+These are input/software checks; no measured controller flights have started.

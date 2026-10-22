@@ -102,6 +102,15 @@ see the example for counters, supported vehicle semantics and runnable commands.
 Summary library mode retains no trace and makes no saved-command proof claim.
 Software parity does not establish an operating envelope or authorize a campaign.
 
+## Native terminal inputs without flights
+
+The [native input interchange](native_scenario_inputs.md) exports complete retained
+terminal scenarios without selecting a controller or executing a flight. Use
+`pd-eval export-terminal-inputs PACK --output NEW_SET`; it preserves the current
+resolver's physical inputs, original labels, numeric parameters and horizons.
+Input sets retain every occurrence and explicit physical aliases. They provide
+inputs for independent approaches, not a measured landing envelope.
+
 ## Planner Evaluation (V2 Default)
 
 The latest opt-in [combined safety checkpoint](ballistic_combined_validation_results.md)

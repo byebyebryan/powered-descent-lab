@@ -103,6 +103,52 @@ fn maintained_clean_terminal_packs_expand_only_the_current_controller_lane() {
 }
 
 #[test]
+fn retained_terminal_resolution_fingerprints() {
+    let packs = fixtures_root().join("packs");
+    for (filename, count, expected) in [
+        (
+            "terminal_bot_lab_suite.json",
+            189,
+            "5a6a0d38091a28695c26fdb5c8fc77e14144f905bf8d0695523bcc5d37ca3d60",
+        ),
+        (
+            "terminal_bot_lab_full.json",
+            756,
+            "d6e4c1c845fad37bce72cec17f2d731b31917dc562c629882296de59f8a21f98",
+        ),
+        (
+            "terminal_traj_err_suite.json",
+            756,
+            "2ed563fbe2c9112998deba63b57cf9da89453b7c8cf21a7ef997ab2c3a9b440d",
+        ),
+        (
+            "terminal_traj_err_full.json",
+            3024,
+            "e13b7820797b80ce13bf0dc7a054207e8640ec92d10d8c2ee2763964fd5ada2b",
+        ),
+    ] {
+        let runs = resolve_pack_runs(&load_pack(&packs.join(filename)).unwrap(), &packs).unwrap();
+        assert_eq!(runs.len(), count);
+        let value = runs
+            .iter()
+            .map(|run| (&run.descriptor, &run.scenario))
+            .collect::<Vec<_>>();
+        let digest = evidence_io::sha256_bytes(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(
+            digest, expected,
+            "changed pre-extraction inputs for {filename}"
+        );
+        for run in runs {
+            assert_eq!(run.scenario.sim.max_time_s, 90.0);
+            assert_eq!(
+                run.descriptor.resolved_parameters["reachability_max_time_s"],
+                60.0
+            );
+        }
+    }
+}
+
+#[test]
 fn maintained_authored_waypoint_pack_resolution_fingerprints() {
     const EXPECTED: [(&str, usize, &str); 20] = [
         (

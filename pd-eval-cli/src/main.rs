@@ -21,6 +21,12 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Export exact terminal native inputs without running controllers, flights or reports.
+    ExportTerminalInputs {
+        pack: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Run an evaluation pack; defaults to the current Planner V2 lab suite.
     RunPack(RunPackArgs),
     /// Check a saved native Planner V2 capture without rerunning it.
@@ -239,6 +245,17 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::ExportTerminalInputs { pack, output } => {
+            let manifest = pd_eval_cli::terminal_inputs::export_terminal_inputs(&pack, &output)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "occurrences": manifest.entries.len(),
+                    "distinct_physical_inputs": manifest.physical_aliases.len(),
+                    "output": output,
+                }))?
+            );
+        }
         Commands::BallisticFeedbackFlight(args) => {
             let result = pd_eval_cli::ballistic_feedback::run(
                 &args.scenario,

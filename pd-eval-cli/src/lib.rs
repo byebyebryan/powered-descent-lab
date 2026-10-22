@@ -51,6 +51,8 @@ use runtime::*;
 mod resolution;
 use resolution::*;
 
+pub mod terminal_inputs;
+
 mod review;
 use review::*;
 

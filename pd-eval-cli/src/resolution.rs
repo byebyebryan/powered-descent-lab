@@ -2485,74 +2485,119 @@ pub(super) fn validate_transfer_route_terrain(
     Ok(())
 }
 
+pub(super) struct ResolvedTerminalInput {
+    pub run_id: String,
+    pub lane_id: String,
+    pub scenario: ScenarioSpec,
+    pub resolved_parameters: BTreeMap<String, f64>,
+    pub selector: SelectorAxes,
+}
+
+pub(super) struct TerminalInputExpansion<'a> {
+    entry: &'a TerminalMatrixEntry,
+    base_scenario: &'a ScenarioSpec,
+    family: &'static TerminalArrivalFamilySpec,
+    arcs: Vec<&'static TerminalArcPointSpec>,
+    seeds: &'static [TerminalSeedSpec],
+    max_time_s: Option<f64>,
+}
+
+impl<'a> TerminalInputExpansion<'a> {
+    pub fn new(
+        entry: &'a TerminalMatrixEntry,
+        base_scenario: &'a ScenarioSpec,
+        max_time_s: Option<f64>,
+    ) -> Result<Self> {
+        let family = terminal_arrival_family_spec(&entry.terminal_matrix)?;
+        let arcs = selected_terminal_arc_specs(entry, family)?;
+        Ok(Self {
+            entry,
+            base_scenario,
+            family,
+            arcs,
+            seeds: terminal_seed_specs(entry.seed_tier),
+            max_time_s,
+        })
+    }
+
+    pub fn lane(&self, lane_id: &str) -> Result<Vec<ResolvedTerminalInput>> {
+        let mut inputs = Vec::new();
+        for arc in &self.arcs {
+            for band in TERMINAL_BANDS {
+                for seed_spec in self.seeds {
+                    let run_id = resolved_terminal_matrix_run_id(
+                        &self.entry.id,
+                        arc.id,
+                        band.id,
+                        seed_spec.index,
+                        lane_id,
+                    );
+                    let (scenario, resolved_parameters, selector) =
+                        resolve_terminal_matrix_scenario(TerminalMatrixScenarioRequest {
+                            entry: self.entry,
+                            base_scenario: self.base_scenario,
+                            family_spec: self.family,
+                            arc,
+                            band,
+                            seed_spec,
+                            lane_id,
+                            run_id: &run_id,
+                            max_time_s: self.max_time_s,
+                        })?;
+                    inputs.push(ResolvedTerminalInput {
+                        run_id,
+                        lane_id: lane_id.to_owned(),
+                        scenario,
+                        resolved_parameters,
+                        selector,
+                    });
+                }
+            }
+        }
+        Ok(inputs)
+    }
+}
+
 pub(super) fn resolve_terminal_matrix_runs(
     entry: &TerminalMatrixEntry,
     base_dir: &Path,
     max_time_s: Option<f64>,
 ) -> Result<Vec<ResolvedBatchRun>> {
-    let base_path = base_dir.join(&entry.base_scenario);
-    let base_scenario = load_scenario(&base_path)?;
-    let family_spec = terminal_arrival_family_spec(&entry.terminal_matrix)?;
-    let arc_specs = selected_terminal_arc_specs(entry, family_spec)?;
-    let seed_specs = terminal_seed_specs(entry.seed_tier);
+    let base_scenario = load_scenario(&base_dir.join(&entry.base_scenario))?;
+    let expansion = TerminalInputExpansion::new(entry, &base_scenario, max_time_s)?;
     let mut runs = Vec::new();
-
     for lane in &entry.lanes {
         let controller_spec = load_controller_spec(
             base_dir,
             lane.controller.as_str(),
             lane.controller_config.as_deref(),
         )?;
-        for arc in &arc_specs {
-            for band in TERMINAL_BANDS {
-                for seed_spec in seed_specs {
-                    let run_id = resolved_terminal_matrix_run_id(
-                        &entry.id,
-                        arc.id,
-                        band.id,
-                        seed_spec.index,
-                        &lane.id,
-                    );
-                    let (scenario, resolved_parameters, selector) =
-                        resolve_terminal_matrix_scenario(TerminalMatrixScenarioRequest {
-                            entry,
-                            base_scenario: &base_scenario,
-                            family_spec,
-                            arc,
-                            band,
-                            seed_spec,
-                            lane_id: &lane.id,
-                            run_id: &run_id,
-                            max_time_s,
-                        })?;
-                    let descriptor = ResolvedRunDescriptor {
-                        run_id,
-                        entry_id: entry.id.clone(),
-                        source_kind: ResolvedRunSourceKind::TerminalMatrix,
-                        scenario_source: entry.base_scenario.clone(),
-                        resolved_scenario_id: scenario.id.clone(),
-                        resolved_scenario_name: scenario.name.clone(),
-                        family_id: Some(entry.id.clone()),
-                        selector,
-                        lane_id: lane.id.clone(),
-                        resolved_seed: seed_spec.index,
-                        resolved_parameters,
-                        controller_id: controller_spec.id().to_owned(),
-                        controller_spec: controller_spec.clone(),
-                        physical_case_id: None,
-                        route_provenance: None,
-                        route_plan: None,
-                        planner_compute: None,
-                    };
-                    runs.push(ResolvedBatchRun {
-                        descriptor,
-                        scenario,
-                    });
-                }
-            }
+        for input in expansion.lane(&lane.id)? {
+            let descriptor = ResolvedRunDescriptor {
+                run_id: input.run_id,
+                entry_id: entry.id.clone(),
+                source_kind: ResolvedRunSourceKind::TerminalMatrix,
+                scenario_source: entry.base_scenario.clone(),
+                resolved_scenario_id: input.scenario.id.clone(),
+                resolved_scenario_name: input.scenario.name.clone(),
+                family_id: Some(entry.id.clone()),
+                selector: input.selector,
+                lane_id: input.lane_id,
+                resolved_seed: input.scenario.seed,
+                resolved_parameters: input.resolved_parameters,
+                controller_id: controller_spec.id().to_owned(),
+                controller_spec: controller_spec.clone(),
+                physical_case_id: None,
+                route_provenance: None,
+                route_plan: None,
+                planner_compute: None,
+            };
+            runs.push(ResolvedBatchRun {
+                descriptor,
+                scenario: input.scenario,
+            });
         }
     }
-
     Ok(runs)
 }
 

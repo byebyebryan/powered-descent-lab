@@ -324,6 +324,7 @@ dependencies = [
  "clap",
  "pd-control",
  "pd-core",
+ "pd-missions",
  "pd-plan",
  "pd-planner",
  "pd-report",

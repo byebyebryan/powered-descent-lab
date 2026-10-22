@@ -8,6 +8,7 @@ anyhow.workspace = true
 clap.workspace = true
 pd-control = { path = "../pd-control" }
 pd-core = { path = "../pd-core" }
+pd-missions = { path = "../pd-missions" }
 pd-planner = { path = "../pd-planner" }
 pd-plan = { path = "../pd-plan" }
 pd-report = { path = "../pd-report" }
