@@ -176,3 +176,8 @@ Final developer/Python checks, exact served bytes, workspace preservation,
 artifact totals and owned-browser cleanup are recorded in `closure.json` under
 the run root. Further learning, stronger controller admission, push and default
 promotion remain separate decisions.
+
+The follow-up [timing and efficiency plan](rl_coast_ignite_efficiency_plan.md)
+records the read-only paired fuel analysis and proposes a separate discrete
+handoff characterization. It does not reopen this study's fresh confirmation,
+change its qualification verdict or allocate further training.

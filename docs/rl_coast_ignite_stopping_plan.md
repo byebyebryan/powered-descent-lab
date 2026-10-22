@@ -296,3 +296,8 @@ and native first-contact geometry without a hidden rescue? It may later reject
 unsafe intermediate references, but it must preserve immediate activation and
 planner-owned timing. General arrival control, learned duration, departure,
 terrain avoidance and fuel optimization remain outside this stopping-rule pass.
+
+The subsequent [timing and efficiency plan](rl_coast_ignite_efficiency_plan.md)
+uses the completed result to propose a separate fixed-end handoff map before
+allocating fuel learning or duration selection. It preserves this pass's
+objective, selection rules and historical outcomes.
