@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "task_id": "retained-terminal-regression-v1",
+  "population": {"kind": "retained", "seeds": [0]},
+  "programs": [{"schema_version": 1, "activation": {"kind": "immediate"}}],
+  "direct_parity": true,
+  "budget": {
+    "max_wall_seconds": 3600,
+    "max_attempt_wall_seconds": 180,
+    "max_output_bytes": 10737418240,
+    "max_bundle_bytes": 100663296,
+    "min_free_bytes": 53687091200
+  },
+  "exposure_inventories": [],
+  "audit_bins": {
+    "touchdown_clearance_m": [0, 10, 100, 500],
+    "vy_mps": [-90, -30, -3, 0],
+    "fuel_kg": [100, 2000, 5000],
+    "target_dx_m": [-400, -40, 0, 40, 400],
+    "vx_mps": [-80, -10, 0, 10, 80]
+  },
+  "joint_groups": [
+    ["touchdown_clearance_m", "vy_mps", "fuel_kg"],
+    ["target_dx_m", "vx_mps"]
+  ]
+}

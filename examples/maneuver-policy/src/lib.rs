@@ -17,6 +17,7 @@ use pd_run::{
 };
 use serde::{Deserialize, Serialize};
 
+pub mod evaluation;
 pub mod trace;
 pub mod verify;
 use trace::*;
@@ -328,11 +329,26 @@ pub fn evaluate_files(
     scenario_path: &Path,
     program_path: &Path,
 ) -> Result<(EpisodeEvaluationV1, ManeuverTraceV1), String> {
+    evaluate_files_with_inputs(scenario_path, program_path, &[])
+}
+
+/// Additive binding for immutable outer schedules. The ordinary two-file API
+/// keeps its existing behavior and evidence schemas.
+pub fn evaluate_files_with_inputs(
+    scenario_path: &Path,
+    program_path: &Path,
+    additional_inputs: &[PathBuf],
+) -> Result<(EpisodeEvaluationV1, ManeuverTraceV1), String> {
     verify::read_regular(scenario_path, 16 * 1024 * 1024)?;
     verify::read_regular(program_path, 64 * 1024)?;
     let scenario_path = std::fs::canonicalize(scenario_path).map_err(|e| e.to_string())?;
     let program_path = std::fs::canonicalize(program_path).map_err(|e| e.to_string())?;
-    let scope = source_scope(vec![scenario_path.clone(), program_path.clone()]);
+    let mut inputs = vec![scenario_path.clone(), program_path.clone()];
+    for path in additional_inputs {
+        verify::read_regular(path, 32 * 1024 * 1024)?;
+        inputs.push(std::fs::canonicalize(path).map_err(|e| e.to_string())?);
+    }
+    let scope = source_scope(inputs);
     let before = scope.snapshot()?;
     check_compiled_sources(&before)?;
     let scenario_bytes = verify::read_regular(&scenario_path, 16 * 1024 * 1024)?;

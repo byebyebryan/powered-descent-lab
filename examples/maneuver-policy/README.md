@@ -96,6 +96,32 @@ claim remains the neutral physical/mission/integrity/replay tuple. Companion
 verification results are printed separately; rendering never promotes a selector
 or starts a server. A valid complete proof may describe a failed landing.
 
+## Prepare an input-only evaluation
+
+After [exporting native terminal inputs](../../docs/native_scenario_inputs.md),
+prepare a new schedule without controller updates, physics steps or forecasts:
+
+```sh
+rtk proxy cargo run -p pd-maneuver-example -- prepare-evaluation \
+  --recipe examples/maneuver-policy/recipes/retained-input-audit.json \
+  --inputs /tmp/new-terminal-input-set --output /tmp/new-controller-plan
+rtk proxy cargo run -p pd-maneuver-example -- check-evaluation /tmp/new-controller-plan
+```
+
+Repeat `--inputs` to include additional explicit sets. The supplied recipe selects
+seed zero from every supplied entry. `recipe.json`, full native scenario/program
+files, `plan.json`, `audit.json` and a final `completion.json` retain the schedule
+and exact identities. Original expectation labels stay source provenance; new
+roles do not select a controller. Existing destinations are never filled.
+
+The audit separates roles, semantic support, physical aliases and parent groups;
+records marginal ranges and declared joint-bin counts; bounds original and proof
+steps; and checks supplied exposure inventories. Missing historical exposure
+coverage stays unknown. These commands establish inputs and scheduling, not a
+landing rate. Structured/local recipes use the versioned typed
+[recipe model](src/evaluation/recipe.rs), including joint state correlations,
+explicit transforms, diagnostic overrides and separate independent cohort streams.
+
 ## Software checks and next boundary
 
 ```sh

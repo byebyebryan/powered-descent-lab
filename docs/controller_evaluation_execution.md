@@ -66,3 +66,19 @@ Four neutral interchange tests cover exact round-trip/aliases, create-only
 destinations, incomplete/corrupt sets, invalid inputs, bounded files and symlink
 ancestors. Focused resolver tests and strict affected-package Clippy pass.
 These are input/software checks; no measured controller flights have started.
+
+## Checkpoint two: recipes and audit
+
+The maneuver application now prepares and checks immutable evaluations without
+flights. The recipe fixes source selection or typed coupled local-state sampling,
+role/cohort/transform rules, programs, native budgets, resource caps and coverage
+bins. Plans retain every proposed case, including native-invalid or unsupported
+diagnostics, with exact byte/physical identities and complete attempt schedules.
+The sampler uses counter-derived, cohort-separated streams; independent cohorts
+forbid transformed copies and diagnostics. The audit records physical and parent
+aliases, source roles, observed ranges, joint-cell coverage and supplied exposure
+overlap. Unknown history remains explicit.
+
+Four new focused tests cover deterministic preparation, coupled coverage,
+transforms/aliases, partial native deadlines, invalid/unsupported dispositions,
+exposure rejection and tampered scenarios. No measured allocation is yet released.

@@ -17,6 +17,19 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Operation {
+    /// Resolve an immutable evaluation schedule and coverage audit; no flights.
+    PrepareEvaluation {
+        #[arg(long)]
+        recipe: PathBuf,
+        #[arg(long, required = true)]
+        inputs: Vec<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+    },
+    /// Check all prepared input identities, support, schedule and coverage read-only.
+    CheckEvaluation {
+        plan: PathBuf,
+    },
     Run {
         #[arg(long)]
         scenario: PathBuf,
@@ -57,6 +70,29 @@ fn output_preflight(output: &Path, inputs: Vec<PathBuf>) -> Result<(), String> {
 
 fn main() -> Result<(), String> {
     match Args::parse().operation {
+        Operation::PrepareEvaluation {
+            recipe,
+            inputs,
+            output,
+        } => {
+            pd_maneuver_example::evaluation::prepare_evaluation(&recipe, &inputs, &output)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&pd_maneuver_example::evaluation::check_evaluation(
+                    &output
+                )?)
+                .map_err(|e| e.to_string())?
+            );
+        }
+        Operation::CheckEvaluation { plan } => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&pd_maneuver_example::evaluation::check_evaluation(
+                    &plan
+                )?)
+                .map_err(|e| e.to_string())?
+            );
+        }
         Operation::Run {
             scenario,
             program,
