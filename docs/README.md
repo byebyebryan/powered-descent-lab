@@ -23,6 +23,7 @@ later code and documentation housekeeping does not create a new flight capture.
 | Implement an independent agent and verify its saved commands | [Independent agents](independent_agents.md) |
 | Review proposed planner/controller interfaces, harness and qualification work | [Planner and controller design](maneuver_execution_design.md) |
 | Inspect primary research, source review and bounded contract validation | [Design review](planner_controller_design_review.md) |
+| Define controller characterization and confirmation before RL | [Controller evaluation design](controller_evaluation_design.md) |
 
 ## Report presentation refinement
 

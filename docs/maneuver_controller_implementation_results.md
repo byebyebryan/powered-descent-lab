@@ -98,6 +98,10 @@ adapter parity, not eleven successful landings or a measured landing envelope.
 
 ## Remaining measurement boundary
 
+The [controller evaluation design](controller_evaluation_design.md) specifies
+the proposed populations, coverage, confirmation and activation comparisons.
+It is design work, not a measured allocation.
+
 There is no inherited landing envelope from adapter parity. Declare a cost
 pilot and activation/envelope characterization separately, including independent
 full-pack access, clean/trajectory-error cases, fresh/frontier roles and hard
