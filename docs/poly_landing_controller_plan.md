@@ -4,8 +4,10 @@
 
 October 22, 2026. **Approved design; implementation goal loop in progress.**
 The name is **Poly Landing**, with `PolynomialLandingController` as its Rust
-name and `polynomial_landing_v1` as its explicit backend identity. The shared
-burn and timed V2 adapter are implemented; this design alone makes no operating-
+name. The historical adapter uses explicit backend `polynomial_landing_v1`;
+the checked finite-coverage adapter uses `polynomial_landing_v2` with timed
+program/trace schema 3. The shared burn and timed adapters are implemented;
+this design alone makes no operating-
 envelope or qualification claim. The existing standalone facade remains available.
 The subsequent [execution declaration](poly_landing_execution.md) owns the
 authorized loop, resource limits, gate status and measured allocations.

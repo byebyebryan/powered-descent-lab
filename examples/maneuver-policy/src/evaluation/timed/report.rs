@@ -41,6 +41,7 @@ struct Mission {
     physical: String,
     evaluation: Option<EpisodeEvaluationV1>,
     source_evaluation: Option<BoundFileV1>,
+    source_trace: Option<BoundFileV1>,
     outcome: String,
     proof: String,
     note: String,
@@ -127,7 +128,25 @@ impl Builder<'_> {
             let file = format!("flight-{ordinal}.html");
             let svg_file = format!("flight-{ordinal}.svg");
             let episode = &evaluation.execution.episode;
-            let raw = pd_report::render_agent_run_report(
+            let reference = item
+                .source_trace
+                .as_ref()
+                .map(|file| {
+                    let trace: crate::poly::TimedTraceV2 = read_bound_json(file, 32 * 1024 * 1024)?;
+                    let ctx = pd_core::RunContext::from_scenario(&evaluation.scenario)?;
+                    Ok::<_, String>(trace.feedback.accepted.map(|active| {
+                        pd_report::flight_annotations::ReferenceOverlayV1 {
+                            label: "saved Poly Landing reference".into(),
+                            points: (0..=active.reference.physics_ticks)
+                                .step_by(2)
+                                .map(|tick| active.reference.state_at(&ctx, tick).position_m)
+                                .collect(),
+                        }
+                    }))
+                })
+                .transpose()?
+                .flatten();
+            let raw = pd_report::render_agent_run_report_with_reference(
                 &evaluation.scenario,
                 &evaluation.execution,
                 pd_report::AgentReportEvidenceV1 {
@@ -137,6 +156,7 @@ impl Builder<'_> {
                     verified_target_landing: evaluation.verified_target_landing,
                 },
                 pd_report::agent_capture_navigation(),
+                reference,
             )
             .map_err(|e| e.to_string())?;
             let svg = pd_report::build_saved_flight_preview_svg(
@@ -154,10 +174,14 @@ impl Builder<'_> {
             let outcome = format!(
                 "<h1>{}</h1><p><strong>{}</strong> · {}</p><p>{}</p><p>{}</p><p><a href=\"flight-{ordinal}-evidence.json\">Saved native proof, raw contact and source bindings</a></p>",
                 esc(&item.id),
-                esc(&item.outcome),
+                esc(outcome_label(&item.outcome)),
                 esc(&item.proof),
                 esc(&item.note),
-                esc(&format!("Incoming contact: {:?}", episode.incoming_contact))
+                esc(&episode.incoming_contact.as_ref().map_or_else(
+                    || "No native incoming contact recorded.".into(),
+                    |contact| format!("Raw incoming contact at {:.3} s: COM vx {:.3} m/s, vy {:.3} m/s; attitude {:.4} rad; angular rate {:.4} rad/s; native classification {:?}.",
+                        contact.state.sim_time_s, contact.state.velocity_mps.x, contact.state.velocity_mps.y,
+                        contact.state.attitude_rad, contact.state.angular_rate_radps, contact.classification)))
             );
             let html = detail_view::with_review_context(
                 &html,
@@ -181,13 +205,20 @@ impl Builder<'_> {
             .replace(
                 "href=\"seal.json\"",
                 &format!("href=\"flight-{ordinal}-evidence.json\""),
-            );
+            )
+            .replace("Landing Quality", "Post-contact summary")
+            .replace("Impact attitude", "Stored attitude")
+            .replace("Impact speed", "Stored speed")
+            .replace("Velocity And Thrust", "Velocity And Engine Setting")
+            .replace("name: \"thrust\"", "name: \"engine setting\"")
+            .replace("Thrust (0..1)", "Engine setting (0..1)");
             write_new(&self.output.join(&file), html.as_bytes())?;
             write_new(&self.output.join(&svg_file), svg.as_bytes())?;
             write_limited(
                 &self.output.join(format!("flight-{ordinal}-evidence.json")),
                 &serde_json::json!({
                 "physical_sha256":evaluation.physical_sha256,"descriptor":evaluation.execution.descriptor,"source_evaluation":item.source_evaluation,
+                    "source_trace":item.source_trace,
                     "evidence_before":evaluation.evidence_before,"evidence_after":evaluation.evidence_after,
                     "integrity_passed":evaluation.integrity_passed,"replay":evaluation.replay,"verified_target_landing":evaluation.verified_target_landing,
                     "manifest":episode.run.manifest,"incoming_contact":episode.incoming_contact,
@@ -205,7 +236,7 @@ impl Builder<'_> {
         }
         let cells = format!(
             "<td><strong>{}</strong></td><td>{}<span class=\"row-note\">{}</span></td><td>{}</td>",
-            esc(&item.outcome),
+            esc(outcome_label(&item.outcome)),
             esc(&endpoint),
             esc(&item.note),
             esc(&item.proof)
@@ -239,6 +270,13 @@ impl Builder<'_> {
         });
         Ok(())
     }
+}
+
+fn outcome_label(key: &str) -> &str {
+    campaign_view::DisplayOutcome::ALL
+        .into_iter()
+        .find(|outcome| outcome.key() == key)
+        .map_or(key, |outcome| outcome.label())
 }
 
 pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result<(), String> {
@@ -288,6 +326,7 @@ pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result
                 .transpose()?;
             let mut evaluation = None;
             let mut source_evaluation = None;
+            let mut source_trace = None;
             let mut outcome = "not-launched".to_string();
             let mut proof = row.reason.clone().unwrap_or_else(|| "Not started".into());
             let mut note = format!("{} · {}", case.role, case.stratum);
@@ -320,15 +359,29 @@ pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result
                     .into();
                     if let Some(shape) = item.shape {
                         note = format!(
-                            "{note} · burn shape {} · max flying vy {:.6} m/s · {} actual unpowered ticks · contact residual {:?} ticks",
+                            "{note} · burn shape {} · max flying vy {:.6} m/s · {} actual unpowered ticks · contact residual {} ticks · measured thrust fraction {}",
                             if shape.passed { "passed" } else { "failed" },
                             shape.maximum_flying_vertical_speed_mps,
                             shape.actual_unpowered_physics_steps,
-                            shape.contact_time_residual_ticks
+                            shape
+                                .contact_time_residual_ticks
+                                .map_or_else(|| "unavailable".into(), |ticks| ticks.to_string()),
+                            shape
+                                .minimum_actual_thrust_fraction
+                                .zip(shape.maximum_actual_thrust_fraction)
+                                .map_or_else(
+                                    || "unavailable".into(),
+                                    |(lo, hi)| format!("{lo:.4}–{hi:.4}")
+                                )
                         );
                     }
                     evaluation = Some(saved);
                     source_evaluation = Some(file.clone());
+                    source_trace = item
+                        .payload_files
+                        .iter()
+                        .find(|f| f.path.ends_with("/trace.json"))
+                        .cloned();
                 }
             }
             builder.add(Mission {
@@ -340,6 +393,7 @@ pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result
                 physical: case.physical_sha256.clone(),
                 evaluation,
                 source_evaluation,
+                source_trace,
                 outcome,
                 proof,
                 note,
@@ -389,7 +443,10 @@ pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result
         appendix_html: &format!(
             "<script>{}</script>{}",
             campaign_view::SCRIPT,
-            data_script(&builder.review)?
+            data_script(&builder.review)?.replace(
+                "const unit = branches.some(b=>b.kind==='band') ? 'terrain band' : 'stratum';",
+                "const unit = 'mission group';"
+            )
         ),
         body_class: "procedural-comparison campaign-view",
         tree: batch::BatchTreeOptions {
@@ -403,6 +460,11 @@ pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result
     write_new(&output.join("report.html"), html.as_bytes())?;
     write_limited(
         &output.join("report-input.json"),
+        &builder.review,
+        32 * 1024 * 1024,
+    )?;
+    write_limited(
+        &output.join("navigation.json"),
         &builder.review,
         32 * 1024 * 1024,
     )?;
@@ -430,10 +492,19 @@ pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result
 fn summary_html(summaries: &[(String, TimedEvaluationSummaryV2)]) -> String {
     let mut rows = String::new();
     for (label, s) in summaries {
-        rows.push_str(&format!("<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{}/{}</td><td>{} ({} unsupported)</td><td>{}</td></tr>",esc(label),s.verified_primary_landings,s.primary_originals,s.primary_shape_failures,s.verified_transform_landings,s.transforms,s.diagnostics,s.diagnostic_unsupported,s.confirmation_lower_95.map_or_else(||"Not a fresh reliability estimate".into(),|v|format!("95% lower bound {:.5}% · {}",v*100.0,if s.qualified {"passes declared criterion"} else {"does not pass"}))));
+        let recorded = s.rows.iter().filter(|row| row.result.is_some()).count();
+        let status = format!(
+            "{} · {recorded}/{} recorded slots{}",
+            if s.complete { "Complete" } else { "Stopped" },
+            s.rows.len(),
+            s.stop_reason
+                .as_ref()
+                .map_or_else(String::new, |reason| format!(" · {reason}"))
+        );
+        rows.push_str(&format!("<tr><td>{}</td><td>{}</td><td>{}/{}</td><td>{}</td><td>{}/{}</td><td>{} scheduled · {} verified landings · {} unsupported</td><td>{}</td></tr>",esc(label),esc(&status),s.verified_primary_landings,s.primary_originals,s.primary_shape_failures,s.verified_transform_landings,s.transforms,s.diagnostics,s.diagnostic_verified_landings,s.diagnostic_unsupported,s.confirmation_lower_95.map_or_else(||"Not a fresh reliability estimate".into(),|v|format!("95% lower bound {:.5}% · {}",v*100.0,if s.qualified {"passes declared criterion"} else {"does not pass"}))));
     }
     format!(
-        "<section class=\"overview-section\"><h2>Declared populations and outcomes</h2><p>Planner owns coast and endpoint time; activation starts the finite burn. New local cases use flat ground and prepared attitude. These are reference-defined conditional tasks, not arbitrary airborne states or whole-mission reliability. Historical, development, transformations and diagnostics have separate denominators.</p><div class=\"table-wrap\"><table><thead><tr><th>Population</th><th>Verified primary landings</th><th>Primary shape failures</th><th>Transform landings + shape</th><th>Diagnostics</th><th>Fresh criterion</th></tr></thead><tbody>{rows}</tbody></table></div></section>"
+        "<section class=\"overview-section\"><h2>Declared populations and outcomes</h2><p>Planner owns coast and endpoint time; activation starts the finite burn. Primary local cases use flat ground and prepared attitude; named diagnostics deliberately break those conditions. These are reference-defined conditional tasks, not arbitrary airborne states or whole-mission reliability. Historical, development, transformations and diagnostics have separate denominators. Technical repeats remain separate source epochs; their outcomes are never pooled.</p><div class=\"table-wrap\"><table><thead><tr><th>Population</th><th>Stage status</th><th>Verified primary landings</th><th>Primary shape failures</th><th>Transform landings + shape</th><th>Diagnostics</th><th>Fresh criterion</th></tr></thead><tbody>{rows}</tbody></table></div></section>"
     )
 }
 
@@ -463,7 +534,11 @@ fn add_historical(
         )?;
         let mut evaluation = None;
         let mut source_evaluation = None;
+        let mut source_trace = None;
         let mut outcome = "not-launched".into();
+        if value["planning_stop"] == "unsupported" {
+            outcome = "unsupported".into();
+        }
         let mut proof =
             "Original historical nonlanding/unsupported role; no finite burn allocated".to_string();
         if let Some(row) = summary["slots"]
@@ -485,6 +560,11 @@ fn add_historical(
             }
             evaluation = Some(read_bound_json(&file, 64 * 1024 * 1024)?);
             source_evaluation = Some(file);
+            let trace = bind_file(&directory.join("bundle/trace.json"), 32 * 1024 * 1024)?;
+            if trace.sha256 != receipt.trace_sha256 {
+                return Err("historical trace binding differs".into());
+            }
+            source_trace = Some(trace);
             outcome = "landed".into();
             proof="Bit-exact original commands, samples, contact and final state; saved replay/reconstructions passed".into();
         }
@@ -493,9 +573,26 @@ fn add_historical(
         } else {
             "historical core"
         };
-        builder.add(Mission {population:"Historical preservation · October 5".into(),role:role.into(),stratum:if value["flat_scene"]==true {"Flat source mission"} else {"Original source scene"}.into(),
-            id:id.into(),physical:pd_missions::physical_identity(&scenario).map_err(|e|e.to_string())?,scenario,evaluation,source_evaluation,outcome,proof,
-            note:"Original prefix and finite terminal burn preserved. Historical source epoch; no new local reliability denominator.".into()})?;
+        let note = if source_trace.is_some() { "Original prefix and finite terminal burn preserved. Historical source epoch; no new local reliability denominator." } else { "Historical planner stop or unsupported input; no accepted finite burn. Retained outside the burn-parity denominator." }.into();
+        builder.add(Mission {
+            population: "Historical preservation · October 5".into(),
+            role: role.into(),
+            stratum: if value["flat_scene"] == true {
+                "Flat source mission"
+            } else {
+                "Original source scene"
+            }
+            .into(),
+            id: id.into(),
+            physical: pd_missions::physical_identity(&scenario).map_err(|e| e.to_string())?,
+            scenario,
+            evaluation,
+            source_evaluation,
+            source_trace,
+            outcome,
+            proof,
+            note,
+        })?;
     }
     Ok(())
 }

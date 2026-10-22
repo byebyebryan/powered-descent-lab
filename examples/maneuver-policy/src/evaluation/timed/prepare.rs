@@ -168,10 +168,11 @@ pub fn flat_proposal(
     let thrust = paired_mean(&reference, &ctx, 0);
     s.initial_state.attitude_rad = thrust.x.atan2(thrust.y);
     let program = TimedProgramV2 {
-        schema_version: 2,
-        backend: POLY_LANDING_BACKEND.into(),
+        schema_version: 3,
+        backend: CHECKED_POLY_LANDING_BACKEND.into(),
         activation_physics_step: 0,
         absolute_deadline_physics_step: 4800,
+        command_coverage_end_physics_step: Some(ticks + 4),
         request: ManeuverRequestV2 {
             schema_version: 2,
             id: "local-poly-landing".into(),
@@ -448,6 +449,7 @@ fn add_extensions(
                     } = &mut p.request.goal
                     {
                         *reference_end_physics_step = 240;
+                        p.command_coverage_end_physics_step = Some(244);
                     }
                     "short-time"
                 }

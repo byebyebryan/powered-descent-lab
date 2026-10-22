@@ -71,8 +71,15 @@ pub struct ManeuverFeedbackV2 {
     pub command_updates: u64,
     /// Count pure coefficient constructions, separately from physical work.
     pub constructions: u64,
+    /// Pure paired-actuation checks across the complete declared burn window.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub admission_actuation_checks: u64,
     pub reference_exhausted: bool,
     pub native_end: Option<NativeEndV1>,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

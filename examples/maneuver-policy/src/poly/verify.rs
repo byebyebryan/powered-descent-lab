@@ -20,7 +20,13 @@ pub struct TimedProofResourcesV2 {
     pub reconstruction_physics_steps: u64,
     pub reconstruction_command_updates: u64,
     pub reconstruction_reference_constructions: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub reconstruction_admission_actuation_checks: u64,
     pub reconstruction_planner_requests: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -91,14 +97,20 @@ fn compatibility(
         serde_json::from_value(trace.descriptor.configuration.clone())
             .map_err(|e| e.to_string())?;
     let c = controller(&evaluation.scenario, &config.program)?;
-    if config.schema_version != 2
-        || trace.schema_version != 2
+    if config.schema_version != config.program.schema_version
+        || trace.schema_version != config.program.schema_version
         || trace.descriptor != evaluation.execution.descriptor
         || trace.descriptor != descriptor(&config.program, &c)
         || trace.boundaries.len() as u64
             > config.program.absolute_deadline_physics_step.div_ceil(2) + 1
         || evaluation.execution.episode.limits.hard_end_physics_step
             != config.program.absolute_deadline_physics_step
+        || evaluation
+            .execution
+            .episode
+            .limits
+            .command_coverage_end_physics_step
+            != config.program.coverage_end()
     {
         return Err(
             "unsupported timed descriptor, backend, trace or original clock binding".into(),
@@ -127,6 +139,8 @@ fn reconstruct(
     resources.reconstruction_physics_steps += result.trace.physics_steps;
     resources.reconstruction_command_updates += result.trace.command_updates;
     resources.reconstruction_reference_constructions += result.trace.feedback.constructions;
+    resources.reconstruction_admission_actuation_checks +=
+        result.trace.feedback.admission_actuation_checks;
     resources.reconstruction_planner_requests += result.trace.planner_requests;
     if !same_wire(&result.trace, trace)? {
         return Err(if recorded_requests {

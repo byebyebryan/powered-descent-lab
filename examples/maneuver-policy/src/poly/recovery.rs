@@ -193,6 +193,7 @@ pub fn recover_saved_burn(
         ));
     }
     let program = TimedProgramV2 {
+        command_coverage_end_physics_step: None,
         schema_version: 2,
         backend: POLY_LANDING_BACKEND.into(),
         activation_physics_step: activation,

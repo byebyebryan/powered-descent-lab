@@ -98,6 +98,7 @@ fn native_timed_attempt_preserves_shape_proof_and_complete_scored_accounting() {
     assert!(item.verified_target_landing);
     assert!(item.shape.as_ref().unwrap().passed, "{:?}", item.shape);
     assert_eq!(item.original_reference_constructions, 1);
+    assert!(item.original_admission_actuation_checks > 1);
     assert!(item.verification.as_ref().unwrap().passed());
     let row = TimedAttemptRowV2 {
         case_index: 0,
@@ -139,6 +140,15 @@ fn native_timed_attempt_preserves_shape_proof_and_complete_scored_accounting() {
     assert!(detail.contains("chart-spatial"));
     assert!(detail.contains("data-back-review"));
     assert!(detail.contains("static-flight-fallback"));
+    assert!(detail.contains("saved Poly Landing reference"));
+    assert!(detail.contains("Raw incoming contact at"));
+    assert!(detail.contains("Post-contact summary"));
+    assert!(!detail.contains("IncomingContactV1 {"));
+    assert!(!detail.contains("contact residual Some("));
+    assert_eq!(
+        std::fs::read(report.join("navigation.json")).unwrap(),
+        std::fs::read(report.join("report-input.json")).unwrap()
+    );
     let receipt: serde_json::Value =
         crate::evaluation::read_json(&report.join("receipt.json"), 1024 * 1024).unwrap();
     assert_eq!(receipt["new_physics_steps"], 0);

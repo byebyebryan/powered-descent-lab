@@ -31,6 +31,13 @@ Prepare initial attitude to the first paired reference vector, with zero angular
 rate. This is an explicit preparation condition. The controller receives the
 live observation, target and declared endpoint time.
 
+The technical-repair protocol retains the 40 s original hard deadline and binds
+command coverage to the supplied reference end plus the existing four ticks.
+An airborne endpoint is an ordinary, replayable bounded miss. Checked backend
+`polynomial_landing_v2` also scans all paired commands and fuel deductions at
+admission using pure arithmetic; it never forecasts native motion or changes
+the reference duration. This does not change the raw recipe or input predicate.
+
 Development is structured: its first 64 raw proposals enumerate the six-axis
 endpoint corners, the next 12 vary one endpoint axis with the other five at
 their midpoints, and later proposals use the declared uniform hash stream.

@@ -21,7 +21,10 @@ pub mod campaign_view;
 pub mod comparison;
 pub mod detail_view;
 pub mod paired_review;
-pub use agent::{AgentReportEvidenceV1, agent_capture_navigation, render_agent_run_report};
+pub use agent::{
+    AgentReportEvidenceV1, agent_capture_navigation, render_agent_run_report,
+    render_agent_run_report_with_reference,
+};
 pub mod batch_tree;
 pub mod flight_annotations;
 pub mod input_coverage;
@@ -2424,6 +2427,46 @@ mod tests {
         ] {
             assert!(baseline.contains(retained), "missing {retained}");
         }
+    }
+
+    #[test]
+    fn saved_reference_overlay_is_opt_in_and_validated_without_flight_execution() {
+        use flight_annotations::{FlightAnnotations, ReferenceOverlayV1};
+        let scenario = fixture_scenario();
+        let manifest = fixture_manifest(&scenario);
+        let mut annotations = FlightAnnotations {
+            reference_overlay: Some(ReferenceOverlayV1 {
+                label: "saved test reference".into(),
+                points: vec![Vec2::new(1.0, 2.0), Vec2::new(3.0, 4.0)],
+            }),
+            ..Default::default()
+        };
+        let render = |a: &FlightAnnotations| {
+            render_run_report_with_flight_annotations(
+                &scenario,
+                None,
+                &manifest,
+                &[],
+                &[],
+                &[],
+                None,
+                None,
+                None,
+                None,
+                Some(a),
+            )
+        };
+        let html = render(&annotations).unwrap();
+        assert!(html.contains("\"referenceOverlay\":{\"label\":\"saved test reference\""));
+        annotations.reference_overlay.as_mut().unwrap().points[0].x = f64::NAN;
+        assert!(render(&annotations).is_err());
+        annotations
+            .reference_overlay
+            .as_mut()
+            .unwrap()
+            .points
+            .clear();
+        assert!(render(&annotations).is_err());
     }
 
     #[test]

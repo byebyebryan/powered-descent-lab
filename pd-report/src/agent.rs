@@ -23,6 +23,16 @@ pub fn render_agent_run_report(
     evidence: AgentReportEvidenceV1,
     navigation: AnnotationNavigation,
 ) -> Result<String> {
+    render_agent_run_report_with_reference(scenario, execution, evidence, navigation, None)
+}
+
+pub fn render_agent_run_report_with_reference(
+    scenario: &ScenarioSpec,
+    execution: &BoundedAgentRunArtifactsV1,
+    evidence: AgentReportEvidenceV1,
+    navigation: AnnotationNavigation,
+    reference_overlay: Option<crate::flight_annotations::ReferenceOverlayV1>,
+) -> Result<String> {
     let episode = &execution.episode;
     ensure!(
         !evidence.verified_target_landing
@@ -61,6 +71,7 @@ pub fn render_agent_run_report(
     let annotations = FlightAnnotations {
         caption,
         navigation,
+        reference_overlay,
         ..Default::default()
     };
     let configuration = serde_json::to_value(&execution.descriptor)?;

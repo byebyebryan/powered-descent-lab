@@ -45,6 +45,7 @@ fn input() -> (ScenarioSpec, TimedProgramV2) {
         backend: POLY_LANDING_BACKEND.into(),
         activation_physics_step: 0,
         absolute_deadline_physics_step: 5400,
+        command_coverage_end_physics_step: None,
         request: ManeuverRequestV2 {
             schema_version: 2,
             id: "landing".into(),
@@ -205,7 +206,112 @@ fn backend_selection_is_explicit_and_prefix_gaps_fail_before_native_work() {
     bad = p.clone();
     bad.schema_version = 1;
     assert!(controller(&s, &bad).is_err());
+    bad = p.clone();
+    bad.command_coverage_end_physics_step = Some(1744);
+    assert!(controller(&s, &bad).is_err());
+    bad.schema_version = 3;
+    assert!(controller(&s, &bad).is_err());
+    bad.backend = CHECKED_POLY_LANDING_BACKEND.into();
+    assert!(controller(&s, &bad).is_ok());
+    bad.command_coverage_end_physics_step = Some(1746);
+    assert!(controller(&s, &bad).is_err());
     bad = p;
     bad.activation_physics_step = 6;
     assert!(controller(&s, &bad).is_err());
+}
+
+#[test]
+fn checked_admission_preserves_every_native_command_sample_and_contact_for_an_admitted_burn() {
+    let (s, mut p) = input();
+    let legacy = run(&s, &p).unwrap();
+    p.schema_version = 3;
+    p.backend = CHECKED_POLY_LANDING_BACKEND.into();
+    p.command_coverage_end_physics_step = Some(1744);
+    let checked = run(&s, &p).unwrap();
+    assert_eq!(
+        legacy.episode.summary.final_state,
+        checked.episode.summary.final_state
+    );
+    let a = legacy.episode.capture.unwrap();
+    let b = checked.episode.capture.unwrap();
+    assert_eq!(
+        serde_json::to_vec(&a.run.samples).unwrap(),
+        serde_json::to_vec(&b.run.samples).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_vec(&a.incoming_contact).unwrap(),
+        serde_json::to_vec(&b.incoming_contact).unwrap()
+    );
+    let commands = |updates: Option<Vec<pd_run::AgentUpdateRecord>>| {
+        updates
+            .unwrap()
+            .into_iter()
+            .map(|u| u.frame.command)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        commands(legacy.episode.agent_updates),
+        commands(checked.episode.agent_updates)
+    );
+    assert_eq!(checked.trace.feedback.admission_actuation_checks, 872);
+    assert_eq!(legacy.trace.feedback.admission_actuation_checks, 0);
+}
+
+#[test]
+fn checked_reference_expiry_is_a_replayable_finite_prefix_without_extra_command() {
+    let root = temp();
+    let (mut s, mut p) = input();
+    s.sim.max_time_s = 40.0;
+    s.vehicle.initial_fuel_kg = 1800.0;
+    s.initial_state.position_m = Vec2::new(-53.760000000000005, 37.794999999999995);
+    s.initial_state.velocity_mps = Vec2::new(24.0, -8.0);
+    s.initial_state.attitude_rad = -0.0174281368974879;
+    s.initial_state.angular_rate_radps = 0.8;
+    p.schema_version = 3;
+    p.backend = CHECKED_POLY_LANDING_BACKEND.into();
+    p.absolute_deadline_physics_step = 4800;
+    p.command_coverage_end_physics_step = Some(964);
+    p.request.goal = ManeuverGoalV2::LandOnMissionTargetAt {
+        target_pad_id: "pad_main".into(),
+        reference_end_physics_step: 960,
+    };
+    let scenario = root.join("scenario.json");
+    let program = root.join("program.json");
+    pd_missions::write_json_create_only(&scenario, &s).unwrap();
+    pd_missions::write_json_create_only(&program, &p).unwrap();
+    let (evaluation, trace) = evaluate_files(&scenario, &program).unwrap();
+    let episode = &evaluation.execution.episode;
+    assert_eq!(
+        episode.stop,
+        pd_core::BoundedRunStopCauseV1::CoverageExhausted
+    );
+    assert!(episode.failure.is_none());
+    assert_eq!(episode.final_state.physics_step, 964);
+    assert_eq!(episode.limits.hard_end_physics_step, 4800);
+    assert_eq!(episode.limits.command_coverage_end_physics_step, 964);
+    assert_eq!(trace.command_updates, 482);
+    assert_eq!(trace.boundaries.last().unwrap().physics_step, 962);
+    assert!(trace.feedback.reference_exhausted);
+    assert_eq!(trace.feedback.admission_actuation_checks, 482);
+    assert_eq!(
+        episode.run.manifest.physical_outcome,
+        pd_core::PhysicalOutcome::Flying
+    );
+    assert!(!evaluation.verified_target_landing);
+    assert!(evaluation.replay.complete_episode_verified);
+    let result = run(&s, &p).unwrap();
+    assert_eq!(
+        trace.feedback.accepted.as_ref().unwrap().entry.physics_step,
+        0
+    );
+    assert_eq!(
+        result.episode.summary.final_state.fuel_kg,
+        episode.final_state.fuel_kg
+    );
+    let bundle = root.join("bundle");
+    verify::save_bundle(&bundle, &evaluation, &trace).unwrap();
+    let verified = verify::verify_bundle(&bundle);
+    assert!(verified.report.passed(), "{:?}", verified.report);
+    assert!(!verified.report.neutral_verified_target_landing);
+    std::fs::remove_dir_all(root).unwrap();
 }

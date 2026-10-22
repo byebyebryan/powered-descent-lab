@@ -176,10 +176,16 @@ pub struct TimedAttemptResultV2 {
     pub original_physics_steps: u64,
     pub original_command_updates: u64,
     pub original_reference_constructions: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub original_admission_actuation_checks: u64,
     pub original_planner_requests: u64,
     pub preparation_resources: TimedProofResourcesV2,
     pub verification: Option<TimedVerificationReportV2>,
     pub payload_files: Vec<BoundFileV1>,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 fn current_sources(plan: &TimedEvaluationPlanV2) -> Result<(), String> {
@@ -232,6 +238,7 @@ pub fn execute_timed_attempt(
         original_physics_steps: 0,
         original_command_updates: 0,
         original_reference_constructions: 0,
+        original_admission_actuation_checks: 0,
         original_planner_requests: 0,
         preparation_resources: TimedProofResourcesV2::default(),
         verification: None,
@@ -265,6 +272,7 @@ pub fn execute_timed_attempt(
         result.original_physics_steps = trace.physics_steps;
         result.original_command_updates = trace.command_updates;
         result.original_reference_constructions = trace.feedback.constructions;
+        result.original_admission_actuation_checks = trace.feedback.admission_actuation_checks;
         result.original_planner_requests = trace.planner_requests;
         result.preparation_resources = receipt.preparation_resources;
         result.verification = Some(verified.report);
@@ -322,6 +330,8 @@ pub struct TimedEvaluationSummaryV2 {
     pub stop_reason: Option<String>,
     pub original_physics_steps: u64,
     pub proof_resources: TimedProofResourcesV2,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub original_admission_actuation_checks: u64,
     pub rows: Vec<TimedAttemptRowV2>,
 }
 
@@ -356,6 +366,7 @@ pub fn summarize_timed(
         stop_reason: stop,
         original_physics_steps: 0,
         proof_resources: TimedProofResourcesV2::default(),
+        original_admission_actuation_checks: 0,
         rows,
     };
     for (index, case) in plan.cases.iter().enumerate() {
@@ -415,6 +426,7 @@ pub fn summarize_timed(
             _ => return Err("unknown timed role".into()),
         }
         result.original_physics_steps += item.original_physics_steps;
+        result.original_admission_actuation_checks += item.original_admission_actuation_checks;
         add_proofs(&mut result.proof_resources, &item.preparation_resources);
         if let Some(verified) = item.verification {
             add_proofs(&mut result.proof_resources, &verified.resources);
@@ -454,6 +466,7 @@ fn add_proofs(a: &mut TimedProofResourcesV2, b: &TimedProofResourcesV2) {
     a.reconstruction_physics_steps += b.reconstruction_physics_steps;
     a.reconstruction_command_updates += b.reconstruction_command_updates;
     a.reconstruction_reference_constructions += b.reconstruction_reference_constructions;
+    a.reconstruction_admission_actuation_checks += b.reconstruction_admission_actuation_checks;
     a.reconstruction_planner_requests += b.reconstruction_planner_requests;
 }
 

@@ -7,7 +7,9 @@ mod timed;
 
 pub use contract::*;
 pub use landing::TerminalLandingController;
-pub use poly_landing::{POLY_LANDING_BACKEND, PolynomialLandingController};
+pub use poly_landing::{
+    CHECKED_POLY_LANDING_BACKEND, POLY_LANDING_BACKEND, PolynomialLandingController,
+};
 pub use timed::*;
 
 #[cfg(test)]

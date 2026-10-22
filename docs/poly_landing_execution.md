@@ -46,7 +46,7 @@ tune the controller or redefine a population after seeing its outcomes.
 | B — Shared extraction | Pass | All 20 maintained checks pass, including exact 44/44 October 7 parity; three math/native-inverse tests pass |
 | C — Timed adapter | Pass | 38/38 October 5 burns match complete command bits, samples, incoming contact and final state, with independent proof |
 | D — Flat recipe and pilot | Native/task/cost gates pass; presentation follow-up queued | 12/12 verified target landings, zero shape violations; 1.69 s stage wall and 41.1 MB output |
-| E — Structured characterization | Allocated/in progress | 256 primary originals, 48 named transformations, 96 separate diagnostics; 264 raw proposals with eight input-only exclusions |
+| E — Structured characterization | Technical stop; retained | All 256 primary landings/shape checks pass; diagnostic slot 258 exposes finite-operation closure/proof mismatch; 141 successors remain not started |
 | F — Fresh confirmation | Unallocated | Requires frozen source, task and criterion |
 
 ## Work ledger
@@ -193,3 +193,57 @@ the measured source frozen through the fixed confirmation; correct/report-review
 the presentation separately before closeout. Raw incoming contact remains the
 authoritative contact witness; generic post-contact display values are not
 substituted for it.
+
+### Development technical stop and bounded repair declaration
+
+The first development run stops at diagnostic slot 258 after 259 original
+episodes, in 43.35 s with 926.6 MB retained. All 256 primary originals land with
+zero shape violations. The attitude/rate diagnostic reaches the exact reference
+end plus four ticks while still airborne. Its physical prefix replays and both
+controller/planner reconstructions pass, but the composition labels reference
+expiry as `ExecutionInvalid`; complete native replay correctly refuses that
+software-failure disposition. This is an evidence/operation-boundary defect,
+not a physical replay disagreement. The failed receipt and all 141 unstarted
+successors remain unchanged. No confirmation input has been generated.
+
+Allocate one bounded technical repair, with no controller tuning or sampler
+change. Preserve the original V2 protocol and source epoch. Add an explicitly
+versioned finite command-coverage endpoint under the unchanged original hard
+deadline, so the native Episode can close ordinary reference exhaustion as a
+valid bounded prefix. A checked adapter admission scans the entire declared
+paired-actuation/fuel window without any native forecast; it never changes
+duration or the polynomial/throttle arithmetic. Unexpected software errors
+remain proof faults. Regression tests must reproduce the failed mechanism and
+prove no additional command, state/fuel/clock reset, or false landing.
+
+After source review and maintained checks, allow one create-only replacement
+pilot (same 12 physical inputs) and development pass (same 400 scheduled physical
+inputs, roles and transformations) under a new source/protocol epoch. These
+are explicit technical repeats, not new independent samples or replacements of
+historical outcomes. Retain source/input equality receipts and count all work.
+Repeat the 38 historical preservation checks once under that final source.
+The existing per-phase wall/worker/bundle/free-space bounds apply, with a fresh
+4 GiB replacement-development cap; total new loop artifacts still cap at 20 GiB.
+Fresh confirmation remains unallocated until the repaired gates pass.
+
+The repair explicitly selects timed program/config/trace schema 3 and backend
+`polynomial_landing_v2`. Schema 2/backend `polynomial_landing_v1` retains its
+prior wire bytes and execution semantics. Both endpoints are bound by companion
+verification. Full-window pure actuation checks have separate original and
+reconstruction counters; they are not native forecast steps. Tests reproduce
+the tick-964 airborne diagnostic, prove complete bounded replay with no command
+at tick 964, and compare admitted-burn native commands/samples/contact/final state
+exactly against the original adapter.
+
+Because a replacement source epoch is already necessary, finish the known
+presentation fixes before freezing it: navigation data, human raw contact text,
+post-contact labels, engine-setting labels, mission-group captions and an opt-in
+saved-reference overlay in the maintained rich template. Existing callers retain
+the default idealized display; report generation performs no replay or flight.
+
+The repaired source passes all 20 maintained checks, including exact current
+44-case planner parity, in 301.09 s (`technical-repair-gate-v2.log`/`.json`).
+The earlier repair-gate attempt stopped at compilation because one existing
+report caller needed the new optional overlay set to `None`; no campaign ran.
+Browser preflight confirms the established tree, saved-reference legend, raw
+incoming contact, restored detail navigation and engine-setting labels.

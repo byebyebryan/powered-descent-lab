@@ -7,6 +7,7 @@ use crate::{
 };
 
 pub const POLY_LANDING_BACKEND: &str = "polynomial_landing_v1";
+pub const CHECKED_POLY_LANDING_BACKEND: &str = "polynomial_landing_v2";
 const RESIDUAL_TICKS: u64 = 4;
 const INVERSE_ITERATIONS: u32 = 48;
 
@@ -17,6 +18,7 @@ pub struct PolynomialLandingController {
     first_tick: u64,
     next_tick: u64,
     deadline: u64,
+    checked_admission: bool,
     feedback: ManeuverFeedbackV2,
 }
 
@@ -68,15 +70,33 @@ impl PolynomialLandingController {
             first_tick: first_command_physics_step,
             next_tick: first_command_physics_step,
             deadline: absolute_deadline_physics_step,
+            checked_admission: false,
             feedback: ManeuverFeedbackV2 {
                 schema_version: 2,
                 accepted: None,
                 command_updates: 0,
                 constructions: 0,
+                admission_actuation_checks: 0,
                 reference_exhausted: false,
                 native_end: None,
             },
         })
+    }
+
+    /// Opt-in complete algebraic actuation/fuel admission. No plant transition,
+    /// attitude forecast, reference modification or duration selection occurs.
+    pub fn new_checked(
+        scenario: &ScenarioSpec,
+        first_command_physics_step: u64,
+        absolute_deadline_physics_step: u64,
+    ) -> Result<Self, ManeuverInputErrorV1> {
+        let mut controller = Self::new(
+            scenario,
+            first_command_physics_step,
+            absolute_deadline_physics_step,
+        )?;
+        controller.checked_admission = true;
+        Ok(controller)
     }
 
     fn check_observation(&self, observation: &Observation) -> Result<(), String> {
@@ -119,16 +139,26 @@ impl ManeuverControllerV2 for PolynomialLandingController {
     fn descriptor(&self) -> ManeuverDescriptorV2 {
         ManeuverDescriptorV2 {
             schema_version: 2,
-            implementation: "polynomial-landing-controller-v1".into(),
+            implementation: if self.checked_admission {
+                "polynomial-landing-controller-v2"
+            } else {
+                "polynomial-landing-controller-v1"
+            }
+            .into(),
             backend: ManeuverBackendDescriptorV1 {
-                implementation: POLY_LANDING_BACKEND.into(),
+                implementation: if self.checked_admission {
+                    CHECKED_POLY_LANDING_BACKEND
+                } else {
+                    POLY_LANDING_BACKEND
+                }
+                .into(),
                 configuration: serde_json::json!({
                     "reference_family":"quadratic_horizontal_affine_vertical_exact_discrete",
                     "terminal_target_downward_speed_fraction":0.5,
                     "contact_undershoot_m":0.005,
                     "maximum_after_reference_ticks":RESIDUAL_TICKS,
                     "scalar_inverse_iterations":INVERSE_ITERATIONS,
-                    "construction":"current_observation_once_no_native_forecast",
+                    "construction":if self.checked_admission { "full_paired_actuation_scan_no_native_forecast" } else { "current_observation_once_no_native_forecast" },
                 }),
             },
             physics_hz: 120,
@@ -227,6 +257,31 @@ impl ManeuverControllerV2 for PolynomialLandingController {
                 observation.mass_kg,
                 first.length(),
             )?;
+            if self.checked_admission {
+                let mut fuel = observation.fuel_kg;
+                for tick in (0..reference.physics_ticks + RESIDUAL_TICKS).step_by(2) {
+                    self.feedback.admission_actuation_checks += 1;
+                    let setting = paired_throttle(
+                        &self.ctx,
+                        INVERSE_ITERATIONS,
+                        self.ctx.vehicle.dry_mass_kg + fuel,
+                        paired_mean(&reference, &self.ctx, tick).length(),
+                    )?;
+                    if setting <= 0.0 {
+                        return Err("declared burn contains an engine-off pair".into());
+                    }
+                    let q = self.ctx.vehicle.min_throttle_frac
+                        + setting * (1.0 - self.ctx.vehicle.min_throttle_frac);
+                    for _ in 0..2 {
+                        let required =
+                            self.ctx.vehicle.max_fuel_burn_kgps * q * self.ctx.sim.physics_dt_s();
+                        if required > fuel {
+                            return Err("declared burn exceeds remaining fuel".into());
+                        }
+                        fuel -= required;
+                    }
+                }
+            }
             Ok::<_, String>(reference)
         })();
         let reference = match construction {
@@ -316,6 +371,15 @@ impl ManeuverControllerV2 for PolynomialLandingController {
             || end.physics_step > self.next_tick
         {
             return Err("native end is outside the last emitted command interval".into());
+        }
+        if self.checked_admission
+            && self.feedback.accepted.as_ref().is_some_and(|active| {
+                end.physics_step
+                    == active.entry.physics_step + active.reference.physics_ticks + RESIDUAL_TICKS
+            })
+            && end.physical_outcome == pd_core::PhysicalOutcome::Flying
+        {
+            self.feedback.reference_exhausted = true;
         }
         self.feedback.native_end = Some(end);
         Ok(())

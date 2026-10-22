@@ -27,6 +27,36 @@ fn controller(s: &ScenarioSpec) -> PolynomialLandingController {
 }
 
 #[test]
+fn checked_admission_rejects_later_fuel_or_authority_failure_without_advancing() {
+    for (fuel, height, sink, ticks) in [
+        (5.0, 100.0, 8.0, 2400),
+        (1800.0, 143.33333333333334, 55.0, 480),
+    ] {
+        let mut s = scenario();
+        s.vehicle.initial_fuel_kg = fuel;
+        s.initial_state.position_m = Vec2::new(0.0, 4.995 + height);
+        s.initial_state.velocity_mps = Vec2::new(0.0, -sink);
+        let ctx = RunContext::from_scenario(&s).unwrap();
+        let state = SimulationState::new(&ctx).unwrap();
+        let obs = state.build_observation(&ctx);
+        let mut legacy = controller(&s);
+        assert_eq!(
+            legacy.submit(&request(ticks), &obs).unwrap(),
+            AdmissionV2::Accepted
+        );
+        let mut checked = PolynomialLandingController::new_checked(&s, 0, 5400).unwrap();
+        assert!(matches!(
+            checked.submit(&request(ticks), &obs).unwrap(),
+            AdmissionV2::NoPlan { .. }
+        ));
+        assert!(checked.feedback().admission_actuation_checks > 1);
+        assert_eq!(checked.feedback().command_updates, 0);
+        assert!(checked.feedback().accepted.is_none());
+        assert_eq!(state.build_observation(&ctx), obs);
+    }
+}
+
+#[test]
 fn timed_wire_has_no_v1_alias_or_silent_backend_upgrade() {
     let req = request(1740);
     let bytes = serde_json::to_vec(&req).unwrap();

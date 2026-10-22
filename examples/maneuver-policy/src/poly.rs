@@ -16,6 +16,7 @@ mod tests;
 pub mod verify;
 
 pub const IMPLEMENTATION: &str = "timed-poly-landing-composition-v2";
+pub const CHECKED_IMPLEMENTATION: &str = "timed-poly-landing-composition-v3";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -24,6 +25,8 @@ pub struct TimedProgramV2 {
     pub backend: String,
     pub activation_physics_step: u64,
     pub absolute_deadline_physics_step: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_coverage_end_physics_step: Option<u64>,
     pub request: ManeuverRequestV2,
     /// Exact original 60 Hz prefix, or empty for a synthetic local start.
     pub regression_prefix: Vec<FlightProgramUpdateV1>,
@@ -33,8 +36,28 @@ pub struct TimedProgramV2 {
 impl TimedProgramV2 {
     pub fn validate(&self) -> Result<(), String> {
         self.request.validate()?;
-        if self.schema_version != 2 || self.backend != POLY_LANDING_BACKEND {
-            return Err("requires explicit timed v2 polynomial_landing_v1 backend".into());
+        match self.schema_version {
+            2 if self.backend == POLY_LANDING_BACKEND
+                && self.command_coverage_end_physics_step.is_none() => {}
+            3 if self.backend == CHECKED_POLY_LANDING_BACKEND => {
+                let ManeuverGoalV2::LandOnMissionTargetAt {
+                    reference_end_physics_step,
+                    ..
+                } = self.request.goal
+                else {
+                    return Err("finite timed v3 requires a landing endpoint".into());
+                };
+                if reference_end_physics_step.checked_add(4)
+                    != self.command_coverage_end_physics_step
+                    || reference_end_physics_step <= self.activation_physics_step
+                    || self.coverage_end() > self.absolute_deadline_physics_step
+                    || self.coverage_end() <= self.activation_physics_step
+                    || !reference_end_physics_step.is_multiple_of(2)
+                {
+                    return Err("finite coverage must equal reference end plus four under the original deadline".into());
+                }
+            }
+            _ => return Err("requires an explicit supported timed protocol/backend pair".into()),
         }
         if !self.activation_physics_step.is_multiple_of(2)
             || self.activation_physics_step >= self.absolute_deadline_physics_step
@@ -63,6 +86,19 @@ impl TimedProgramV2 {
         }
         Ok(())
     }
+
+    pub fn coverage_end(&self) -> u64 {
+        self.command_coverage_end_physics_step
+            .unwrap_or(self.absolute_deadline_physics_step)
+    }
+
+    fn implementation(&self) -> &'static str {
+        if self.schema_version == 3 {
+            CHECKED_IMPLEMENTATION
+        } else {
+            IMPLEMENTATION
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -79,7 +115,12 @@ pub fn controller(
     program: &TimedProgramV2,
 ) -> Result<PolynomialLandingController, String> {
     program.validate()?;
-    PolynomialLandingController::new(
+    let create = if program.schema_version == 3 {
+        PolynomialLandingController::new_checked
+    } else {
+        PolynomialLandingController::new
+    };
+    create(
         scenario,
         program.activation_physics_step,
         program.absolute_deadline_physics_step,
@@ -93,10 +134,10 @@ pub fn descriptor(
 ) -> AgentDescriptorV1 {
     AgentDescriptorV1 {
         schema_version: 1,
-        implementation: IMPLEMENTATION.into(),
+        implementation: program.implementation().into(),
         checkpoint_sha256: None,
         configuration: serde_json::to_value(TimedCompositionConfigV2 {
-            schema_version: 2,
+            schema_version: program.schema_version,
             program: program.clone(),
             controller: controller.descriptor(),
             driver: if program.regression_prefix.is_empty() {
@@ -154,10 +195,15 @@ pub(super) fn run_with_recorded_requests(
     let descriptor = descriptor(program, &controller);
     let limits = BoundedRunLimitsV1 {
         hard_end_physics_step: program.absolute_deadline_physics_step,
-        command_coverage_end_physics_step: program.absolute_deadline_physics_step,
+        command_coverage_end_physics_step: program.coverage_end(),
     };
-    let mut episode = Episode::reset(scenario, IMPLEMENTATION, limits, CaptureModeV1::Captured)
-        .map_err(|e| e.to_string())?;
+    let mut episode = Episode::reset(
+        scenario,
+        program.implementation(),
+        limits,
+        CaptureModeV1::Captured,
+    )
+    .map_err(|e| e.to_string())?;
     let started = Instant::now();
     let mut boundaries = Vec::new();
     let mut planner_requests = 0;
@@ -228,7 +274,7 @@ pub(super) fn run_with_recorded_requests(
     let episode = episode.finish().map_err(|e| e.to_string())?;
     controller.native_end((&episode.summary).into())?;
     let trace = TimedTraceV2 {
-        schema_version: 2,
+        schema_version: program.schema_version,
         descriptor: descriptor.clone(),
         boundaries,
         feedback: controller.feedback(),

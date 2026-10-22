@@ -467,6 +467,7 @@ pub(super) fn write_with_updates(
             },
         ),
         corrections,
+        reference_overlay: None,
         navigation: AnnotationNavigation {
             source_links: [
                 "scenario.json",

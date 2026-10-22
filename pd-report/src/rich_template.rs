@@ -1956,7 +1956,11 @@ pub(super) fn report_template() -> &'static str {
         line: { color: "#cf7b00", width: 1.5, dash: "dot" },
         hoverinfo: "skip",
       } : null;
-      const referenceCurve = (initial && pad)
+      const savedReference = reportData.flightAnnotations?.referenceOverlay;
+      const referenceCurve = savedReference ? {
+        xs: savedReference.points.map(p => p.x),
+        ys: savedReference.points.map(p => p.y),
+      } : (initial && pad)
         ? idealizedReferenceCurve({
             startX: Number(initial.xM),
             startY: Number(initial.yM),
@@ -1968,7 +1972,7 @@ pub(super) fn report_template() -> &'static str {
       const referenceTrace = referenceCurve ? {
         type: "scatter",
         mode: "lines",
-        name: "idealized reference",
+        name: savedReference ? savedReference.label : "idealized reference",
         x: referenceCurve.xs,
         y: referenceCurve.ys,
         line: { color: "#5b73c6", width: 1.8, dash: "dash" },

@@ -48,6 +48,16 @@ pub struct FlightAnnotations {
     pub caption: String,
     pub corrections: Vec<ExecutedCorrection>,
     pub navigation: AnnotationNavigation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_overlay: Option<ReferenceOverlayV1>,
+}
+
+/// Display-only saved reference geometry; never substitutes for native samples.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferenceOverlayV1 {
+    pub label: String,
+    pub points: Vec<Vec2>,
 }
 
 impl FlightAnnotations {
@@ -55,9 +65,24 @@ impl FlightAnnotations {
         self.caption.is_empty()
             && self.corrections.is_empty()
             && self.navigation == AnnotationNavigation::default()
+            && self.reference_overlay.is_none()
     }
 
     pub(crate) fn validate(&self, manifest: &RunManifest) -> Result<()> {
+        if let Some(reference) = &self.reference_overlay {
+            ensure!(
+                !reference.label.trim().is_empty() && reference.label.len() <= 128,
+                "invalid reference overlay label"
+            );
+            ensure!(
+                (2..=72_005).contains(&reference.points.len())
+                    && reference
+                        .points
+                        .iter()
+                        .all(|p| p.x.is_finite() && p.y.is_finite()),
+                "invalid reference overlay geometry"
+            );
+        }
         for link in self
             .navigation
             .home
