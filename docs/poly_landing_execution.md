@@ -45,8 +45,8 @@ tune the controller or redefine a population after seeing its outcomes.
 | A — Contract and inventory | Pass | V2 timing/observation contract, recovered historical entries/durations, corrected numerical baseline and numeric flat recipe bound |
 | B — Shared extraction | Pass | All 20 maintained checks pass, including exact 44/44 October 7 parity; three math/native-inverse tests pass |
 | C — Timed adapter | Pass | 38/38 October 5 burns match complete command bits, samples, incoming contact and final state, with independent proof |
-| D — Flat recipe and pilot | Recipe/tooling implemented; pilot pending | [Prospective flat recipe](poly_landing_flat_recipe.md), immutable proposals, bounded workers, native shape assessment and common report projection |
-| E — Structured characterization | Unallocated | Requires task/cost pilot acceptance |
+| D — Flat recipe and pilot | Native/task/cost gates pass; presentation follow-up queued | 12/12 verified target landings, zero shape violations; 1.69 s stage wall and 41.1 MB output |
+| E — Structured characterization | Allocated/in progress | 256 primary originals, 48 named transformations, 96 separate diagnostics; 264 raw proposals with eight input-only exclusions |
 | F — Fresh confirmation | Unallocated | Requires frozen source, task and criterion |
 
 ## Work ledger
@@ -166,3 +166,30 @@ create-only regression root. This is source-epoch preservation after adding
 evaluation/report instrumentation, not another local population or a new
 reliability sample. The same per-case/stage bounds apply; total regression
 storage remains below the original 1 GiB stage ceiling.
+
+The final-source repeat passes all 38 historical burns in 9.84 s. Native source
+checkpoint `9f1f7c1` and its 129 participating files/release executable are frozen
+under `source-epoch-df-v1/` for the remaining measurements. The pilot's declared
+12 uniform proposals all admit, with four entries in each duration band. All
+12 episodes land with complete proof and zero native burn-shape violations.
+They use 22,444 original physics steps, 36 neutral replays (67,332 steps) and 48
+controller/planner reconstructions (89,776 steps). Pilot observations make no
+fresh reliability claim. Maximum child wall is 0.161 s; maximum bundle is
+5,017,848 bytes.
+
+The cost-only development release fixes 256 primary originals, 48 transformations
+(16 reflection, translation and relabelling occurrences each), and 96 diagnostics
+(12 each of eight named extensions). Its 264 raw proposals retain eight
+input-only authority exclusions; no flight result selected inputs. The schedule
+has no physical overlap with the bound pilot plan. New ceilings: one native
+worker, 45 minutes, 60 seconds per child, 4 GiB stage output, 16 MiB per bundle
+and 50 GiB free. No fresh input has been generated or allocated yet.
+
+The pilot HTML confirms the intended descending continuous burn and uses the
+established tree/detail templates. UI review found missing neighbour-navigation
+data, overly technical contact text and misleading generic terrain-group
+captions. These are presentation follow-ups, not flight/proof failures. Keep
+the measured source frozen through the fixed confirmation; correct/report-review
+the presentation separately before closeout. Raw incoming contact remains the
+authoritative contact witness; generic post-contact display values are not
+substituted for it.
