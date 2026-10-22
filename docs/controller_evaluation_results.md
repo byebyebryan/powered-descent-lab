@@ -2,6 +2,13 @@
 
 [Design](controller_evaluation_design.md) · [Implementation plan](controller_evaluation_implementation_plan.md) · [Execution and repair ledger](controller_evaluation_execution.md) · [Evaluation workflow](evaluation.md)
 
+Backend scope clarification, October 22: every result here belongs to the
+unchanged **standalone terminal PDG** backend selected by the maneuver facade.
+The accepted planner's finite polynomial landing burn was not evaluated by this
+pass. Its implemented adapter and separate flat-ground task are in the
+[Poly Landing plan](poly_landing_controller_plan.md). All original populations,
+outcomes, source identities and acceptance verdicts below remain unchanged.
+
 October 21, 2026 local time; October 22 UTC. **The unattended pass is complete.**
 The unchanged controller lands **598/600 fresh local-reference cases (99.67%)**,
 but its one-sided 95% exact-binomial lower bound is **98.954%**, below the

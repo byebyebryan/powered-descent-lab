@@ -172,8 +172,11 @@ with its own three proof passes; batch execution changes no report selectors.
 
 ## Timed Poly Landing V2
 
-`run-timed --scenario FILE --program FILE --output NEW` selects only the explicit
-`polynomial_landing_v1` backend and timed V2 program. `verify-timed NEW` checks
+`run-timed --scenario FILE --program FILE --output NEW` requires an explicit
+supported program/backend pair. Historical schema 2 selects
+`polynomial_landing_v1`; checked schema 3 selects `polynomial_landing_v2` and
+declares `command_coverage_end_physics_step` equal to reference end plus four,
+under the unchanged original hard deadline. `verify-timed NEW` checks
 its independent native replay and controller/planner reconstruction.
 `report-timed NEW --output NEW.html` renders a rich single-flight report and
 performs another explicit three-pass verification. Existing `run`, `verify`,
@@ -185,6 +188,10 @@ declared rejection coast. It never rounds a historical handoff to the 10 Hz
 planner grid. Admission consumes that boundary's actual observation and builds
 one fixed reference. NoPlan, reference exhaustion and native end are separate
 dispositions; no fallback, settling or new duration policy is inserted.
+Schema 3 performs a pure whole-window paired-actuation/fuel scan at admission.
+It closes an airborne reference endpoint as a valid bounded miss, with no extra
+command. Schema 2 keeps its earlier execution/wire semantics. Both use the V2
+request and the same extracted polynomial/throttle arithmetic.
 
 For the input-only flat task, write a reviewed recipe with the
 [V2 model](src/evaluation/timed/prepare.rs): schema 2, sampler
@@ -193,6 +200,8 @@ For the input-only flat task, write a reviewed recipe with the
 `release_gate: null`, `exposure_plans: []`, and an explicit finite budget. The
 [recipe document](../../docs/poly_landing_flat_recipe.md) fixes numeric bounds,
 correlations, admission, native shape observations and qualification limits.
+New flat plans emit checked schema-3 programs. Recipe/plan/companion versions
+remain explicit and distinct from the request and backend versions.
 
 ```sh
 rtk proxy cargo run --release -p pd-maneuver-example -- prepare-timed-evaluation \

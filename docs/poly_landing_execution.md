@@ -7,6 +7,13 @@ ignition, planner-owned coast and an explicit planned touchdown/reference-end
 time. This record owns the new implementation/evaluation allocation; it does
 not reuse the completed standalone-controller campaign's allocation.
 
+**Complete: the checked adapter lands 600/600 fresh flat, prepared, explicitly
+timed entries with zero native burn-shape violations. The one-sided 95% exact
+lower bound is 99.502%, passing the declared 99% criterion for this conditional
+task.** The original interrupted development epoch remains a technical failure.
+Mission-generated handoffs, disturbance tolerance, general airborne states and
+RL training remain separate work.
+
 ## Scope and limits
 
 Execute checkpoints A–F in order, advancing only through the design's gates.
@@ -45,9 +52,9 @@ tune the controller or redefine a population after seeing its outcomes.
 | A — Contract and inventory | Pass | V2 timing/observation contract, recovered historical entries/durations, corrected numerical baseline and numeric flat recipe bound |
 | B — Shared extraction | Pass | All 20 maintained checks pass, including exact 44/44 October 7 parity; three math/native-inverse tests pass |
 | C — Timed adapter | Pass | 38/38 October 5 burns match complete command bits, samples, incoming contact and final state, with independent proof |
-| D — Flat recipe and pilot | Native/task/cost gates pass; presentation follow-up queued | 12/12 verified target landings, zero shape violations; 1.69 s stage wall and 41.1 MB output |
-| E — Structured characterization | Technical stop; retained | All 256 primary landings/shape checks pass; diagnostic slot 258 exposes finite-operation closure/proof mismatch; 141 successors remain not started |
-| F — Fresh confirmation | Unallocated | Requires frozen source, task and criterion |
+| D — Flat recipe and pilot | Pass, including declared technical repeat | Same 12 physical inputs; 12/12 verified landings and zero shape failures in both epochs |
+| E — Structured characterization | Pass after one declared technical repair | 256/256 primary and 48/48 transformed landings/shape pass; all 96 diagnostic dispositions valid. Original technical stop and 141 unstarted slots retained separately |
+| F — Fresh confirmation | Pass for the frozen conditional task | One fixed 600/600 fresh run, zero shape failures, one-sided 95% lower bound 99.502% |
 
 ## Work ledger
 
@@ -247,3 +254,84 @@ The earlier repair-gate attempt stopped at compilation because one existing
 report caller needed the new optional overlay set to `None`; no campaign ran.
 Browser preflight confirms the established tree, saved-reference legend, raw
 incoming contact, restored detail navigation and engine-setting labels.
+
+Repair checkpoint `7b8f277` is frozen with all 129 participating source files and
+its release executable under `source-epoch-df-v2/`. The third historical stage
+passes all 38 exact burns in 9.84 s. Replacement pilot: 12/12 verified landings,
+zero shape failures, 1.71 s. Replacement development: all 400 slots complete,
+256/256 primary and 48/48 transformed landings with zero shape failures; 96
+diagnostics include 15 landings and 12 unsupported vehicle cases. Its 388 native
+episodes retain complete proof, including ordinary airborne reference expiry.
+It takes 65.69 s and 1.245 GB. Both input-equality receipts prove identical
+scenario bytes, roles, lineage, raw proposal admission and previous timing;
+only explicit protocol/backend and finite command coverage differ.
+
+Release exactly one 600-original confirmation on the previously declared
+`poly-flat-v1-confirmation` stream and `0x504f4c590003` seed. Freeze the unchanged
+99% reliability criterion with one-sided 95% exact-binomial lower confidence
+bound, zero native shape failures and all 600 slots complete. Allocate one
+worker, 90 minutes, 60 s per child, 6 GiB stage output, 16 MiB per bundle and
+50 GiB free, within the 20 GiB loop ceiling. Development maximum child is
+0.201 s and maximum complete bundle is 5,245,026 bytes. Bind both old and
+replacement pilot/development exposure plans and the eligible current-source
+development receipt. Source, sampler and criterion remain frozen through this
+single fresh run; no tuning or restart follows its outcomes.
+
+### Final confirmation, report and limits
+
+The single fresh stream retains 602 raw proposals: two input-only authority
+exclusions and exactly 600 admitted independent originals. All four prior
+pilot/development exposure plans are bound and have no physical overlap with
+the fresh schedule. Its 135 / 231 / 234 entries occupy the 8–12 / 12–18 / 18–24 s
+duration bands. All 600 land with complete integrity, physical replay and
+controller/planner reconstruction, with zero native shape violations. The
+one-sided 95% exact-binomial lower bound is `0.9950195566196385`; the declared
+99% conditional reliability criterion passes. No second fresh run exists.
+
+Fresh execution takes 118.86 s and 2.140 GB. It records 1,170,110 original native
+steps, 1,800 neutral replay passes (3,510,330 steps) and 2,400 controller/planner
+reconstructions (4,680,440 steps). Admission uses 586,255 original and 2,345,020
+reconstruction pure actuation checks, with zero native forecast steps. The
+complete loop audit counts the original failed epoch, both pilots, replacement
+development and all three historical preservation stages separately. Software
+gate/test work remains in its invocation logs rather than being silently
+included in, or inferred from, campaign counters.
+
+The [HTML mission tree](http://starship:8000/poly-landing/loop-20261022T085313Z/reports/final-v1/report.html)
+is the user-facing report: 1,468 scheduled occurrences, including unstarted and
+unsupported entries, and 1,309 full rich flight views. Rendering takes 60.05 s
+with zero new flight/replay work. It preserves the common tree, twelve-item
+paging, previews, complete detail controls and static fallbacks. Desktop and
+390 px phone browser review pass: page-two/back context, neighbour links,
+saved-reference overlay and raw contact labels work, without document overflow.
+The repaired ordinary airborne miss and original incomplete-proof failure are
+both visible. No report selector, publication or server operation was performed.
+The audit records 7.28 GB of loop artifacts, below the 20 GiB ceiling; native
+source and release executable remain byte-identical to `source-epoch-df-v2/`.
+
+The diagnostics define the practical limit of the claim:
+
+| Extension | Verified landings / scheduled | Other disposition |
+| --- | --- | --- |
+| Unprepared attitude/rate | 1/12 | Eleven native bounded misses |
+| Receding horizontal motion | 0/12 | Rejected references or native misses |
+| Near contact | 0/12 | Rejected references or native misses |
+| Five kilograms of fuel | 0/12 | Rejected reference; planner coast remains explicit |
+| Two-second reference | 0/12 | Rejected references; bounded planner coast |
+| Narrow 8.1 m pad | 12/12 | Diagnostic, outside the fresh denominator |
+| Unsupported dry mass | 0/12 | Twelve pre-native unsupported inputs |
+| Ascending entry | 2/12 | Ten rejected references or native misses |
+
+All 84 executed diagnostics have complete proof; twelve unsupported inputs
+consume no native budget. NoPlan is a statement about this requested reference,
+not a physical impossibility claim. The successful conditional task assumes flat
+ground, the accepted vehicle, feasible explicit timing and prepared attitude.
+It does not establish robustness to state error, disturbances or an arbitrary
+mission-generated handoff.
+
+Next specify and evaluate planner-generated flat handoffs: preserve the live
+coast/preparation prefix, choose the endpoint time externally, declare admission
+and NoPlan handling, and freeze bounded position/velocity/attitude perturbations
+with fresh holdouts. Use the existing historical flat controls as exposed
+regressions. Retain physical mission continuity and independent replay. This is
+a next-pass recommendation, not a new campaign or RL allocation.

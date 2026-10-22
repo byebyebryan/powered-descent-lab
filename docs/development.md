@@ -194,5 +194,12 @@ coverage without control updates. Bounded batch execution supervises one attempt
 at a time and retains every slot and proof disposition. Keep measured epochs
 at their original source paths: an archived executable alone cannot reconstruct
 source-bound controller/planner decisions. The
-[unattended execution record](controller_evaluation_execution.md) owns the current
-allocation; normal development checks run only software fixtures and tiny CLI panels.
+[unattended execution record](controller_evaluation_execution.md) owns the
+completed standalone allocation; normal development checks run only software
+fixtures and tiny CLI panels. The [Poly Landing pass](poly_landing_controller_plan.md)
+adds a separate timed adapter, shared finite-burn arithmetic and flat-task
+preparation/batch/report commands. Its [execution declaration](poly_landing_execution.md)
+owns measured allocations and source epochs; the ordinary gate needs no saved
+campaign. Historical schema 2/backend v1 remains explicit; checked schema 3/
+backend v2 binds finite command coverage and scans paired actuation/fuel without
+native forecasting. See the [timed workflow](../examples/maneuver-policy/README.md#timed-poly-landing-v2).

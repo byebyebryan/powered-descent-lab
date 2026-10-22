@@ -5,9 +5,12 @@
 October 21, 2026. Source-backed follow-up to design commit `8fbb4eb`.
 **Experimental interface implemented; no operating-envelope qualification.**
 The [software record](maneuver_controller_implementation_results.md) owns the
-implementation checks. The terminal backend is the better-established starting
-point. Its operating envelope still needs validation before a planner can rely
-on it.
+implementation checks. This document records the implemented standalone
+terminal-backend choice. Its [completed characterization](controller_evaluation_results.md)
+does not qualify the accepted planner's different finite landing implementation.
+The [Poly Landing follow-up](poly_landing_controller_plan.md) owns the implemented
+backend correction, timing contract, preservation gates and qualified conditional
+flat-ground task. Mission handoffs and broader robustness remain later work.
 
 ## What already exists
 

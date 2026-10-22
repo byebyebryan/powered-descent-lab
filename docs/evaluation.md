@@ -102,6 +102,18 @@ see the example for counters, supported vehicle semantics and runnable commands.
 Summary library mode retains no trace and makes no saved-command proof claim.
 Software parity does not establish an operating envelope or authorize a campaign.
 
+Those original commands select standalone terminal PDG. The separate
+[timed V2 commands](../examples/maneuver-policy/README.md#timed-poly-landing-v2)
+now expose Poly Landing with immediate burn activation and explicit endpoint
+time. Its [execution record](poly_landing_execution.md) separates exact
+historical preservation from the new [flat timed task](poly_landing_flat_recipe.md).
+V1 defaults and saved standalone outcomes retain their original meaning.
+Checked program schema 3/backend v2 adds full-window pure actuation admission
+and finite command coverage under the original deadline. The completed
+conditional flat task lands 600/600 fresh cases with zero shape failures and a
+99.502% one-sided 95% lower bound. This does not qualify mission-generated
+handoffs or arbitrary unprepared entries; those need separate declarations.
+
 Prepared evaluation commands extend this path: `prepare-evaluation` and
 `check-evaluation` resolve/audit inputs without flights; `run-evaluation` executes
 one frozen schedule with supervised attempts; `check-evaluation-results` checks

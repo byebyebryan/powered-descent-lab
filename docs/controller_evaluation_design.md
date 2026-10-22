@@ -6,6 +6,10 @@ October 21, 2026 design. **The [characterization pass is complete](controller_ev
 598/600 fresh local-reference landings, but the predeclared 99% reliability
 criterion fails its one-sided confidence bound.** Whole-mission handoff
 qualification and RL training remain separate work.
+The measured backend was standalone terminal PDG. The [Poly Landing plan](poly_landing_controller_plan.md)
+defines a separate adapter for the accepted planner's finite landing
+burn and a new flat, prepared-entry task; these results do not transfer to it.
+
 The [implementation plan](controller_evaluation_implementation_plan.md) defines
 an unattended loop through input access, coverage audit, bounded execution,
 characterization, activation comparisons and eligible fixed-size confirmation.

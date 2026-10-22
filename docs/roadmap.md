@@ -23,8 +23,17 @@ Success means:
 
 ### Controller characterization
 
+The [Poly Landing interface and flat-ground evaluation](poly_landing_controller_plan.md)
+are complete. Shared arithmetic and the timed adapter preserve all 38 historical
+finite burns exactly. Its checked adapter lands 600/600 fresh flat, prepared,
+explicitly timed entries with zero shape failures; the one-sided 95% lower bound
+is 99.502%, passing the conditional task's declared 99% criterion. The
+[execution record](poly_landing_execution.md) retains the technical repair,
+source epochs and full HTML mission tree. Planner-generated handoffs and entry
+perturbations are next; RL training remains a separate allocation.
+
 The [completed controller pass](controller_evaluation_results.md) now owns the
-measured local checkpoint: exact adapter parity on 945 retained cases, 598/600
+measured standalone checkpoint: exact adapter parity on 945 retained cases, 598/600
 fresh local-reference landings and a failed predeclared 99% confidence criterion.
 Immediate activation achieves 61/64 against a 62/64 hindsight timing-grid union.
 The harness is ready for bounded controller comparisons; whole-mission handoffs
@@ -1038,13 +1047,21 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-The [controller characterization loop](controller_evaluation_results.md) is complete.
-The harness and exact adapter parity pass; 598/600 fresh landings do not meet the
-predeclared 99% reliability criterion, and timing alone adds one hindsight landing
-over immediate activation. Next define mission-generated handoff requirements
-and compare a bounded controller correction on preserved failures and paired
-controls before another independent confirmation. No RL training or promotion
-is launched by these results.
+The [Poly Landing pass](poly_landing_execution.md) qualifies its frozen flat,
+prepared, explicitly timed task. Next specify planner-generated handoffs:
+coast/attitude preparation, target and endpoint-time choice, live entry checks,
+NoPlan handling and a bounded envelope of entry perturbations. Begin with the
+preserved historical flat mission controls and a prospectively frozen new
+handoff set. Keep physical mission continuity and independent replay intact;
+no new training or campaign is allocated by this recommendation. A target-only
+duration selector remains separate new policy work.
+
+The [standalone characterization loop](controller_evaluation_results.md) is
+complete. Its exact adapter parity and 598/600 fresh landings do not qualify Poly
+Landing; the old population's predeclared 99% confidence criterion still fails.
+Preserve those results and their exposed failures without relabelling a new
+flat-ground evaluation as a rerun of the same task. No RL training or promotion
+is launched by the plan or the completed results.
 
 The [shared controller/RL preparation](controller_rl_preparation_results.md) is
 complete. Use the [branch handoff](controller_rl_development_handoff.md) to start

@@ -2,13 +2,16 @@
 
 [Documentation home](README.md) · [Planner/controller design](maneuver_execution_design.md) · [Previous standalone-controller results](controller_evaluation_results.md) · [Accepted planner evidence](waypoint_v2_session_repair_results.md)
 
-October 22, 2026. **Approved design; implementation goal loop in progress.**
+October 22, 2026. **Implemented; the frozen flat, prepared timed-entry task
+qualifies at 600/600 fresh landings with zero shape failures and a 99.502%
+one-sided 95% lower bound. Mission handoffs and broader robustness remain
+unqualified.**
 The name is **Poly Landing**, with `PolynomialLandingController` as its Rust
 name. The historical adapter uses explicit backend `polynomial_landing_v1`;
 the checked finite-coverage adapter uses `polynomial_landing_v2` with timed
 program/trace schema 3. The shared burn and timed adapters are implemented;
-this design alone makes no operating-
-envelope or qualification claim. The existing standalone facade remains available.
+the [execution record](poly_landing_execution.md) owns the measured qualification
+and its conditional scope. The existing standalone facade remains available.
 The subsequent [execution declaration](poly_landing_execution.md) owns the
 authorized loop, resource limits, gate status and measured allocations.
 

@@ -26,8 +26,19 @@ later code and documentation housekeeping does not create a new flight capture.
 | Define controller characterization and confirmation before RL | [Controller evaluation design](controller_evaluation_design.md) |
 | Implement and run an unattended controller characterization pass | [Controller characterization plan](controller_evaluation_implementation_plan.md) |
 | Inspect controller coverage, activation value and qualification limits | [Controller characterization results](controller_evaluation_results.md) |
+| Review the accepted finite-burn interface and qualified flat timed-entry task | [Poly Landing plan](poly_landing_controller_plan.md) |
 
 ## Current controller checkpoint
+
+The [Poly Landing pass](poly_landing_controller_plan.md) is complete. Its timed
+adapter preserves all 38 historical finite burns exactly. The checked adapter
+lands 600/600 fresh flat, prepared, explicitly timed entries with zero shape
+failures; its one-sided 95% lower bound is 99.502%, passing the declared 99%
+criterion for that conditional task. The [execution record](poly_landing_execution.md)
+links the full HTML tree and retains both source epochs. Next define planner-
+generated handoffs and bounded entry perturbations before RL training.
+The completed results below belong to the standalone terminal PDG backend,
+which the existing maneuver interface wraps; they do not measure Poly Landing.
 
 The [completed characterization](controller_evaluation_results.md) verifies
 945/945 exact adapter comparisons. Fresh local-reference landing is 598/600,

@@ -2,6 +2,13 @@
 
 [Documentation home](README.md) · [Research and validation review](planner_controller_design_review.md) · [Independent agents](independent_agents.md)
 
+October 22 follow-up: the [Poly Landing plan](poly_landing_controller_plan.md)
+corrects the backend target for the next pass. The existing experimental facade
+wraps standalone terminal PDG; the accepted planner's finite polynomial landing
+burn is a different implementation. The timed adapter now preserves that burn
+and qualifies its declared flat, prepared timed-entry task. The layer split below remains the design;
+its original ordinary-backend choice records the completed standalone pass.
+
 October 21, 2026. **Reviewed design proposal.** Use two flight-decision
 interfaces: a mission planner requests maneuvers, and a maneuver controller
 executes them. Request admission, execution lifecycle and backend state belong
@@ -9,8 +16,10 @@ inside the maneuver controller. The harness schedules them against the native
 plant, and the evaluator assesses evidence independently. Start with explicit
 activation of terminal landing on the mission's target. Characterize execution
 and deterministic decisions before selecting a learning algorithm or budget.
-The production interfaces, adapter and harness additions remain unimplemented
-and unqualified; current direct-control experiment allocations remain closed.
+The experimental standalone adapter and harness are implemented and characterized;
+Poly Landing is implemented with separate conditional qualification. Mission-
+handoff qualification and production promotion remain later work. Current
+direct-control experiment allocations remain closed.
 
 The eventual objective is safe, efficient complete procedural missions. Landing
 activation is the first bounded capability and decision test. Departure,

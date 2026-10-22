@@ -7,6 +7,11 @@ October 21, 2026. **The unattended loop is complete.** The
 retained parity, corrected local characterization and the failed 99% confirmation
 criterion. The [execution record](controller_evaluation_execution.md) retains
 limits, prospective releases, technical invalidation and stage status.
+This is the completed **standalone terminal PDG** pass. Its launch/commit
+authority and allocations below are historical, not permission for another
+campaign. The accepted finite-burn adapter and revised flat task have their own
+[Poly Landing plan](poly_landing_controller_plan.md).
+
 Start from the reviewed maneuver software `83303da` and evaluation design
 `8adf2db`. Build the tools to measure the unchanged landing controller before
 choosing another controller implementation or an RL task. One launch should carry
