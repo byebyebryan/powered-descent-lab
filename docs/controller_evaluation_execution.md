@@ -114,6 +114,14 @@ The final log is
 The 174 inventoried plant/controller/planning/fixture files remain byte-identical
 to the starting inventory. No campaign landing result is implied by these checks.
 
+Before freezing measurement inputs, review found that local generation inherited
+the anchor's descriptive tags and resolved/expectation metadata. Generated cases
+now receive their own sampler/task/cohort/index labels. A regression check keeps
+the anchor unchanged and rejects those stale labels; native physical identities
+are unchanged. The earlier detached software candidate is retained unused, and
+the first measured source epoch will include this correction. No measurement
+repair allowance has been consumed.
+
 ## Prospective local reference population
 
 Before any campaign flights, `declarations/local-reference-proposal.json` under

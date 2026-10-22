@@ -209,8 +209,22 @@ fn independent_streams_are_order_independent_disjoint_and_exposure_checked() {
 #[test]
 fn transforms_preserve_parent_and_labels_cannot_change_physical_inputs() {
     let r = recipe();
-    let a = anchor();
+    let mut a = anchor();
+    a.metadata
+        .insert("expectation_tier".into(), "reference".into());
+    a.metadata.insert("resolved.start_y_m".into(), "800".into());
+    let anchor_before = a.clone();
     let original = local_case(&r, &a, 0).unwrap();
+    assert_eq!(a, anchor_before);
+    assert_eq!(original.scenario.metadata["sampler"], "local_v1");
+    assert!(!original.scenario.metadata.contains_key("expectation_tier"));
+    assert!(
+        !original
+            .scenario
+            .metadata
+            .contains_key("resolved.start_y_m")
+    );
+    assert!(!original.scenario.tags.contains(&"baseline".into()));
     let label = local_case(&r, &a, 3).unwrap();
     assert_eq!(original.parent, label.parent);
     assert_eq!(
