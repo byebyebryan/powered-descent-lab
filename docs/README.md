@@ -21,6 +21,8 @@ later code and documentation housekeeping does not create a new flight capture.
 | Declare broad challenging, stress or shift input populations | [V2 challenge/collections](procedural_collections_v2.md) |
 | Audit declared procedural coverage without flights | [Native input audit](procedural_input_audit.md) |
 | Implement an independent agent and verify its saved commands | [Independent agents](independent_agents.md) |
+| Review proposed planner/controller interfaces, harness and qualification work | [Planner and controller design](maneuver_execution_design.md) |
+| Inspect primary research, source review and bounded contract validation | [Design review](planner_controller_design_review.md) |
 
 ## Report presentation refinement
 
