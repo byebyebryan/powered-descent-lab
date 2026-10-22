@@ -212,12 +212,24 @@ def binomial_interval(successes, total, alpha=0.05):
             1.0 if successes == total else solve(successes, alpha / 2)]
 
 
-def learn_and_confirm(root, anchor, outer_deadline):
+def checkpoint_metrics(model):
+    # SB3 creates its logger at the first learn(), after checkpoint zero.
+    logger = getattr(model, "_logger", None)
+    return {k: float(v) for k, v in (logger.name_to_value.items() if logger else [])
+            if k.startswith("train/") and np.isscalar(v)}
+
+
+def learn_and_confirm(root, anchor, outer_deadline, prior_exposure=None, fixed_validation=None,
+                      carry=None):
     root.mkdir()
-    seen = all_physical_identities(root.parent / "preflight")
-    validation_budget = Budget(root / "validation", 600, 6_000_000, 2**30, outer_deadline)
-    validation = prepared(root / "validation-inputs", anchor, 281040, "validation", 64,
-                          validation_budget, seen)
+    carry = carry or {}
+    seen = all_physical_identities(prior_exposure or root.parent / "preflight")
+    prior = carry.get("validation", {})
+    validation_budget = Budget(root / "validation", 600 - prior.get("wall_seconds", 0),
+                               6_000_000 - prior.get("native_steps", 0), 2**30, outer_deadline)
+    validation = fixed_validation if fixed_validation is not None else prepared(
+        root / "validation-inputs", anchor, 281040, "validation", 64, validation_budget, seen)
+    write_new(root / "validation" / "input-bindings.json", [{"path": str(p), "sha256": sha(p)} for _, p in validation])
     baselines = [{"kind": "immediate"}]
     baselines += [{"kind": "delay", "seconds": i / 2} for i in range(1, 17)]
     baselines += [{"kind": "ttc", "seconds": s} for s in [0.25, 0.5, 1, 1.5, 2, 3, 4, 6]]
@@ -230,12 +242,18 @@ def learn_and_confirm(root, anchor, outer_deadline):
               scores=baseline_scores, selected=selected_baseline["rule"]))
     seed_results = []
     for seed in [281101, 281102, 281103]:
-        training = Budget(root / f"seed-{seed}", 1800, 50_000_000, 2**30, outer_deadline)
+        prior = carry.get(f"seed-{seed}", {})
+        training = Budget(root / f"seed-{seed}", 1800 - prior.get("wall_seconds", 0),
+                          50_000_000 - prior.get("native_steps", 0), 2**30, outer_deadline)
         sampler = ArcSampler(root / f"training-inputs-{seed}", anchor, seed, f"train-{seed}", training, seen, requested_arcs=131076)
         curves = []
         with (root / f"seed-{seed}" / "episodes.jsonl").open("x") as records:
             vec = DummyVecEnv([lambda: CoastEnv(sampler, training, records) for _ in range(4)])
             model = model_for(vec, seed)
+            if prior.get("initial_weights_sha256"):
+                import hashlib
+                if hashlib.sha256(model.policy.parameters_to_vector().tobytes()).hexdigest() != prior["initial_weights_sha256"]:
+                    raise RuntimeError("continuation changed the original zero-update policy")
             steps = []
             hook = model.policy.optimizer.register_step_post_hook(lambda *_: steps.append(1))
             for checkpoint in [0, 32768, 65536, 98304, 131072]:
@@ -253,8 +271,7 @@ def learn_and_confirm(root, anchor, outer_deadline):
                 curve = {"checkpoint": checkpoint, "path": str(path), "sha256": sha(path),
                          "successes": sum(r["native_success"] for r in score), "rows": score,
                          "optimizer_steps": len(steps), "ppo_epochs": model._n_updates,
-                         "train_metrics": {k: float(v) for k, v in model.logger.name_to_value.items()
-                                           if k.startswith("train/") and np.isscalar(v)}}
+                         "train_metrics": checkpoint_metrics(model)}
                 if not np.isfinite(model.policy.parameters_to_vector()).all():
                     raise RuntimeError("nonfinite trained model")
                 curves.append(curve)
@@ -334,11 +351,55 @@ def learn_and_confirm(root, anchor, outer_deadline):
     return result
 
 
+def closed_zero_update_release(prior, source):
+    """Explicitly resume only this retained preflight after its logging fault."""
+    release = json.loads((prior / "preflight-result.json").read_text())
+    fault = json.loads((prior / "fault.json").read_text())
+    if not release["passed"] or fault["type"] != "AttributeError" or "_logger" not in fault["reason"]:
+        raise RuntimeError("continuation requires the closed checkpoint-zero logging fault")
+    if (prior / "learning/fresh-inputs").exists():
+        raise RuntimeError("fresh inputs were already released")
+    checkpoints = list(prior.glob("learning/seed-*/checkpoint-*.zip"))
+    if len(checkpoints) != 1 or checkpoints[0].name != "checkpoint-0.zip":
+        raise RuntimeError("continuation is limited to zero training updates")
+    initial = PPO.load(checkpoints[0], device="cpu")
+    if initial.num_timesteps != 0 or initial._n_updates != 0 or initial.policy.optimizer.state:
+        raise RuntimeError("prior training optimizer or decisions already advanced")
+    if any(p.stat().st_size for p in prior.glob("learning/seed-*/episodes.jsonl")):
+        raise RuntimeError("prior training has completed episodes")
+    before = release["source"]["source_files"]
+    old_root = Path(next(f["path"] for f in before if f["path"].endswith("/Cargo.lock"))).parent
+    new_root = Path(__file__).resolve().parents[2]
+    old = {str(Path(f["path"]).relative_to(old_root)): f["sha256"] for f in before}
+    new = {str(Path(f["path"]).relative_to(new_root)): f["sha256"] for f in source["source_files"]}
+    changed = {p for p in old.keys() | new.keys() if old.get(p) != new.get(p)}
+    if changed != {"experiments/coast-ignite/run_loop.py"}:
+        raise RuntimeError(f"continuation changed sources beyond runner bookkeeping: {changed}")
+    if any(sha(f["path"]) != f["sha256"] for f in before):
+        raise RuntimeError("retained preflight sources changed")
+    paths = [prior / f"learning/validation-inputs/arc-{i}.json" for i in range(64)]
+    validation = [(json.loads(p.read_text()), p) for p in paths]
+    carry = {}
+    for resource in fault["resources"]:
+        name = Path(resource["phase"]).name
+        if name == "validation" or name.startswith("seed-"):
+            carry[name] = {"wall_seconds": resource["wall_seconds"],
+                           "native_steps": sum(n for k, n in resource["counts"].items()
+                                               if k.endswith("_native_steps"))}
+    import hashlib
+    carry["seed-281101"]["initial_weights_sha256"] = hashlib.sha256(initial.policy.parameters_to_vector().tobytes()).hexdigest()
+    return validation, {"preflight_result_sha256": sha(prior / "preflight-result.json"),
+                        "fault_sha256": sha(prior / "fault.json"), "changed_sources": sorted(changed),
+                        "prior_training_decisions": 0, "prior_training_optimizer_updates": 0,
+                        "carried_resources": carry}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--anchor", type=Path, default=Path("fixtures/scenarios/flat_terminal_descent.json"))
     parser.add_argument("--outer-deadline", type=float, required=True)
+    parser.add_argument("--continue-from", type=Path)
     args = parser.parse_args()
     Budget.artifact_root = args.output.parent
     Budget.interruptible = True
@@ -356,6 +417,15 @@ def main():
     anchor = json.loads(args.anchor.read_text())
     try:
         args.output.mkdir()
+        if args.continue_from:
+            validation, release = closed_zero_update_release(args.continue_from, source)
+            write_new(args.output / "continuation-release.json", {**release, "source": source,
+                      "versions": versions, "native_library_sha256": sha(NATIVE_ARTIFACT)})
+            result = learn_and_confirm(args.output / "learning", anchor, args.outer_deadline,
+                                       prior_exposure=args.continue_from, fixed_validation=validation,
+                                       carry=release["carried_resources"])
+            print(encoded(result), flush=True)
+            return
         result = preflight(args.output / "preflight", anchor, args.outer_deadline)
         write_new(args.output / "preflight-result.json", {**result, "source": source,
                   "versions": versions, "native_library_sha256": sha(NATIVE_ARTIFACT)})

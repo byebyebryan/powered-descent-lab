@@ -7,7 +7,7 @@ import torch
 from stable_baselines3.common.buffers import RolloutBuffer
 
 from coast_ignite import CoastEnv, capture_verified, encoded, model_for, native, write_new
-from run_loop import Budget, binomial_interval
+from run_loop import Budget, binomial_interval, checkpoint_metrics
 
 
 class ShapeOnlyEnv:
@@ -25,6 +25,7 @@ class Tests(unittest.TestCase):
             action_space = CoastEnv.action_space
 
         model = model_for(Empty(), 44)
+        self.assertEqual(checkpoint_metrics(model), {})
         obs = np.zeros((81, 10), dtype=np.float32)
         obs[:, -1] = np.arange(81, 0, -1) / 81
         tensor = torch.as_tensor(obs)
