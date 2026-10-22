@@ -12,6 +12,10 @@ The owner subsequently launched the [execution loop](rl_coast_ignite_execution.m
 That record owns actual epochs, budgets and results; this document retains the
 prospective design and selection rules.
 
+The subsequent [stopping policy research and follow-up plan](rl_coast_ignite_stopping_plan.md)
+examines the eleven retained misses and proposes a comparison using frozen
+weights before allocating further learning.
+
 The hypothesis is that an outcome-trained policy can choose useful ignition
 times across different energies and starting phases while a fixed controller
 performs every physical command. A complete episode includes coast, admission,
