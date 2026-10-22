@@ -1,10 +1,12 @@
 //! Experimental episode-local maneuver contract. The caller owns native time
 //! and termination; implementations own admission, command authority and state.
+mod coast_landing;
 mod contract;
 mod landing;
 mod poly_landing;
 mod timed;
 
+pub use coast_landing::CoastLandingController;
 pub use contract::*;
 pub use landing::TerminalLandingController;
 pub use poly_landing::{

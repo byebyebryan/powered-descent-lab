@@ -287,6 +287,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pd-coast-ignite-example"
+version = "0.1.0"
+dependencies = [
+ "pd-control",
+ "pd-core",
+ "pd-eval",
+ "pd-missions",
+ "pd-report",
+ "pd-run",
+ "pyo3",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "pd-control"
 version = "0.1.0"
 dependencies = [

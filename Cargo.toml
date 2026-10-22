@@ -14,6 +14,7 @@ members = [
   "pd-eval-cli",
   "examples/checkpoint-policy",
   "examples/maneuver-policy",
+  "examples/coast-ignite-policy",
 ]
 resolver = "2"
 

@@ -203,3 +203,11 @@ owns measured allocations and source epochs; the ordinary gate needs no saved
 campaign. Historical schema 2/backend v1 remains explicit; checked schema 3/
 backend v2 binds finite command coverage and scans paired actuation/fuel without
 native forecasting. See the [timed workflow](../examples/maneuver-policy/README.md#timed-poly-landing-v2).
+
+The optional [coast and ignition approach](../experiments/coast-ignite/README.md)
+composes controller-owned engine-off hold and that fixed burn. Its separate
+binding lives in `examples/coast-ignite-policy`; the neutral Python bridge and
+retired RL environment stay independent. Native contract tests run with the
+workspace. Learner tests require the approach's own locked environment and
+explicit bridge installation. Installing or testing it does not launch a run;
+the [execution declaration](rl_coast_ignite_execution.md) owns measured budgets.

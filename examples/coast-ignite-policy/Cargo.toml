@@ -1,0 +1,24 @@
+[package]
+name = "pd-coast-ignite-example"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "pd_coast_native"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pd-core = { path = "../../pd-core" }
+pd-control = { path = "../../pd-control" }
+pd-run = { path = "../../pd-run" }
+pd-eval = { path = "../../pd-eval" }
+pd-missions = { path = "../../pd-missions" }
+pd-report = { path = "../../pd-report" }
+pyo3 = { version = "=0.29.3", features = ["auto-initialize", "abi3-py312"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[build-dependencies]
+sha2.workspace = true
+serde_json.workspace = true

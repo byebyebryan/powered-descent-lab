@@ -1,0 +1,23 @@
+[project]
+name = "pd-coast-ignite"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "stable-baselines3==2.9.0",
+  "torch==2.14.1",
+  "gymnasium==1.4.0",
+  "numpy==2.5.3",
+  "maturin==1.15.0",
+]
+
+[tool.maturin]
+manifest-path = "../../examples/coast-ignite-policy/Cargo.toml"
+module-name = "pd_coast_native"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
