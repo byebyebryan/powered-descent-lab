@@ -31,6 +31,8 @@ class Resources:
         self.phase_max_original_steps = allocation["max_total_native_steps"]
         self.phase_max_bytes = allocation["max_bytes"]
         self.last_storage_check = 0
+        self.phase_started = time.monotonic()
+        self.phase_start_bytes = self.storage_bytes()
         signal.signal(signal.SIGALRM, self.interrupt)
         signal.setitimer(signal.ITIMER_REAL, max(.001, allocation["outer_deadline"] - time.time()))
 
@@ -280,17 +282,130 @@ def fresh_statistics(rows, allocation):
             "reliability99_one_sided95_passed": reliability}
 
 
+def continue_validated(root, campaign, allocation, budget, models, anchor):
+    if (campaign/"fresh").exists() or (campaign/"fresh-release.json").exists() or (campaign/"result.json").exists():
+        raise ValueError("continuation is only allowed before fresh release")
+    freeze = json.loads((campaign/"selection-freeze.json").read_text())
+    if freeze["allocation_sha256"] != sha(root/"execution-allocation.json") or freeze["models"] != allocation["models"]:
+        raise RuntimeError("continuation changed allocation or selected models")
+    def sources(snapshot):
+        return {p["path"].split("/source-epoch-")[1].split("/",1)[1]:p["sha256"] for p in snapshot["source_files"]}
+    before, after = sources(freeze["native_source"]), sources(json.loads(native.source_identity_json()))
+    changed = {name for name in before.keys() | after.keys() if before.get(name) != after.get(name)}
+    allowed = {"experiments/coast-ignite/run_stopping.py", "experiments/coast-ignite/render_stopping.py", "examples/coast-ignite-policy/src/report.rs"}
+    if changed - allowed:
+        raise RuntimeError("continuation changed physical/controller/decoder source: "+str(changed-allowed))
+    receipt = json.loads((campaign/"validation-proof/result.json").read_text())
+    if not receipt["complete"] or receipt["captured_occurrences"] != 16:
+        raise RuntimeError("validation proof allocation incomplete")
+    budget.counts = collections.Counter(receipt["resource_counts"])
+    report_rows = []
+    seen = set(json.loads((campaign/"excluded-prior-identities.json").read_text()))
+    for phase, population in [("preservation","Preservation"),("development","Development cost pilot")]:
+        for line in (campaign/phase/"results.jsonl").open():
+            row=json.loads(line)
+            if row["capture"]:
+                report_rows.append({**row,"population":population})
+    for phase in ["development","validation"]:
+        for path in (campaign/phase/"inputs").glob("arc-*.json"):
+            task=json.loads(path.read_text())
+            if "physical_sha256" in task:seen.add(task["physical_sha256"])
+    for index in range(8):
+        path=campaign/"validation/inputs"/f"arc-{index}.json";task=json.loads(path.read_text())
+        for rule,label in [(freeze["selected_rule"],"Selected rule"),("G","Current greedy")]:
+            folder=campaign/"validation-proof"/label.replace(" ","-")/f"case-{index}-281103-{rule}-0"
+            info=json.loads((folder/"decisions.json").read_text());diag=json.loads((folder/"diagnostics.json").read_text());stop=json.loads((folder/"stopping.json").read_text());proof=json.loads((folder/"proof.json").read_text())
+            for name,key in [("evaluation.json","capture_sha256"),("decisions.json","decisions_sha256")]:
+                if sha(folder/name)!=proof[key]:raise RuntimeError("retained validation capture drift")
+            report_rows.append({"arc":index,"seed":281103,"rule":rule,"replicate":0,"task":str(path),
+                "physical_sha256":task["physical_sha256"],"capture":str(folder),"native_success":info["native_success"],
+                "verified_target_landing":proof["verified_target_landing"],"physics_steps":info["physics_steps"],
+                "ignition_tick":next((t for t,a in info["decisions"] if a),None),"info":info,"diagnostics":diag,
+                "trace":stop["trace"],"population":"Validation proof","display_label":label})
+    write_new(campaign/"continuation-freeze.json",{"previous_selection_sha256":sha(campaign/"selection-freeze.json"),
+        "allocation_sha256":sha(root/"execution-allocation.json"),"changed_source_files":sorted(changed),
+        "native_source":json.loads(native.source_identity_json()),"native_sha256":sha(NATIVE_ARTIFACT),
+        "carried_resource_counts":dict(budget.counts),"repeated_development_validation_episodes":0})
+    print("Continuation: retained validation/selection/proofs; no repeated episodes",flush=True)
+    finish_study(root,campaign,allocation,budget,models,freeze["validation"],seen,anchor,report_rows)
+
+
+def report_cost(root, campaign, report_rows):
+    path = root/"report-cost-calibration.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    pilot = [r for r in report_rows if r["population"] == "Development cost pilot"]
+    output = campaign/"report-cost-pilot"
+    native.render_report(encoded({"title":"Stopping report cost pilot","summary":"Display-only byte calibration; zero native transitions.",
+        "grouped":True,"focus_flat":True,"rows":[{"capture":r["capture"],"population":"Cost pilot",
+        "label":str(r["seed"])+" "+r["rule"]+" "+str(r["replicate"])} for r in pilot]}),str(output))
+    bundles = [sum((output/(p.stem+suffix)).stat().st_size for suffix in [".html",".svg","-evidence.json","-proof.json"])
+               for p in output.glob("flight-*.html")]
+    cost = {"display_only":True,"native_steps":0,"captured_pilot_occurrences":len(pilot),
+            "maximum_rich_bundle_bytes":max(bundles),"total_rich_bytes":sum(bundles),
+            "new_report_context_reserve_bytes":128*1024,"report_copies":1,"per_case_contingency":.10}
+    write_new(path,cost)
+    return cost
+
+
+def finish_study(root, campaign, allocation, budget, models, summary, seen, anchor, report_rows):
+    selected = summary["winner"]
+    if summary["nomination_passed"]:
+        # Release only after proof readiness and explicit whole-fresh reservation.
+        pilot=json.loads((campaign/"development/pilot-result.json").read_text())
+        pilot_captures=list((campaign/"development").glob("case-*/evaluation.json"))
+        max_case_bytes=max(sum(p.stat().st_size for p in x.parent.iterdir() if p.is_file()) for x in pilot_captures)
+        fresh_count=6000+(384 if selected=="S" else 0)
+        cost = report_cost(root,campaign,report_rows)
+        per_case = max_case_bytes + cost["maximum_rich_bundle_bytes"] + cost["new_report_context_reserve_bytes"]
+        reservation={"occurrences":fresh_count,"maximum_native_steps":fresh_count*3604*6,
+                     "capture_and_report_bytes":int(fresh_count * per_case * 1.10),
+                     "report_copies":1,"measured_report_cost_sha256":sha(root/"report-cost-calibration.json"),
+                     "pilot_measured_phase":pilot}
+        if reservation["maximum_native_steps"]>allocation["max_total_native_steps"]-Resources.steps(budget.counts) or budget.storage_bytes()+reservation["capture_and_report_bytes"]>allocation["max_bytes"]:
+            raise RuntimeError("fresh capture/proof/report reservation does not fit outer caps")
+        write_new(campaign/"fresh-release.json",reservation)
+        folder=campaign/"fresh";folder.mkdir()
+        budget.phase("fresh",1800,150_000_000,40*2**30)
+        tasks=prepare(folder/"inputs",allocation["streams"]["fresh"],anchor,budget,seen)
+        schedule=[]
+        for index in range(1200):
+            schedule.extend({"arc":index,"seed":seed,"rule":selected,"role":"candidate","replicate":0} for seed in [281101,281102,281103])
+            schedule.extend([{ "arc":index,"seed":281103,"rule":"G","role":"baseline","replicate":0},
+                             {"arc":index,"seed":0,"rule":"delay","role":"heuristic","replicate":0}])
+            if selected=="S" and index<128:
+                schedule.extend({"arc":index,"seed":281103,"rule":"S","role":"secondary","replicate":replicate} for replicate in [1,2,3])
+        write_new(folder/"schedule.json",schedule);fresh_rows=[]
+        with (folder/"results.jsonl").open("x") as stream:
+            for index,job in enumerate(schedule):
+                row=perform(job,tasks,allocation,budget,models,folder)
+                row["role"]=job["role"];append(stream,row);fresh_rows.append({**row,"rule":job["role"]})
+                report_rows.append({**row,"population":"Fresh confirmation"})
+                if (index+1)%256==0:print("fresh",index+1,"/",len(schedule),flush=True)
+        result=fresh_statistics(fresh_rows,allocation);write_new(folder/"result.json",{**result,**budget.receipt()})
+        verdict={"complete":True,"fresh_released":True,"selected_rule":selected,"fresh":result}
+    else:
+        verdict={"complete":True,"fresh_released":False,"selected_rule":selected,
+                 "reason":"prospective validation nomination threshold not met; frozen current package retained"}
+    write_new(campaign/"report-captures.json",report_rows)
+    write_new(campaign/"result.json",{**verdict,"optimizer_steps":0,**budget.receipt()})
+    print("Study complete",verdict,flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True)
+    parser.add_argument("--continue-after-validation", action="store_true")
     args = parser.parse_args()
     root = Path(args.root).resolve()
     allocation = json.loads((root / "execution-allocation.json").read_text())
-    if (root / "campaign").exists():
-        raise ValueError("campaign destination already exists; no implicit resume")
+    if (root / "campaign").exists() != args.continue_after_validation:
+        raise ValueError("require a new campaign or explicit post-validation continuation")
     if shutil.disk_usage(root).free < allocation["minimum_free_bytes"]:
         raise RuntimeError("insufficient free space before start")
-    campaign = root / "campaign"; campaign.mkdir()
+    campaign = root / "campaign"
+    if not args.continue_after_validation:
+        campaign.mkdir()
     torch.set_num_threads(1)
     budget = Resources(root, allocation)
     models = {}
@@ -305,6 +420,15 @@ def main():
         value = json.loads(path.read_text())
         if "physical_sha256" in value:
             seen.add(value["physical_sha256"])
+    if args.continue_after_validation:
+        try:
+            continue_validated(root, campaign, allocation, budget, models, anchor)
+        except BaseException as exc:
+            write_new(campaign/("fault-"+str(time.time_ns())+".json"),{"error":repr(exc),**budget.receipt()})
+            raise
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+        return
     write_new(campaign / "excluded-prior-identities.json", sorted(seen))
     report_rows = []
     try:
@@ -358,43 +482,7 @@ def main():
                 row=perform({"arc":index,"seed":281103,"rule":rule,"replicate":0},tasks,allocation,budget,models,target)
                 report_rows.append({**row,"population":"Validation proof","display_label":label})
         write_new(proof_folder/"result.json",{"complete":True,"captured_occurrences":16,**budget.receipt()})
-        if summary["nomination_passed"]:
-            # Release only after proof readiness and explicit whole-fresh reservation.
-            pilot=json.loads((campaign/"development/pilot-result.json").read_text())
-            pilot_captures=list((campaign/"development").glob("case-*/evaluation.json"))
-            max_case_bytes=max(sum(p.stat().st_size for p in x.parent.iterdir() if p.is_file()) for x in pilot_captures)
-            fresh_count=6000+(384 if selected=="S" else 0)
-            reservation={"occurrences":fresh_count,"maximum_native_steps":fresh_count*3604*6,
-                         "capture_and_report_bytes":fresh_count*(max_case_bytes+4*2**20),
-                         "pilot_measured_phase":pilot}
-            if reservation["maximum_native_steps"]>allocation["max_total_native_steps"]-Resources.steps(budget.counts) or budget.storage_bytes()+reservation["capture_and_report_bytes"]>allocation["max_bytes"]:
-                raise RuntimeError("fresh capture/proof/report reservation does not fit outer caps")
-            write_new(campaign/"fresh-release.json",reservation)
-            folder=campaign/"fresh";folder.mkdir()
-            budget.phase("fresh",1800,150_000_000,40*2**30)
-            tasks=prepare(folder/"inputs",allocation["streams"]["fresh"],anchor,budget,seen)
-            schedule=[]
-            for index in range(1200):
-                schedule.extend({"arc":index,"seed":seed,"rule":selected,"role":"candidate","replicate":0} for seed in [281101,281102,281103])
-                schedule.extend([{ "arc":index,"seed":281103,"rule":"G","role":"baseline","replicate":0},
-                                 {"arc":index,"seed":0,"rule":"delay","role":"heuristic","replicate":0}])
-                if selected=="S" and index<128:
-                    schedule.extend({"arc":index,"seed":281103,"rule":"S","role":"secondary","replicate":replicate} for replicate in [1,2,3])
-            write_new(folder/"schedule.json",schedule);fresh_rows=[]
-            with (folder/"results.jsonl").open("x") as stream:
-                for index,job in enumerate(schedule):
-                    row=perform(job,tasks,allocation,budget,models,folder)
-                    row["role"]=job["role"];append(stream,row);fresh_rows.append({**row,"rule":job["role"]})
-                    report_rows.append({**row,"population":"Fresh confirmation"})
-                    if (index+1)%256==0:print("fresh",index+1,"/",len(schedule),flush=True)
-            result=fresh_statistics(fresh_rows,allocation);write_new(folder/"result.json",{**result,**budget.receipt()})
-            verdict={"complete":True,"fresh_released":True,"selected_rule":selected,"fresh":result}
-        else:
-            verdict={"complete":True,"fresh_released":False,"selected_rule":selected,
-                     "reason":"prospective validation nomination threshold not met; frozen current package retained"}
-        write_new(campaign/"report-captures.json",report_rows)
-        write_new(campaign/"result.json",{**verdict,"optimizer_steps":0,**budget.receipt()})
-        print("Study complete",verdict,flush=True)
+        finish_study(root, campaign, allocation, budget, models, summary, seen, anchor, report_rows)
     except BaseException as exc:
         write_new(campaign/("fault-"+str(time.time_ns())+".json"),{"error":repr(exc),**budget.receipt()})
         raise

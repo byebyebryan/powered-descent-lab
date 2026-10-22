@@ -11,12 +11,19 @@ struct Spec {
     title: String,
     summary: String,
     rows: Vec<Row>,
+    #[serde(default)]
+    grouped: bool,
+    #[serde(default)]
+    focus_flat: bool,
+    max_bytes: Option<u64>,
+    overview_html: Option<String>,
 }
 #[derive(Deserialize)]
 struct Row {
     capture: String,
     population: String,
     label: String,
+    context_html: Option<String>,
 }
 
 #[pyfunction]
@@ -32,6 +39,16 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         missions: vec![],
     };
     let mut groups: BTreeMap<String, String> = BTreeMap::new();
+    let mut mission_ids: BTreeMap<(String, String), usize> = BTreeMap::new();
+    if spec.grouped {
+        review.labels.clear();
+        for row in &spec.rows {
+            if !review.labels.contains(&row.label) {
+                review.labels.push(row.label.clone());
+            }
+        }
+    }
+    let max_bytes = spec.max_bytes.unwrap_or(4 * 1024 * 1024 * 1024);
     let mut written_bytes = 0_u64;
     for (index, row) in spec.rows.iter().enumerate() {
         let root = Path::new(&row.capture);
@@ -74,7 +91,24 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             groups.insert(row.population.clone(), g.clone());
             g
         };
-        if written_bytes + 32 * 1024 * 1024 > 4 * 1024 * 1024 * 1024 {
+        let mission_index = if spec.grouped {
+            let next = review.missions.len();
+            *mission_ids
+                .entry((group.clone(), e.physical_sha256.clone()))
+                .or_insert(next)
+        } else {
+            index
+        };
+        let approach = if spec.grouped {
+            review
+                .labels
+                .iter()
+                .position(|label| label == &row.label)
+                .unwrap()
+        } else {
+            0
+        };
+        if written_bytes + 32 * 1024 * 1024 > max_bytes {
             return Err(error("report byte reservation exhausted"));
         }
         let name = format!("flight-{index}");
@@ -107,6 +141,46 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
                     .collect(),
             }
         });
+        let camera = if spec.focus_flat {
+            let pd_core::TerrainDefinition::Heightfield { points_m } = &e.scenario.world.terrain;
+            if points_m.iter().any(|p| p.y != points_m[0].y) {
+                return Err(error("flight camera is scoped to flat terrain"));
+            }
+            let mut positions: Vec<_> = e
+                .execution
+                .episode
+                .run
+                .samples
+                .iter()
+                .map(|s| s.observation.position_m)
+                .collect();
+            positions.push(pd_core::Vec2::new(
+                ctx.target_pad.center_x_m - ctx.target_pad.half_width_m(),
+                ctx.target_pad.surface_y_m,
+            ));
+            positions.push(pd_core::Vec2::new(
+                ctx.target_pad.center_x_m + ctx.target_pad.half_width_m(),
+                ctx.target_pad.surface_y_m,
+            ));
+            if let Some(reference) = &reference {
+                positions.extend(reference.points.iter().copied());
+            }
+            let min_x = positions.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+            let max_x = positions
+                .iter()
+                .map(|p| p.x)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let min_y = positions.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
+            let max_y = positions
+                .iter()
+                .map(|p| p.y)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let mx = (0.08 * (max_x - min_x)).max(10.0);
+            let my = (0.08 * (max_y - min_y)).max(10.0);
+            Some(([min_x - mx, max_x + mx], [min_y - my, max_y + my]))
+        } else {
+            None
+        };
         let raw = pd_report::render_agent_run_report_with_reference(
             &e.scenario,
             &e.execution,
@@ -130,7 +204,7 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         let rich =
             detail_view::with_static_fallback(&raw, &svg, &metrics, &row.label).map_err(error)?;
         let nav = format!(
-            "<nav class=\"review-detail-nav\" aria-label=\"Mission navigation\"><a href=\"report.html#mission-{index}\" data-back-review>Back to mission tree</a><a href=\"#\" data-review-previous hidden>Previous matched mission</a><a href=\"#\" data-review-next hidden>Next matched mission</a></nav>"
+            "<nav class=\"review-detail-nav\" aria-label=\"Mission navigation\"><a href=\"report.html#mission-{mission_index}\" data-back-review>Back to mission tree</a><a href=\"#\" data-review-previous hidden>Previous matched mission</a><a href=\"#\" data-review-next hidden>Next matched mission</a></nav>"
         );
         let source_href = format!(
             "../{}/evaluation.json",
@@ -143,20 +217,23 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             .to_string_lossy()
         );
         let contact = e.execution.episode.incoming_contact.as_ref().map_or_else(||"No native incoming contact recorded.".into(),|c|format!("Incoming native contact at {:.3} s: COM vx {:.3} m/s, vy {:.3} m/s; attitude {:.4} rad, angular rate {:.4} rad/s; classification {:?}.",c.state.sim_time_s,c.state.velocity_mps.x,c.state.velocity_mps.y,c.state.attitude_rad,c.state.angular_rate_radps,c.classification));
-        let context = format!(
+        let mut context = format!(
             "<h1>{}</h1><p>{} · native replay, controller and policy reconstruction passed.</p><p>{}</p><p><a href=\"{name}-evidence.json\">Contact and source evidence</a> · <a href=\"{}\">Complete sealed native capture</a> · <a href=\"{name}-proof.json\">Proof receipt</a></p>",
             batch::escape_html(&e.scenario.id),
             batch::escape_html(&row.label),
             batch::escape_html(&contact),
             batch::escape_html(&source_href)
         );
+        if let Some(extra) = &row.context_html {
+            context.push_str(extra);
+        }
         let html = detail_view::with_review_context(
             &rich,
             &nav,
             &context,
             "/coast-export/",
-            &format!("mission-{index}"),
-            0,
+            &format!("mission-{mission_index}"),
+            approach,
             e.verified_target_landing,
         )
         .map_err(error)?
@@ -176,6 +253,20 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         .replace("Velocity And Thrust", "Velocity And Engine Setting")
         .replace("name: \"thrust\"", "name: \"engine setting\"")
         .replace("Thrust (0..1)", "Engine setting (0..1)");
+        let html = if let Some((x, y)) = camera {
+            let old = "xaxis: axisStyle({ title: \"\" }),\n          yaxis: axisStyle({ title: \"\", scaleanchor: \"x\", scaleratio: 1 }),";
+            if html.matches(old).count() != 1 {
+                return Err(error("maintained initial-camera boundary missing"));
+            }
+            let replacement = format!(
+                "xaxis: axisStyle({{ title: \"\", range: {} }}),\n          yaxis: axisStyle({{ title: \"\", scaleanchor: \"x\", scaleratio: 1, range: {} }}),",
+                serde_json::to_string(&x).map_err(error)?,
+                serde_json::to_string(&y).map_err(error)?
+            );
+            html.replacen(old, &replacement, 1)
+        } else {
+            html
+        };
         write_new(&output.join(format!("{name}.html")), html.as_bytes()).map_err(error)?;
         write_new(&output.join(format!("{name}.svg")), svg.as_bytes()).map_err(error)?;
         let evidence = serde_json::to_vec(&serde_json::json!({"physical_sha256":e.physical_sha256,"descriptor":e.execution.descriptor,"incoming_contact":e.execution.episode.incoming_contact,"final_state":e.execution.episode.final_state,"manifest":manifest,"stop":e.execution.episode.stop,"integrity_passed":e.integrity_passed,"replay":e.replay,"source_evaluation_href":source_href,"source_evaluation_sha256":hash,"policy_decisions":info})).map_err(error)?;
@@ -190,7 +281,38 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             + evidence.len()
             + serde_json::to_vec(&proof).map_err(error)?.len()) as u64;
         let dx = e.scenario.initial_state.position_m.x;
-        review.missions.push(PairedMissionV1 {id:format!("mission-{index}"),group:group.clone(),path:vec![group],direction:if dx>0.0 {-1} else {1},direction_unavailable:false,label:format!("{} · {}",e.scenario.id,row.label),mission_index:index as u64,physical_sha256:e.physical_sha256,occurrence:0,attempts:vec![PairedAttemptV1 {approach:0,attempt_index:index as u64,outcome:outcome.into(),cells:format!("<td>{outcome}</td><td>{:.3} s · {:.1} kg fuel</td><td>Three reconstruction/replay checks passed</td>",e.execution.episode.final_state.sim_time_s,e.execution.episode.final_state.fuel_kg),href:Some(format!("{name}.html")),preview:Some(format!("{name}.svg")),caption:row.label.clone()}]});
+        let attempt = PairedAttemptV1 {
+            approach,
+            attempt_index: index as u64,
+            outcome: outcome.into(),
+            cells: format!(
+                "<td>{outcome}</td><td>{:.3} s · {:.1} kg fuel</td><td>Three reconstruction/replay checks passed</td>",
+                e.execution.episode.final_state.sim_time_s, e.execution.episode.final_state.fuel_kg
+            ),
+            href: Some(format!("{name}.html")),
+            preview: Some(format!("{name}.svg")),
+            caption: row.label.clone(),
+        };
+        if let Some(mission) = review.missions.get_mut(mission_index) {
+            mission.attempts.push(attempt);
+        } else {
+            review.missions.push(PairedMissionV1 {
+                id: format!("mission-{mission_index}"),
+                group: group.clone(),
+                path: vec![group],
+                direction: if dx > 0.0 { -1 } else { 1 },
+                direction_unavailable: false,
+                label: if spec.grouped {
+                    e.scenario.id.clone()
+                } else {
+                    format!("{} · {}", e.scenario.id, row.label)
+                },
+                mission_index: mission_index as u64,
+                physical_sha256: e.physical_sha256,
+                occurrence: 0,
+                attempts: vec![attempt],
+            });
+        }
     }
     let tree = batch::render_review_tree_section(
         "",
@@ -202,10 +324,12 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             "",
         ),
     );
-    let overview = format!(
-        "<section><h2>Measured result</h2><p>{}</p></section>",
-        batch::escape_html(&spec.summary)
-    );
+    let overview = spec.overview_html.unwrap_or_else(|| {
+        format!(
+            "<section><h2>Measured result</h2><p>{}</p></section>",
+            batch::escape_html(&spec.summary)
+        )
+    });
     let html = batch::render_review_first_batch_page(batch::BatchPage {
         title: &spec.title,
         subtitle: "Supplied ballistic arcs · controller-owned coast · fixed Poly Landing burn",
