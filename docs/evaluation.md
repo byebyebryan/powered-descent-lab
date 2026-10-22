@@ -1108,3 +1108,15 @@ modules. Rejected boost scorers are retired executable modes; their saved
 diagnostics remain readable.
 Detailed checkpoint history lives in `docs/progress.md`,
 `docs/transfer_suite.md`, and `docs/terminal_suite.md`.
+
+## Coast and ignition hybrid
+
+The [coast and ignition execution](rl_coast_ignite_execution.md) owns the completed
+supplied-arc experiment: three training seeds, frozen validation selection and
+one paired 600-arc fresh comparison. Training scores are native indicators;
+landing claims require captured mission success, integrity, physical replay,
+controller reconstruction and frozen-model reconstruction. The first adapter
+uses the original Episode throughout coast and burn, with mission-provided
+touchdown time and controller-owned actuation. It does not qualify arbitrary
+arrival or generalized control. New allocations require new declarations;
+installation commands are in the [approach README](../experiments/coast-ignite/README.md).

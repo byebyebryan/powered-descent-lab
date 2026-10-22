@@ -24,3 +24,17 @@ conditionally training three seeds and releasing fresh evaluation. Never rerun
 it over existing outputs. Frozen captures need the compiled source epoch,
 native artifact, exact runtime lock and selected checkpoint for reconstruction.
 The report uses the maintained mission tree and complete rich flight template.
+
+The completed allocation's final edition is a display-only projection of its
+sealed comparison, retained miss diagnostics and resource-accounting supplement:
+
+```sh
+rtk proxy python experiments/coast-ignite/render_result.py \
+  --learning outputs/coast-ignite/loop-20261022T173645Z/campaign-c/learning \
+  --output outputs/coast-ignite/loop-20261022T173645Z/campaign-c/learning/NEW_EDITION
+```
+
+Choose a new destination. This command groups the four retained attempts under
+each physical arc and adds result tables/curves without simulating or changing
+the shared tree browser. It requires this study's retained inputs and receipts;
+the ordinary native/Python tests do not.

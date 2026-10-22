@@ -29,15 +29,19 @@ finite burns exactly. Its checked adapter lands 600/600 fresh flat, prepared,
 explicitly timed entries with zero shape failures; the one-sided 95% lower bound
 is 99.502%, passing the conditional task's declared 99% criterion. The
 [execution record](poly_landing_execution.md) retains the technical repair,
-source epochs and full HTML mission tree. Planner-generated handoffs and entry
-perturbations are next; RL training remains a separate allocation.
+source epochs and full HTML mission tree. The subsequent
+[coast and ignition study](rl_coast_ignite_execution.md) completes a bounded
+learned decision over supplied target-directed arcs: 589/600 verified fresh
+landings versus 446/600 for the validation-selected heuristic. Controller burn
+arithmetic is unchanged. Generalized control and whole-mission flight remain
+outside that supplied-arc and explicit-timing task.
 
 The [completed controller pass](controller_evaluation_results.md) now owns the
 measured standalone checkpoint: exact adapter parity on 945 retained cases, 598/600
 fresh local-reference landings and a failed predeclared 99% confidence criterion.
 Immediate activation achieves 61/64 against a 62/64 hindsight timing-grid union.
 The harness is ready for bounded controller comparisons; whole-mission handoffs
-and a useful learned decision advantage remain unqualified.
+remain unqualified. The later coast study owns its conditional decision advantage.
 
 ### Independent approach platform
 
@@ -1047,14 +1051,13 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
-The [Poly Landing pass](poly_landing_execution.md) qualifies its frozen flat,
-prepared, explicitly timed task. Next specify planner-generated handoffs:
-coast/attitude preparation, target and endpoint-time choice, live entry checks,
-NoPlan handling and a bounded envelope of entry perturbations. Begin with the
-preserved historical flat mission controls and a prospectively frozen new
-handoff set. Keep physical mission continuity and independent replay intact;
-no new training or campaign is allocated by this recommendation. A target-only
-duration selector remains separate new policy work.
+The first [coast and ignition hybrid](rl_coast_ignite_execution.md) is complete.
+The next review should focus on its 11 retained RL misses: seven rejected burn
+requests and four crashes after accepted burns. Keep the qualified supplied-arc
+scope, source epochs and 600 fresh inputs intact; those exposed inputs cannot
+become another fresh test. Any further training or envelope change needs its
+own bounded hypothesis and new independent confirmation. General arrival,
+departure and duration selection remain separate decisions.
 
 The [standalone characterization loop](controller_evaluation_results.md) is
 complete. Its exact adapter parity and 598/600 fresh landings do not qualify Poly

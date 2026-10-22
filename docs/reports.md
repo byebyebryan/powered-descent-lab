@@ -474,3 +474,16 @@ rtk proxy node scripts/check-planner-v2-browser.mjs \
 This opens and closes its own tab; it does not start a browser/server or regenerate
 reports. Adding `--output-dir NEW_DIRECTORY` writes create-only screenshots and a
 receipt. Automated navigation checks are not a substitute for your visual review.
+
+## Coast and ignition result edition
+
+The [completed hybrid execution](rl_coast_ignite_execution.md#html-delivery-and-next-boundary)
+links the 600-arc HTML comparison and source epochs. Its display-only
+[projection](../experiments/coast-ignite/render_result.py) extends the maintained
+mission tree and rich details: each physical arc contains all four policy
+attempts, with 12 arcs per page, all-seed validation curves and matched detail
+navigation. Validation flights and the original full tree remain linked.
+The initial flat-flight camera follows saved flight/pad/reference bounds; full
+terrain and trajectory payloads stay intact. New presentation destinations only.
+Generating this edition performs no native transition and does not refresh the
+report home, publish a site or change the existing server.

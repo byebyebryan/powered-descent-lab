@@ -27,6 +27,7 @@ later code and documentation housekeeping does not create a new flight capture.
 | Implement and run an unattended controller characterization pass | [Controller characterization plan](controller_evaluation_implementation_plan.md) |
 | Inspect controller coverage, activation value and qualification limits | [Controller characterization results](controller_evaluation_results.md) |
 | Review the accepted finite-burn interface and qualified flat timed-entry task | [Poly Landing plan](poly_landing_controller_plan.md) |
+| Plan a bounded learned coast-or-ignite policy over the fixed landing controller | [RL coast and ignition plan](rl_coast_ignite_plan.md) |
 
 ## Current controller checkpoint
 
@@ -35,8 +36,13 @@ adapter preserves all 38 historical finite burns exactly. The checked adapter
 lands 600/600 fresh flat, prepared, explicitly timed entries with zero shape
 failures; its one-sided 95% lower bound is 99.502%, passing the declared 99%
 criterion for that conditional task. The [execution record](poly_landing_execution.md)
-links the full HTML tree and retains both source epochs. Next define planner-
-generated handoffs and bounded entry perturbations before RL training.
+links the full HTML tree and retains both source epochs. The subsequent
+[coast and ignition study](rl_coast_ignite_execution.md) completes the first
+bounded RL/controller hybrid: 589/600 verified fresh target landings versus
+446/600 for the validation-selected fixed-delay heuristic, with the burn backend
+unchanged. The mission supplies the target-directed arc, prepared attitude and
+absolute touchdown time; RL chooses when to ignite. The execution record links
+the complete HTML mission tree, paired comparison and retained misses.
 The completed results below belong to the standalone terminal PDG backend,
 which the existing maneuver interface wraps; they do not measure Poly Landing.
 
@@ -44,8 +50,9 @@ The [completed characterization](controller_evaluation_results.md) verifies
 945/945 exact adapter comparisons. Fresh local-reference landing is 598/600,
 but the one-sided 95% bound is 98.954%, so the predeclared 99% criterion fails.
 Immediate activation lands 61/64 versus a 62/64 hindsight timing-grid union.
-The harness is implemented; actual mission-handoff qualification and RL remain
-later work. The result and [execution ledger](controller_evaluation_execution.md)
+The harness is implemented. Whole-mission handoffs remain unqualified; the
+later coast study owns its separate conditional RL result. The result and
+[execution ledger](controller_evaluation_execution.md)
 own the measured controller status.
 
 ## Report presentation refinement

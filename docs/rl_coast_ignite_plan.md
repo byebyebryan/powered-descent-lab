@@ -8,6 +8,10 @@ Landing burn. General arrival control, departure and terrain avoidance are not
 prerequisites. This proposal defines the task and its staged acceptance; it does
 not launch implementation, training, native campaigns or report operations.
 
+The owner subsequently launched the [execution loop](rl_coast_ignite_execution.md).
+That record owns actual epochs, budgets and results; this document retains the
+prospective design and selection rules.
+
 The hypothesis is that an outcome-trained policy can choose useful ignition
 times across different energies and starting phases while a fixed controller
 performs every physical command. A complete episode includes coast, admission,
