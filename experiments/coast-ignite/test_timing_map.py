@@ -9,6 +9,7 @@ from coast_ignite import encoded, native
 from render_timing_map import capture_groups, map_widget
 from run_timing_map import execute
 from timing_analysis import SLOTS, components, fixed_action, map_summary, metric
+from timing_findings import analyze
 
 
 class TimingTests(unittest.TestCase):
@@ -82,6 +83,27 @@ class TimingTests(unittest.TestCase):
         markup = map_widget([{"id": "</script><script>bad()", "arc": 0}])
         self.assertNotIn('"id":"</script>', markup)
         self.assertIn('\\u003c/script>', markup)
+
+    def test_findings_use_current_consumption_and_exclude_failed_cheap_points(self):
+        cases, maps, rows = [], [], []
+        for cohort in ["development", "diagnostic"]:
+            cases.append({"id": cohort, "cohort": cohort, "arc": 0})
+            maps.append({"id": cohort, "has_successful_point": True, "best_slot": 2,
+                         "best_neighbors": {"two_sided_success": False},
+                         "policies": {"M": {"native_success": True, "fuel_used_kg": 100}}})
+            for slot, fuel in enumerate([100, 90, 80, 0]):
+                rows.append({"id": cohort, "slot": slot, "native_success": slot < 3,
+                             "metrics": {"admitted": True, "fuel_used_kg": fuel,
+                                         "contact_residual_s": -.2}})
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); (root / "campaign").mkdir()
+            (root / "execution-allocation.json").write_text(json.dumps({"cases": cases}))
+            (root / "campaign/map-summary.json").write_text(json.dumps({"maps": maps}))
+            (root / "campaign/results.jsonl").write_text(''.join(json.dumps(r) + '\n' for r in rows))
+            findings = analyze(root)["cohorts"]["development"]
+        self.assertEqual(findings["median_saving_fraction_of_M"], .2)
+        self.assertEqual(findings["median_interior_saving_fraction_of_M"], .1)
+        self.assertEqual(findings["material_at_timing_edge"], 1)
 
     def test_native_contact_censors_later_request_and_preserves_coast(self):
         project = Path(__file__).resolve().parents[2]

@@ -47,3 +47,25 @@ Choose a new destination. This command groups the four retained attempts under
 each physical arc and adds result tables/curves without simulating or changing
 the shared tree browser. It requires this study's retained inputs and receipts;
 the ordinary native/Python tests do not.
+
+The [timing and efficiency characterization](../../docs/rl_coast_ignite_efficiency_plan.md)
+maps every legal ignition opportunity with the same controller and fixed
+reference end. Its [execution record](../../docs/rl_coast_ignite_efficiency_execution.md)
+owns the bounded allocation and measured result. `run_timing_map.py` requires a
+sealed allocation and copied source epoch, uses create-only outputs, and runs
+zero training updates. `render_timing_map.py` projects the captures into the
+maintained trees; `timing_findings.py` adds immutable interpretation indexes
+without rewriting rich flights. `audit_timing_map.py` independently checks saved
+identities, map selections, full capture proofs and resource counts with zero
+native steps.
+
+For a read-only paired reduction of an already-saved stopping study:
+
+```sh
+rtk proxy python3 -B experiments/coast-ignite/timing_analysis.py \
+  --old-root outputs/coast-ignite-stopping/loop-20261022T204723Z
+```
+
+The development maps and outcome-selected diagnostics are exposed inputs, not
+fresh reliability confirmation. Best observed grid points are hindsight
+comparators and do not become a deployed policy or training labels.
