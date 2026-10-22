@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 from pathlib import Path
 
 from coast_ignite import encoded, native, sha, write_new
@@ -11,6 +12,13 @@ from coast_ignite import encoded, native, sha, write_new
 
 def read(path):
     return json.loads(Path(path).read_text())
+
+
+def scroll_summary_tables(markup):
+    return ('<style>.stopping-table-wrap{max-width:100%;min-width:0;overflow-x:auto}</style>'
+            + re.sub(r'<table>(.*?)</table>',
+                     r'<div class="table-wrap stopping-table-wrap"><table>\1</table></div>',
+                     markup, flags=re.S))
 
 
 def stopping_context(row, campaign):
@@ -97,31 +105,94 @@ def overview(campaign, rows):
             '<table><thead><tr><th>Phase</th><th>Frozen seed</th><th>Rule</th><th>Native successes / occurrences</th><th>Rate</th><th>Independent arcs</th></tr></thead><tbody>'
             + "".join(table) + '</tbody></table>'
             f'<p>Validation aggregate lift over G: {100*validation["aggregate_lift"]:.3f} percentage points; fixed-primary lift: {100*validation["primary_lift"]:.3f}. Nomination requires at least 0.5 points for both.</p>'
-            f'<h2>Captured flight evidence</h2><p>The established mission tree below contains {len(rows)} complete rich captures: preservation controls, the four-arc cost pilot, selected validation proof, and fresh confirmation if released. Each has physical replay, controller reconstruction, live policy reconstruction and bound diagnostic sidecars.</p>'
+            f'<h2>Captured flight evidence</h2><p>The report links {len(rows)} complete rich captures across the populations below: preservation controls, the four-arc cost pilot, selected validation proof, and fresh confirmation if released. Each has physical replay, controller reconstruction, live policy reconstruction and bound diagnostic sidecars.</p>'
             '<p>Captures are grouped by physical mission and population. Summary-only development/validation occurrences remain in their complete ledgers; they do not have invented flight views. The original 600-case result is preserved.</p>'
             '<p><a href="../result.json">Run closure</a> · <a href="../selection-freeze.json">Frozen selection</a> · <a href="../development/result.json">Development result</a> · <a href="../validation/result.json">Validation result</a> · <a href="../development/results.jsonl">All development occurrences</a> · <a href="../validation/results.jsonl">All validation occurrences</a> · <a href="presentation-receipt.json">Report receipt</a></p></section>')
 
 
-def render(root):
-    root=Path(root).resolve();campaign=root/"campaign"
-    rows=read(campaign/"report-captures.json")
-    spec_rows=[]
+def split_reports(rows):
+    populations = {}
     for row in rows:
-        label=row.get("display_label") or (f'Seed {row["seed"]} · {row["rule"]}' + (f' · draw {row["replicate"]}' if row["rule"]=="S" else "") if row["seed"] else row["rule"])
-        spec_rows.append({"capture":row["capture"],"population":row["population"],"label":label,
-                          "context_html":stopping_context(row,campaign)})
-    spec={"title":"Coast ignition stopping comparison","summary":"Frozen weights; unchanged Poly Landing; native contact and complete proof.",
-          "rows":spec_rows,"grouped":True,"focus_flat":True,"max_bytes":16*2**30,"overview_html":overview(campaign,rows)}
-    write_new(campaign/"report-spec.json",spec)
-    output=campaign/"report";native.render_report(encoded(spec),str(output))
-    review=read(output/"report-input.json")
-    if sum(len(m["attempts"]) for m in review["missions"])!=len(rows):
-        raise ValueError("paired tree inventory differs from capture allocation")
-    files=[{"file":str(p.relative_to(output)),"bytes":p.stat().st_size,"sha256":sha(p)} for p in sorted(output.iterdir())]
-    write_new(output/"presentation-receipt.json",{"schema_version":1,"display_only":True,"native_steps":0,
-              "captured_occurrences":len(rows),"physical_missions_by_population":len(review["missions"]),
-              "all_rich_payloads_preserved":True,"files":files})
-    print(encoded({"report":str(output/"report.html"),"missions":len(review["missions"]),"rich_views":len(rows)}),flush=True)
+        populations.setdefault(row["population"], []).append(row)
+    result = []
+    if "Fresh confirmation" in populations:
+        fresh = populations.pop("Fresh confirmation")
+        primary = [r for r in fresh if r.get("role") != "secondary"]
+        def order(row):
+            if row.get("role") == "candidate" and row["seed"] == 281103: return 0
+            if row.get("role") == "baseline": return 1
+            if row.get("role") == "candidate": return 2 if row["seed"] == 281101 else 3
+            return 4
+        primary.sort(key=lambda row: (row["arc"], order(row)))
+        result.append(("report", "Fresh confirmation", primary))
+        secondary = [r for r in fresh if r.get("role") == "secondary"]
+        if secondary:
+            secondary += [r for r in primary if r["seed"] == 281103 and r.get("role") == "candidate" and r["arc"] < 128]
+            secondary.sort(key=lambda row: (row["arc"], row["replicate"]))
+            populations["Secondary sampling diagnostics"] = secondary
+    else:
+        result.append(("report", "Validation proof", populations.pop("Validation proof")))
+    for population, name in [("Preservation", "report-preservation"),
+                             ("Development cost pilot", "report-development"),
+                             ("Validation proof", "report-validation"),
+                             ("Secondary sampling diagnostics", "report-sampling")]:
+        if population in populations:
+            result.append((name, population, populations[population]))
+    return result
+
+
+def label_for(row, population):
+    if population == "Secondary sampling diagnostics":
+        return "Primary sampled · draw " + str(row["replicate"])
+    if row.get("display_label"):
+        return row["display_label"] + " · " + row["rule"]
+    if not row["seed"]:
+        return "Three-second delay" if row["rule"] == "delay" else "Immediate ignition"
+    names = {"G": "Greedy", "M": "Median", "S": "Sampled"}
+    who = "primary" if population == "Fresh confirmation" and row["seed"] == 281103 else "seed " + str(row["seed"])
+    return names[row["rule"]] + " · " + who + (" · draw " + str(row["replicate"]) if row["rule"] == "S" else "")
+
+
+def render(root):
+    root = Path(root).resolve(); campaign = root/"campaign"
+    rows = read(campaign/"report-captures.json")
+    reports = split_reports(rows)
+    links = '<p>Complete captured populations: ' + ' · '.join(
+        f'<a href="../{name}/report.html">{html.escape(population)} ({len(subset)} captures)</a>'
+        for name,population,subset in reports) + '</p>'
+    outputs = []
+    for name,population,subset in reports:
+        spec_rows = [{"capture":row["capture"], "population":population,
+                      "label":label_for(row,population), "context_html":stopping_context(row,campaign)}
+                     for row in subset]
+        intro = (overview(campaign,rows) if name == "report" else
+                 f'<section><h2>{html.escape(population)}</h2><p>{len(subset)} complete captured occurrences with independent physical, controller and planner reconstruction. These are {html.escape(population.lower())} inputs, separate from the fresh denominator.</p></section>')
+        spec = {"title":"Coast ignition stopping · " + population,
+                "summary":"Frozen weights; unchanged Poly Landing; complete native proof.",
+                "rows":spec_rows, "grouped":True, "focus_flat":True,
+                "max_bytes":16*2**30, "overview_html":scroll_summary_tables(intro)+links}
+        write_new(campaign/(name+"-spec.json"),spec)
+        output = campaign/name
+        native.render_report(encoded(spec),str(output))
+        review = read(output/"report-input.json")
+        expected = list(range(len(review["labels"])))
+        if any([a["approach"] for a in m["attempts"]] != expected for m in review["missions"]):
+            raise ValueError("established reader needs dense, consistently ordered approach slots within each report")
+        if sum(len(m["attempts"]) for m in review["missions"]) != len(subset):
+            raise ValueError("paired tree inventory differs from capture allocation")
+        files = [{"file":str(p.relative_to(output)),"bytes":p.stat().st_size,"sha256":sha(p)}
+                 for p in sorted(output.iterdir())]
+        receipt = {"schema_version":1,"display_only":True,"native_steps":0,
+                   "captured_occurrences":len(subset),"physical_missions":len(review["missions"]),
+                   "dense_approach_slots_verified":True,"all_rich_payloads_preserved":True,
+                   "presentation_source_sha256":sha(Path(__file__).resolve()),
+                   "native_artifact_sha256":sha(__import__('coast_ignite').NATIVE_ARTIFACT),
+                   "capture_inventory_sha256":sha(campaign/"report-captures.json"),"files":files}
+        write_new(output/"presentation-receipt.json",receipt)
+        outputs.append({"report":str(output/"report.html"),"population":population,
+                        "missions":len(review["missions"]),"rich_views":len(subset)})
+        print(encoded(outputs[-1]),flush=True)
+    write_new(campaign/"report-delivery-inventory.json",{"display_only":True,"native_steps":0,"reports":outputs})
 
 
 if __name__=="__main__":

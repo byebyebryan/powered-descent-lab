@@ -335,7 +335,7 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         subtitle: "Supplied ballistic arcs · controller-owned coast · fixed Poly Landing burn",
         chips_html: &format!(
             "<span class=\"chip\">{} complete rich flight views</span>",
-            review.missions.len()
+            spec.rows.len()
         ),
         actions_html: "<a href=\"#review-tree-root\">Browse missions</a><a href=\"report-input.json\">Projection data</a>",
         before_hero_html: &format!("<style>{}</style>", campaign_view::STYLE),

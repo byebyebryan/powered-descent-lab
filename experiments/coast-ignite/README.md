@@ -10,6 +10,15 @@ There is no cached stopping payoff, duration search or physical action from RL.
 release rules and limits. Installation or tests do not release a campaign.
 The retired `experiments/rl` environment stays independent.
 
+The subsequent [stopping study](../../docs/rl_coast_ignite_stopping_plan.md) uses
+the existing frozen checkpoints with zero training. Its
+[execution record](../../docs/rl_coast_ignite_stopping_execution.md) owns the
+allocation and outcome. `run_stopping.py` requires a declared root and uses
+create-only outputs; explicit post-validation continuation retains prior work
+and is rejected after fresh release. `render_stopping.py` creates separate
+established trees for populations with different policy sets, with the primary
+comparison first. Neither command changes the original experiment or defaults.
+
 ```sh
 rtk proxy uv sync --project experiments/coast-ignite --locked
 rtk proxy uv run --project experiments/coast-ignite maturin develop --release \

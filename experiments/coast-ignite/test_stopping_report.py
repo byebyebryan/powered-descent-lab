@@ -6,9 +6,30 @@ from pathlib import Path
 
 from coast_ignite import capture_verified, encoded, native, write_new
 from run_loop import Budget
+from render_stopping import split_reports, label_for, scroll_summary_tables
 
 
 class ReportTests(unittest.TestCase):
+    def test_scroll_wrappers_do_not_rewrite_maintained_review_tables(self):
+        raw = '<table><tr><td>Score</td></tr></table><table class="paired-table"><tr></tr></table>'
+        result = scroll_summary_tables(raw)
+        self.assertEqual(result.count('<div class="table-wrap stopping-table-wrap">'),1)
+        self.assertIn('<table class="paired-table"><tr></tr></table>',result)
+
+    def test_populations_keep_dense_approaches_and_primary_view_first(self):
+        rows = []
+        for arc in range(3):
+            for seed,rule,role in [(281101,"M","candidate"),(281102,"M","candidate"),
+                                   (281103,"M","candidate"),(281103,"G","baseline"),(0,"delay","heuristic")]:
+                rows.append({"arc":arc,"seed":seed,"rule":rule,"role":role,"replicate":0,"population":"Fresh confirmation"})
+        rows.append({"arc":0,"seed":281103,"rule":"G","replicate":0,"population":"Preservation"})
+        reports = split_reports(rows)
+        self.assertEqual([name for name,_,_ in reports],["report","report-preservation"])
+        labels = [label_for(r,"Fresh confirmation") for r in reports[0][2][:5]]
+        self.assertEqual(labels[:2],["Median · primary","Greedy · primary"])
+        for i in range(0,15,5):
+            self.assertEqual([label_for(r,"Fresh confirmation") for r in reports[0][2][i:i+5]],labels)
+
     def test_grouping_and_camera_preserve_complete_rich_payload(self):
         project = Path(__file__).resolve().parents[2]
         anchor = json.loads((project/"fixtures/scenarios/flat_terminal_descent.json").read_text())
@@ -30,6 +51,7 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(len(raw["missions"]),2)
             self.assertEqual(len(focused["missions"]),1)
             self.assertEqual(len(focused["missions"][0]["attempts"]),2)
+            self.assertIn('2 complete rich flight views',(root/"focused/report.html").read_text())
             def payload(folder):
                 text = (root/folder/"flight-0.html").read_text();marker="const reportData = "
                 return json.JSONDecoder().raw_decode(text[text.index(marker)+len(marker):])[0]
