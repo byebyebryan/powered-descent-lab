@@ -53,6 +53,9 @@ fn main() {
         "stopping_policy.py",
         "run_stopping.py",
         "render_stopping.py",
+        "timing_analysis.py",
+        "run_timing_map.py",
+        "render_timing_map.py",
     ] {
         let path = root.join("experiments/coast-ignite").join(name);
         if path.exists() {
