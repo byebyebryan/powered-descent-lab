@@ -29,9 +29,9 @@ Unrelated research/report files and mixed documentation edits remain preserved.
 | B: input freeze | Complete: prospective declaration, exact candidate plans and native audits sealed before flights |
 | C: pilot | Complete: twelve original executions including references, all nine facade results verified; inventory checks pass |
 | D: retained parity | Complete: 945/945 exact direct/facade comparisons and proofs; 865 target landings, 80 native crashes retained |
-| E: characterization | V1 quarantined for inconsistent generated geometry; correction and full fixed-count replacement pending |
-| F: activation | V1 quarantined for inconsistent generated geometry; correction and full fixed-count replacement pending |
-| G: confirmation | V1 interrupted and quarantined; one permitted technical-invalidation restart will use a new independent cohort, fixed N=600 |
+| E: characterization | V1 quarantined; corrected V2 released with all 320 slots |
+| F: activation | V1 quarantined; corrected V2 released with all 64 originals / 448 attempts |
+| G: confirmation | V1 interrupted and quarantined; sole technical restart released as fresh V2 cohort, fixed N=600 |
 | H: closeout | Pending: code review, validation, complete inventory, failure/coverage/cost analysis and bounded new local rich reports |
 
 At the pilot boundary, record immutable recipes and allocations under a new
@@ -256,6 +256,32 @@ programs; fresh G keeps N=600 and the same 99%/95% criterion and immediate polic
 This consumes one of two measurement repair epochs and the sole confirmation
 technical-invalidation restart. No extra repair is available for another fresh
 confirmation fault, and no failed state is being removed from its task version.
+
+## Corrected local input freeze
+
+Repair source `e2d2482` passes all 19 maintained checks, including 18 maneuver
+library tests, two ordinary CLI tests and four batch CLI tests. The complete log
+is `/home/bryan/code/.pd-controller-loop-20261022T043655Z/software-gate-repair1.log`.
+Source is retained at `epochs/epoch-3-source`, with release executable at
+`epochs/epoch-3-bin/pd-maneuver-example`, SHA256
+`8e1499abfac8e1424ff34dcf7daf15565e92ad6743eb2c3032abeb24777f4a6c`.
+
+Before replacement flights, `declarations/allocation-declaration-v2.json` binds
+the new task `local-reference-v2`: development cohort `development-v2`, seed
+2026102203; confirmation cohort `confirmation-v2`, seed 2026102204. The original
+numeric bounds, primary factor ordering, diagnostic roles, programs, counts,
+caps and confirmation criterion are unchanged. Fresh G has 600 unique physical
+states/parents and zero overlap with corrected development, every inspected v1
+candidate and the retained inventory. Earlier global exposure remains unknown.
+
+All three corrected plans pass native input/support audits. Maximum pad/terrain
+surface error is exactly zero across every non-diagnostic input. The complete
+controller descriptors equal their pre-repair descriptors. Deliberate mismatched
+diagnostics remain visibly separate. The plans are in `plans/allocated-v2/`;
+their fixed stage names are E2/F2/G2. Including all old artifacts, every new phase
+cap and a 512 MiB overhead reserve gives 39,429,015,893 bytes, below the global
+40 GiB ceiling. Old cost evidence remains available without making a capability
+claim for its inconsistent scenes. No extra pilot or enlarged sample is released.
 
 ## Prospective local reference population
 
