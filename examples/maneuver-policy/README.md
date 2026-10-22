@@ -121,6 +121,13 @@ coverage stays unknown. These commands establish inputs and scheduling, not a
 landing rate. Structured/local recipes use the versioned typed
 [recipe model](src/evaluation/recipe.rs), including joint state correlations,
 explicit transforms, diagnostic overrides and separate independent cohort streams.
+Sampler `local-joint-sampler-v2` places terrain and obstacles relative to the pad
+surface. The input audit requires every non-diagnostic local pad to agree with
+its supporting terrain within 1e-9 m over the complete pad interval, checking
+both endpoints and all interior heightfield vertices. Deliberately inconsistent
+diagnostics remain separate model-integrity probes; native input acceptance and
+contact classification are unchanged. Retain the exact source epoch when
+reproducing older sampler inputs.
 
 ## Execute and inspect a frozen evaluation
 

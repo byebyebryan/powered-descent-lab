@@ -226,7 +226,7 @@ pub fn prepare_evaluation(
             for &index in indices {
                 let local = local_case(&recipe, &anchor.scenario, index)?;
                 let mut labels = BTreeMap::from([
-                    ("sampler".into(), "local-joint-sampler-v1".into()),
+                    ("sampler".into(), LOCAL_SAMPLER_IMPLEMENTATION.into()),
                     ("transform".into(), identity(&local.transform)?),
                 ]);
                 labels.insert(

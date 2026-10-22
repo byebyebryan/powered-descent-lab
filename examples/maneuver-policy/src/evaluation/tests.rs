@@ -216,7 +216,10 @@ fn transforms_preserve_parent_and_labels_cannot_change_physical_inputs() {
     let anchor_before = a.clone();
     let original = local_case(&r, &a, 0).unwrap();
     assert_eq!(a, anchor_before);
-    assert_eq!(original.scenario.metadata["sampler"], "local_v1");
+    assert_eq!(
+        original.scenario.metadata["sampler"],
+        LOCAL_SAMPLER_IMPLEMENTATION
+    );
     assert!(!original.scenario.metadata.contains_key("expectation_tier"));
     assert!(
         !original
@@ -253,10 +256,49 @@ fn transforms_preserve_parent_and_labels_cannot_change_physical_inputs() {
         original.scenario.vehicle.initial_fuel_kg
     );
     assert_eq!(translated.scenario.sim, original.scenario.sim);
+    for generated in [&original, &reflected, &translated] {
+        assert!(physical_features(&generated.scenario).unwrap()["pad_surface_max_error_m"] < 1e-9);
+    }
     let points = original.scenario.world.terrain.points();
     assert!(
         points.last().unwrap().x - points.first().unwrap().x < 5000.0,
         "local inputs must not force a continental report viewport"
+    );
+}
+#[test]
+fn local_audit_rejects_floating_pads_before_flight_and_checks_interior_vertices() {
+    let temp = Temp::new();
+    let r = recipe();
+    let (input, path) = setup(&temp, &r);
+    let mut plan = prepare_evaluation(&path, &[input], &temp.0.join("plan")).unwrap();
+    plan.cases[0]
+        .features
+        .insert("pad_surface_max_error_m".into(), 10.0);
+    let audit = audit_plan(&plan).unwrap();
+    assert!(!audit.ready);
+    assert!(
+        audit
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("surfaces disagree"))
+    );
+    let mut s = anchor();
+    s.world.landing_pads[0].surface_y_m = 10.0;
+    assert_eq!(
+        physical_features(&s).unwrap()["pad_surface_max_error_m"],
+        10.0
+    );
+    s.world.landing_pads[0].surface_y_m = 0.0;
+    s.world.terrain = pd_core::TerrainDefinition::Heightfield {
+        points_m: vec![
+            pd_core::Vec2::new(-120.0, 0.0),
+            pd_core::Vec2::new(1.0, 4.0),
+            pd_core::Vec2::new(120.0, 0.0),
+        ],
+    };
+    assert_eq!(
+        physical_features(&s).unwrap()["pad_surface_max_error_m"],
+        4.0
     );
 }
 #[test]

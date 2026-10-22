@@ -29,9 +29,9 @@ Unrelated research/report files and mixed documentation edits remain preserved.
 | B: input freeze | Complete: prospective declaration, exact candidate plans and native audits sealed before flights |
 | C: pilot | Complete: twelve original executions including references, all nine facade results verified; inventory checks pass |
 | D: retained parity | Complete: 945/945 exact direct/facade comparisons and proofs; 865 target landings, 80 native crashes retained |
-| E: characterization | Allocated: all 320 development/diagnostic slots, roles retained |
-| F: activation | Allocated: all 64 originals with immediate, never and ticks 12/60/120/240/480, 448 attempts |
-| G: confirmation | Allocated: fixed 600 independent primary-population missions, immediate activation; no performance-based extension |
+| E: characterization | V1 quarantined for inconsistent generated geometry; correction and full fixed-count replacement pending |
+| F: activation | V1 quarantined for inconsistent generated geometry; correction and full fixed-count replacement pending |
+| G: confirmation | V1 interrupted and quarantined; one permitted technical-invalidation restart will use a new independent cohort, fixed N=600 |
 | H: closeout | Pending: code review, validation, complete inventory, failure/coverage/cost analysis and bounded new local rich reports |
 
 At the pilot boundary, record immutable recipes and allocations under a new
@@ -215,6 +215,47 @@ the hard caps remain authoritative and the complete phase fits its allocation.
 `declarations/analysis-v1/D-retained-analysis.json` and its rows retain the
 stratified outcomes, incoming contact states and timing/storage distributions.
 No later allocation changes in response to these outcomes or unused resources.
+
+## Technical invalidation and repair one
+
+Inspection of the below-target diagnostic exposed a real generator defect:
+sampler v1 raised `pad.surface_y_m` independently but left the underlying terrain
+at zero. The unchanged native contact classifier uses the terrain for collision
+and the pad's horizontal footprint for on-target classification
+([source](../pd-core/src/sim.rs)). It can therefore report a native target landing
+at ground level despite a declared elevated pad. Native proof and reconstruction
+correctly reproduce that model; they cannot repair an inconsistent scene.
+This is a geometric input-validity fault, not an outcome-based envelope change.
+
+Every v1 local primary case has the mismatch. Its pilot capability outcomes,
+structured results, activation results and partial confirmation are quarantined;
+none will enter corrected local rates or confirmation. E completed 320 slots
+(312 flights, eight unsupported rejections), F completed 448 flights and G
+retained 226 completed results plus one interrupted worker and 373 unstarted
+slots. G has no completion seal or confidence verdict. Its interrupted work
+counters are unavailable, rather than counted as zero. Old inputs, captures,
+source/executable epoch and analyses remain at their original paths.
+`declarations/technical-invalidation-v1.json` and its accounting-correction
+receipt preserve the inventory. D remains valid because its original pad and
+terrain are consistent; its exact parity and measured failures are unchanged.
+
+Repair one changes only local input construction and its preflight audit:
+sampler v2 places the terrain baseline at the declared pad surface, with obstacle
+heights relative to that baseline. The audit measures the maximum surface error
+over pad endpoints and every interior heightfield vertex, and refuses a
+non-diagnostic local panel with inconsistent surfaces. Diagnostics retain the
+deliberately inconsistent below-target scene as a separate model-integrity probe.
+Native validation, contact semantics, controller configuration and control logic
+remain frozen. Regression coverage checks geometry and transformed copies,
+including an interior vertex that endpoint-only checks would miss.
+
+The corrected task will receive a new source epoch and local task/cohort/seed
+identities. All inspected v1 candidates, including the full 600 confirmation
+inputs, enter its exposure inventory. E/F keep counts 320/64 and their original
+programs; fresh G keeps N=600 and the same 99%/95% criterion and immediate policy.
+This consumes one of two measurement repair epochs and the sole confirmation
+technical-invalidation restart. No extra repair is available for another fresh
+confirmation fault, and no failed state is being removed from its task version.
 
 ## Prospective local reference population
 

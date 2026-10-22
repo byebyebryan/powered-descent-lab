@@ -102,6 +102,19 @@ pub fn audit_plan(plan: &PreparedEvaluationV1) -> Result<InputAuditV1, String> {
                 .reasons
                 .push(format!("unsupported/invalid promised case {}", case.id));
         }
+        if case.role != "diagnostic"
+            && matches!(&plan.recipe.population, PopulationV1::Local { .. })
+            && !case
+                .features
+                .get("pad_surface_max_error_m")
+                .is_some_and(|error| *error <= 1e-9)
+        {
+            audit.ready = false;
+            audit.reasons.push(format!(
+                "local target pad and terrain surfaces disagree for {}",
+                case.id
+            ));
+        }
         if let Some(limits) = case.native_limits
             && case.disposition == InputDispositionV1::Supported
         {
