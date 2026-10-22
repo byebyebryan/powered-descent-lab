@@ -28,7 +28,7 @@ Unrelated research/report files and mixed documentation edits remain preserved.
 | A: software | Complete: exact input export/interchange, recipes/audit/sampler, supervised execution and recovery; all 19 maintained checks pass |
 | B: input freeze | Complete: prospective declaration, exact candidate plans and native audits sealed before flights |
 | C: pilot | Complete: twelve original executions including references, all nine facade results verified; inventory checks pass |
-| D: retained parity | Allocated: 945 source slots, seeds 0/1/6, all 15 source groups; exact direct/facade comparison |
+| D: retained parity | Complete: 945/945 exact direct/facade comparisons and proofs; 865 target landings, 80 native crashes retained |
 | E: characterization | Allocated: all 320 development/diagnostic slots, roles retained |
 | F: activation | Allocated: all 64 originals with immediate, never and ticks 12/60/120/240/480, 448 attempts |
 | G: confirmation | Allocated: fixed 600 independent primary-population missions, immediate activation; no performance-based extension |
@@ -194,6 +194,27 @@ receive their largest declared panels. Their exact plans and passing audits are
 in `plans/allocated-v1/`. G additionally binds all inspected development physical
 and parent identities and has zero overlap. No count or policy can expand after
 observing performance; interruptions remain incomplete panels.
+
+## Retained parity checkpoint
+
+D completed all 945 selected, physically distinct source cases in 286.872402
+seconds and 5,137,844,183 bytes. Every direct/facade comparison, neutral replay,
+controller reconstruction, planner reconstruction and outer integrity check
+passes. Its sealed inventory check also passes; no repair or retry occurred.
+
+The immediate controller lands 865/945 (91.53%). All 80 crashes occur in the
+full-mass high-speed stratum. Empty/reference and half/core each land 315/315;
+full/stress lands 235/315. These are retained source labels and a designed panel,
+not a new operational-core declaration or an independent reliability estimate.
+The wrapper preserves the original backend's successful and failed behavior.
+
+The median supervised child cost is 0.301218 seconds, p95 0.441729 seconds and
+maximum 0.742951 seconds. Maximum bundle size is 15,740,160 bytes. Those maxima
+exceed the pilot's doubled point estimates, which were allocation estimates;
+the hard caps remain authoritative and the complete phase fits its allocation.
+`declarations/analysis-v1/D-retained-analysis.json` and its rows retain the
+stratified outcomes, incoming contact states and timing/storage distributions.
+No later allocation changes in response to these outcomes or unused resources.
 
 ## Prospective local reference population
 
