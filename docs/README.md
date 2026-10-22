@@ -24,6 +24,7 @@ later code and documentation housekeeping does not create a new flight capture.
 | Review proposed planner/controller interfaces, harness and qualification work | [Planner and controller design](maneuver_execution_design.md) |
 | Inspect primary research, source review and bounded contract validation | [Design review](planner_controller_design_review.md) |
 | Define controller characterization and confirmation before RL | [Controller evaluation design](controller_evaluation_design.md) |
+| Implement and run an unattended controller characterization pass | [Controller characterization plan](controller_evaluation_implementation_plan.md) |
 
 ## Report presentation refinement
 

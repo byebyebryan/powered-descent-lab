@@ -1029,6 +1029,12 @@ already failed.
 
 ## 7. Recommended Immediate Next Step
 
+The owner has launched the [controller characterization loop](controller_evaluation_execution.md).
+It extends the [implemented maneuver facade](maneuver_controller_implementation_results.md)
+through input audits, bounded local-control measurements, activation comparisons
+and eligible fresh confirmation. The ordinary backend remains frozen; this does
+not launch RL training or qualify whole-mission handoffs.
+
 The [shared controller/RL preparation](controller_rl_preparation_results.md) is
 complete. Use the [branch handoff](controller_rl_development_handoff.md) to start
 independent development from `51c143c`. Each branch first declares its experiment

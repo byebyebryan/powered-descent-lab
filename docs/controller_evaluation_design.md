@@ -3,6 +3,11 @@
 [Software implementation](maneuver_controller_implementation_results.md) · [Controller contract](maneuver_controller_design.md) · [Evaluation workflow](evaluation.md)
 
 October 21, 2026. **Proposed next pass; no measured allocation is launched.**
+The [implementation plan](controller_evaluation_implementation_plan.md) defines
+an unattended loop through input access, coverage audit, bounded execution,
+characterization, activation comparisons and eligible fixed-size confirmation.
+Reviews are internal gates; phase declarations are frozen prospectively within
+the loop rather than requiring another user turn for each stage.
 The reviewed software checkpoint is `83303da`.
 First characterize the unchanged ordinary landing controller, then establish
 whether activation timing leaves a useful planner problem. The controller needs
