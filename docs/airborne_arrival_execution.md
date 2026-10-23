@@ -36,3 +36,13 @@ include all four direct controls and arrival cases 0 and 2, regardless of
 outcome. Maximum pilot work is 20 million native/model steps, five minutes and
 1 GiB additional artifacts. Its resource costs release the full allocation.
 The runtime JSON fixes exact inputs, source epoch and library before flights.
+
+The first pilot completes all eight Summary flights, then stops on a missing
+capture-parent directory before any capture is saved. The flight results are
+retained in `pilot/summary.json`; this is a harness fault, not a physical miss.
+Epoch B creates the parent before flight, charges capture work before saving,
+and validates allocation input/library hashes. It changes no controller,
+mission, goal or selection logic. The identical pilot repeats in `pilot-b/`;
+its Summary fingerprints must equal epoch A. The first attempt carries
+1,601,059 counted steps plus an 18,000-step conservative reservation for the
+failed capture and three neutral passes, for 1,619,059 carried steps.

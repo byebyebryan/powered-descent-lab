@@ -13,6 +13,11 @@ def main():
     p.add_argument("allocation", type=Path)
     args = p.parse_args()
     a = read(args.allocation)
+    if sha(Path(native.__file__)) != a["native_sha256"]:
+        raise RuntimeError("native library differs from allocation")
+    for item in a["cases"]:
+        if sha(item["path"]) != item["sha256"]:
+            raise RuntimeError("original input differs from allocation")
     root = Path(a["output"])
     root.mkdir()
     budget = Budget(root, a)

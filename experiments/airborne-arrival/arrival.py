@@ -156,15 +156,18 @@ def execute_summary(budget, s, choice, land=True):
 
 
 def capture(budget, s, path, choice, output, expected, allocation_path, land=True):
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
     inputs = [str(path), str(allocation_path), str(Path(native.__file__))]
     ep, p = budget.run(s, choice, True, inputs, land=land)
     status = json.loads(ep.status_json())
     if budget.remaining() < 3 * status["physics_steps"]:
         raise RuntimeError("insufficient proof reservation")
+    budget.consume(status)
+    # Reserve all three neutral passes before entering the save operation, so
+    # a filesystem/proof fault cannot drop already executed work from counters.
+    budget.counts["neutral_replay_steps"] += 3 * status["physics_steps"]
     saved = json.loads(ep.save_capture(str(output)))
     info = saved["info"]
-    budget.consume(info)
-    budget.counts["neutral_replay_steps"] += 3 * saved["native_replay_steps"]
     if compact(info) != compact(expected):
         raise RuntimeError("Summary/Captured differs")
     for forced in [p, None]:
