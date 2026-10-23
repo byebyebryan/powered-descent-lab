@@ -83,3 +83,114 @@ with `p35-v70` as a separately labelled diagnostic. Fixed captures cover all
 24 direct runs and the first arrival run at each angle, regardless of outcome.
 The phase receives 30 million native/model steps and at most 28 captures.
 This is a comparison of frozen controllers/rules, not an RL generalization test.
+
+## Results and interpretation
+
+The full phase completes all 150 Summary occurrences and 55 selected full
+captures. It uses 46,466,395 native/model steps. The 36-input core has 34 verified
+direct Poly target landings. Across its 96 arrival attempts, 21 fulfill the
+arrival contract and 19 then have native Summary target success. The nine
+paired reflections have eight verified direct landings and one fulfilled
+arrival among nine attempts. Their sample sizes are not independent additions
+to the core denominator.
+
+The core's twelve finite-bank cells expose no eligible fuel improvement or
+recovery of a direct miss. Many successful final landings follow failed arrival
+instructions: 58 core Summary outcomes do this. Local execution and composition
+must therefore remain separate gates.
+
+The fresh panel completes 48 Summary occurrences and all 28 fixed captures,
+using 10,418,802 native/model steps. Direct landing is verified on 21/24 fresh
+inputs. Four arrivals fulfill their instruction and then have native Summary
+target success; fifteen other native successes follow failed instructions.
+No tested arrival recovers a direct miss. One fulfilled arrival, case 302,
+uses 749.226692 kg against 1,034.574484 kg for the first-feasible direct rule,
+a saving of 285.347792 kg. This exception is retained rather than tuning the
+fixed rule using fresh outcomes.
+
+Three explicitly post-hoc proof probes cover that fresh fuel exception, an
+expired arrival that still lands, and a fulfilled arrival that cannot complete
+landing. All match their original Summary execution and pass complete native
+proof. They use 8,466,693 additional steps and are not new population samples.
+Together with the pilot and main phases, there are 92 full captures.
+
+### Command allocation is a confirmed controller gap
+
+`arrival-actuation` executes one unclipped vertical waypoint command through the
+actual native plant and compares an algebraic inverse as a diagnostic. The
+shared allocator requests a force fraction of 0.574977864 and emits that same
+raw engine setting. Native minimum-throttle mapping produces force fraction
+0.681233398. The inverse diagnostic uses setting 0.433303818 and produces the
+requested force fraction. Source inspection and the native pair agree.
+
+This confirms a force/engine-setting mismatch for intermediate commands with
+nonzero minimum thrust. It does not measure its share of the full-flight
+failures. The old waypoint commands and the angle limit are preserved in this
+pass; Poly Landing already uses its paired native inverse. A safe correction
+must also define behavior below minimum thrust and test low vertical authority,
+rotation and saturation together. Simply clamping a scalar inverse would not
+establish those contracts.
+
+### Timing selection confounds the apparent fuel opportunity
+
+`arrival-timing-grid` forecasts every admissible direct grid choice on fresh
+case 302. It predicts a safe target contact using 521.264273 kg after 4 s of
+coast and a 12 s burn, cheaper than the fulfilled-arrival flight. This costs
+102,654 native forecast steps. It is forecast evidence, not a sealed Episode
+landing claim. The first-feasible direct rule is not a sufficient baseline for
+attributing fuel savings to trajectory shaping.
+
+The 0.72 rad tilt limit saturates frequently on shallow inputs, but vertical
+misses occur without tilt saturation. Removing the limit cannot be the only
+answer. Other limits remain explicit: fixed vehicle/fuel, upright entry,
+position/velocity goals on one displacement line, no arrival-attitude contract,
+and a hard 30 s operation deadline that does not constrain the reused kernel's
+internal horizon search. No claim of arbitrary state control follows.
+
+## Review, validation and delivery
+
+The read-only audit verifies all 73 allocated input hashes, 387 runtime source
+bindings across the three measured phases, every saved capture/seal/decision/
+proof binding, regenerated goal payloads, complete schedule accounting and zero
+optimizer steps. It executes no native transition. Its conservative campaign
+total is 72,772,718 steps, including the first fault reservation and both
+invocations of the four-step command diagnostic.
+
+Final API review also closes admission after native end while retaining the
+arrival's reached/missed outcome. This lifecycle guard is outside the frozen
+epoch-B campaign. A current-source eight-flight preservation panel matches
+every pilot compact result and command/state fingerprint exactly, adding
+1,601,059 measured steps. Total measured campaign, diagnostic and preservation
+work is 74,373,777 steps; software/unit tests are accounted separately.
+
+The [full HTML report](http://starship:8000/airborne-arrival/loop-20261023T222023Z/report-delivery/report.html)
+uses the established common tree and rich flight templates. Each tree occurrence
+is one selected captured execution; the comparison table groups Summary choices
+by physical input. This uses the maintained single-execution mode so sparse
+capture rosters do not acquire misleading approach slots. Common browser code
+is unchanged. Core, paired reflections, fresh inputs, pilot and post-hoc probes
+remain distinct. Desktop and 390 px browser checks browse all 92 occurrences,
+exercise the seven-choice table and rich plots, and finish without page errors.
+The report source and failed presentation-driver attempts are retained.
+
+The rich payload exceeds the shared publisher's 100 MiB bundle bound. Its
+canonical full report stays on the established port-8000 service; a small
+immutable publication index can link it without changing either server's
+lifecycle or reducing the rich report. No old report or selector is refreshed.
+
+## Recommended next pass
+
+This recommendation is not an allocation to start more work:
+
+1. Design and validate correct force-to-engine-setting allocation, explicitly
+   handling the minimum-thrust gap while preserving legacy behavior by default.
+2. Requalify arrival tracking and bounded feasibility/time feedback on these
+   unchanged inputs; distinguish genuinely infeasible requests from tracking
+   defects and finite-search misses.
+3. Establish a stronger deterministic direct timing baseline with explicit
+   fuel/contact-margin tradeoffs, then remeasure intermediate-goal headroom.
+4. Release a small RL goal-selection experiment only after those gates show
+   both reliable local execution and meaningful choices.
+
+No RL training, push, default promotion, tilt relaxation or historical outcome
+rewrite occurs in this goal.
