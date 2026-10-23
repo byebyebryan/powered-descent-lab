@@ -17,6 +17,9 @@ pub use kit::{ControllerFrameBuilder, ControllerView, marker, metric, phase, sta
 pub use terminal::{
     TerminalPdgController, TerminalPdgControllerConfig, TerminalPdgResolvedConfigV1,
 };
+pub use transfer::{
+    AirborneArrivalController, ArrivalFeedback, ArrivalFrame, ArrivalRequest, ArrivalStatus,
+};
 
 pub trait Controller {
     fn id(&self) -> &str;

@@ -10,6 +10,7 @@ use pd_core::{
 };
 use serde::{Deserialize, Serialize};
 
+mod arrival;
 mod config;
 mod math;
 mod scoring {
@@ -28,6 +29,7 @@ mod state;
 mod telemetry;
 mod waypoint;
 
+pub use arrival::*;
 pub use config::TransferPdgControllerConfig;
 use math::*;
 use scoring::*;
@@ -106,6 +108,7 @@ pub struct TransferPdgController {
     waypoint_reference_contract_pass_ever: bool,
     waypoint_continuation_snapshot: Option<(u32, WaypointContinuationPrediction)>,
     waypoint_joint_snapshot: Option<(u32, WaypointJointSearchPrediction)>,
+    arrival_model_steps: std::sync::atomic::AtomicU64,
 }
 
 impl Default for TransferPdgController {
@@ -157,6 +160,7 @@ impl TransferPdgController {
             waypoint_reference_contract_pass_ever: false,
             waypoint_continuation_snapshot: None,
             waypoint_joint_snapshot: None,
+            arrival_model_steps: std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -1443,6 +1447,8 @@ impl TransferPdgController {
         let mut last_assessment = initial_assessment;
 
         while elapsed_s + 1.0e-9 < horizon_s {
+            self.arrival_model_steps
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let step_s = (horizon_s - elapsed_s).min(dt_s);
             let remaining_s = (time_to_go_s - elapsed_s).max(WAYPOINT_GUIDANCE_MIN_TIME_TO_GO_S);
             let state_target_accel_mps2 = required_control_accel(StateTargetRequest {
