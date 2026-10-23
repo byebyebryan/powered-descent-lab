@@ -173,9 +173,26 @@ remain distinct. Desktop and 390 px browser checks browse all 92 occurrences,
 exercise the seven-choice table and rich plots, and finish without page errors.
 The report source and failed presentation-driver attempts are retained.
 
+The final maintained developer gate passes all 19 checks. Focused controller
+validation passes 195 unit tests and the ordinary adapter parity panel; all
+three new Python tests pass, including full native proof and input-drift
+rejection. Documentation validation checks 290 files and 2,225 local links
+with zero issues; diff whitespace is clean. Retained 44-case numerical parity
+remains opt-in and was not requested. Per-update controller CPU time is not
+instrumented by this harness; step counts and phase wall costs are the measured
+cost evidence, not zero-valued compute fields in legacy rich-view summaries.
+
+The final preservation audit checks all 889 original Git-visible file hashes.
+Only the seven explicitly owned existing files changed; pre-existing foreign
+files retain their original bytes. All pass work is committed locally. The
+owned disposable browser is closed and both existing report services are left
+running. Closure, HTTP delivery and publication receipts remain under the
+evidence root.
+
 The rich payload exceeds the shared publisher's 100 MiB bundle bound. Its
 canonical full report stays on the established port-8000 service; a small
-immutable publication index can link it without changing either server's
+[immutable publication index](http://starship:8787/reports/1001b4742b854020d60d58f464b861aec16905d8c80ef52d7ae4a45cc37cb68e/)
+links it without changing either server's
 lifecycle or reducing the rich report. No old report or selector is refreshed.
 
 ## Recommended next pass
