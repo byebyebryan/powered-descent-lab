@@ -71,3 +71,15 @@ add the best successful eligible choice on each input, requiring arrival
 fulfillment when an arrival is used. Duplicate roles share a capture. Native
 Summary headroom and fully verified best choices remain distinguishable.
 No goal bank, tolerance, tilt limit or landing selector changes after outcomes.
+
+## Fresh comparison freeze
+
+Every best eligible full-phase choice is direct landing. Freeze the input rule
+to direct landing, with no learned selector. A fresh panel contains 24
+independent hash-stream inputs: two per angle/energy cell, radius jitter ±15%
+and continuous ballistic miss in ±100 m. Generator key is `arrival-fresh-v1`,
+seed 231024; no outcome admission/filtering. All compare the frozen direct rule
+with `p35-v70` as a separately labelled diagnostic. Fixed captures cover all
+24 direct runs and the first arrival run at each angle, regardless of outcome.
+The phase receives 30 million native/model steps and at most 28 captures.
+This is a comparison of frozen controllers/rules, not an RL generalization test.

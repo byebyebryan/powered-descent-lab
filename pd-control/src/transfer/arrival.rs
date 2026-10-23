@@ -138,6 +138,8 @@ mod tests {
                 }
             );
             assert_eq!(c.feedback().window_entry_physics_step, Some(2));
+            c.native_end(&state.build_observation(&ctx));
+            assert!(c.submit(&r, &state.build_observation(&ctx)).is_err());
         }
     }
 }
@@ -180,6 +182,7 @@ pub struct AirborneArrivalController {
     kernel: TransferPdgController,
     next_tick: u64,
     feedback: ArrivalFeedback,
+    closed: bool,
 }
 
 impl AirborneArrivalController {
@@ -200,6 +203,7 @@ impl AirborneArrivalController {
             ctx,
             kernel: TransferPdgController::default(),
             next_tick: first_tick,
+            closed: false,
             feedback: ArrivalFeedback {
                 backend: "waypoint_live_arrival_v1_no_terminal_advice".into(),
                 status: ArrivalStatus::Idle,
@@ -219,7 +223,8 @@ impl AirborneArrivalController {
     }
 
     fn check(&self, o: &Observation) -> Result<(), String> {
-        if o.physics_step != self.next_tick
+        if self.closed
+            || o.physics_step != self.next_tick
             || o.sim_time_s != o.physics_step as f64 / 120.0
             || [
                 o.position_m.x,
@@ -386,6 +391,7 @@ impl AirborneArrivalController {
     }
 
     pub fn native_end(&mut self, o: &Observation) {
+        self.closed = true;
         if self.feedback.status == ArrivalStatus::Active {
             self.feedback.status = ArrivalStatus::NativeEnd;
             self.feedback.resolution = Some(o.clone());
