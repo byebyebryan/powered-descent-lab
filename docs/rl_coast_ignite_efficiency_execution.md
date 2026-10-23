@@ -2,6 +2,9 @@
 
 [Documentation home](README.md) · [Timing and efficiency plan](rl_coast_ignite_efficiency_plan.md) · [Frozen stopping result](rl_coast_ignite_stopping_execution.md)
 
+Next controller-first pass: [airborne arrival and Poly Landing](airborne_arrival_plan.md)
+with its separate [allocation and evidence](airborne_arrival_execution.md).
+
 October 22, 2026. The owner authorized implementation and execution of the
 bounded timing characterization, rich HTML delivery and scoped local commits.
 The supplied reference-end times, frozen models, controller/plant behavior,

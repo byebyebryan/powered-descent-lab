@@ -63,6 +63,16 @@ fn main() {
         }
     }
     let lock = root.join("experiments/coast-ignite/uv.lock");
+    let arrival = root.join("experiments/airborne-arrival");
+    println!("cargo:rerun-if-changed={}", arrival.display());
+    if arrival.exists() {
+        for entry in fs::read_dir(arrival).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "py") {
+                append(&path, &mut files);
+            }
+        }
+    }
     if lock.exists() {
         append(&lock, &mut files);
     }

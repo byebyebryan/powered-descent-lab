@@ -17,6 +17,7 @@ struct Spec {
     focus_flat: bool,
     max_bytes: Option<u64>,
     overview_html: Option<String>,
+    subtitle: Option<String>,
 }
 #[derive(Deserialize)]
 struct Row {
@@ -332,7 +333,9 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
     });
     let html = batch::render_review_first_batch_page(batch::BatchPage {
         title: &spec.title,
-        subtitle: "Supplied ballistic arcs · controller-owned coast · fixed Poly Landing burn",
+        subtitle: spec.subtitle.as_deref().unwrap_or(
+            "Supplied ballistic arcs · controller-owned coast · fixed Poly Landing burn",
+        ),
         chips_html: &format!(
             "<span class=\"chip\">{} complete rich flight views</span>",
             spec.rows.len()
