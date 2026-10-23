@@ -46,3 +46,28 @@ mission, goal or selection logic. The identical pilot repeats in `pilot-b/`;
 its Summary fingerprints must equal epoch A. The first attempt carries
 1,601,059 counted steps plus an 18,000-step conservative reservation for the
 failed capture and three neutral passes, for 1,619,059 carried steps.
+
+## Full characterization freeze
+
+Epoch B completes the identical eight Summary flights and all six fixed proofs:
+all eight compact results and fingerprints equal epoch A. Pilot B uses
+5,694,787 native/model steps, 24,442,953 capture/result bytes and 1.27 seconds;
+its rich report adds 11,760,631 bytes. The cost release reserves 110 million
+steps and at most 70 captures for the full phase, plus 30 million steps for a
+separately frozen fresh panel. These reservations plus both pilot attempts fit
+the original 150-million-step bound.
+
+The core is the full 4 angle × 3 energy × 3 ballistic-miss Cartesian product:
+0/30/60/80 degrees, low/mid/high, and −75/0/+75 m. Entry radius is 800 m;
+directions alternate by case index. Every one of these 36 originals compares
+direct landing and `p35-v70`. Twelve input-defined cells, one per angle/energy
+with miss index `(angle_index + energy_index) mod 3`, get all six arrival goals.
+Their nine nonvertical reflected partners compare direct and `p35-v70` as
+paired diagnostics, giving 45 physical inputs and 150 Summary occurrences.
+Reflections are not independent confirmations. Fuel and vehicle remain fixed.
+
+Fixed proof roles are both direct and `p35-v70` on all twelve bank cells;
+add the best successful eligible choice on each input, requiring arrival
+fulfillment when an arrival is used. Duplicate roles share a capture. Native
+Summary headroom and fully verified best choices remain distinguishable.
+No goal bank, tolerance, tilt limit or landing selector changes after outcomes.
