@@ -199,7 +199,8 @@ pub fn with_review_context(
         html
     };
     let script = format!(
-        "<script>{}{}</script>",
+        "<script>{}{}{}</script>",
+        include_str!("study_model.js"),
         include_str!("paired_model.js"),
         include_str!("detail_navigation.js")
     );

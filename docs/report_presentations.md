@@ -1,5 +1,12 @@
 # Saved campaign presentation editions
 
+The [study reporting pass](report_study_qol_plan.md) adds optional question,
+comparison and cohort context to these maintained views. Its
+[execution record](report_study_qol_execution.md) owns saved timing and ignition
+editions, rich-plot repairs and browser/preservation evidence. The
+[saved-study adapter](../experiments/report-study/README.md) documents its
+create-only inputs and zero-flight boundary.
+
 [Report workflow](reports.md) · [Development](development.md) ·
 [Refinement results](report_presentation_refinement_results.md) ·
 [Bounded browsing results](report_bounded_browsing_results.md) ·

@@ -20,10 +20,20 @@
     const controls = Object.fromEntries(['q','outcome','approach','direction','view','a','b'].map(key => [key,document.getElementById(key==='q'?'review-search':'review-'+key)]));
     const params = new URLSearchParams(location.search);
     const state = {q:params.get('q') || '',outcome:params.get('outcome') || 'all',approach:params.get('approach') || 'all',direction:params.get('direction') || 'all',group:params.get('group') || '',mission:params.get('mission') || location.hash.slice(1),stratum:params.get('stratum') || '',page:params.get('page') || 1,view:params.get('view') || '0',a:params.get('a') || '0',b:params.get('b') || String(data.labels.length-1)};
+    const study=globalThis.PdStudyProjection;
+    if(study){
+      for(const key of PdStudyReviewModel.fields)state[key]=params.get(key)||'';
+      Object.assign(state,PdStudyReviewModel.normalize(state,study));
+      const contrast=study.contrasts.find(c=>c.id===state.contrast);
+      state.a=String(study.variants.findIndex(v=>v.id===contrast.baseline));state.b=String(study.variants.findIndex(v=>v.id===contrast.candidate));
+      if(!params.has('view'))state.view=state.b;
+      controls.a.disabled=controls.b.disabled=true;
+      controls.a.title=controls.b.title='Pairing follows the declared study comparison above.';
+    }
     for (const key of ['outcome','approach','direction','view','a','b']) if (![...controls[key].options].some(o=>o.value===state[key])) state[key]=['outcome','approach','direction'].includes(key)?'all':key==='b'?String(data.labels.length-1):'0';
     Object.assign(state,normalizeScope(state,data.groups));
     const branches = data.branches || data.groups.map(g=>({...g,parent:null,depth:0,kind:'coverage'}));
-    const unit = branches.some(b=>b.kind==='band') ? 'terrain band' : 'stratum';
+    const unit = study ? 'input group' : branches.some(b=>b.kind==='band') ? 'terrain band' : 'stratum';
     browser.setAttribute('aria-label',`Browse mission ${unit}s`);
     const byId = new Map(branches.map(b=>[b.id,b]));
     const leaves = branches.filter(b=>!branches.some(child=>child.parent===b.id));
@@ -41,6 +51,7 @@
     const updateUrl = () => {
       const p = new URLSearchParams();
       for (const key of ['q','outcome','approach','direction','group','mission','stratum','view','a','b']) if(state[key]&&state[key]!=='all')p.set(key,state[key]);
+      if(study)for(const key of PdStudyReviewModel.fields)if(state[key]!==''&&state[key]!==undefined&&state[key]!=='all')p.set(key,state[key]);
       if(state.stratum&&state.page>1)p.set('page',String(state.page));
       if(opened.size||state.stratum)p.set('open',[...opened].join(','));
       if(showGroupTree)p.set('tree','full');
@@ -66,6 +77,7 @@
     };
     const pageControls = () => `<div class="mission-page-controls"><button type="button" data-review-page="previous"${pageInfo.page<=1?' disabled':''}>Previous page</button><span aria-live="polite">Page ${pageInfo.page} of ${pageInfo.pages} · missions ${pageInfo.start}–${pageInfo.end} of ${pageInfo.total} in this group</span><button type="button" data-review-page="next"${pageInfo.page>=pageInfo.pages?' disabled':''}>Next page</button></div>`;
     const render = () => {
+      if(study)Object.assign(state,PdStudyReviewModel.normalize(state,study));
       Object.assign(state,normalizeScope(state,data.groups));
       for (const [key,input] of Object.entries(controls))input.value=state[key];
       if(state.direction!=='all')controls.direction.closest('details').open=true;
@@ -87,29 +99,33 @@
         const label=b=>ancestors(b.id).map(id=>byId.get(id).label).join(' → ');
         const groupControls=`<div class="stratum-controls"><button type="button" data-review-stratum="previous" aria-label="Previous ${unit}"${index<=0?' disabled':''}>Previous group</button><label>Group ${index+1} of ${available.length} · ${unit}<select data-review-stratum-select aria-label="Current mission group">${available.map(b=>`<option value="${esc(b.id)}"${b.id===state.stratum?' selected':''}>${esc(label(b))} · ${bins.get(b.id).length} missions</option>`).join('')}</select></label><button type="button" data-review-stratum="next" aria-label="Next ${unit}"${index>=available.length-1?' disabled':''}>Next group</button></div>`;
         const scope=state.group?`<p class="mission-group-scope">Focused on ${esc(byId.get(state.group)?.label || state.group)}. <button type="button" data-review-scope="clear">Show all matching groups</button></p>`:'';
-        const heading=`<div class="mission-browser-heading"><strong>Mission browsing</strong><button type="button" data-review-tree aria-pressed="${showGroupTree}">${showGroupTree?'Focus current group':'Show group tree'}</button></div>${scope}`;
+        const studyContext=study?`<p data-study-tree-context class="study-mini" style="margin:5px 0"></p>`:'';
+        const heading=`<div class="mission-browser-heading"><strong>Mission browsing</strong><button type="button" data-review-tree aria-pressed="${showGroupTree}">${showGroupTree?'Focus current group':'Show group tree'}</button></div>${studyContext}${scope}`;
         browser.innerHTML=`${heading}${groupControls}${pageControls()}`;
         footer.innerHTML=`${groupControls}${pageControls()}`;
       }else{browser.innerHTML='';footer.innerHTML='';}
       const missionRow = mission => {
         const open=state.mission===mission.id;
-        const attempt=mission.attempts[Number(state.view)];
-        const href=detailHref(attempt,mission);
+        const attempt=mission.attempts.find(a=>a.approach===Number(state.view));
+        const href=attempt?detailHref(attempt,mission):'';
         const depth=path(mission).length;
         const label=`Mission ${mission.mission_index}${mission.occurrence?` · repeat ${mission.occurrence+1}`:''}`;
         const direction=mission.direction_unavailable?'Direction unavailable':mission.direction<0?'Travel left':mission.direction>0?'Travel right':'Vertical';
-        let html=`<tr class="paired-mission-row" id="${mission.id}" data-paired-mission="${mission.id}" data-direction="${mission.direction}" tabindex="0" aria-expanded="${open}" style="--mission-depth:${depth}"><td><span class="expander">${open?'−':'+'}</span> ${label}<span class="row-note mission-direction">${direction}</span>${href?`<a class="run-preview mission-preview" href="${href}">${preview(attempt)}</a>`:preview(attempt)}</td>${attempt.cells}</tr>`;
+        const previewHtml=attempt?preview(attempt):'<span class="muted">Not scheduled for this variant</span>';
+        let difference='';
+        if(study){const p=PdStudyReviewModel.pair(mission,state,study),metric=study.metrics.find(m=>m.id===state.metric);difference=`<span class="row-note study-pair-summary">${esc(p.category)} · ${esc(metric.label)} Δ(B−A): ${p.eligible?esc(p.delta.toPrecision(6))+' '+esc(metric.unit):'unavailable for this pair'}</span>`;}
+        let html=`<tr class="paired-mission-row" id="${mission.id}" data-paired-mission="${mission.id}" data-direction="${mission.direction}" tabindex="0" aria-expanded="${open}" style="--mission-depth:${depth}"><td><span class="expander">${open?'−':'+'}</span> ${label}<span class="row-note mission-direction">${direction}</span>${difference}${href?`<a class="run-preview mission-preview" href="${href}">${previewHtml}</a>`:previewHtml}</td>${attempt?.cells||'<td>Not scheduled</td><td>Unavailable</td><td>No attempt claimed</td>'}</tr>`;
         if(!open)return html;
         html+=`<tr class="mission-context-row"><td colspan="4"><span class="mission-path">${path(mission).map(id=>esc(byId.get(id).label)).join(' → ')} → ${label}</span><details class="row-evidence"><summary>Physical input and pairing</summary><p><code>${esc(mission.physical_sha256)}</code> · occurrence ${mission.occurrence+1}. Pairing uses physical identity and scheduled occurrence, without best-repeat selection.</p></details><strong>Controller attempts for this mission</strong></td></tr>`;
         for(const a of mission.attempts){const link=detailHref(a,mission);html+=`<tr class="paired-attempt-row" data-approach="${a.approach}" data-outcome="${esc(a.outcome)}"><td>${link?`<a class="paired-detail" href="${link}">${esc(data.labels[a.approach])}</a>`:esc(data.labels[a.approach])}<span class="row-note">Attempt ${a.attempt_index}</span></td>${a.cells}</tr>`;}
-        html+=`<tr class="paired-preview-row"><td colspan="4"><details class="mission-comparison"><summary>Compare controller previews for this mission</summary><div class="paired-previews">${pairCard(mission.attempts[Number(state.a)],mission)}${state.a!==state.b?pairCard(mission.attempts[Number(state.b)],mission):''}</div></details></td></tr>`;
+        html+=`<tr class="paired-preview-row"><td colspan="4"><details class="mission-comparison"><summary>Compare controller previews for this mission</summary><div class="paired-previews">${pairCard(mission.attempts.find(a=>a.approach===Number(state.a)),mission)}${state.a!==state.b?pairCard(mission.attempts.find(a=>a.approach===Number(state.b)),mission):''}</div></details></td></tr>`;
         return html;
       };
       const displayedBranches=visibleBranches(branches,state.stratum,showGroupTree);
       const branchRows = parent => displayedBranches.filter(b=>b.parent===parent).map(branch=>{
         const missions=bins.get(branch.id);if(!missions.length)return '';
         const expanded=opened.has(branch.id);
-        const landed=missions.filter(m=>m.attempts[Number(state.view)].outcome==='landed').length;
+        const landed=missions.filter(m=>m.attempts.find(a=>a.approach===Number(state.view))?.outcome==='landed').length;
         let html=`<tr class="paired-group-row" data-paired-group="${branch.id}" data-kind="${branch.kind}" data-depth="${branch.depth}" tabindex="0" aria-expanded="${expanded}" style="--mission-depth:${branch.depth}"><td><span class="expander">${expanded?'−':'+'}</span> ${esc(branch.label)}</td><td colspan="3"><strong>${missions.length} missions</strong><span class="row-note">${landed}/${missions.length} verified landings</span></td></tr>`;
         if(expanded)html+=leafIds.has(branch.id)?pageInfo.items.map(missionRow).join(''):branchRows(branch.id);
         return html;
@@ -162,7 +178,7 @@
       render();
       if(depth>=3&&state.stratum)revealBrowser();
     }));
-    document.querySelectorAll('[data-paired-action]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.pairedAction==='reset')Object.assign(state,{q:'',outcome:'all',approach:'all',direction:'all',group:''});chooseStratum('');opened.clear();render();}));
+    document.querySelectorAll('[data-paired-action]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.pairedAction==='reset'){Object.assign(state,{q:'',outcome:'all',approach:'all',direction:'all',group:''});if(study)Object.assign(state,{change:'all',lo:'',hi:'',cell:''});}chooseStratum('');opened.clear();render();}));
     for(const nav of [browser,footer]){
       nav.addEventListener('click',event=>{
         if(event.target.closest('[data-review-tree]')){showGroupTree=!showGroupTree;render();revealBrowser();browser.querySelector('[data-review-tree]').focus({preventScroll:true});return;}

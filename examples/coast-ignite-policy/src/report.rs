@@ -18,6 +18,7 @@ struct Spec {
     max_bytes: Option<u64>,
     overview_html: Option<String>,
     subtitle: Option<String>,
+    study: Option<pd_report::study::StudyV1>,
 }
 #[derive(Deserialize)]
 struct Row {
@@ -25,6 +26,11 @@ struct Row {
     population: String,
     label: String,
     context_html: Option<String>,
+    cohort: Option<String>,
+    variant: Option<String>,
+    mission_index: Option<u64>,
+    #[serde(default)]
+    occurrence: usize,
 }
 
 struct LoadedCapture {
@@ -118,7 +124,10 @@ fn focused_mission_bounds(rows: &[Row]) -> PyResult<BTreeMap<String, [pd_core::V
 
 #[pyfunction]
 pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
-    let spec: Spec = decode(spec_json)?;
+    let mut spec: Spec = decode(spec_json)?;
+    if spec.study.is_some() && !spec.grouped {
+        return Err(error("study editions require explicit grouped variants"));
+    }
     let output = Path::new(output);
     std::fs::create_dir(output).map_err(error)?;
     let mut review = PairedReviewV1 {
@@ -129,8 +138,13 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         missions: vec![],
     };
     let mut groups: BTreeMap<String, String> = BTreeMap::new();
-    let mut mission_ids: BTreeMap<(String, String), usize> = BTreeMap::new();
-    if spec.grouped {
+    let mut mission_ids: BTreeMap<(String, String, usize), usize> = BTreeMap::new();
+    if let Some(study) = &spec.study {
+        if !study.observations.is_empty() {
+            return Err(error("study observations must be bound from captures"));
+        }
+        review.labels = study.variants.iter().map(|v| v.label.clone()).collect();
+    } else if spec.grouped {
         review.labels.clear();
         for row in &spec.rows {
             if !review.labels.contains(&row.label) {
@@ -144,6 +158,25 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
     } else {
         BTreeMap::new()
     };
+    let mut speed_domains: BTreeMap<String, f64> = BTreeMap::new();
+    if spec.study.is_some() {
+        for row in &spec.rows {
+            let capture = load_capture(row)?;
+            let max = capture
+                .evaluation
+                .execution
+                .episode
+                .run
+                .samples
+                .iter()
+                .map(|s| s.observation.velocity_mps.length())
+                .fold(1.0_f64, f64::max);
+            speed_domains
+                .entry(capture.evaluation.physical_sha256)
+                .and_modify(|v| *v = v.max(max))
+                .or_insert(max);
+        }
+    }
     let mut written_bytes = 0_u64;
     for (index, row) in spec.rows.iter().enumerate() {
         let root = Path::new(&row.capture);
@@ -177,12 +210,22 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         let mission_index = if spec.grouped {
             let next = review.missions.len();
             *mission_ids
-                .entry((group.clone(), e.physical_sha256.clone()))
+                .entry((
+                    row.cohort.clone().unwrap_or_else(|| group.clone()),
+                    e.physical_sha256.clone(),
+                    row.occurrence,
+                ))
                 .or_insert(next)
         } else {
             index
         };
-        let approach = if spec.grouped {
+        let approach = if let Some(study) = &spec.study {
+            study
+                .variants
+                .iter()
+                .position(|v| Some(&v.id) == row.variant.as_ref())
+                .ok_or_else(|| error("unknown study row variant"))?
+        } else if spec.grouped {
             review
                 .labels
                 .iter()
@@ -354,6 +397,11 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         } else {
             html
         };
+        let html = if let Some(max) = speed_domains.get(&e.physical_sha256) {
+            html.replacen("</head>", &format!("<script type=\"application/json\" id=\"spatial-color-domains\">{{\"speed\":{{\"min\":0,\"max\":{max}}}}}</script></head>"), 1)
+        } else {
+            html
+        };
         write_new(&output.join(format!("{name}.html")), html.as_bytes()).map_err(error)?;
         write_new(&output.join(format!("{name}.svg")), svg.as_bytes()).map_err(error)?;
         let evidence = serde_json::to_vec(&serde_json::json!({"physical_sha256":e.physical_sha256,"descriptor":e.execution.descriptor,"incoming_contact":e.execution.episode.incoming_contact,"final_state":e.execution.episode.final_state,"manifest":manifest,"stop":e.execution.episode.stop,"integrity_passed":e.integrity_passed,"replay":e.replay,"source_evaluation_href":source_href,"source_evaluation_sha256":hash,"policy_decisions":info})).map_err(error)?;
@@ -380,6 +428,63 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             preview: Some(format!("{name}.svg")),
             caption: row.label.clone(),
         };
+        if let Some(study) = &mut spec.study {
+            let cohort = row
+                .cohort
+                .clone()
+                .ok_or_else(|| error("study row needs a cohort"))?;
+            let variant = row
+                .variant
+                .clone()
+                .ok_or_else(|| error("study row needs a variant"))?;
+            let mut values = BTreeMap::new();
+            values.insert(
+                "fuel_used_kg".into(),
+                e.scenario.vehicle.initial_fuel_kg - e.execution.episode.final_state.fuel_kg,
+            );
+            if let Some(contact) = &e.execution.episode.incoming_contact {
+                values.insert(
+                    "contact_speed_mps".into(),
+                    contact.state.velocity_mps.length(),
+                );
+            }
+            for (key, pointer) in [
+                ("coast_s", "/landing_search/chosen_coast_ticks"),
+                ("duration_s", "/landing_search/chosen_duration_ticks"),
+            ] {
+                if let Some(value) = info.pointer(pointer).and_then(|v| v.as_f64()) {
+                    values.insert(key.into(), value / 120.0);
+                }
+            }
+            values.retain(|key, _| study.metrics.iter().any(|m| m.id == *key));
+            let mut attributes = e.scenario.metadata.clone();
+            let h = (e.scenario.initial_state.position_m.y / 250.0).floor() * 250.0;
+            let v = (e.scenario.initial_state.velocity_mps.x.abs() / 25.0).floor() * 25.0;
+            attributes.insert(
+                "initial_height_band_m".into(),
+                format!("{h:.0}–{:.0} m", h + 250.0),
+            );
+            attributes.insert(
+                "initial_horizontal_speed_band_mps".into(),
+                format!("{v:.0}–{:.0} m/s", v + 25.0),
+            );
+            study.observations.push(pd_report::study::ObservationV1 {
+                mission: format!("mission-{mission_index}"),
+                cohort,
+                variant,
+                physical_sha256: e.physical_sha256.clone(),
+                occurrence: row.occurrence,
+                outcome: outcome.into(),
+                verified_landing: e.verified_target_landing,
+                values,
+                attributes,
+                capture_sha256: hash.clone(),
+                descriptor_sha256: pd_missions::sha256(
+                    &serde_json::to_vec(&e.execution.descriptor).map_err(error)?,
+                ),
+                evidence_href: format!("{name}-evidence.json"),
+            });
+        }
         if let Some(mission) = review.missions.get_mut(mission_index) {
             mission.attempts.push(attempt);
         } else {
@@ -394,16 +499,21 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
                 } else {
                     format!("{} · {}", e.scenario.id, row.label)
                 },
-                mission_index: mission_index as u64,
+                mission_index: row.mission_index.unwrap_or(mission_index as u64),
                 physical_sha256: e.physical_sha256,
-                occurrence: 0,
+                occurrence: row.occurrence,
                 attempts: vec![attempt],
             });
         }
     }
+    let controls = if spec.study.is_some() {
+        controls(&review).replace("Complete procedural transfers → terrain family → terrain stratum → mission. Controller results sit inside each mission.", "Selected study population → input family → original mission. Declared variants sit inside the same physical input.")
+    } else {
+        controls(&review)
+    };
     let tree = batch::render_review_tree_section(
         "",
-        &controls(&review),
+        &controls,
         &batch::render_table(
             "scenario-table paired-table",
             "data-tree-table=\"paired-missions\"",
@@ -411,12 +521,16 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             "",
         ),
     );
-    let overview = spec.overview_html.unwrap_or_else(|| {
-        format!(
-            "<section><h2>Measured result</h2><p>{}</p></section>",
-            batch::escape_html(&spec.summary)
-        )
-    });
+    let overview = if let Some(study) = &spec.study {
+        study.render(&review).map_err(error)?
+    } else {
+        spec.overview_html.unwrap_or_else(|| {
+            format!(
+                "<section><h2>Measured result</h2><p>{}</p></section>",
+                batch::escape_html(&spec.summary)
+            )
+        })
+    };
     let html = batch::render_review_first_batch_page(batch::BatchPage {
         title: &spec.title,
         subtitle: spec.subtitle.as_deref().unwrap_or(
@@ -451,6 +565,15 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         coverage_tree_jump: false,
     });
     write_new(&output.join("report.html"), html.as_bytes()).map_err(error)?;
+    let mut navigation = serde_json::to_value(&review).map_err(error)?;
+    if let Some(study) = &spec.study {
+        navigation["study"] = serde_json::to_value(study).map_err(error)?;
+        write_new(
+            &output.join("study.json"),
+            &serde_json::to_vec(study).map_err(error)?,
+        )
+        .map_err(error)?;
+    }
     write_new(
         &output.join("report-input.json"),
         &serde_json::to_vec(&review).map_err(error)?,
@@ -458,7 +581,7 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
     .map_err(error)?;
     write_new(
         &output.join("navigation.json"),
-        &serde_json::to_vec(&review).map_err(error)?,
+        &serde_json::to_vec(&navigation).map_err(error)?,
     )
     .map_err(error)?;
     Ok(())

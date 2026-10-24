@@ -1,5 +1,6 @@
 (() => {
   const matches = (mission, state) => {
+    if (globalThis.PdStudyProjection && !globalThis.PdStudyReviewModel.matches(mission,state,globalThis.PdStudyProjection)) return false;
     if (state.group && mission.group !== state.group && !mission.path?.includes(state.group)) return false;
     if (state.direction && state.direction !== 'all' && (mission.direction_unavailable ? 'unavailable' : String(mission.direction)) !== state.direction) return false;
     const q = (state.q || '').trim().toLowerCase();

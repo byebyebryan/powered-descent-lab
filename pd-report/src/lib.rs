@@ -32,6 +32,7 @@ pub mod planning_cycles;
 pub mod report_navigation;
 mod rich_template;
 pub mod site;
+pub mod study;
 pub mod waypoint_v2;
 
 use rich_template::{PLANNER_PANEL_HTML, report_template};

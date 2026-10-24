@@ -28,3 +28,24 @@ Desktop screenshots confirm both repairs. Three display-model tests and all
 An initial pilot passed a relative output path and stopped at the existing
 absolute-prefix guard. Its reserved directory remains untouched; the successful
 create-only v2 pilot uses an absolute path. No evidence execution occurred.
+
+## Neutral study projection and paired navigation
+
+The optional version-one study projection binds variants, contrasts, roles,
+metric meanings, frozen claims and source observations to the existing paired
+mission inventory. It rejects mismatched originals, duplicate attempt bindings,
+unbound source digests and incompatible effect/performance denominators.
+The renderer derives observed values from saved native records, including
+incoming contact rather than the final clamped state.
+
+The shared tree keeps bounded mission browsing. Study filters intersect its
+predicate; A/B preview choices follow the declared contrast. Sparse schedules
+show `Not scheduled` rather than claiming a miss. Context and pair links are
+retained in rich details and matched previous/next navigation.
+
+The saved RL pilot includes six originals spanning all four outcome transitions.
+Selecting lost landings produces exactly 355/436/514; its detail links preserve
+the heuristic/RL comparison and next moves from 355 to 436. Frozen claim content
+does not change. The timing pilot includes three originals and all three timing
+variants. Both pilots are labelled software subsets, without new qualification.
+All 62 report tests, 22 relevant Node tests and targeted strict Clippy pass.
