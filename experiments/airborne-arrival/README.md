@@ -46,3 +46,11 @@ from population totals while retaining every pilot capture in the rich tree.
 browsing and rich details against an explicitly owned disposable Chrome with
 its profile and PID recorded under `ROOT/browser-qa/`. It never starts a report
 server or selects the user's browser.
+
+The [arrival composition pass](../../docs/arrival_composition_plan.md) uses
+`run_composition.py ALLOCATION.json`. Witness programs may explicitly request
+landing; their unchanged command prefix ends at first arrival resolution and
+the existing Poly selector starts at that retained tick. `composition_study.py`
+checks old/new native observations through the handoff and commands before it,
+alongside complete reconstruction and replay proof. Original witness-only
+programs still continue their unchanged observation tail.

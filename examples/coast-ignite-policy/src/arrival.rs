@@ -8,6 +8,8 @@ enum Executor {
     Guidance(Box<ArrivalLandingController>),
     Witness {
         ctx: Box<pd_core::RunContext>,
+        continuation_scenario: Option<Box<ScenarioSpec>>,
+        continuation: Option<Box<ArrivalLandingController>>,
         recipe: WitnessRecipe,
         monitor: Box<WitnessMonitor>,
     },
@@ -22,10 +24,22 @@ impl Executor {
             Self::Guidance(c) => c.frame(o, remaining),
             Self::Witness {
                 ctx,
+                continuation_scenario,
+                continuation,
                 recipe,
                 monitor,
             } => {
                 monitor.inspect(o);
+                if monitor.status != pd_control::ArrivalStatus::Active
+                    && let Some(scenario) = continuation_scenario
+                {
+                    if continuation.is_none() {
+                        *continuation = Some(Box::new(
+                            ArrivalLandingController::landing_from_tick(scenario, o.physics_step)?,
+                        ));
+                    }
+                    return continuation.as_mut().unwrap().frame(o, remaining);
+                }
                 let mut f =
                     pd_control::ControllerFrame::command_only(witness_command(ctx, o, recipe)?);
                 f.phase = Some(
@@ -43,7 +57,7 @@ impl Executor {
     fn feedback(&self) -> Option<ManeuverFeedbackV2> {
         match self {
             Self::Guidance(c) => c.feedback(),
-            _ => None,
+            Self::Witness { continuation, .. } => continuation.as_ref().and_then(|c| c.feedback()),
         }
     }
     fn arrival(&self) -> serde_json::Value {
@@ -61,7 +75,9 @@ impl Executor {
     fn forecast_steps(&self) -> u64 {
         match self {
             Self::Guidance(c) => c.landing_search().forecast_steps,
-            _ => 0,
+            Self::Witness { continuation, .. } => continuation
+                .as_ref()
+                .map_or(0, |c| c.landing_search().forecast_steps),
         }
     }
     fn work_steps(&self) -> u64 {
@@ -70,7 +86,10 @@ impl Executor {
     fn landing_search(&self) -> serde_json::Value {
         match self {
             Self::Guidance(c) => serde_json::to_value(c.landing_search()).unwrap(),
-            _ => serde_json::to_value(LandingSearchFeedback::default()).unwrap(),
+            Self::Witness { continuation, .. } => continuation.as_ref().map_or_else(
+                || serde_json::to_value(LandingSearchFeedback::default()).unwrap(),
+                |c| serde_json::to_value(c.landing_search()).unwrap(),
+            ),
         }
     }
     fn allocation(&self) -> Option<ArrivalAllocation> {
@@ -82,11 +101,18 @@ impl Executor {
     fn native_end(&mut self, o: &Observation, end: NativeEndV1) -> Result<(), String> {
         match self {
             Self::Guidance(c) => c.native_end(o, end),
-            Self::Witness { monitor, .. } => {
+            Self::Witness {
+                monitor,
+                continuation,
+                ..
+            } => {
                 monitor.inspect(o);
                 if monitor.status == pd_control::ArrivalStatus::Active {
                     monitor.status = pd_control::ArrivalStatus::NativeEnd;
                     monitor.resolution = Some(o.clone());
+                }
+                if let Some(c) = continuation {
+                    c.native_end(o, end)?;
                 }
                 Ok(())
             }
@@ -184,14 +210,13 @@ impl ArrivalEpisode {
             ));
         }
         let controller = if let Some(recipe) = &recipe {
-            if program.land
-                || recipe.physics_ticks == 0
+            if recipe.physics_ticks == 0
                 || recipe.physics_ticks > 2400
                 || !recipe.physics_ticks.is_multiple_of(2)
                 || !recipe.prepare_ticks.is_multiple_of(2)
                 || recipe.prepare_ticks >= recipe.physics_ticks
             {
-                return Err(error("invalid witness-only program"));
+                return Err(error("invalid bounded witness program"));
             }
             let ctx = pd_core::RunContext::from_scenario(&scenario).map_err(error)?;
             let o = pd_core::SimulationState::new(&ctx)
@@ -208,6 +233,8 @@ impl ArrivalEpisode {
             }
             Executor::Witness {
                 ctx: Box::new(ctx),
+                continuation_scenario: program.land.then(|| Box::new(scenario.clone())),
+                continuation: None,
                 recipe: recipe.clone(),
                 monitor: Box::new(WitnessMonitor::new(request, o)),
             }

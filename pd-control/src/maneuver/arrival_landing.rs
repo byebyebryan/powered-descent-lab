@@ -64,6 +64,60 @@ mod tests {
             assert!(live.physics_step < 7200);
         }
     }
+
+    #[test]
+    fn retained_tick_continuation_keeps_native_prefix_and_original_deadline() {
+        let mut s: ScenarioSpec = serde_json::from_str(include_str!(
+            "../../../fixtures/scenarios/flat_terminal_descent.json"
+        ))
+        .unwrap();
+        s.initial_state.position_m = pd_core::Vec2::new(0.0, 800.0);
+        s.initial_state.velocity_mps = pd_core::Vec2::new(0.0, -30.0);
+        s.sim.max_time_s = 90.0;
+        let ctx = RunContext::from_scenario(&s).unwrap();
+        let mut live = SimulationState::new(&ctx).unwrap();
+        live.set_command(Command {
+            throttle_frac: 0.4,
+            target_attitude_rad: 0.15,
+        });
+        for _ in 0..120 {
+            assert_eq!(
+                live.step_physics_and_classify_contact(&ctx),
+                ContactClassification::None
+            );
+        }
+        let handoff = live.build_observation(&ctx);
+        assert!(handoff.fuel_kg < s.vehicle.initial_fuel_kg);
+        let mut c = ArrivalLandingController::landing_from_tick(&s, handoff.physics_step).unwrap();
+        assert!(ArrivalLandingController::landing_from_tick(&s, 119).is_err());
+        assert_eq!(c.deadline, 10800);
+        let mut frame = c.frame(&handoff, 2_000_000).unwrap();
+        assert_eq!(live.build_observation(&ctx), handoff);
+        assert_eq!(
+            c.landing_search().selection_observation.as_ref(),
+            Some(&handoff)
+        );
+        assert!(!c.landing_search().no_plan);
+        let expected = c.landing_search().candidates.last().unwrap()["contact_tick"]
+            .as_u64()
+            .unwrap();
+        loop {
+            live.set_command(frame.command);
+            for _ in 0..2 {
+                let contact = live.step_physics_and_classify_contact(&ctx);
+                if contact != ContactClassification::None {
+                    assert_eq!(
+                        contact,
+                        ContactClassification::StableTouchdown { on_target: true }
+                    );
+                    assert_eq!(live.physics_step, expected);
+                    assert!(live.physics_step < c.deadline);
+                    return;
+                }
+            }
+            frame = c.frame(&live.build_observation(&ctx), 2_000_000).unwrap();
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -136,6 +190,24 @@ impl ArrivalLandingController {
                 scenario, 0, profile,
             )?);
         }
+        Ok(c)
+    }
+
+    /// Begin the existing landing selector at a retained airborne tick. The
+    /// caller keeps the original live plant; this constructor resets no state,
+    /// fuel or clocks and introduces no new coast/duration selection policy.
+    pub fn landing_from_tick(scenario: &ScenarioSpec, first_tick: u64) -> Result<Self, String> {
+        let mut c = Self::new(
+            scenario,
+            ArrivalLandingProgram {
+                arrival: None,
+                land: true,
+            },
+        )?;
+        if !first_tick.is_multiple_of(2) || first_tick >= c.deadline {
+            return Err("invalid retained landing continuation tick".into());
+        }
+        c.next_tick = first_tick;
         Ok(c)
     }
 
