@@ -29,3 +29,20 @@ explicit `native_pair_v2` profile and independent native witness recipes.
 tree. `test_actuation_study.py` checks native calibration and complete witness/
 controller proof. The ordinary constructor and original study scripts retain
 the legacy allocation and wire format.
+
+After execution, `audit_actuation.py ROOT --receipt NEW.json` independently
+checks source/input hashes, the selected native proofs, measured work and the
+fly-through outcome/tick from native observations. It also checks exact legacy
+and direct-control fingerprints. `analyze_actuation.py ROOT --receipt NEW.json`
+separates populations, transitions and allocation diagnostics without executing
+new flights. Both readers use the same `PYTHONPATH` as the campaign.
+
+The actuation renderer consumes a completed `analysis.json` beside its new
+output directory. It requires Matplotlib for the standalone calibration figure;
+use an isolated presentation environment rather than changing the pinned
+simulation environment. Its comparison excludes repeated pilot observations
+from population totals while retaining every pilot capture in the rich tree.
+`check-actuation-report.mjs ROOT NEW_QA_DIR EXACT_URL` exercises desktop/phone
+browsing and rich details against an explicitly owned disposable Chrome with
+its profile and PID recorded under `ROOT/browser-qa/`. It never starts a report
+server or selects the user's browser.

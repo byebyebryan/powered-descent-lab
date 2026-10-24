@@ -9,6 +9,8 @@ from actuation_study import compact, encoded, native, read, sha, write_new
 def aggregate(rows):
     groups = collections.defaultdict(list)
     for row in rows:
+        if row["phase"] == "pilot":
+            continue
         groups[(row["population"], row["mode"])].append(row["result"])
         if "legacy" in row and row["mode"] == "native_pair_v2":
             groups[(row["population"], "retained legacy")].append(row["legacy"])
@@ -38,9 +40,42 @@ def context(info, mode):
     return text
 
 
-def overview(rows):
+def findings(analysis):
+    old, new = analysis["overall"]["legacy"], analysis["overall"]["result"]
+    witness_rows = "".join(f'<tr><td>{html.escape(p.removeprefix("witness_").replace("_", " "))}</td>'
+        f'<td>{v["witness"]["reached"]}/{v["witness"]["arrival_attempts"]}</td>'
+        f'<td>{v["legacy_v1"]["reached"]}/{v["legacy_v1"]["arrival_attempts"]}</td>'
+        f'<td>{v["native_pair_v2"]["reached"]}/{v["native_pair_v2"]["arrival_attempts"]}</td></tr>'
+        for p, v in analysis["witness_families"].items())
+    angle_rows = "".join(f'<tr><td>{angle}°</td><td>{v["legacy"]["reached"]}/24</td>'
+        f'<td>{v["result"]["reached"]}/24</td><td>{v["legacy"]["arrival_native_success"]} → '
+        f'{v["result"]["arrival_native_success"]}</td></tr>' for angle, v in analysis["core_angles_degrees"].items())
+    losses = [d for d in analysis["corrected_diagnostics"] if d["case"] in analysis["lost_landings"]]
+    loss_rows = "".join(f'<tr><td>{html.escape(d["case"])}</td><td>{d["fuel_used_kg"]:.2f}</td>'
+        f'<td>{html.escape(str(d["regimes"]))}</td><td>{d["operation_time_remaining_s"]:.2f} s</td></tr>' for d in losses)
+    return f'''<section><h2>What this pass establishes</h2>
+<p><strong>Calibrated allocation and bounded local arrival tracking pass. Broad arrival-plus-landing qualification does not pass.</strong>
+The 504 native command-pair checks pass. All 21 declared native witness recipes are admitted without exclusions; the corrected controller fulfills 21/21 goals versus 13/21 for legacy.</p>
+<p>The unchanged retained panel improves from {old["reached"]}/{old["arrival_attempts"]} to {new["reached"]}/{new["arrival_attempts"]} fulfilled arrival instructions.
+Native target landing observations on those arrival programs fall from {old["arrival_native_success"]} to {new["arrival_native_success"]}: nine lost and one gained.
+Fourteen arrivals are gained and one is lost. The direct Poly controls remain exactly unchanged ({new["direct_native_success"]}/{new["direct_attempts"]} native target successes).
+The legacy default stays selected; there is no RL training or default promotion.</p>
+<div style="overflow:auto"><table><thead><tr><th>Witness family</th><th>Independent native witness</th><th>Legacy controller</th><th>Corrected controller</th></tr></thead><tbody>{witness_rows}</tbody></table></div>
+<p>These are six-second airborne diagnostics with 30 m capture radius, ±15% speed bounds, 0.25 rad heading bound and bounded cross-speed. The target is derived from an independent native recipe; execution and proof use the unchanged first-window/plane predicate. Reflected recipes are paired diagnostics. This is a small operating envelope, not generalized state control or landing qualification. Landing is disabled for this cohort; later engine-off tail crashes are expected.</p>
+<div style="overflow:auto"><table><thead><tr><th>Core entry angle</th><th>Legacy arrivals</th><th>Corrected arrivals</th><th>Native landing observations, legacy → corrected</th></tr></thead><tbody>{angle_rows}</tbody></table></div>
+<p>The 60° and 80° core entries still fulfill zero arrival instructions. The 96 core arrival programs include several goals on shared initial states; they are not independent mission samples. Two corrected arrivals succeed locally but find no Poly continuation; local fulfillment alone does not establish a safe handoff.</p></section>
+<section><h2>Regressions and the next boundary</h2>
+<p>All nine newly lost native landings resolve the arrival as a plane miss and the unchanged finite continuation search returns no plan. Eight spend zero fuel: every arrival update selects <code>gap_off</code>. The ninth mixes minimum, off and tracking.</p>
+<p>The legacy geometry projection clips downward demand and lateral authority. For a large lateral request with downward vertical demand, its surviving projected magnitude can be only 0.1754 m/s², below the minimum-thrust gap. Legacy interprets that small nonzero fraction as an engine setting and produces minimum thrust; corrected allocation selects off as the nearer scalar demand. That removes incidental braking. This is an interaction exposed by the physical correction, not proof that either entire trajectory was optimal.</p>
+<div style="overflow:auto"><table><thead><tr><th>Newly lost native landing (Summary)</th><th>Fuel kg</th><th>Corrected allocation updates</th><th>Operation time remaining at final command</th></tr></thead><tbody>{loss_rows}</tbody></table></div>
+<p>The remaining gaps are geometric projection and minimum-thrust policy, finite horizon/recovery, and continuation-aware handoff selection. The final diagnostics show 88 plane misses after an earlier ideal pass, and two expirations while the last predictions still pass. They identify a model/recovery limitation; they do not isolate its cause. The 0.72 rad tilt limit has not been relaxed or proven responsible.</p>
+<p><strong>Recommended next pass:</strong> investigate a native-validated feasible-goal and continuation screen, plus allocation-aware recovery for the retained failures. Declare the operating envelope before training an RL planner. Preserve these failed cases and tolerances. Broader goal discovery, timing/fuel optimization, angle-limit changes and RL remain separate work.</p>
+<p>Cost: 65,416,717 measured native/model/forecast/replay steps, 60 complete captures, zero optimizer steps. All 19 maintained development checks pass. The independent read-only audit verifies source/input bindings, all selected proofs, unchanged direct/legacy controls and the fly-through outcome/tick from captured native observations. Per-update CPU timing remains uninstrumented.</p></section>'''
+
+
+def overview(rows, analysis):
     data = encoded(rows).replace("<", "\\u003c")
-    return '''<section><h2>Actuator calibration and arrival qualification</h2>
+    return findings(analysis) + '''<section><h2>Actuator calibration and arrival qualification</h2>
 <p>The new native-pair allocation is opt-in. Established defaults, Poly Landing, the 0.72 rad tilt limit, local horizon/recovery rules, waypoint-plane termination and operation deadlines remain fixed. Below minimum thrust, the allocator explicitly chooses the closer aligned acceleration from off or minimum; it records the resulting allocation error and switching.</p>
 <p><img src="actuation-calibration.svg" alt="Native applied acceleration versus projected demand for legacy and corrected allocation" style="max-width:100%;height:auto"></p>
 <p>The calibrated inverse applies to aligned scalar thrust. Rotation is still limited by native physics. The local forecast keeps its 60 Hz approximation and finite horizon; a forecast is not a complete feasibility certificate.</p>
@@ -60,14 +95,19 @@ def main():
     args = p.parse_args()
     args.output = args.output.resolve()
     results = [read(path) for path in args.results]
-    rows = [row for result in results for row in result["rows"]]
-    captures = [c for result in results for c in result["captures"]]
+    rows = [dict(row, phase=path.parent.name) for path, result in zip(args.results, results) for row in result["rows"]]
+    # Pilot repeats remain in the rich evidence tree, but neither the aggregate
+    # comparison nor the program picker counts a repeated corrected Summary.
+    rows = list({(row["case"], row["mode"]): row for row in rows}.values())
+    captures = [dict(c, phase=path.parent.name) for path, result in zip(args.results, results) for c in result["captures"]]
+    analysis_path = args.output.parent / "analysis.json"
+    analysis = read(analysis_path)
     spec = {"title": "Arrival actuation calibration and witnessed control",
         "subtitle": "Opt-in native-pair allocation · unchanged fly-through contract · established rich tree",
         "summary": "Calibrated commands, witnessed reachability and retained-input comparison are separate gates.",
-        "grouped": False, "focus_flat": True, "max_bytes": 1024**3, "overview_html": overview(rows),
-        "rows": [{"capture": c["capture"], "population": next(r["population"] for r in rows if r["case"] == c["case"] and r["mode"] == c["mode"]),
-                  "label": c["mode"], "context_html": context(read(Path(c["capture"]) / "decisions.json"), c["mode"])} for c in captures]}
+        "grouped": False, "focus_flat": True, "max_bytes": 1024**3, "overview_html": overview(rows, analysis),
+        "rows": [{"capture": c["capture"], "population": ("pilot_core" if c["phase"] == "pilot" else next(r["population"] for r in rows if r["case"] == c["case"] and r["mode"] == c["mode"])),
+                  "label": c["phase"] + " · " + c["mode"], "context_html": context(read(Path(c["capture"]) / "decisions.json"), c["mode"])} for c in captures]}
     write_new(args.output.parent / (args.output.name + "-spec.json"), spec)
     native.render_report(encoded(spec), str(args.output))
     import matplotlib
@@ -83,7 +123,7 @@ def main():
     ax.grid(alpha=.2);ax.legend()
     fig.savefig(args.output / "actuation-calibration.svg")
     plt.close(fig)
-    write_new(args.output / "presentation-receipt.json", {"renderer_sha256": sha(__file__),
+    write_new(args.output / "presentation-receipt.json", {"renderer_sha256": sha(__file__), "analysis_sha256": sha(analysis_path),
         "inputs": [{"path": str(p.resolve()), "sha256": sha(p)} for p in args.results], "rich_captures": len(captures)})
 
 
