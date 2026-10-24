@@ -39,3 +39,31 @@ angle unwrapping and paired physical camera bounds. Direction/command histories
 have a shared cursor and work without Plotly; individual rich views retain all
 existing tools. Nine geometry/model tests and all 62 report tests pass. Live
 prototype and complete-delivery acceptance remain pending.
+
+## Comparisons and portable prototype
+
+The optional neutral comparison declaration binds explicit run references,
+sourced mission/cohort targets and a checked earlier-edition join. Per-metric
+change and native landing-target status are independent. The existing tree now
+shows A/B outcomes and values, target states and separate metric-regression and
+unmet-target filters. Undeclared fuel/cost budgets stay undeclared. Earlier-edition
+comparison is a source-bound scientific no-op; no earlier behavioral checkpoint
+is claimed. The standalone import helper also accounts for changed and unmatched
+records and rejects incompatible contracts or ambiguous occurrences.
+
+Paired inspection uses the exact rich sample payload and incoming-contact
+evidence, shared world bounds, linked direction/command histories and native
+phase/end times. Mission 011 demonstrates 19 s versus 17 s endings: at 18 s the
+ended candidate is faded and has no continuing command. Individual rich reports
+retain their complete existing inspection tools and now link back to the pair.
+
+The first pair prototype found a payload marker inside the accessor's own
+source text. Extraction now anchors the actual declaration, with a regression
+test for that collision. Failed prototype editions remain retained. The decoder
+is bundled for HTTP; transport rewrites presentation links outside the scientific
+payload. Pilot packing independently round-trips every rich document, source
+proof and both preview forms exactly. Templates are stored with bounded flight
+packs so opening one flight does not download a corpus-wide template dictionary.
+Desktop prototype browsing reaches the tree, pair and full rich view through
+that transport. Complete source freeze, viewport checks and publication remain
+pending.

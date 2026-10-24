@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from lossless import compressed, html_tokens, pack, unpack
 
@@ -9,7 +10,9 @@ sha=lambda b:hashlib.sha256(b).hexdigest()
 
 
 def split_html(text):
-    marker='const reportData = ';start=text.index(marker)+len(marker)
+    match=re.search(r'(?m)^[ \t]*const reportData = ',text)
+    if not match:raise ValueError('Native rich payload declaration missing')
+    start=match.end()
     _,end=json.JSONDecoder().raw_decode(text,start)
     return text[:start],text[start:end],text[end:]
 
@@ -23,16 +26,23 @@ def build(source,target):
             if chunk not in ids:ids[chunk]=len(lines);lines.append(chunk)
             result.append(ids[chunk])
         return result
-    def flush():
-        nonlocal pool,cases,previews
-        if not cases:return
+    def emit(items):
+        keys=list(items);used_lines=sorted({i for r in items.values() for i in r['before']+r['after']});remap={old:new for new,old in enumerate(used_lines)}
+        records={key:{**r,'before':[remap[i] for i in r['before']],'after':[remap[i] for i in r['after']]} for key,r in items.items()}
+        used_vectors={col[0] for r in items.values() for col in r['payload']['columns']}
+        value={'vectors':{k:pool[k] for k in sorted(used_vectors)},'cases':records,'lines':[lines[i] for i in used_lines]};blob=compressed(value)
+        if len(blob)>8*1024**2:
+            assert len(keys)>1,('single saved flight exceeds pack cap',len(blob))
+            middle=len(keys)//2;emit({k:items[k] for k in keys[:middle]});emit({k:items[k] for k in keys[middle:]});return
         number=len(chunks);name=f'data/flights-{number:03}.json.gz';preview=f'data/previews-{number:03}.json.gz'
-        blob=compressed({'vectors':pool,'cases':cases});small=compressed(previews)
-        assert len(blob)<=8*1024**2,(name,len(blob))
+        small=compressed({k:v for k,v in previews.items() if k.removesuffix('-single') in items})
         (target/name).write_bytes(blob);(target/preview).write_bytes(small)
-        for key in cases:index[key]={'pack':name,'previews':preview}
-        chunks.append({'path':name,'bytes':len(blob),'cases':len(cases),'sha256':sha(blob)})
-        pool={};cases={};previews={}
+        for key in keys:index[key]={'pack':name,'previews':preview}
+        chunks.append({'path':name,'bytes':len(blob),'cases':len(items),'sha256':sha(blob)})
+    def flush():
+        nonlocal pool,cases,previews,lines,ids
+        if not cases:return
+        emit(cases);pool={};cases={};previews={};lines=[];ids={}
     files=sorted(source.glob('flight-*.html'),key=lambda p:int(p.stem.split('-')[1]))
     for ordinal,path in enumerate(files):
         key=path.stem.split('-')[1];text=path.read_text();before,payload,after=split_html(text)
@@ -43,13 +53,17 @@ def build(source,target):
         assert rebuilt==text,path
         receipts.append({'case':key,'html_sha256':sha(text.encode()),'payload_sha256':sha(payload.encode())})
         cases[key]=record;previews[key]=(source/f'flight-{key}.svg').read_text()
+        single=source/f'flight-{key}-single.svg'
+        if single.exists():previews[key+'-single']=single.read_text()
         if len(cases)==24:flush()
         if (ordinal+1)%240==0:print(json.dumps({'packed':ordinal+1,'total':len(files)}),flush=True)
-    flush();(data/'html-lines.json.gz').write_bytes(compressed(lines))
+    flush()
     (data/'index.json').write_text(json.dumps({'schema_version':1,'cases':index},separators=(',',':')))
     for name in ['navigation.json','report-input.json','study.json']:
         (data/(name+'.gz')).write_bytes(compressed(json.loads((source/name).read_text())))
     (data/'report.html.gz').write_bytes(__import__('gzip').compress((source/'report.html').read_bytes(),6,mtime=0))
+    for name in ['compare.html','comparison-review.json','source-bindings.json','source-declarations.json']:
+        if (source/name).exists():(data/(name+'.gz')).write_bytes(__import__('gzip').compress((source/name).read_bytes(),6,mtime=0))
     result={'passed':True,'source':str(source),'rich_details':len(files),'chunks':chunks,
         'files':sum(p.is_file() for p in target.rglob('*')),'bytes':sum(p.stat().st_size for p in target.rglob('*') if p.is_file()),
         'roundtrip_html_exact':True,'native_transitions':0,'records':receipts}

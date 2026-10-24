@@ -49,6 +49,7 @@
     if(state.stratum&&!params.has('open'))ancestors(state.stratum).forEach(id=>opened.add(id));
     if (state.mission) {const m=data.missions.find(m=>m.id===state.mission);if(m)path(m).forEach(id=>opened.add(id));else state.mission='';}
     const updateUrl = () => {
+      if(state.comparison_error)return;
       const p = new URLSearchParams();
       for (const key of ['q','outcome','approach','direction','group','mission','stratum','view','a','b']) if(state[key]&&state[key]!=='all')p.set(key,state[key]);
       if(study)for(const key of PdStudyReviewModel.fields)if(state[key]!==''&&state[key]!==undefined&&state[key]!=='all')p.set(key,state[key]);
@@ -64,11 +65,11 @@
       url.searchParams.set('mission',mission.id);url.searchParams.set('approach',String(attempt.approach));
       return esc(url.pathname+url.search);
     };
-    const preview = attempt => attempt.preview?`<img data-preview-src="${esc(attempt.preview)}" width="156" height="92" alt="${esc(attempt.caption)}" decoding="async">`:'<span class="muted">Preview unavailable</span>';
+    const preview = (attempt,shared=false) => {const path=attempt.preview&&(!shared&&globalThis.PdComparisonReviewData?.single_preview_suffix?attempt.preview.replace(/\.svg$/,PdComparisonReviewData.single_preview_suffix):attempt.preview);return path?`<img data-preview-src="${esc(path)}" width="156" height="92" alt="${esc(attempt.caption)}" decoding="async">`:'<span class="muted">Preview unavailable</span>';};
     const pairCard = (attempt, mission) => {
       if (!attempt) return '';
       const link=detailHref(attempt,mission);
-      return `<article class="pair-card"><strong>${esc(data.labels[attempt.approach])}</strong><span class="outcome-badge outcome-${esc(attempt.outcome)}">${esc(controls.outcome.querySelector(`option[value="${attempt.outcome}"]`)?.textContent || attempt.outcome)}</span>${link?`<a class="run-preview" href="${link}">${preview(attempt)}</a>`:preview(attempt)}<p class="preview-caption muted">${esc(attempt.caption)}</p></article>`;
+      return `<article class="pair-card"><strong>${esc(data.labels[attempt.approach])}</strong><span class="outcome-badge outcome-${esc(attempt.outcome)}">${esc(controls.outcome.querySelector(`option[value="${attempt.outcome}"]`)?.textContent || attempt.outcome)}</span>${link?`<a class="run-preview" href="${link}">${preview(attempt,true)}</a>`:preview(attempt,true)}<p class="preview-caption muted">${esc(attempt.caption)} · shared case frame</p></article>`;
     };
     let available=[], pageInfo=pageMissions([]), showGroupTree=params.get('tree')==='full';
     const chooseStratum = id => {
@@ -114,6 +115,7 @@
         const previewHtml=attempt?preview(attempt):'<span class="muted">Not scheduled for this variant</span>';
         let difference='';
         if(study){const p=PdStudyReviewModel.pair(mission,state,study),metric=study.metrics.find(m=>m.id===state.metric);difference=`<span class="row-note study-pair-summary">${esc(p.category)} · ${esc(metric.label)} Δ(B−A): ${p.eligible?esc(p.delta.toPrecision(6))+' '+esc(metric.unit):'unavailable for this pair'}</span>`;}
+        if(study&&globalThis.PdComparisonReviewData){const p=PdStudyReviewModel.pair(mission,state,study),metric=study.metrics.find(m=>m.id===state.metric);difference=`<span class="row-note study-pair-summary">A ${esc(p.a?.outcome||'not scheduled')} → B ${esc(p.b?.outcome||'not scheduled')} · ${esc(p.category)}<br>${esc(metric.label)}: ${p.eligible?esc(p.a.values[state.metric].toPrecision(6))+' → '+esc(p.b.values[state.metric].toPrecision(6))+' '+esc(metric.unit)+' · Δ '+esc(p.delta.toPrecision(6))+' · '+PdComparisonReviewModel.change(p,metric):'unavailable for this pair'}<br>Native landing target: A ${PdComparisonReviewModel.target(p.a)}, B ${PdComparisonReviewModel.target(p.b)} · selected-metric budget: ${state.metric==='fuel_used_kg'?'undeclared':'not separately declared'}</span><a class="compare-pair" href="${esc(PdComparisonReviewModel.pairHref(mission,state))}">Inspect recorded pair →</a>`;}
         let html=`<tr class="paired-mission-row" id="${mission.id}" data-paired-mission="${mission.id}" data-direction="${mission.direction}" tabindex="0" aria-expanded="${open}" style="--mission-depth:${depth}"><td><span class="expander">${open?'−':'+'}</span> ${label}<span class="row-note mission-direction">${direction}</span>${difference}${href?`<a class="run-preview mission-preview" href="${href}">${previewHtml}</a>`:previewHtml}</td>${attempt?.cells||'<td>Not scheduled</td><td>Unavailable</td><td>No attempt claimed</td>'}</tr>`;
         if(!open)return html;
         html+=`<tr class="mission-context-row"><td colspan="4"><span class="mission-path">${path(mission).map(id=>esc(byId.get(id).label)).join(' → ')} → ${label}</span><details class="row-evidence"><summary>Physical input and pairing</summary><p><code>${esc(mission.physical_sha256)}</code> · occurrence ${mission.occurrence+1}. Pairing uses physical identity and scheduled occurrence, without best-repeat selection.</p></details><strong>Controller attempts for this mission</strong></td></tr>`;
@@ -126,7 +128,8 @@
         const missions=bins.get(branch.id);if(!missions.length)return '';
         const expanded=opened.has(branch.id);
         const landed=missions.filter(m=>m.attempts.find(a=>a.approach===Number(state.view))?.outcome==='landed').length;
-        let html=`<tr class="paired-group-row" data-paired-group="${branch.id}" data-kind="${branch.kind}" data-depth="${branch.depth}" tabindex="0" aria-expanded="${expanded}" style="--mission-depth:${branch.depth}"><td><span class="expander">${expanded?'−':'+'}</span> ${esc(branch.label)}</td><td colspan="3"><strong>${missions.length} missions</strong><span class="row-note">${landed}/${missions.length} verified landings</span></td></tr>`;
+        let comparisonSummary='';if(study&&globalThis.PdComparisonReviewData){const s=PdStudyReviewModel.summary(missions,state,study);comparisonSummary=`<span class="row-note">A→B: ${s.counts.preserved} preserved · ${s.counts.gained} gained · ${s.counts.lost} lost · ${s.counts.missed} neither · ${s.counts.unpaired} unavailable; ${s.pairs.length} eligible metric pairs. Native landing target met ${s.counts.preserved+s.counts.gained}/${missions.length}.</span>`;}
+        let html=`<tr class="paired-group-row" data-paired-group="${branch.id}" data-kind="${branch.kind}" data-depth="${branch.depth}" tabindex="0" aria-expanded="${expanded}" style="--mission-depth:${branch.depth}"><td><span class="expander">${expanded?'−':'+'}</span> ${esc(branch.label)}</td><td colspan="3"><strong>${missions.length} missions</strong><span class="row-note">${landed}/${missions.length} verified landings</span>${comparisonSummary}</td></tr>`;
         if(expanded)html+=leafIds.has(branch.id)?pageInfo.items.map(missionRow).join(''):branchRows(branch.id);
         return html;
       }).join('');
@@ -178,7 +181,7 @@
       render();
       if(depth>=3&&state.stratum)revealBrowser();
     }));
-    document.querySelectorAll('[data-paired-action]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.pairedAction==='reset'){Object.assign(state,{q:'',outcome:'all',approach:'all',direction:'all',group:''});if(study)Object.assign(state,{change:'all',lo:'',hi:'',cell:''});}chooseStratum('');opened.clear();render();}));
+    document.querySelectorAll('[data-paired-action]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.pairedAction==='reset'){Object.assign(state,{q:'',outcome:'all',approach:'all',direction:'all',group:''});if(study)Object.assign(state,{change:'all',lo:'',hi:'',cell:'',metric_change:'all',target_status:'all'});}chooseStratum('');opened.clear();render();}));
     for(const nav of [browser,footer]){
       nav.addEventListener('click',event=>{
         if(event.target.closest('[data-review-tree]')){showGroupTree=!showGroupTree;render();revealBrowser();browser.querySelector('[data-review-tree]').focus({preventScroll:true});return;}

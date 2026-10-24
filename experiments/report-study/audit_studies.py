@@ -31,7 +31,10 @@ def audit(output,spec_path):
             original_expected[str(capture)]=(record['source_evaluation_sha256'],proof['decisions_sha256'])
     assert len(review['missions'])==sum(c['originals'] for c in projection['cohorts'])
     assert navigation['study']==projection
-    assert {k:v for k,v in navigation.items() if k!='study'}==review
+    assert {k:v for k,v in navigation.items() if k not in {'study','comparison_review'}}==review
+    if 'comparison_review' in navigation:
+        assert navigation['comparison_review']==read(output/'comparison-review.json')==spec['review_context']
+        assert navigation['comparison_review']['earlier']['same_captures_verified'] and navigation['comparison_review']['earlier']['scientific_changes']==0
     assert len(projection['observations'])==len(spec['rows'])==len(bindings['bindings'])
     assert bindings['native_transitions']==0
     for declaration in read(output/'source-declarations.json'):assert sha(declaration['path'])==declaration['sha256']

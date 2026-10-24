@@ -19,6 +19,7 @@ pub mod campaign;
 pub mod campaign_preview;
 pub mod campaign_view;
 pub mod comparison;
+pub mod comparison_review;
 pub mod detail_view;
 pub mod paired_review;
 pub use agent::{

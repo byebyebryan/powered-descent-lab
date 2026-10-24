@@ -7,7 +7,8 @@
   const load = image => {
     if (!image.isConnected || !image.dataset.previewSrc || !image.getClientRects().length) return;
     image.loading = 'lazy';
-    image.src = image.dataset.previewSrc;
+    if(globalThis.PdSavedAssets){const path=image.dataset.previewSrc;PdSavedAssets.preview(path).then(svg=>{if(image.isConnected){const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));image.addEventListener('load',()=>URL.revokeObjectURL(url),{once:true});image.src=url;}}).catch(error=>{image.alt='Preview unavailable: '+error.message;image.dataset.previewError='true';});}
+    else image.src = image.dataset.previewSrc;
     image.removeAttribute('data-preview-src');
     observer?.unobserve(image);
     watched.delete(image);

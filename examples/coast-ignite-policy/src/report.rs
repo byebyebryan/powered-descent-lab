@@ -19,6 +19,7 @@ struct Spec {
     overview_html: Option<String>,
     subtitle: Option<String>,
     study: Option<pd_report::study::StudyV1>,
+    review_context: Option<pd_report::comparison_review::ComparisonReviewV1>,
 }
 #[derive(Deserialize)]
 struct Row {
@@ -125,6 +126,15 @@ fn focused_mission_bounds(rows: &[Row]) -> PyResult<BTreeMap<String, [pd_core::V
 #[pyfunction]
 pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
     let mut spec: Spec = decode(spec_json)?;
+    if let Some(context) = &spec.review_context {
+        context
+            .validate(
+                spec.study
+                    .as_ref()
+                    .ok_or_else(|| error("comparison context requires study"))?,
+            )
+            .map_err(error)?;
+    }
     if spec.study.is_some() && !spec.grouped {
         return Err(error("study editions require explicit grouped variants"));
     }
@@ -402,8 +412,33 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         } else {
             html
         };
+        let html = if let Some(context) = &spec.review_context {
+            context.decorate(&html).map_err(error)?
+        } else {
+            html
+        };
         write_new(&output.join(format!("{name}.html")), html.as_bytes()).map_err(error)?;
         write_new(&output.join(format!("{name}.svg")), svg.as_bytes()).map_err(error)?;
+        if spec
+            .review_context
+            .as_ref()
+            .is_some_and(|c| c.single_preview_suffix.is_some())
+        {
+            let single = pd_report::build_saved_flight_preview_svg_in_flight_frame(
+                &e.scenario,
+                Some(manifest),
+                &e.execution.episode.run.samples,
+                &[],
+                &[],
+                &arrival_goal(&info)?,
+            );
+            write_new(
+                &output.join(format!("{name}-single.svg")),
+                single.as_bytes(),
+            )
+            .map_err(error)?;
+            written_bytes += single.len() as u64;
+        }
         let evidence = serde_json::to_vec(&serde_json::json!({"physical_sha256":e.physical_sha256,"descriptor":e.execution.descriptor,"incoming_contact":e.execution.episode.incoming_contact,"final_state":e.execution.episode.final_state,"manifest":manifest,"stop":e.execution.episode.stop,"integrity_passed":e.integrity_passed,"replay":e.replay,"source_evaluation_href":source_href,"source_evaluation_sha256":hash,"policy_decisions":info})).map_err(error)?;
         write_new(&output.join(format!("{name}-evidence.json")), &evidence).map_err(error)?;
         write_new(
@@ -564,6 +599,11 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         },
         coverage_tree_jump: false,
     });
+    let html = if let Some(context) = &spec.review_context {
+        context.decorate(&html).map_err(error)?
+    } else {
+        html
+    };
     write_new(&output.join("report.html"), html.as_bytes()).map_err(error)?;
     let mut navigation = serde_json::to_value(&review).map_err(error)?;
     if let Some(study) = &spec.study {
@@ -571,6 +611,19 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         write_new(
             &output.join("study.json"),
             &serde_json::to_vec(study).map_err(error)?,
+        )
+        .map_err(error)?;
+    }
+    if let Some(context) = &spec.review_context {
+        navigation["comparison_review"] = serde_json::to_value(context).map_err(error)?;
+        write_new(
+            &output.join("comparison-review.json"),
+            &serde_json::to_vec(context).map_err(error)?,
+        )
+        .map_err(error)?;
+        write_new(
+            &output.join("compare.html"),
+            context.pair_page().map_err(error)?.as_bytes(),
         )
         .map_err(error)?;
     }
