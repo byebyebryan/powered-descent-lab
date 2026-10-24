@@ -183,6 +183,10 @@ binds elapsed time, artifact/free-space limits, heads and baseline preservation.
 The existing corrected profile passes this declared arrival-to-landing menu.
 Guidance repair, default promotion, RL training and push are not performed.
 
+The subsequent [timing and goal-selection pass](arrival_timing_selection_plan.md)
+separates timing improvement from intermediate-goal value before conditionally
+fitting a small selector. Its outcomes belong to its separate execution record.
+
 ## Display-only preview framing correction
 
 The [updated mission tree](http://starship:8000/arrival-composition/loop-20261024T051904Z/report-flight-frame/report.html)
