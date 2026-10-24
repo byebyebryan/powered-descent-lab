@@ -83,3 +83,15 @@ selection retains the original first-feasible behavior and feedback. Complete
 Summary/capture equality, controller/goal reconstruction and replay establish
 selected flight evidence; a forecast alone does not. `test_timing_study.py`
 checks both default preservation and full new-selector execution proof.
+
+`analyze_timing_study.py ROOT --receipt NEW.json` reports the crossed comparison
+and declared learning-release decision without native transitions.
+`run_timing_proof.py ALLOCATION.json` completes an explicitly declared existing
+Summary roster's proofs; it does not select new inputs. `audit_timing_study.py`
+independently checks source/input/seal bindings, full retained-default equality,
+arrival predicates/prefixes, timing selection and exact measured accounting.
+`render_timing_study.py ROOT NEW_OUTPUT` uses an isolated Matplotlib environment
+and the maintained native renderer. Put its output directly below `outputs/`
+when both old and new capture roots need relative raw-evidence links; the
+renderer requires captures beneath the output's parent. No shared template or
+historical capture needs modification.
