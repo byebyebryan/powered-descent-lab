@@ -3,13 +3,14 @@ import argparse
 import hashlib
 import json
 import re
+import os
 from collections import Counter
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import pd_coast_native as native
 
-REPO=Path(__file__).resolve().parents[2]
+REPO=Path(os.environ.get('PD_STUDY_WORKSPACE',str(Path(__file__).resolve().parents[2]))).resolve()
 TIMING=REPO/'outputs/timing-reference/loop-20261024T185303Z'
 TIMING_REPORT=REPO/'outputs/timing-reference-report-20261024T185303Z'
 RL_REPORT=REPO/'outputs/coast-ignite/loop-20261022T173645Z/campaign-c/learning/report-final-v2'
