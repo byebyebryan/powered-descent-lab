@@ -65,3 +65,25 @@ falls from 589.9276 to 570.1138 kg, a 3.3587% saving; the predeclared 1% rule
 therefore selects the 132-pair reference. `reference-freeze.json` binds this
 decision, source/library hashes and the input generator before any qualification
 inputs are generated. The legacy default remains unchanged.
+
+## Isolated measurements
+
+The maintained developer gate passes all 19 checks. Isolated collection then
+completed all 360 sequential benchmark invocations, charging 35,057,610 steps.
+Every repeat preserves its profile's decision fingerprint. Each profile has
+84 measured selections after its first invocation and two warmups per original.
+
+Median selection wall time is 4.459 ms for legacy, 82.083 ms for 63 pairs and
+109.920 ms for 132 pairs. Ordinary controller-frame medians are approximately
+0.6 microseconds, excluding actuator allocation, native plant stepping and
+Python/persistence overhead. The search is a planning cost and exceeds a 60 Hz
+frame budget; these measurements do not establish real-time scheduling.
+Raw durations, planning-frame durations, whole-episode process CPU, work counts,
+affinity and host/load context are retained separately from deterministic info.
+
+After reference freeze, input-only generation produced 300 independent primary
+draws and 60 endpoint cases without native outcome admission or replacement.
+All 360 physical initial states are unique and separate from exposed inputs.
+The primary cells have 18–37 draws rather than fixed quotas; the engineering
+panel has five per cell. All qualification profiles and retained regression
+slots are bound to immutable allocations before execution.
