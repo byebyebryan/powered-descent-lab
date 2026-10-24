@@ -197,6 +197,9 @@ lifecycle or reducing the rich report. No old report or selector is refreshed.
 
 ## Recommended next pass
 
+The subsequently authorized [actuation calibration pass](arrival_actuation_plan.md)
+owns its separate [allocation and results](arrival_actuation_execution.md).
+
 This recommendation is not an allocation to start more work:
 
 1. Design and validate correct force-to-engine-setting allocation, explicitly
