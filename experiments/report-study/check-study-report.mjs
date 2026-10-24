@@ -31,7 +31,7 @@ export async function checkStudyViewport(client,{url,kind,output,name,width}){
   let detail;
   if(kind==='rl'){
     const counts=await client.evaluate('PdStudyReviewModel.summary(PdPairedReview.data.missions,PdPairedReview.state,PdStudyProjection).counts');
-    assert.equal(JSON.stringify(counts),JSON.stringify({preserved:443,gained:146,lost:3,missed:8,unpaired:0}));
+    assert(Object.keys(counts).length===5&&Object.entries({preserved:443,gained:146,lost:3,missed:8,unpaired:0}).every(([key,value])=>counts[key]===value));
     await client.evaluate('document.querySelector("[data-study-change=lost]").click()');
     assert(await client.evaluate('JSON.stringify(PdStudyReview.selected().map(m=>m.mission_index))===JSON.stringify([355,436,514])'));
     assert.equal(await client.evaluate('document.getElementById("study-fixed-claims").textContent'),initial.claims);

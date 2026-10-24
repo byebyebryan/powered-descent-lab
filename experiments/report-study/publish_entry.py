@@ -1,0 +1,51 @@
+"""Create the small visual entry page linking the complete rich study editions."""
+import argparse
+import json
+from pathlib import Path
+from string import Template
+
+
+HTML=Template('''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Landing studies · comparison to evidence</title>
+<style>
+:root{color-scheme:light;--ink:#242a29;--muted:#59645f;--teal:#087f73;--blue:#356a96;--red:#ae382d;--line:#d4ddd7}*{box-sizing:border-box}body{margin:0;background:#f2f3ed;color:var(--ink);font:16px/1.55 system-ui,sans-serif}main{max-width:1200px;margin:auto;padding:32px 22px 64px}h1{font:clamp(32px,5vw,56px)/1.12 Georgia,serif;max-width:850px;margin:12px 0 18px}h2{font-size:26px;line-height:1.3;margin:0 0 12px}h3{margin:18px 0 6px;font-size:18px}p{margin:10px 0}.kicker{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--teal);font-weight:700}.muted,figcaption{color:var(--muted);font-size:14px}.route{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:26px 0}.route span{background:#e2eae5;border-radius:9px;padding:12px}.route b{display:block;color:var(--teal)}article{background:#fffdf8;border:1px solid var(--line);border-radius:18px;padding:25px;margin-top:22px;min-width:0}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.grid>*{min-width:0}.stat{font-size:32px;color:var(--teal);font-weight:700}.stat small{display:block;font-size:14px;font-weight:500;color:var(--muted)}.stats{display:flex;flex-wrap:wrap;gap:25px;margin:18px 0}figure{margin:12px 0;padding:12px;background:#f5f6f0;border-radius:10px}img{display:block;width:100%;height:auto}a{color:#1d5f76;text-underline-offset:3px}.button{display:inline-block;background:#126b61;color:#fff;padding:11px 17px;border-radius:8px;text-decoration:none;font-weight:650;margin:10px 8px 4px 0}.secondary{background:#e9eee9;color:#24594f}.matrix{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:15px}.matrix a{padding:15px;border-radius:10px;text-decoration:none;background:#edf1ed;color:#29473d}.matrix a b{display:block;font-size:34px}.matrix .gain{background:#e1f1e9;color:#08685e}.matrix .loss{background:#fbe9e2;color:#9f3227}.matrix .miss{background:#eceae5;color:#5f5950}.matrix a span{font-size:14px}details{margin-top:24px;padding:18px;border:1px solid var(--line);border-radius:12px}summary{cursor:pointer;font-weight:650}a:focus-visible,summary:focus-visible{outline:3px solid #b45309;outline-offset:4px}.check{border-left:4px solid var(--teal);padding-left:14px}.foot{margin-top:25px;font-size:14px;color:var(--muted)}@media(max-width:760px){main{padding:22px 14px 40px}.grid{grid-template-columns:1fr}.route{grid-template-columns:repeat(2,minmax(0,1fr))}article{padding:18px}.stat{font-size:27px}}
+</style></head><body><main>
+<div class="kicker">Powered Descent Lab · retained studies · 24 October 2026</div>
+<h1>What changed, and which missions explain it?</h1>
+<p>Study questions and comparisons now lead directly into the established mission tree and complete captured-flight views.</p>
+<div class="route" aria-label="Review path"><span><b>1 · Question</b>What are we testing?</span><span><b>2 · Comparison</b>What improved or regressed?</span><span><b>3 · Mission</b>Which originals changed?</span><span><b>4 · Evidence</b>What happened in the flight?</span></div>
+<article><div class="kicker">Timing reference · 63 pairs → 132 pairs</div><h2>Does a larger timing search pay off?</h2>
+<p>The same 300 confirmation inputs qualify the expanded offline reference. Fuel differences and measured selection cost are shown separately.</p>
+<div class="stats"><div class="stat">300 / 300<small>verified confirmation landings</small></div><div class="stat">$saving kg<small>less mean fuel per successful pair</small></div><div class="stat">$percent%<small>reduction in mean fuel</small></div></div>
+<div class="grid"><section><h3>Fuel difference on each original</h3><figure><img src="timing-differences.svg" width="500" height="225" alt="300 paired fuel differences for 132 minus 63 timing pairs, all at or below zero"><figcaption>Δ = 132-pair fuel − 63-pair fuel, in kg. Negative saves fuel; 72 exact ties. The full-cohort interval remains fixed when filtering.</figcaption></figure></section><section><h3>What does the extra search cost?</h3><figure><img src="planning-cost.svg" width="500" height="200" alt="Measured selection latency distributions for the 63 and 132 pair references"><figcaption>Each variant: 12 exposed originals × 7 measured repeats. Dots are timings; whiskers show P05–P95 and the line marks the median. This is a separate host benchmark.</figcaption></figure></section></div>
+<a class="button" href="$timing">Open timing study and mission tree →</a>
+<p class="muted">Complete edition: 1,285 rich flights on 445 scheduled original occurrences. Confirmation, boundary cases, retained handoffs, development and repeated pilots keep their own roles. Select a metric point to open its paired mission and recorded timing forecast grid.</p></article>
+<article><div class="kicker">Learned ignition · heuristic → RL</div><h2>More landings overall. Where did it regress?</h2>
+<div class="grid"><section><p>RL lands 589/600 supplied airborne arcs; the heuristic lands 446/600. The transition matrix identifies exactly where that change came from.</p><p>Choose a cell to browse its originals with the comparison preserved in the rich details.</p><a class="button" href="$rl">Open complete ignition study →</a><a class="button secondary" href="$rl?cohort=confirmation&amp;contrast=heuristic-rl&amp;metric=fuel_used_kg&amp;change=lost">Inspect the three lost landings →</a><p class="muted">Lost originals: 355, 436 and 514. Fuel comparisons use only the 443 pairs where both variants verify landing. Scope: supplied arcs, prepared attitude and explicit touchdown time.</p></section><section><div class="matrix" aria-label="600-original heuristic to RL outcome transitions">
+<a href="$rl?change=preserved"><span>Both landed</span><b>443</b><span>Preserved landings</span></a><a class="loss" href="$rl?change=lost"><span>Heuristic only</span><b>3</b><span>Lost landings</span></a><a class="gain" href="$rl?change=gained"><span>RL only</span><b>146</b><span>Gained landings</span></a><a class="miss" href="$rl?change=missed"><span>Neither landed</span><b>8</b><span>Remaining unsuccessful originals</span></a></div><p class="muted">Complete edition: 600 paired originals × four variants = 2,400 rich flights. Isolated planning latency was not recorded for this study.</p></section></div></article>
+<article><div class="kicker">Shared report improvements</div><h2>Readable plots, with the comparison carried through</h2><div class="grid"><section><h3>Rich flight views</h3><p>Speed and throttle modes preserve all recorded segments with bounded colour traces. Engine-direction glyphs are spaced in screen pixels and stay small when zooming.</p><p class="muted">Static trajectory and metric views remain available when the external chart library cannot load.</p></section><section><h3>Study → tree → paired details</h3><p>Outcome cells, fuel-difference ranges and condition cells select originals. Details retain the cohort, comparison and selection for baseline/candidate and previous/next links.</p><p class="muted">Frozen study conclusions stay separate from exploratory selections; unscheduled variants remain explicitly unavailable.</p></section></div></article>
+<details><summary>Validation and source evidence</summary><p class="check">The complete editions passed independent capture/proof/value audits and desktop/mobile browsing checks. All 18,441 report and linked source files matched their served bytes. Every original remained reachable; filtering did not change frozen conclusions.</p><p><a href="timing-audit.json">Timing audit</a> · <a href="rl-audit.json">Ignition audit</a> · <a href="validation.json">Validation summary</a> · <a href="graph-source.json">Graph provenance</a></p><p><a href="http://starship:8787/reports/4a36215061f1dda50bd47e71aeaa0193602971a2798e330521b64721a55dd4cc/">Prior timing qualification report</a> · <a href="http://starship:8787/reports/#project=powered-descent-lab">Project report catalog</a></p><p class="muted">Presentation-only regeneration from saved captures. Scientific flights, training and planner/controller decisions remain those of the source studies. The complete study editions include source bindings, recorded contact and complete proof links.</p></details>
+<p class="foot">This entry page links the complete maintained study and mission views. Its two timing graphs are static exports of the checked default study view.</p>
+</main></body></html>''')
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('root',type=Path);args=p.parse_args()
+    root=args.root.resolve();release=root/'release-b';export=root/'publication'
+    audit=json.loads((release/'timing-audit.json').read_text());rl=json.loads((release/'rl-audit.json').read_text())
+    assert audit['passed'] and rl['passed']
+    study=json.loads((Path(audit['edition'])/'study.json').read_text())
+    effect=next(e for e in study['effects'] if e['contrast']=='expanded')
+    timing='http://starship:8000/'+Path(audit['edition']).name+'/report.html'
+    ignition='http://starship:8000/'+Path(rl['edition']).name+'/report.html'
+    # Relative saving is the frozen source analysis's paired quantity.
+    declarations=json.loads((Path(audit['edition'])/'source-declarations.json').read_text())
+    analysis=json.loads(Path(next(d['path'] for d in declarations if d['path'].endswith('/analysis.json'))).read_text())
+    pair=analysis['populations']['primary']['paired']['minimum_fuel_grid_v1__minimum_fuel_extended_grid_v1']
+    percent=100*pair['saving_fraction']
+    with (export/'index.html').open('x') as stream:stream.write(HTML.substitute(saving=f"{-effect['estimate']:.3f}",percent=f'{percent:.3f}',timing=timing,rl=ignition))
+    for source in ['timing-audit.json','rl-audit.json']:
+        with (export/source).open('xb') as stream:stream.write((release/source).read_bytes())
+
+
+if __name__=='__main__':main()

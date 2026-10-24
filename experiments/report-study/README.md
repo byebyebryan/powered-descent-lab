@@ -25,3 +25,23 @@ evidence links remain intact. Study source bindings record original evaluations
 and decisions, renderer/library/spec hashes and zero native transitions.
 Report publication and server lifecycle are separate actions; this adapter
 neither publishes nor starts/stops a server.
+
+`audit_studies.py EDITION SPEC RECEIPT` independently checks complete inventories,
+original proof/source identities, every plotted sample and held command, metric
+values, shared colour domains and the retained transition matrices. The timing
+intervals and all benchmark values must equal the frozen source analysis.
+Place the allocation's `workspace-baseline.json` beside the specification.
+
+`check-study-report.mjs` exports a browser-client check for desktop/mobile use.
+It traverses every scheduled original through bounded browsing, checks sparse
+schedules and exact-zero selections, and follows context through paired details.
+Screenshots wait for visible previews to decode and paint. A browser-owned
+adapter supplies navigation, JavaScript evaluation and screenshots.
+
+`audit_delivery.py OUTPUTS RECEIPT EDITION...` checks served bytes for every
+edition file and its linked source captures/declarations. It uses the established
+`starship:8000` endpoint and does not manage the service.
+`publish_entry.py ROOT` builds the small visual entry page from accepted release
+receipts and exported shared-view SVGs; publication remains an explicit separate
+CLI operation. Complete multi-gigabyte study editions stay on the established
+report endpoint, linked from the published entry page.
