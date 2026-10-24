@@ -19,6 +19,106 @@ pub struct ArrivalLandingProgram {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_timing_bank_ranks_native_fuel_and_executes_its_selected_forecast() {
+        let mut s: ScenarioSpec = serde_json::from_str(include_str!(
+            "../../../fixtures/scenarios/flat_terminal_descent.json"
+        ))
+        .unwrap();
+        s.initial_state.position_m = pd_core::Vec2::new(0.0, 800.0);
+        s.initial_state.velocity_mps = pd_core::Vec2::new(0.0, -30.0);
+        s.sim.max_time_s = 90.0;
+        let ctx = RunContext::from_scenario(&s).unwrap();
+        let mut live = SimulationState::new(&ctx).unwrap();
+        let original = live.build_observation(&ctx);
+        let mut c = ArrivalLandingController::new(
+            &s,
+            ArrivalLandingProgram {
+                arrival: None,
+                land: true,
+            },
+        )
+        .unwrap();
+        c.use_minimum_fuel_timing().unwrap();
+        let mut frame = c.frame(&original, 2_000_000).unwrap();
+        assert_eq!(live.build_observation(&ctx), original);
+        assert_eq!(c.landing_search().candidates.len(), 63);
+        let passing: Vec<_> = c
+            .landing_search()
+            .candidates
+            .iter()
+            .filter(|p| p["result"] == "predicted_target_landing")
+            .collect();
+        assert!(passing.len() > 1);
+        let expected = passing
+            .iter()
+            .copied()
+            .min_by(|a, b| {
+                b["remaining_fuel_kg"]
+                    .as_f64()
+                    .unwrap()
+                    .total_cmp(&a["remaining_fuel_kg"].as_f64().unwrap())
+            })
+            .unwrap();
+        let expected_fuel = expected["remaining_fuel_kg"].as_f64().unwrap();
+        let expected_tick = expected["contact_tick"].as_u64().unwrap();
+        assert_eq!(
+            c.landing_search().chosen_coast_ticks,
+            expected["coast_ticks"].as_u64()
+        );
+        assert_eq!(
+            c.landing_search().chosen_duration_ticks,
+            expected["duration_ticks"].as_u64()
+        );
+        assert!(c.use_minimum_fuel_timing().is_err());
+        loop {
+            live.set_command(frame.command);
+            for _ in 0..2 {
+                let contact = live.step_physics_and_classify_contact(&ctx);
+                if contact != ContactClassification::None {
+                    assert_eq!(
+                        contact,
+                        ContactClassification::StableTouchdown { on_target: true }
+                    );
+                    assert_eq!(live.physics_step, expected_tick);
+                    assert_eq!(live.fuel_kg, expected_fuel);
+                    return;
+                }
+            }
+            frame = c.frame(&live.build_observation(&ctx), 2_000_000).unwrap();
+        }
+    }
+
+    #[test]
+    fn incomplete_timing_enumeration_fails_instead_of_returning_a_partial_optimum() {
+        let s: ScenarioSpec = serde_json::from_str(include_str!(
+            "../../../fixtures/scenarios/flat_terminal_descent.json"
+        ))
+        .unwrap();
+        let ctx = RunContext::from_scenario(&s).unwrap();
+        let live = SimulationState::new(&ctx).unwrap();
+        let mut c = ArrivalLandingController::new(
+            &s,
+            ArrivalLandingProgram {
+                arrival: None,
+                land: true,
+            },
+        )
+        .unwrap();
+        c.use_minimum_fuel_timing().unwrap();
+        assert!(
+            c.frame(&live.build_observation(&ctx), 1)
+                .unwrap_err()
+                .contains("resource limit")
+        );
+        assert!(
+            c.frame(&live.build_observation(&ctx), 2_000_000)
+                .unwrap_err()
+                .contains("closed")
+        );
+    }
+
     #[test]
     fn native_forecast_selection_preserves_live_state_and_matches_actual_touchdown() {
         let mut s: ScenarioSpec = serde_json::from_str(include_str!(
@@ -149,6 +249,7 @@ pub struct ArrivalLandingController {
     reference_end: Option<u64>,
     hold_attitude: f64,
     closed: bool,
+    minimum_fuel_timing: bool,
 }
 
 impl ArrivalLandingController {
@@ -176,6 +277,7 @@ impl ArrivalLandingController {
             reference_end: None,
             hold_attitude: scenario.initial_state.attitude_rad,
             closed: false,
+            minimum_fuel_timing: false,
         })
     }
 
@@ -191,6 +293,17 @@ impl ArrivalLandingController {
             )?);
         }
         Ok(c)
+    }
+
+    /// Opt into complete enumeration of the existing timing bank. This changes
+    /// only selection; the arrival kernel, preparation and Poly burn are shared.
+    /// A resource limit is an error, never a partially searched fuel optimum.
+    pub fn use_minimum_fuel_timing(&mut self) -> Result<(), String> {
+        if self.next_tick != 0 || self.selection.selection_observation.is_some() || self.closed {
+            return Err("timing selection must be configured before execution".into());
+        }
+        self.minimum_fuel_timing = true;
+        Ok(())
     }
 
     /// Begin the existing landing selector at a retained airborne tick. The
@@ -224,9 +337,15 @@ impl ArrivalLandingController {
     }
 
     fn select(&mut self, o: &Observation, remaining_work: u64) -> Result<(), String> {
-        self.selection.selector = "poly_native_first_feasible_coast_duration_grid_v1".into();
+        self.selection.selector = if self.minimum_fuel_timing {
+            "poly_native_minimum_fuel_coast_duration_grid_v1"
+        } else {
+            "poly_native_first_feasible_coast_duration_grid_v1"
+        }
+        .into();
         self.selection.selection_observation = Some(o.clone());
-        // Frozen order: first feasible, not a claim of minimum fuel.
+        let mut best_remaining_fuel = f64::NEG_INFINITY;
+        // Frozen order also breaks exact fuel ties in the opt-in complete bank.
         for coast_s in [0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 6.0] {
             let coast = (coast_s * 120.0) as u64;
             for duration_s in [6_u64, 8, 10, 12, 16, 20, 24, 30, 36] {
@@ -328,19 +447,29 @@ impl ArrivalLandingController {
                     }
                 }
                 let pass = contact == ContactClassification::StableTouchdown { on_target: true };
-                self.selection.candidates.push(serde_json::json!({"coast_ticks":coast,"duration_ticks":duration_s*120,"contact":contact,"contact_tick":forecast.physics_step,"result":if pass{"predicted_target_landing"}else{"forecast_failed"}}));
-                if pass {
+                let mut candidate = serde_json::json!({"coast_ticks":coast,"duration_ticks":duration_s*120,"contact":contact,"contact_tick":forecast.physics_step,"result":if pass{"predicted_target_landing"}else{"forecast_failed"}});
+                if self.minimum_fuel_timing {
+                    candidate["remaining_fuel_kg"] = forecast.fuel_kg.into();
+                    candidate["speed_mps"] = forecast.velocity_mps.length().into();
+                    candidate["attitude_rad"] = forecast.attitude_rad.into();
+                    candidate["angular_rate_radps"] = forecast.angular_rate_radps.into();
+                }
+                self.selection.candidates.push(candidate);
+                if pass && forecast.fuel_kg > best_remaining_fuel {
+                    best_remaining_fuel = forecast.fuel_kg;
                     self.selection.chosen_coast_ticks = Some(coast);
                     self.selection.chosen_duration_ticks = Some(duration_s * 120);
                     self.selection.chosen_first_attitude_rad = Some(attitude);
                     self.burn_start = Some(start);
                     self.reference_end = Some(end);
                     self.hold_attitude = attitude;
-                    return Ok(());
+                    if !self.minimum_fuel_timing {
+                        return Ok(());
+                    }
                 }
             }
         }
-        self.selection.no_plan = true;
+        self.selection.no_plan = self.burn_start.is_none();
         Ok(())
     }
 
@@ -372,8 +501,14 @@ impl ArrivalLandingController {
                 ArrivalFrame::Resolved => self.arrival_active = false,
             }
         }
-        if self.program.land && self.selection.selection_observation.is_none() {
-            self.select(o, remaining_forecast_work)?;
+        if self.program.land
+            && self.selection.selection_observation.is_none()
+            && let Err(error) = self.select(o, remaining_forecast_work)
+        {
+            if self.minimum_fuel_timing {
+                self.closed = true;
+            }
+            return Err(error);
         }
         if self.burn_start == Some(o.physics_step) {
             let mut landing = PolynomialLandingController::new_checked(

@@ -74,3 +74,12 @@ It uses the same isolated Matplotlib presentation environment described above.
 every occurrence, visible lazy previews, comparison controls, plot modes and
 detail/tree navigation in an explicitly owned disposable Chrome. These tools
 do not refresh old reports or start/stop report servers.
+
+The [timing and goal-selection study](../../docs/arrival_timing_selection_plan.md)
+adds `run_timing_study.py ALLOCATION.json` and `timing_study.py`. The optional
+native `timing_selection="minimum_fuel_grid_v1"` enumerates the same finite
+coast/duration bank and ranks native target-contact forecasts by fuel. Omitted
+selection retains the original first-feasible behavior and feedback. Complete
+Summary/capture equality, controller/goal reconstruction and replay establish
+selected flight evidence; a forecast alone does not. `test_timing_study.py`
+checks both default preservation and full new-selector execution proof.

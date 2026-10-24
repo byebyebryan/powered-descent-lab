@@ -183,12 +183,14 @@ pub struct ArrivalEpisode {
     scope: Option<EvidenceScope>,
     before: Option<EvidenceSnapshotV1>,
     native_success: bool,
+    minimum_fuel_timing: bool,
 }
 
 #[pymethods]
 impl ArrivalEpisode {
     #[new]
-    #[pyo3(signature=(scenario_json, program_json, captured=false, descriptor_json=None, input_files=None, actuation_profile=None, witness_recipe_json=None))]
+    #[allow(clippy::too_many_arguments)] // Preserve the existing Python argument order.
+    #[pyo3(signature=(scenario_json, program_json, captured=false, descriptor_json=None, input_files=None, actuation_profile=None, witness_recipe_json=None, timing_selection=None))]
     fn new(
         scenario_json: &str,
         program_json: &str,
@@ -197,6 +199,7 @@ impl ArrivalEpisode {
         input_files: Option<Vec<String>>,
         actuation_profile: Option<&str>,
         witness_recipe_json: Option<&str>,
+        timing_selection: Option<&str>,
     ) -> PyResult<Self> {
         let scenario: ScenarioSpec = decode(scenario_json)?;
         let program: ArrivalLandingProgram = decode(program_json)?;
@@ -204,12 +207,20 @@ impl ArrivalEpisode {
             .map(|s| decode(&format!("\"{s}\"")))
             .transpose()?;
         let recipe: Option<WitnessRecipe> = witness_recipe_json.map(decode).transpose()?;
+        let minimum_fuel_timing = match timing_selection {
+            None | Some("first_feasible_v1") => false,
+            Some("minimum_fuel_grid_v1") => true,
+            Some(_) => return Err(error("unknown timing selection profile")),
+        };
+        if minimum_fuel_timing && recipe.is_some() {
+            return Err(error("fuel-ranked timing requires the guidance executor"));
+        }
         if profile.is_some() && recipe.is_some() {
             return Err(error(
                 "witness and guidance profiles are mutually exclusive",
             ));
         }
-        let controller = if let Some(recipe) = &recipe {
+        let mut controller = if let Some(recipe) = &recipe {
             if recipe.physics_ticks == 0
                 || recipe.physics_ticks > 2400
                 || !recipe.physics_ticks.is_multiple_of(2)
@@ -252,15 +263,26 @@ impl ArrivalEpisode {
                 ArrivalLandingController::new(&scenario, program.clone()).map_err(error)?,
             ))
         };
-        let descriptor = descriptor_json
-            .map(decode)
-            .transpose()?
-            .unwrap_or(AgentDescriptorV1 {
-                schema_version: 1,
-                implementation: "airborne-arrival-composition-v1".into(),
-                checkpoint_sha256: None,
-                configuration: serde_json::to_value(program).map_err(error)?,
-            });
+        if minimum_fuel_timing && let Executor::Guidance(c) = &mut controller {
+            c.use_minimum_fuel_timing().map_err(error)?;
+        }
+        let mut descriptor =
+            descriptor_json
+                .map(decode)
+                .transpose()?
+                .unwrap_or(AgentDescriptorV1 {
+                    schema_version: 1,
+                    implementation: "airborne-arrival-composition-v1".into(),
+                    checkpoint_sha256: None,
+                    configuration: serde_json::to_value(program).map_err(error)?,
+                });
+        if minimum_fuel_timing {
+            descriptor
+                .configuration
+                .as_object_mut()
+                .ok_or_else(|| error("timing descriptor configuration must be an object"))?
+                .insert("timing_selection".into(), "minimum_fuel_grid_v1".into());
+        }
         descriptor.validate().map_err(error)?;
         let end = (scenario.sim.max_time_s * 120.0).floor() as u64;
         let episode = Episode::reset(
@@ -292,6 +314,7 @@ impl ArrivalEpisode {
             scope,
             before,
             native_success: false,
+            minimum_fuel_timing,
             profile,
             witness_recipe: recipe,
             plant: profile.map(|_| PlantAllocation::default()),
@@ -405,6 +428,9 @@ impl ArrivalEpisode {
         let e = self.live()?;
         let o = e.observation();
         let mut value = serde_json::json!({"physics_steps":o.physics_step,"stop":e.stop(),"fingerprint":format!("{:x}",self.fingerprint.clone().finalize()),"native_success":self.native_success,"observation":o,"feedback":self.controller.feedback(),"arrival":self.controller.arrival(),"landing_search":self.controller.landing_search(),"model_steps":self.controller.model_steps(),"forecast_steps":self.controller.forecast_steps()});
+        if self.minimum_fuel_timing {
+            value["timing_selection"] = "minimum_fuel_grid_v1".into();
+        }
         if let Some(profile) = self.profile {
             value["actuation_profile"] = serde_json::to_value(profile).map_err(error)?;
             value["plant_allocation"] = serde_json::to_value(&self.plant).map_err(error)?;
