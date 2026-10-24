@@ -212,3 +212,6 @@ choice set with demonstrated downstream viability before an arc-shaping RL
 experiment. This does not require solving arbitrary state control or relaxing
 the tilt limit now. Further control changes, broader goal discovery and RL
 training require their own pass.
+
+The subsequent [arrival composition pass](arrival_composition_plan.md) tests
+those actual handoffs before deciding whether a guidance correction is needed.
