@@ -1,6 +1,7 @@
 /* Pairing selects original rich payloads, never a reconstructed simulation. */
 (async()=>{
   const status=document.getElementById('pair-status'),summary=document.getElementById('pair-summary'),host=document.getElementById('pair-inspection');
+  const layout=document.createElement('style');layout.textContent='#pair-summary{overflow-wrap:anywhere}#pair-summary table{table-layout:fixed;min-width:0!important}#pair-summary th,#pair-summary td{white-space:normal!important;overflow-wrap:anywhere;padding:6px!important;width:33.333%}';document.head.append(layout);
   try {
     const params=new URLSearchParams(location.search),loadJson=async path=>globalThis.PdSavedAssets?PdSavedAssets.json(path):fetch(path,{redirect:'error'}).then(r=>{if(!r.ok)throw Error('Missing '+path);return r.json();});
     const nav=await loadJson('navigation.json');if(!nav.study)throw Error('No study comparison declared');

@@ -26,6 +26,7 @@
       Object.assign(state,PdStudyReviewModel.normalize(state,study));
       const contrast=study.contrasts.find(c=>c.id===state.contrast);
       state.a=String(study.variants.findIndex(v=>v.id===contrast.baseline));state.b=String(study.variants.findIndex(v=>v.id===contrast.candidate));
+      if(state.basis==='earlier')state.a=state.b;
       if(!params.has('view'))state.view=state.b;
       controls.a.disabled=controls.b.disabled=true;
       controls.a.title=controls.b.title='Pairing follows the declared study comparison above.';

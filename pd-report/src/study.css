@@ -3,3 +3,4 @@
 .study-claim{background:#eef3f7;border-color:#b8cad9}.study-claim[data-status=passed]{background:#edf5ee;border-color:#bad3c5}.study-claim[data-status=failed]{background:#fff0eb;border-color:#ddb0a3}.study-claim[data-status=limited]{background:#fff5de;border-color:#ddc98e}
 
 .study-grid>*{min-width:0}.study-matrix{grid-template-columns:repeat(2,minmax(0,1fr))}.study-matrix button{min-width:0;overflow-wrap:anywhere}
+.study-scope{overflow-wrap:anywhere}.study-scope details{font-size:12px;margin-top:6px}

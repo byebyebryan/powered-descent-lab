@@ -67,3 +67,10 @@ packs so opening one flight does not download a corpus-wide template dictionary.
 Desktop prototype browsing reaches the tree, pair and full rich view through
 that transport. Complete source freeze, viewport checks and publication remain
 pending.
+
+The corrected prototype passes mobile paired-layout containment, including the
+decision/contact table. It shows native incoming velocity of -1.5 m/s for mission
+011 rather than the stored zeroed endpoint. The earlier-edition mode produces
+four exact zero differences on the prototype and explicitly labels the source
+capture reuse. An invalid requested comparison is disclosed and selects no
+mission pair. The next source epoch includes these fixes before complete render.
