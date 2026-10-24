@@ -29,3 +29,21 @@ All four focused Rust composition tests pass, including selected native
 fuel/contact equality and resource-limit closure. All seven airborne native
 Python tests pass, including the new complete captured/reconstructed timing
 execution and exact default info equality. Strict focused Clippy passes.
+
+## Source freeze and pilot cost release
+
+Runtime epoch A is frozen from `bbc4fda`; its native library SHA-256 is
+`e237d45a382903e3b1dec65de433a45dfd6da202011c25b0e8078accbcdca50f`.
+Its compiled ledger uses retained source paths under `source-epoch-a`.
+The fixed pilot completes all 24 Summary executions and six full captures;
+every attempt lands and every arrival fulfills its instruction. The original
+profile matches retained complete decision info exactly. Charged pilot work is
+6,712,412 steps, including reconstruction, goal generation and neutral replay.
+
+`comparison-release.json` freezes 360 crossed Summary executions on the exposed
+60 originals, 36 fixed new-selector capture roles plus each original's best
+eligible new choice and all failures. Its cap is 300 million steps and 180
+captures; all-pass capture count is at most 84. The conditional learning size
+ceilings are 120 training, 36 validation and 48 final-test originals, with every
+final choice captured. This keeps the all-pass total at most 234 captures inside
+the 256 allowance. No outcome-dependent input replacement or goal change occurs.
