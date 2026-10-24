@@ -80,11 +80,15 @@ def audit(root):
     physical_inputs={}
     for phase in ["development","confirmation"]:
         a,g=read(root/(phase+"-input-allocation.json")),read(root/(phase+"-inputs/result.json"))
+        execution_allocation=read(root/(phase+"-allocation.json"))
+        assert execution_allocation["carried_counts"]==g["resources"]["counts"]
+        assert execution_allocation["input_result_sha256"]==sha(root/(phase+"-inputs/result.json"))
         assert sha(g["generator_path"])==g["generator_sha256"]==a["generator_sha256"]
         assert sha(a["anchor_path"])==a["anchor_sha256"]
         assert g["allocation_sha256"]==sha(root/(phase+"-input-allocation.json"))
         assert not g["exclusions"]
         states={read(c["path"])["state_id"]:read(read(c["path"])["scenario_path"]) for c in g["cases"]}
+        assert all(read(c["path"])["generator_sha256"]==g["generator_sha256"] for c in g["cases"])
         assert len(states)==(12 if phase=="development" else 60)
         physical_inputs[phase]={json.dumps(s["initial_state"],sort_keys=True) for s in states.values()}
         assert len(physical_inputs[phase])==len(states)
