@@ -638,6 +638,7 @@ pub(super) fn report_template() -> &'static str {
               <button type="button" data-mode="vectors">Vectors</button>
             </div>
           </div>
+          <p id="spatial-mode-caption" class="muted" style="margin:0 18px;font-size:12px" aria-live="polite"></p>
           <div id="chart-spatial" class="chart"></div>
         </section>
 
@@ -772,6 +773,7 @@ pub(super) fn report_template() -> &'static str {
   </main>
 
   <script>
+    __SPATIAL_MODEL__
     const reportData = __REPORT_DATA__;
     const paperBg = "#fffdf8";
     const plotBg = "#fcfaf5";
@@ -1392,7 +1394,7 @@ pub(super) fn report_template() -> &'static str {
       showlegend: false,
     });
 
-    const buildScalarSpatialTraces = ({ values, colorscale, colorbarTitle }) => {
+    const buildScalarSpatialTraces = ({ values, colorscale, colorbarTitle, fixedExtent }) => {
       const traces = [{
         type: "scatter",
         mode: "lines",
@@ -1402,23 +1404,17 @@ pub(super) fn report_template() -> &'static str {
         hoverinfo: "skip",
         showlegend: false,
       }];
-      const extent = valueExtent(values);
-      for (let index = 1; index < Math.min(xValues.length, yValues.length, values.length); index += 1) {
-        const x0 = Number(xValues[index - 1]);
-        const y0 = Number(yValues[index - 1]);
-        const x1 = Number(xValues[index]);
-        const y1 = Number(yValues[index]);
-        const value0 = Number(values[index - 1]);
-        const value1 = Number(values[index]);
-        if (![x0, y0, x1, y1, value0, value1].every((value) => Number.isFinite(value))) continue;
+      const extent = fixedExtent || valueExtent(values);
+      for (const group of PdSpatialModel.scalarSegments(xValues, yValues, values, extent)) {
         traces.push({
           type: "scatter",
           mode: "lines",
-          x: [x0, x1],
-          y: [y0, y1],
+          x: group.x,
+          y: group.y,
           line: {
-            color: interpolateColor(colorscale, 0.5 * (value0 + value1), extent.min, extent.max),
+            color: interpolateColor(colorscale, (group.bin + 0.5) / 32, 0, 1),
             width: 4.5,
+            simplify: false,
           },
           hoverinfo: "skip",
           showlegend: false,
@@ -1645,62 +1641,40 @@ pub(super) fn report_template() -> &'static str {
       return { xs, ys };
     };
 
-    const buildVectorSampleIndices = () => {
-      if (timeValues.length <= 1) return timeValues.length ? [0] : [];
-      const totalT = Math.max(0, Number(timeValues[timeValues.length - 1]) - Number(timeValues[0]));
-      const intervalS = Math.max(0.22, totalT / 30.0);
-      const picked = [];
-      let nextT = Number(timeValues[0]);
-      for (let index = 0; index < timeValues.length; index += 1) {
-        const timeValue = Number(timeValues[index]);
-        if (!Number.isFinite(timeValue)) continue;
-        if (!picked.length || timeValue >= nextT - 1e-9) {
-          picked.push(index);
-          nextT = timeValue + intervalS;
-        }
-      }
-      if (picked[picked.length - 1] !== timeValues.length - 1) {
-        picked.push(timeValues.length - 1);
-      }
-      return picked;
-    };
-
     const buildVectorAnnotations = () => {
       const annotations = [];
-      const span = spatialBounds().span;
-      const vectorLength = 0.048 * span;
-      for (const index of buildVectorSampleIndices()) {
+      const layout = document.getElementById('chart-spatial')?._fullLayout;
+      if (!layout) return annotations;
+      const project = (x, y) => {
+        const px = layout.xaxis.l2p(x), py = layout.yaxis.l2p(y);
+        return px >= 0 && py >= 0 && px <= layout.xaxis._length && py <= layout.yaxis._length ? [px, py] : null;
+      };
+      for (const index of PdSpatialModel.vectorIndices(samples, project)) {
         const throttle = Number(samples[index].throttleFrac);
         if (!Number.isFinite(throttle) || throttle <= 0.015) continue;
         const attitudeRad = Number(samples[index].attitudeRad);
         const x0 = Number(samples[index].xM);
         const y0 = Number(samples[index].yM);
         if (![attitudeRad, x0, y0].every((value) => Number.isFinite(value))) continue;
-        const dx = Math.sin(attitudeRad) * vectorLength * throttle;
-        const dy = Math.cos(attitudeRad) * vectorLength * throttle;
-        if (Math.hypot(dx, dy) <= 0.0045 * span) continue;
+        const dx = Math.sin(attitudeRad) * 24 * throttle;
+        const dy = Math.cos(attitudeRad) * 24 * throttle;
         const arrowBase = {
-          x: x0 + dx,
-          y: y0 + dy,
-          ax: x0,
-          ay: y0,
+          x: x0,
+          y: y0,
+          ax: -dx,
+          ay: dy,
           xref: "x",
           yref: "y",
-          axref: "x",
-          ayref: "y",
+          axref: "pixel",
+          ayref: "pixel",
           text: "",
           showarrow: true,
           arrowhead: 3,
-          arrowsize: 0.82,
+          arrowsize: 0.9,
         };
         annotations.push({
           ...arrowBase,
-          arrowwidth: 6.2,
-          arrowcolor: "rgba(255,250,240,0.94)",
-        });
-        annotations.push({
-          ...arrowBase,
-          arrowwidth: 3.2,
+          arrowwidth: 1.7,
           arrowcolor: interpolateColor(throttleColorScale, throttle, 0.0, 1.0),
         });
       }
@@ -1982,12 +1956,17 @@ pub(super) fn report_template() -> &'static str {
       const speedTraces = buildScalarSpatialTraces({
         values: speedValues,
         colorscale: speedColorScale,
-        colorbarTitle: "speed",
+        colorbarTitle: "speed · m/s",
+        fixedExtent: (() => {
+          const node = document.getElementById('spatial-color-domains');
+          return node ? JSON.parse(node.textContent).speed : null;
+        })(),
       });
       const throttleTraces = buildScalarSpatialTraces({
         values: throttleValues,
         colorscale: throttleColorScale,
-        colorbarTitle: "throttle",
+        colorbarTitle: "command · 0–1",
+        fixedExtent: { min: 0, max: 1 },
       });
       const waypointRouteTraces = buildWaypointRouteTraces();
       const waypointEnvelopeTraces = buildWaypointEnvelopeTraces();
@@ -2051,7 +2030,6 @@ pub(super) fn report_template() -> &'static str {
           },
         });
       }
-      const vectorAnnotations = buildVectorAnnotations();
       const flightHandoffTrace = flightCorrections.length ? {
         type: "scatter", mode: "markers+text", name: "Waypoint handoffs",
         x: flightCorrections.map(c => c.handoff.positionM.x),
@@ -2100,13 +2078,14 @@ pub(super) fn report_template() -> &'static str {
       const eventIndex = spatialTraces.length - (flightHandoffTrace ? 3 : 2);
       const hoverIndex = eventIndex + 1;
       flightHandoffTraceIndex = flightHandoffTrace ? hoverIndex + 1 : -1;
-      const baseVisible = new Set([0, plainIndex, eventIndex, hoverIndex]);
+      const baseVisible = new Set([0, eventIndex, hoverIndex]);
       if (padTrace) baseVisible.add(1);
       for (let index = plannerStart; index < plannerEnd; index += 1) baseVisible.add(index);
       const inRange = (index, start, end) => index >= start && index < end;
       const visibilityForMode = (mode) => spatialTraces.map((_trace, index) => {
         if (index === flightHandoffTraceIndex) return flightHandoffsVisible;
         if (baseVisible.has(index)) return true;
+        if (index === plainIndex) return mode !== 'speed' && mode !== 'throttle';
         if (mode === "mission") {
           return index === referenceIndex || inRange(index, waypointMarkerStart, waypointMarkerEnd);
         }
@@ -2138,19 +2117,27 @@ pub(super) fn report_template() -> &'static str {
       );
 
       const toolbar = document.getElementById("spatial-mode-toolbar");
+      let currentMode = 'mission';
       const applyMode = (mode) => {
+        currentMode = mode;
         for (const button of toolbar.querySelectorAll("button[data-mode]")) {
           button.classList.toggle("active", button.dataset.mode === mode);
         }
         Plotly.update(
           spatialElement,
           { visible: visibilityForMode(mode) },
-          { annotations: mode === "vectors" ? vectorAnnotations : [] }
+          { annotations: mode === "vectors" ? buildVectorAnnotations() : [] }
         );
+        setText('spatial-mode-caption', mode === 'vectors' ? 'Throttle command and actual engine direction · 100% command = 24 px · glyphs spaced on screen' : mode === 'throttle' ? 'Commanded throttle on a fixed 0–1 colour scale; hover retains every recorded sample.' : mode === 'speed' ? 'Recorded speed · m/s; display colours use 32 bins and preserve every segment.' : '');
       };
       for (const button of toolbar.querySelectorAll("button[data-mode]")) {
         button.addEventListener("click", () => applyMode(button.dataset.mode || "mission"));
       }
+      spatialElement.on('plotly_relayout', change => {
+        if (currentMode === 'vectors' && Object.keys(change).some(k => k.includes('range') || k === 'autosize')) {
+          Plotly.relayout(spatialElement, {annotations: buildVectorAnnotations()});
+        }
+      });
 
       spatialElement.on("plotly_hover", (eventData) => {
         const points = Array.isArray(eventData?.points) ? eventData.points : [];

@@ -226,6 +226,7 @@ pub fn render_run_report_with_flight_annotations(
             "__FLIGHT_ANNOTATIONS_PANEL__",
             &annotations.map(|a| a.panel_html()).unwrap_or_default(),
         )
+        .replace("__SPATIAL_MODEL__", include_str!("spatial_model.js"))
         .replace("__REPORT_DATA__", &json_html(&report_data));
     let handoffs: Vec<_> = annotations
         .into_iter()
