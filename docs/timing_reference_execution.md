@@ -40,3 +40,18 @@ for all three selectors. No primary inputs have been generated at release.
 Development also reproduces both old profiles on all 180 old programs, rather
 than checking only the 60 direct originals. This preservation check does not
 expand the reference-selection or qualification denominator.
+
+### Development reservation stop
+
+The 90-million development phase stopped at 88,044,297 charged steps because the
+next first frame requires a two-million-step reservation. It retained 407 complete
+Summary rows and 58 captures with 116 reconstructions. The failed attempt was
+original 058's 63-pair Summary, before any native/model/forecast transition.
+No selected flight failed. The pilot contained direct inputs and underestimated
+the cost of reproducing the 120 old arrival programs twice.
+
+`development/fault.json` remains unchanged. A separate create-only completion
+phase reserves 20 million of the unused outer reserve for the exact 13 remaining
+Summary slots and two expanded captures. Total reserved work becomes 905 million,
+still within one billion. No completed slot is rerun, no input or selector is
+changed, and no qualification inputs are opened before reference freeze.
