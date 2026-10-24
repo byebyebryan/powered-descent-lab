@@ -13,7 +13,12 @@ async function ready(client,url,rich=false){
 async function shot(client,path){
   // Lazy previews must be decoded and painted before accepting a screenshot.
   await client.evaluate(`(async()=>{
-    const visible=[...document.images].filter(i=>{const r=i.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth});
+    let visible=[];
+    for(let retry=0;retry<200;retry++){
+      visible=[...document.images].filter(i=>{const r=i.getBoundingClientRect();return r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth});
+      if(visible.every(i=>i.src&&i.complete&&i.naturalWidth>0))break;
+      await new Promise(r=>setTimeout(r,40));
+    }
     await Promise.all(visible.map(i=>Promise.race([i.decode(),new Promise((_,reject)=>setTimeout(()=>reject(Error('Preview decode timeout')),8000))])));
     if(document.fonts)await document.fonts.ready;
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));

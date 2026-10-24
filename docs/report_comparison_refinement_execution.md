@@ -74,3 +74,31 @@ decision/contact table. It shows native incoming velocity of -1.5 m/s for missio
 four exact zero differences on the prototype and explicitly labels the source
 capture reuse. An invalid requested comparison is disclosed and selects no
 mission pair. The next source epoch includes these fixes before complete render.
+
+## Complete source and prepublication acceptance
+
+Source epoch A at `cbe34c3` freezes 932 tracked files and the native library.
+Both complete editions rendered from retained captures only. The independent
+source audits reproduce timing's 300/300 primary landings and RL's
+443/146/3/8 matrix, including lost originals 355/436/514. Every serialized native
+sample and source proof is checked. The maintained 19-step development gate
+passes for that production source.
+
+The final pack format includes local templates with each bounded flight pack.
+Timing is 364,452,317 bytes across 55 flight packs; ignition is 425,416,245 bytes
+across 100. Independent decoding reproduces every rich HTML document, native
+numeric literal, proof/evidence record and SVG preview exactly. Two UI exports
+and nine data exports total about 792 MB and fit the declared publication limits.
+
+Complete desktop checks traverse all 445 timing occurrences and 600 RL originals,
+exercise comparisons/targets/invalid references and return from paired and rich
+inspection with context intact. Foreground warm filter medians are 25.5 ms for
+timing and 30.1 ms for ignition. A first timing check retained a two-second frame
+delay; a follow-up separated 16.8 ms synchronous work from browser scheduling,
+and controlled foreground trials include two painted frames. Pixel geometry
+uses a 0.02 px tolerance for Plotly's rounded projection; pure geometry tests
+retain 1e-9 arithmetic checks. The finite RL failure ends at 4.875 s, so its
+cursor check uses a native interior time rather than assuming eight seconds.
+These checker corrections do not change production code or source results.
+
+Publication and published desktop/mobile checks remain the final delivery gate.
