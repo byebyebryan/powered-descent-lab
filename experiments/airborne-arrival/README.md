@@ -54,3 +54,23 @@ the existing Poly selector starts at that retained tick. `composition_study.py`
 checks old/new native observations through the handoff and commands before it,
 alongside complete reconstruction and replay proof. Original witness-only
 programs still continue their unchanged observation tail.
+
+`composition_inputs.py ALLOCATION.json` generates the separately frozen
+development or confirmation inputs and two native-witness endpoint goals.
+Its source/anchor/library hashes and all construction work are recorded; no
+failed proposal is replaced. Keep its source snapshot separate from a compiled
+runtime epoch when only the input generator is added later.
+
+`audit_composition.py ROOT --receipt NEW.json` checks every selected native
+proof, old/new first-resolution prefixes, fresh/development input separation,
+and exact work accounting. `analyze_composition.py ROOT --receipt NEW.json`
+computes complete confirmation qualification and conditional hindsight fuel
+headroom. Neither reader executes native transitions.
+
+`render_composition.py ROOT NEW_OUTPUT` uses the maintained rich tree, consuming
+`analysis.json`, `evidence-audit.json` and the checked `developer-gate-final.json`.
+It uses the same isolated Matplotlib presentation environment described above.
+`check-composition-report.mjs ROOT NEW_QA_DIR EXACT_URL` checks both viewports,
+every occurrence, visible lazy previews, comparison controls, plot modes and
+detail/tree navigation in an explicitly owned disposable Chrome. These tools
+do not refresh old reports or start/stop report servers.
