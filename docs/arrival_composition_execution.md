@@ -144,8 +144,10 @@ capture parity remains optional. The gate wrapper initially extracted the wrong
 completion-marker pattern; `developer-gate-final.json` binds the exact successful
 19-check marker and log hash while preserving the original receipt.
 
-The [full HTML report and established mission tree](http://starship:8000/arrival-composition/loop-20261024T051904Z/report-delivery/report.html)
-contain all 244 rich flights, 104 state comparisons, first-handoff diagnostics,
+The [current HTML report with corrected flight previews](http://starship:8000/arrival-composition/loop-20261024T051904Z/report-flight-frame/report.html)
+uses the same captures and established mission tree. The
+[original HTML edition](http://starship:8000/arrival-composition/loop-20261024T051904Z/report-delivery/report.html)
+contains all 244 rich flights, 104 state comparisons, first-handoff diagnostics,
 failed cases and the conditional fuel figure. Shared templates, old reports,
 selectors and server lifecycle remain unchanged. The initial `report/` edition
 is retained; `report-delivery/` clarifies goal-construction time versus arrival
@@ -180,3 +182,30 @@ binds elapsed time, artifact/free-space limits, heads and baseline preservation.
 
 The existing corrected profile passes this declared arrival-to-landing menu.
 Guidance repair, default promotion, RL training and push are not performed.
+
+## Display-only preview framing correction
+
+The [updated mission tree](http://starship:8000/arrival-composition/loop-20261024T051904Z/report-flight-frame/report.html)
+corrects thumbnails that previously fitted the entire −4,000 to +4,000 m flat
+terrain strip. An 814 m descent occupied only 13 pixels vertically. The new
+opt-in flight frame fits the full actual path, pad and requested arrival goal,
+clips terrain to the viewport, retains equal metre scales and shares bounds
+across each physical mission's choices. All 180 confirmation traces now occupy
+at least 68.49 pixels vertically. Requested goals use amber diamonds; a metre
+scale bar and start altitude make distances explicit.
+
+The [published before/after comparison](http://starship:8787/reports/1832924a01981773fb7294192e229e982b0c3a6ba3f603ed39ad792fd689e1cb/)
+links the full 244-flight edition. Existing terrain-focused preview APIs retain
+their output; an old/new unfocused export has seven byte-identical assets.
+Navigation/tree data, all 488 displayed evidence/proof files and all 976 sealed
+capture files remain byte-identical. No flight/controller execution or proof
+regeneration is part of this display correction. Earlier editions are preserved.
+
+The correction's source, asset checks, legacy parity and desktop/phone browser
+evidence are retained under `outputs/report-preview-framing/20261024T074448Z`.
+Both viewports browse every occurrence, load visible previews and exercise
+the 104-state comparison picker, seven rich flights each, plot modes and
+next/back navigation. Publication checks verify all four before/after SVGs and
+the full-report link. Rich detail/tree templates and server lifecycle are unchanged.
+The maintained 19-check development gate and all thirteen focused documentation/
+tooling Node tests pass for the correction.

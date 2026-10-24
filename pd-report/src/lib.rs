@@ -416,6 +416,34 @@ pub fn build_saved_flight_preview_svg_with_context(
     )
 }
 
+/// Fit a saved airborne flight, target pad and requested arrival goals rather
+/// than the full terrain strip. Comparison positions must cover every choice
+/// of the same mission to keep their metre scales and framing identical.
+/// Terrain is drawn as clipped context; no trajectory or outcome is invented.
+pub fn build_saved_flight_preview_svg_in_flight_frame(
+    scenario: &ScenarioSpec,
+    manifest: Option<&RunManifest>,
+    samples: &[SampleRecord],
+    handoffs: &[Vec2],
+    comparison_positions: &[Vec2],
+    arrival_goals: &[Vec2],
+) -> String {
+    let series = [PreviewRenderSeries {
+        scenario,
+        manifest,
+        trajectory: PreviewTrajectory::Samples(samples),
+        controller_updates: None,
+        route_plan: None,
+    }];
+    build_preview_svg_in_frame(
+        &series,
+        PreviewOptions::saved_flight(),
+        handoffs,
+        comparison_positions,
+        Some(arrival_goals),
+    )
+}
+
 /// Fixed physical-terrain frame for a mission-first preview. Flight data remains
 /// unchanged; the returned flag identifies positions outside the terrain extent.
 /// Callers must disclose that extent and retain the full trace in detail views.
@@ -693,6 +721,16 @@ fn build_preview_svg_with_bounds(
     handoffs: &[Vec2],
     bounds: &[Vec2],
 ) -> String {
+    build_preview_svg_in_frame(series, options, handoffs, bounds, None)
+}
+
+fn build_preview_svg_in_frame(
+    series: &[PreviewRenderSeries<'_>],
+    options: PreviewOptions,
+    handoffs: &[Vec2],
+    bounds: &[Vec2],
+    arrival_goals: Option<&[Vec2]>,
+) -> String {
     const WIDTH_PX: f64 = 156.0;
     const HEIGHT_PX: f64 = 92.0;
     const PADDING_PX: f64 = 6.0;
@@ -856,8 +894,20 @@ fn build_preview_svg_with_bounds(
         min_y = min_y.min(y);
         max_y = max_y.max(y);
     };
-    for &(x, y) in terrain.iter() {
-        include_point(x, y);
+    if let Some(goals) = arrival_goals {
+        for run in series {
+            let p = run.scenario.initial_state.position_m;
+            include_point(transform_x(p.x, first_flip_sign), p.y);
+        }
+        for p in goals {
+            if p.x.is_finite() && p.y.is_finite() {
+                include_point(transform_x(p.x, first_flip_sign), p.y);
+            }
+        }
+    } else {
+        for &(x, y) in terrain.iter() {
+            include_point(x, y);
+        }
     }
     for (trajectory, reference, _) in &trajectories {
         for &(x, y) in trajectory.iter().chain(reference.iter()) {
@@ -980,6 +1030,49 @@ fn build_preview_svg_with_bounds(
     };
 
     let terrain_points = polyline_points(&terrain);
+    let flight_frame = arrival_goals.is_some();
+    let frame_attrs = if flight_frame {
+        format!(
+            " data-frame=\"flight\" data-metres-per-pixel=\"{}\" data-x-min=\"{min_x}\" data-x-max=\"{max_x}\" data-y-min=\"{min_y}\" data-y-max=\"{max_y}\"",
+            1.0 / scale
+        )
+    } else {
+        String::new()
+    };
+    let goals_svg = arrival_goals
+        .unwrap_or_default()
+        .iter()
+        .filter(|p| p.x.is_finite() && p.y.is_finite())
+        .map(|p| {
+            let (px, py) = project(transform_x(p.x, first_flip_sign), p.y);
+            format!(
+                r##"<g class="arrival-goal" data-world-x="{x}" data-world-y="{y}"><title>Requested arrival goal at {x:.1} m, {y:.1} m</title><path d="M {px:.2} {top:.2} L {right:.2} {py:.2} L {px:.2} {bottom:.2} L {left:.2} {py:.2} Z" fill="#f08c00" stroke="#fffaf2" stroke-width="0.9"/></g>"##,
+                x = p.x, y = p.y, top = py - 3.2, right = px + 3.2, bottom = py + 3.2, left = px - 3.2,
+            )
+        })
+        .collect::<String>();
+    let scale_svg = if flight_frame {
+        let max_metres = 40.0 / scale;
+        let base = 10.0_f64.powf(max_metres.log10().floor());
+        let multiple = if max_metres / base >= 5.0 {
+            5.0
+        } else if max_metres / base >= 2.0 {
+            2.0
+        } else {
+            1.0
+        };
+        let metres = multiple * base;
+        let end = 10.0 + metres * scale;
+        let height = series
+            .first()
+            .map(|s| s.scenario.initial_state.position_m.y - pad_world.map_or(0.0, |(_, y, _)| y))
+            .unwrap_or(0.0);
+        format!(
+            r##"<g class="preview-scale" data-metres="{metres}" font-family="system-ui,sans-serif" font-size="7" fill="#51483d"><rect x="7" y="72" width="48" height="15" rx="2" fill="#fbf7ee" fill-opacity="0.94"/><path d="M 10 81 V 84 H {end:.2} V 81" fill="none" stroke="#51483d" stroke-width="1"/><text x="10" y="79">{metres} m</text><text x="8" y="12">Start {height:.0} m</text></g>"##
+        )
+    } else {
+        String::new()
+    };
     let start_markers = if options.show_endpoint_markers && !multi_run {
         trajectories
             .iter()
@@ -1210,7 +1303,7 @@ fn build_preview_svg_with_bounds(
         .unwrap_or_default();
 
     format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH_PX}" height="{HEIGHT_PX}" viewBox="0 0 {WIDTH_PX} {HEIGHT_PX}" role="img" aria-label="run trajectory preview">
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH_PX}" height="{HEIGHT_PX}" viewBox="0 0 {WIDTH_PX} {HEIGHT_PX}" role="img" aria-label="run trajectory preview"{frame_attrs}>
   <rect width="100%" height="100%" rx="10" fill="#fbf7ee"/>
   <rect x="0.5" y="0.5" width="{border_w:.1}" height="{border_h:.1}" rx="9.5" fill="none" stroke="#d7cdbd"/>
   {reference_svg}
@@ -1221,7 +1314,7 @@ fn build_preview_svg_with_bounds(
   {route_guide_svg}
   {waypoint_svg}
   {start_markers}
-  {end_markers}{handoff_svg}
+  {end_markers}{handoff_svg}{goals_svg}{scale_svg}
 </svg>"##,
         border_w = WIDTH_PX - 1.0,
         border_h = HEIGHT_PX - 1.0,
@@ -1232,9 +1325,16 @@ fn build_preview_svg_with_bounds(
         terrain_svg = if terrain_points.is_empty() {
             String::new()
         } else {
-            format!(
+            let line = format!(
                 r##"<polyline points="{terrain_points}" fill="none" stroke="#7a5d3e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>"##
-            )
+            );
+            if flight_frame {
+                format!(
+                    r#"<defs><clipPath id="flight-terrain-clip"><rect x="6" y="6" width="144" height="80"/></clipPath></defs><g clip-path="url(#flight-terrain-clip)">{line}</g>"#
+                )
+            } else {
+                line
+            }
         },
         pad_svg = pad_svg.unwrap_or_default(),
         waypoint_svg = waypoint_svg,
@@ -2615,6 +2715,118 @@ mod tests {
         // A completed waypoint-contract mission may still be airborne.
         manifest.physical_outcome = PhysicalOutcome::Flying;
         assert!(render(&manifest).contains("data-outcome=\"success\""));
+    }
+
+    #[test]
+    fn flight_preview_fits_the_full_descent_without_flat_terrain_endpoints() {
+        let mut scenario = fixture_scenario();
+        scenario.initial_state.position_m = Vec2::new(-350.0, 800.0);
+        scenario.world.terrain = pd_core::TerrainDefinition::Heightfield {
+            points_m: vec![Vec2::new(-4000.0, 0.0), Vec2::new(4000.0, 0.0)],
+        };
+        let ctx = pd_core::RunContext::from_scenario(&scenario).unwrap();
+        let state = pd_core::SimulationState::new(&ctx).unwrap();
+        let samples = [
+            Vec2::new(-350.0, 800.0),
+            Vec2::new(-250.0, 700.0),
+            Vec2::new(0.0, 5.0),
+        ]
+        .into_iter()
+        .map(|p| {
+            let mut observation = state.build_observation(&ctx);
+            observation.position_m = p;
+            SampleRecord {
+                sim_time_s: 0.0,
+                physics_step: 0,
+                observation,
+                held_command: pd_core::Command::idle(),
+            }
+        })
+        .collect::<Vec<_>>();
+        let original = serde_json::to_value(&samples).unwrap();
+        let legacy = build_saved_flight_preview_svg(&scenario, None, &samples, &[]);
+        let focused = build_saved_flight_preview_svg_in_flight_frame(
+            &scenario,
+            None,
+            &samples,
+            &[],
+            &[],
+            &[Vec2::new(-150.0, 450.0)],
+        );
+        let points = |svg: &str| {
+            let line = svg
+                .lines()
+                .find(|l| l.contains("stroke=\"#1d5e7a\""))
+                .unwrap();
+            line.split("points=\"")
+                .nth(1)
+                .unwrap()
+                .split('"')
+                .next()
+                .unwrap()
+                .split_whitespace()
+                .map(|p| {
+                    let (x, y) = p.split_once(',').unwrap();
+                    (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap())
+                })
+                .collect::<Vec<_>>()
+        };
+        let a = points(&legacy);
+        let b = points(&focused);
+        assert!(a[2].1 - a[0].1 < 15.0);
+        assert!(b[2].1 - b[0].1 > 60.0);
+        // The first segment moves 100 m along both axes: preserve geometry.
+        assert!(((b[1].0 - b[0].0).abs() - (b[1].1 - b[0].1).abs()).abs() < 0.02);
+        assert!(focused.contains("data-frame=\"flight\""));
+        assert!(focused.contains("clip-path=\"url(#flight-terrain-clip)\""));
+        assert!(
+            focused.contains("class=\"arrival-goal\" data-world-x=\"-150\" data-world-y=\"450\"")
+        );
+        assert!(focused.contains("Start 800 m"));
+        assert!(focused.contains("class=\"preview-scale\""));
+        assert!(!legacy.contains("data-frame="));
+        assert_eq!(serde_json::to_value(&samples).unwrap(), original);
+        assert_eq!(
+            legacy,
+            build_saved_flight_preview_svg_with_context(&scenario, None, &samples, &[], &[])
+        );
+    }
+
+    #[test]
+    fn paired_flight_previews_share_axes_while_marking_only_their_requested_goal() {
+        let mut scenario = fixture_scenario();
+        scenario.initial_state.position_m = Vec2::new(-350.0, 800.0);
+        let ctx = pd_core::RunContext::from_scenario(&scenario).unwrap();
+        let state = pd_core::SimulationState::new(&ctx).unwrap();
+        let sample = SampleRecord {
+            sim_time_s: 0.0,
+            physics_step: 0,
+            observation: state.build_observation(&ctx),
+            held_command: pd_core::Command::idle(),
+        };
+        let mut alternate = sample.clone();
+        alternate.observation.position_m = Vec2::new(80.0, 950.0);
+        let bounds = [Vec2::new(-350.0, 0.0), Vec2::new(80.0, 950.0)];
+        let direct = build_saved_flight_preview_svg_in_flight_frame(
+            &scenario,
+            None,
+            &[sample],
+            &[],
+            &bounds,
+            &[],
+        );
+        let goal = build_saved_flight_preview_svg_in_flight_frame(
+            &scenario,
+            None,
+            &[alternate],
+            &[],
+            &bounds,
+            &[Vec2::new(-100.0, 400.0)],
+        );
+        assert_eq!(direct.lines().next(), goal.lines().next());
+        assert!(!direct.contains("class=\"arrival-goal\""));
+        assert_eq!(goal.matches("class=\"arrival-goal\"").count(), 1);
+        assert!(!direct.contains("stroke=\"#c92a2a\""));
     }
 
     #[test]

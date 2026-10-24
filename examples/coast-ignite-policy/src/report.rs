@@ -27,6 +27,95 @@ struct Row {
     context_html: Option<String>,
 }
 
+struct LoadedCapture {
+    evaluation: EpisodeEvaluationV1,
+    info: serde_json::Value,
+    proof: serde_json::Value,
+    hash: String,
+}
+
+fn load_capture(row: &Row) -> PyResult<LoadedCapture> {
+    let root = Path::new(&row.capture);
+    let bytes = std::fs::read(root.join("evaluation.json")).map_err(error)?;
+    let seal: serde_json::Value =
+        decode(&std::fs::read_to_string(root.join("seal.json")).map_err(error)?)?;
+    let proof: serde_json::Value =
+        decode(&std::fs::read_to_string(root.join("proof.json")).map_err(error)?)?;
+    let hash = pd_missions::sha256(&bytes);
+    if seal["evaluation_sha256"] != hash
+        || proof["capture_sha256"] != hash
+        || proof["physical_replay"] != true
+        || proof["controller_reconstruction"] != true
+        || proof["planner_reconstruction"] != true
+    {
+        return Err(error("report requires a bound complete proof"));
+    }
+    let evaluation: EpisodeEvaluationV1 = serde_json::from_slice(&bytes).map_err(error)?;
+    if !evaluation.integrity_passed || !evaluation.replay.complete_episode_verified {
+        return Err(error("incomplete capture evidence"));
+    }
+    let info_bytes = std::fs::read(root.join("decisions.json")).map_err(error)?;
+    if pd_missions::sha256(&info_bytes) != proof["decisions_sha256"] {
+        return Err(error("decision proof binding differs"));
+    }
+    let info = serde_json::from_slice(&info_bytes).map_err(error)?;
+    Ok(LoadedCapture {
+        evaluation,
+        info,
+        proof,
+        hash,
+    })
+}
+
+fn arrival_goal(info: &serde_json::Value) -> PyResult<Vec<pd_core::Vec2>> {
+    info.pointer("/arrival/request/waypoint/position_m")
+        .map(|v| serde_json::from_value(v.clone()).map_err(error))
+        .transpose()
+        .map(|v| v.into_iter().collect())
+}
+
+fn focused_mission_bounds(rows: &[Row]) -> PyResult<BTreeMap<String, [pd_core::Vec2; 2]>> {
+    let mut bounds = BTreeMap::new();
+    for row in rows {
+        let LoadedCapture {
+            evaluation: e,
+            info,
+            ..
+        } = load_capture(row)?;
+        let pd_core::TerrainDefinition::Heightfield { points_m } = &e.scenario.world.terrain;
+        if points_m.iter().any(|p| p.y != points_m[0].y) {
+            return Err(error("flight camera is scoped to flat terrain"));
+        }
+        let ctx = pd_core::RunContext::from_scenario(&e.scenario).map_err(error)?;
+        let b = bounds.entry(e.physical_sha256).or_insert([
+            pd_core::Vec2::new(f64::INFINITY, f64::INFINITY),
+            pd_core::Vec2::new(f64::NEG_INFINITY, f64::NEG_INFINITY),
+        ]);
+        let mut include = |p: pd_core::Vec2| {
+            b[0].x = b[0].x.min(p.x);
+            b[0].y = b[0].y.min(p.y);
+            b[1].x = b[1].x.max(p.x);
+            b[1].y = b[1].y.max(p.y);
+        };
+        include(e.scenario.initial_state.position_m);
+        for sample in &e.execution.episode.run.samples {
+            include(sample.observation.position_m);
+        }
+        include(pd_core::Vec2::new(
+            ctx.target_pad.center_x_m - ctx.target_pad.half_width_m(),
+            ctx.target_pad.surface_y_m,
+        ));
+        include(pd_core::Vec2::new(
+            ctx.target_pad.center_x_m + ctx.target_pad.half_width_m(),
+            ctx.target_pad.surface_y_m,
+        ));
+        for goal in arrival_goal(&info)? {
+            include(goal);
+        }
+    }
+    Ok(bounds)
+}
+
 #[pyfunction]
 pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
     let spec: Spec = decode(spec_json)?;
@@ -50,27 +139,20 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         }
     }
     let max_bytes = spec.max_bytes.unwrap_or(4 * 1024 * 1024 * 1024);
+    let preview_bounds = if spec.focus_flat {
+        focused_mission_bounds(&spec.rows)?
+    } else {
+        BTreeMap::new()
+    };
     let mut written_bytes = 0_u64;
     for (index, row) in spec.rows.iter().enumerate() {
         let root = Path::new(&row.capture);
-        let bytes = std::fs::read(root.join("evaluation.json")).map_err(error)?;
-        let seal: serde_json::Value =
-            decode(&std::fs::read_to_string(root.join("seal.json")).map_err(error)?)?;
-        let proof: serde_json::Value =
-            decode(&std::fs::read_to_string(root.join("proof.json")).map_err(error)?)?;
-        let hash = pd_missions::sha256(&bytes);
-        if seal["evaluation_sha256"] != hash
-            || proof["capture_sha256"] != hash
-            || proof["physical_replay"] != true
-            || proof["controller_reconstruction"] != true
-            || proof["planner_reconstruction"] != true
-        {
-            return Err(error("report requires a bound complete proof"));
-        }
-        let e: EpisodeEvaluationV1 = serde_json::from_slice(&bytes).map_err(error)?;
-        if !e.integrity_passed || !e.replay.complete_episode_verified {
-            return Err(error("incomplete capture evidence"));
-        }
+        let LoadedCapture {
+            evaluation: e,
+            info,
+            proof,
+            hash,
+        } = load_capture(row)?;
         let group = if let Some(g) = groups.get(&row.population) {
             g.clone()
         } else {
@@ -123,13 +205,6 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
                 _ => "stopped",
             }
         };
-        let info: serde_json::Value =
-            decode(&std::fs::read_to_string(root.join("decisions.json")).map_err(error)?)?;
-        if pd_missions::sha256(&std::fs::read(root.join("decisions.json")).map_err(error)?)
-            != proof["decisions_sha256"]
-        {
-            return Err(error("decision proof binding differs"));
-        }
         let feedback: Option<pd_control::maneuver::ManeuverFeedbackV2> =
             serde_json::from_value(info["feedback"].clone()).map_err(error)?;
         let ctx = pd_core::RunContext::from_scenario(&e.scenario).map_err(error)?;
@@ -195,12 +270,23 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             reference,
         )
         .map_err(error)?;
-        let svg = pd_report::build_saved_flight_preview_svg(
-            &e.scenario,
-            Some(manifest),
-            &e.execution.episode.run.samples,
-            &[],
-        );
+        let svg = if let Some(bounds) = preview_bounds.get(&e.physical_sha256) {
+            pd_report::build_saved_flight_preview_svg_in_flight_frame(
+                &e.scenario,
+                Some(manifest),
+                &e.execution.episode.run.samples,
+                &[],
+                bounds,
+                &arrival_goal(&info)?,
+            )
+        } else {
+            pd_report::build_saved_flight_preview_svg(
+                &e.scenario,
+                Some(manifest),
+                &e.execution.episode.run.samples,
+                &[],
+            )
+        };
         let metrics = detail_view::metric_fallback(&e.execution.episode.run.samples);
         let rich =
             detail_view::with_static_fallback(&raw, &svg, &metrics, &row.label).map_err(error)?;
