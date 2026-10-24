@@ -774,6 +774,8 @@ pub(super) fn report_template() -> &'static str {
 
   <script>
     __SPATIAL_MODEL__
+    __FLIGHT_MODEL__
+    __FLIGHT_INSPECTION__
     const reportData = __REPORT_DATA__;
     const paperBg = "#fffdf8";
     const plotBg = "#fcfaf5";
@@ -1656,22 +1658,7 @@ pub(super) fn report_template() -> &'static str {
         const x0 = Number(samples[index].xM);
         const y0 = Number(samples[index].yM);
         if (![attitudeRad, x0, y0].every((value) => Number.isFinite(value))) continue;
-        const dx = Math.sin(attitudeRad) * 24 * throttle;
-        const dy = Math.cos(attitudeRad) * 24 * throttle;
-        const arrowBase = {
-          x: x0,
-          y: y0,
-          ax: -dx,
-          ay: dy,
-          xref: "x",
-          yref: "y",
-          axref: "pixel",
-          ayref: "pixel",
-          text: "",
-          showarrow: true,
-          arrowhead: 3,
-          arrowsize: 0.9,
-        };
+        const arrowBase = PdSpatialModel.vectorAnnotation(samples[index],layout);
         annotations.push({
           ...arrowBase,
           arrowwidth: 1.7,
@@ -2247,9 +2234,19 @@ pub(super) fn report_template() -> &'static str {
       ["Bot step", fmtOptional(sample.computeTimeMs, 3, " ms")],
     ];
 
+    let directionHistory = null;
     const updateInspect = (index) => {
       const sample = samples[Math.max(0, Math.min(Number(index) || 0, samples.length - 1))];
       if (!sample) return;
+      directionHistory?.setTime(sample.simTimeS);
+      const spatial = document.getElementById('chart-spatial'), layout = spatial?._fullLayout;
+      if(directionHistory && layout && typeof Plotly !== 'undefined'){
+        const radius=5, px=layout.xaxis.l2p(sample.xM),py=layout.yaxis.l2p(sample.yM);
+        const shape={type:'circle',xref:'x',yref:'y',x0:layout.xaxis.p2l(px-radius),x1:layout.xaxis.p2l(px+radius),y0:layout.yaxis.p2l(py-radius),y1:layout.yaxis.p2l(py+radius),line:{color:'#b45309',width:2}};
+        const sparse=document.querySelector('[data-mode=vectors].active')?buildVectorAnnotations().slice(0,17):[];
+        const cursor=PdSpatialModel.vectorAnnotation(sample,layout,{color:'#b45309',width:3});
+        Plotly.relayout(spatial,{shapes:[shape],annotations:[...sparse,...(cursor?[cursor]:[])]});
+      }
       setText(
         "inspect-caption",
         `Sample ${sample.physicsStep} at ${fmt(sample.simTimeS, 2)} s${sample.phase ? ` · ${sample.phase}` : ""}`
@@ -2263,6 +2260,12 @@ pub(super) fn report_template() -> &'static str {
         grid.appendChild(card);
       });
       setText("hover-metrics", JSON.stringify(sample.metrics, null, 2));
+    };
+
+    const initDirectionHistory = () => {
+      const host=document.createElement('section');host.id='direction-history';
+      document.querySelector('.left-stack').append(host);
+      directionHistory=PdFlightInspection.mountHistory(host,[{label:'Recorded flight',data:reportData}],{onTime:(_time,states)=>updateInspect(states[0].index)});
     };
 
     const init = () => {
@@ -2283,6 +2286,7 @@ pub(super) fn report_template() -> &'static str {
       buildSpatialPlot();
       buildMetricsPlot();
       initFlightCorrections();
+      initDirectionHistory();
       updateInspect(samples.length ? samples.length - 1 : 0);
     };
 

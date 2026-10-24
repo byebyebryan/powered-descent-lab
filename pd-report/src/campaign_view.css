@@ -95,7 +95,7 @@
 .paired-mission-row > td:first-child { padding-left: calc(14px + var(--mission-depth,0) * 12px); }
 .paired-group-row[data-kind="stratum"] { background: #f8f4ed; font-weight: 600; }
 .paired-attempt-row > td:first-child { padding-left: 62px; }
-.paired-mission-row .mission-preview { display: block; width: 190px; max-width: 100%; margin-top: 8px; }
+.paired-mission-row .mission-preview { display: block; width: 190px; max-width: 100%; margin: 8px auto 0; }
 .paired-mission-row .mission-preview img { display: block; width: 100%; height: auto; }
 .mission-context-row { background: #f8f4ed; }
 .mission-path { display: block; color: var(--muted); font-size: .8rem; margin-bottom: 8px; }

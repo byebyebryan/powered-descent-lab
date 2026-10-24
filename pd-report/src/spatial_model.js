@@ -19,15 +19,27 @@
     return groups.filter(g=>g.x.length);
   };
   const vectorIndices = (samples,project,{spacing=42,maximum=18}={}) => {
-    const chosen=[],points=[];
+    const powered=[];
     for(let i=0;i<samples.length;i++){
       const s=samples[i];
       if(![s.xM,s.yM,s.attitudeRad,s.throttleFrac].every(finite)||s.throttleFrac<=0.015)continue;
       const p=project(s.xM,s.yM);
-      if(!p||!p.every(finite)||points.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<spacing))continue;
-      chosen.push(i);points.push(p);if(chosen.length>=maximum)break;
+      if(p&&p.every(finite))powered.push({i,p});
     }
-    return chosen;
+    if(!powered.length)return [];
+    const changes=powered.slice(1).map((v,j)=>({j:j+1,score:Math.abs(Math.atan2(Math.sin(samples[v.i].attitudeRad-samples[powered[j].i].attitudeRad),Math.cos(samples[v.i].attitudeRad-samples[powered[j].i].attitudeRad)))+Math.abs(samples[v.i].throttleFrac-samples[powered[j].i].throttleFrac)})).sort((a,b)=>b.score-a.score);
+    const candidates=[0,powered.length-1,...changes.filter(v=>v.score>.01).slice(0,4).map(v=>v.j)];
+    for(let j=1;j<maximum-1;j++)candidates.push(Math.round(j*(powered.length-1)/(maximum-1)));
+    for(let j=1;j<maximum*4;j++)candidates.push(Math.round(j*(powered.length-1)/(maximum*4)));
+    const chosen=[];
+    for(const j of candidates){const v=powered[j];if(chosen.some(q=>Math.hypot(v.p[0]-q.p[0],v.p[1]-q.p[1])<spacing))continue;chosen.push(v);if(chosen.length>=maximum)break;}
+    return chosen.map(v=>v.i).sort((a,b)=>a-b);
   };
-  globalThis.PdSpatialModel={extent,scalarSegments,vectorIndices};
+  const vectorAnnotation=(sample,layout,{color='#356a96',width=1.7}={})=>{
+    const x=layout.xaxis,y=layout.yaxis,u=sample.throttleFrac;
+    if(![sample.xM,sample.yM,sample.attitudeRad,u].every(finite)||u<=.015)return null;
+    const px=x.l2p(sample.xM),py=y.l2p(sample.yM),dx=Math.sin(sample.attitudeRad)*24*u,dy=-Math.cos(sample.attitudeRad)*24*u;
+    return {x:x.p2l(px+dx),y:y.p2l(py+dy),ax:-dx,ay:-dy,xref:'x',yref:'y',axref:'pixel',ayref:'pixel',text:'',showarrow:true,arrowhead:3,arrowsize:.9,arrowwidth:width,arrowcolor:color};
+  };
+  globalThis.PdSpatialModel={extent,scalarSegments,vectorIndices,vectorAnnotation};
 })();
