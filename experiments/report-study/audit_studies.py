@@ -5,6 +5,7 @@ import json
 import re
 from collections import Counter,defaultdict
 from pathlib import Path
+from urllib.parse import unquote,urlparse
 
 read=lambda p:json.loads(Path(p).read_text())
 sha=lambda p:hashlib.sha256(Path(p).read_bytes()).hexdigest()
@@ -18,6 +19,16 @@ def report_data(path):
 def audit(output,spec_path):
     projection=read(output/'study.json');review=read(output/'report-input.json');navigation=read(output/'navigation.json');spec=read(spec_path)
     bindings=read(output/'source-bindings.json');assert bindings['spec_sha256']==sha(spec_path)
+    baseline=read(spec_path.parent/'workspace-baseline.json');original_expected={}
+    for report in baseline['reports']:
+        old=Path(report['root']);identities={f['path']:f['sha256'] for f in report['files']}
+        for name,digest in identities.items():
+            if not name.endswith('-evidence.json'):continue
+            assert sha(old/name)==digest
+            record=read(old/name);proof_name=name.replace('-evidence.json','-proof.json')
+            assert sha(old/proof_name)==identities[proof_name]
+            proof=read(old/proof_name);capture=(old/unquote(urlparse(record['source_evaluation_href']).path)).resolve().parent
+            original_expected[str(capture)]=(record['source_evaluation_sha256'],proof['decisions_sha256'])
     assert len(review['missions'])==sum(c['originals'] for c in projection['cohorts'])
     assert navigation['study']==projection
     assert {k:v for k,v in navigation.items() if k!='study'}==review
@@ -34,6 +45,7 @@ def audit(output,spec_path):
         folder=Path(row['capture']);evaluation=read(folder/'evaluation.json');proof=read(folder/'proof.json');seal=read(folder/'seal.json');info=read(folder/'decisions.json')
         assert sha(folder/'evaluation.json')==proof['capture_sha256']==seal['evaluation_sha256']
         assert sha(folder/'decisions.json')==proof['decisions_sha256']
+        assert original_expected[str(folder)]==(proof['capture_sha256'],proof['decisions_sha256'])
         assert evaluation['integrity_passed'] and evaluation['replay']['complete_episode_verified'] and evaluation['replay']['physical_prefix_verified']
         assert all(proof[k] for k in ['physical_replay','controller_reconstruction','planner_reconstruction'])
         m,attempt,o=lookup[index];assert m['physical_sha256']==evaluation['physical_sha256']==o['physical_sha256']
@@ -54,9 +66,13 @@ def audit(output,spec_path):
         # must be an exact projection of the retained native values.
         data=report_data(output/f'flight-{index}.html');samples=evaluation['execution']['episode']['run']['samples']
         assert len(data['samples'])==len(samples)
+        updates=evaluation['execution']['controller_updates'];update_index=0
         for view,source in zip(data['samples'],samples):
             ob=source['observation'];assert view['physicsStep']==source['physics_step'] and view['simTimeS']==source['sim_time_s']
             for key,expected in [('xM',ob['position_m']['x']),('yM',ob['position_m']['y']),('vxMps',ob['velocity_mps']['x']),('vyMps',ob['velocity_mps']['y']),('fuelKg',ob['fuel_kg']),('attitudeRad',ob['attitude_rad'])]:assert view[key]==expected
+            while update_index+1<len(updates) and updates[update_index+1]['physics_step']<=source['physics_step']:update_index+=1
+            command=updates[update_index]['frame']['command'] if updates and updates[update_index]['physics_step']<=source['physics_step'] else source['held_command']
+            assert view['throttleFrac']==command['throttle_frac'] and view['targetAttitudeRad']==command['target_attitude_rad']
         html=(output/f'flight-{index}.html').read_text();match=re.search(r'id="spatial-color-domains">(.*?)</script>',html)
         assert match;domain=json.loads(match.group(1));speed_domains[o['physical_sha256']].add(json.dumps(domain,sort_keys=True))
         sources.append({'capture':str(folder),'evaluation_sha256':sha(folder/'evaluation.json'),'decisions_sha256':sha(folder/'decisions.json')})
@@ -85,6 +101,15 @@ def audit(output,spec_path):
         assert matrix['primary/expanded']['counts']=={'preserved':300} and fuel_eligible['primary/expanded']==300
         assert matrix['regressions/expanded']['counts']=={'unpaired':21}
         assert all(p['originals']==12 and p['measured_repeats']==7 and len(p['values'])==84 for p in projection['performance'])
+        declarations=read(output/'source-declarations.json')
+        analysis=read(next(d['path'] for d in declarations if d['path'].endswith('/analysis.json')))
+        benchmark=read(next(d['path'] for d in declarations if d['path'].endswith('/benchmark/result.json')))
+        for p in projection['performance']:
+            assert p['values']==[r['measurements']['selection_wall_ns'][0]/1e6 for r in benchmark['rows'] if r['mode']==p['variant'] and r['role']=='measured']
+        for e in projection['effects']:
+            contrast=next(c for c in projection['contrasts'] if c['id']==e['contrast'])
+            source=analysis['populations']['primary']['paired'][contrast['baseline']+'__'+contrast['candidate']]
+            assert (e['estimate'],e['low'],e['high'])==(-source['mean_saving_kg'],-source['mean_saving_kg_ci95'][1],-source['mean_saving_kg_ci95'][0])
     else:
         assert matrix['confirmation/heuristic-rl']['counts']=={'preserved':443,'gained':146,'lost':3,'missed':8}
         assert matrix['confirmation/heuristic-rl']['lost_originals']==[355,436,514]

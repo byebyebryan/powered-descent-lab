@@ -10,7 +10,17 @@ async function ready(client,url,rich=false){
   }
   throw Error('Study page readiness: '+url);
 }
-async function shot(client,path){const {data}=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(path,Buffer.from(data,'base64'),{flag:'wx'});}
+async function shot(client,path){
+  // Lazy previews must be decoded and painted before accepting a screenshot.
+  await client.evaluate(`(async()=>{
+    const visible=[...document.images].filter(i=>{const r=i.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight&&r.right>0&&r.left<innerWidth});
+    await Promise.all(visible.map(i=>Promise.race([i.decode(),new Promise((_,reject)=>setTimeout(()=>reject(Error('Preview decode timeout')),8000))])));
+    if(document.fonts)await document.fonts.ready;
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    return visible.length;
+  })()`);
+  const {data}=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});writeFileSync(path,Buffer.from(data,'base64'),{flag:'wx'});
+}
 
 export async function checkStudyViewport(client,{url,kind,output,name,width}){
   await client.send('Page.navigate',{url});await ready(client,url);
