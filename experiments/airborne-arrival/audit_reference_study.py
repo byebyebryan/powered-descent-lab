@@ -1,6 +1,7 @@
 """Read-only independent schedule, source, predicate and accounting audit."""
 import argparse
 import math
+import random
 from pathlib import Path
 
 from arrival import read, sha, write_new, encoded
@@ -135,6 +136,99 @@ def audit_phase(root, phase, result_name="result.json"):
         "captures":len(captures),"verified_landings":landed,"preserved":preserved,"prefixes":prefixes,"contacts":contacts}
 
 
+def audit_inputs(root):
+    frozen = read(root/"reference-freeze.json"); receipt = read(root/"input-audit.json")
+    assert receipt["reference_freeze_sha256"] == sha(root/"reference-freeze.json")
+    assert receipt["generated_unix"] > frozen["frozen_unix"]
+    exposed=set()
+    development=read(root/"development-allocation.json")
+    oldroot=Path(development["cases"][0]["path"]).parents[2]
+    for name in ["confirmation","development","witnesses"]:
+        path=oldroot/(name+"-allocation.json")
+        if path.exists():
+            for item in read(path)["cases"]:exposed.add(encoded(read(read(item["path"])["scenario_path"])["initial_state"]))
+    anchor=read(root/"source-epoch-a/fixtures/scenarios/flat_terminal_descent.json")
+    expected_world=read(root/"source-epoch-a/fixtures/scenarios/flat_terminal_descent.json")["world"]
+    expected_world["terrain"]["points_m"]=[{"x":-4000,"y":0},{"x":4000,"y":0}]
+    expected_mission=anchor["mission"].copy();expected_mission.pop("transfer_route",None)
+    seen = set(); family_names = ["vertical","lateral","braking","attitude_preparation"]
+    rng = random.Random(2310241853)
+    for cohort,n in [("primary",300),("boundary",60)]:
+        result = read(root/(cohort+"-inputs/result.json"))
+        assert len(result["cases"]) == n and result["admissions"] == result["replacements"] == result["native_steps"] == 0
+        assert result["generator_sha256"] == frozen["input_generator_sha256"]
+        for index,item in enumerate(result["cases"]):
+            assert sha(item["path"]) == item["sha256"]
+            case = read(item["path"]); s = read(case["scenario_path"]); state=s["initial_state"]
+            assert sha(case["scenario_path"]) == case["scenario_sha256"]
+            assert s["id"] == f"reference-{cohort}-{index:03}"
+            key = encoded(state); assert key not in seen and key not in exposed; seen.add(key)
+            assert s["vehicle"] == anchor["vehicle"] and s["world"] == expected_world and s["mission"] == expected_mission
+            family,sink = (rng.randrange(4),rng.randrange(3)) if cohort=="primary" else (index//15,(index%15)//5)
+            assert s["metadata"]["family"] == family_names[family] and int(s["metadata"]["sink_band"]) == sink
+            assert 725 <= state["position_m"]["y"] <= 875
+            vx = abs(state["velocity_mps"]["x"]); x = abs(state["position_m"]["x"])
+            assert (vx == x == 0) if family==0 else 310 <= x <= 390
+            if family: assert ([37,43] if family==2 else [22,28])[0] <= vx <= ([37,43] if family==2 else [22,28])[1]
+            assert [13,28,43][sink] <= -state["velocity_mps"]["y"] <= [17,32,47][sink]
+            direction=int(s["metadata"]["direction"])
+            assert direction in [-1,1]
+            center=direction*.25 if family==3 else 0
+            assert center-.040000000000001 <= state["attitude_rad"] <= center+.040000000000001
+            if family:
+                assert state["position_m"]["x"]*direction < 0 and state["velocity_mps"]["x"]*direction > 0
+            assert state["angular_rate_radps"] == 0 and s["sim"]["max_time_s"] == 90 and s["sim"]["sample_hz"] == 120
+            if cohort=="boundary":
+                pattern=[(0,0,0,0,0),(1,1,1,1,1),(0,1,0,1,0),(1,0,1,0,1),(0,1,1,1,1)][index%5]
+                h,offset,lateral,down,angle=pattern;direction=1 if index%2==0 else -1
+                assert state["position_m"]["y"] == [725.,875.][h]
+                assert state["position_m"]["x"] == (0 if family==0 else -direction*[310.,390.][offset])
+                assert state["velocity_mps"]["y"] == -([13.,28.,43.][sink]+4*down)
+                assert state["velocity_mps"]["x"] == (0 if family==0 else direction*([37.,43.] if family==2 else [22.,28.])[lateral])
+                assert state["attitude_rad"] == (direction*.25 if family==3 else 0)+[-.04,.04][angle]
+    assert len(seen)==360
+    return {"primary":300,"boundary":60,"unique_physical_initial_states":len(seen),"no_admission_or_replacements":True}
+
+
+def audit_benchmark(root):
+    a,result = read(root/"benchmark-allocation.json"),read(root/"benchmark/result.json")
+    host = read(root/"benchmark/host.json")
+    assert host["allocation_sha256"] == sha(root/"benchmark-allocation.json")
+    assert host["native_sha256"] == a["native_sha256"]
+    expected = {(i["id"],m,j) for i in a["cases"] for m in [FIRST,FUEL,EXTENDED] for j in range(10)}
+    assert len(result["rows"]) == len(expected) == 360
+    assert expected == {(r["case"],r["mode"],r["repeat"]) for r in result["rows"]}
+    counts = {k:0 for k in FIELDS}; fingerprints={}
+    for row in result["rows"]:
+        assert row["role"] == ("first_invocation" if row["repeat"]==0 else "warmup" if row["repeat"]<3 else "measured")
+        m=row["measurements"]
+        assert len(m["selection_wall_ns"]) == len(m["planning_frame_wall_ns"]) == 1
+        assert m["selection_wall_ns"][0] > 0 and m["planning_frame_wall_ns"][0] >= m["selection_wall_ns"][0]
+        assert len(m["ordinary_frame_wall_ns"]) == math.ceil(row["result"]["steps"]/2)-1
+        key=(row["case"],row["mode"])
+        if key in fingerprints: assert fingerprints[key] == row["result"]["fingerprint"]
+        fingerprints[key] = row["result"]["fingerprint"]
+        counts["native_steps"] += row["result"]["steps"]
+        for k in ["model_steps","forecast_steps"]:counts[k] += row["result"][k]
+    assert all(result["resources"]["counts"][k] == v for k,v in counts.items())
+    assert result["resources"]["total_steps"] == sum(counts.values()) <= a["max_steps"]
+    return {"rows":360,"measured_per_profile":84,"total_steps":sum(counts.values()),"counts":result["resources"]["counts"]}
+
+
+def audit(root):
+    phases=[audit_phase(root,p,"fault.json" if p=="development" else "result.json") for p in
+        ["pilot","development","development-completion","primary","boundary","regressions"]]
+    inputs,benchmark = audit_inputs(root),audit_benchmark(root)
+    total=sum(p["total_steps"] for p in phases)+benchmark["total_steps"]
+    captures=sum(p["captures"] for p in phases)
+    assert total<=1_000_000_000 and captures==1165
+    assert sum(p["preserved"] for p in phases)==360 and sum(p["prefixes"] for p in phases)==21
+    return {"passed":True,"total_steps":total,"captures":captures,"verified_landings":sum(p["verified_landings"] for p in phases),
+        "reconstructions":sum(p["counts"]["reconstructions"] for p in phases),"preserved_executions":360,"prefixes":21,
+        "phases":[{k:v for k,v in p.items() if k!="contacts"} for p in phases],"benchmark":benchmark,"inputs":inputs,
+        "contacts":[c for p in phases for c in p["contacts"]],"native_transitions_in_audit":0}
+
+
 if __name__ == "__main__":
-    p = argparse.ArgumentParser();p.add_argument("root",type=Path);p.add_argument("phase");p.add_argument("receipt",type=Path)
-    args = p.parse_args();write_new(args.receipt,audit_phase(args.root.resolve(),args.phase))
+    p = argparse.ArgumentParser();p.add_argument("root",type=Path);p.add_argument("receipt",type=Path)
+    args = p.parse_args();write_new(args.receipt,audit(args.root.resolve()))

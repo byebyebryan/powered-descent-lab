@@ -87,3 +87,48 @@ All 360 physical initial states are unique and separate from exposed inputs.
 The primary cells have 18–37 draws rather than fixed quotas; the engineering
 panel has five per cell. All qualification profiles and retained regression
 slots are bound to immutable allocations before execution.
+
+## Qualification results
+
+The frozen reference verifies all 300 independent primary originals. The
+one-sided 95% exact lower bound is 99.0064%, passing the predeclared 99% gate for
+this fixed mixture and plant. Legacy and 63-pair controls also verify 300/300.
+All three profiles verify all 60 boundary cases. The 21 retained arrival
+instructions are reached and followed by verified landing; all 21 prefixes
+preserve native samples/commands, clocks, fuel and actual handoff state.
+
+| Primary profile | Verified originals | Mean mission fuel kg |
+| --- | ---: | ---: |
+| Legacy first feasible | 300/300 | 739.6625 |
+| Fuel-ranked 63 pairs | 300/300 | 589.4604 |
+| Frozen 132-pair reference | 300/300 | 567.4842 |
+
+All pairs succeed, so the efficiency comparison needs no success conditioning.
+The reference saves 172.1783 kg (23.2780%) against legacy, with paired
+original-level bootstrap 95% interval 22.2279–24.3249%. Against 63 pairs it saves
+21.9762 kg (3.7282%; interval 3.2925–4.1674%). Bootstrap uses 10,000 paired
+resamples and seed 2310241907. A separate boundary/synthetic check confirms that
+failed pairs cannot earn low-fuel crash credit in the analysis.
+
+Selected primary coast is 2–7 s, below the expanded 10 s boundary. The new 14 s
+burn duration wins on 167/300 originals. Coast and duration matter jointly;
+neither later-is-always-better nor continuous/global optimality is established.
+
+Incoming reference contact speed is 1.5 m/s, with maximum absolute lateral speed
+below 1.3e-13 m/s, attitude 0.000620 rad and pad offset 0.000207 m. Legacy maxima
+are 2.493 m/s contact speed and 9.438 m pad offset. These measurements precede
+the native final-velocity reset; original contact limits remain unchanged.
+
+The read-only evidence audit passes exact schedules, all source/library/input
+bindings, native first-arrival predicates, finite-bank rankings, selected
+forecast/actual equality, physical/mission/integrity/complete replay, both
+reconstructions and accounting. It includes the interrupted development attempt.
+Totals: 1,165 new verified captures, 2,330 reconstructions, 360 exact retained
+profile reproductions, 21 prefix proofs and 577,894,322 charged steps. Fitting
+and RL updates remain zero. No default is promoted and nothing is pushed.
+
+These results qualify a bounded offline reference. They do not establish 99%
+reliability for each family or endpoint, arbitrary approach shaping, repeated
+instructions, uncertain dynamics or other vehicles. Full search costs remain
+planning work; an online planner would need an explicit scheduling or amortization
+contract before reusing it frequently.

@@ -100,3 +100,22 @@ historical capture needs modification.
 client, covering both viewports, every rich occurrence, choice comparisons,
 actual lazy SVG loading/painting, plot controls and detail/tree navigation. It
 does not discover a browser, change a server or execute a flight.
+
+The [timing-reference qualification](../../docs/timing_reference_plan.md) adds a
+separately named `minimum_fuel_extended_grid_v1` profile with 132 pairs.
+`reference_inputs.py` generates the frozen independent mixture or endpoint panel
+without flight/outcome admission. `run_reference_study.py ALLOCATION.json`
+executes a fixed schedule with complete proofs; `run_reference_benchmark.py`
+collects isolated planning/ordinary-frame measurements in sidecars. Defaults,
+decision feedback and fingerprints do not include wall-clock measurements.
+
+`audit_reference_study.py ROOT NEW_RECEIPT.json` independently checks schedules,
+input populations, source identities, selected forecasts, native contact,
+retained prefixes and accounting, including the preserved interrupted Summary.
+`analyze_reference_study.py ROOT NEW_RECEIPT.json` separates reliability,
+conditional paired fuel and timing distributions. `render_reference_study.py
+ROOT NEW_OUTPUT` retains the common rich tree and focused previews;
+`check-reference-report.mjs` exports checks for a caller-owned browser tab.
+See the [execution record](../../docs/timing_reference_execution.md) for frozen
+releases, budget-stop evidence and outcomes. None of these dated records
+authorizes another flight campaign, training, default promotion or server change.
