@@ -7,6 +7,10 @@ editions, rich-plot repairs and browser/preservation evidence. The
 [saved-study adapter](../experiments/report-study/README.md) documents its
 create-only inputs and zero-flight boundary.
 
+The proposed [comparison and flight inspection refinement](report_comparison_refinement_plan.md)
+adds pinned run/strategy comparisons, sourced target status, paired time inspection
+and portable UI delivery while retaining mission-first navigation.
+
 [Report workflow](reports.md) · [Development](development.md) ·
 [Refinement results](report_presentation_refinement_results.md) ·
 [Bounded browsing results](report_bounded_browsing_results.md) ·
