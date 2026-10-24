@@ -83,6 +83,14 @@ impl Executor {
     fn work_steps(&self) -> u64 {
         self.model_steps() + self.forecast_steps()
     }
+    fn selection_wall_ns(&self) -> Option<u64> {
+        match self {
+            Self::Guidance(c) => c.selection_wall_ns(),
+            Self::Witness { continuation, .. } => {
+                continuation.as_ref().and_then(|c| c.selection_wall_ns())
+            }
+        }
+    }
     fn landing_search(&self) -> serde_json::Value {
         match self {
             Self::Guidance(c) => serde_json::to_value(c.landing_search()).unwrap(),
@@ -118,6 +126,13 @@ impl Executor {
             }
         }
     }
+}
+
+#[derive(Default, Serialize)]
+struct ExecutionMeasurements {
+    selection_wall_ns: Vec<u64>,
+    planning_frame_wall_ns: Vec<u64>,
+    ordinary_frame_wall_ns: Vec<u64>,
 }
 
 #[derive(Default, Serialize)]
@@ -184,13 +199,15 @@ pub struct ArrivalEpisode {
     before: Option<EvidenceSnapshotV1>,
     native_success: bool,
     minimum_fuel_timing: bool,
+    extended_timing_bank: bool,
+    measurements: Option<ExecutionMeasurements>,
 }
 
 #[pymethods]
 impl ArrivalEpisode {
     #[new]
     #[allow(clippy::too_many_arguments)] // Preserve the existing Python argument order.
-    #[pyo3(signature=(scenario_json, program_json, captured=false, descriptor_json=None, input_files=None, actuation_profile=None, witness_recipe_json=None, timing_selection=None))]
+    #[pyo3(signature=(scenario_json, program_json, captured=false, descriptor_json=None, input_files=None, actuation_profile=None, witness_recipe_json=None, timing_selection=None, measure_timing=false))]
     fn new(
         scenario_json: &str,
         program_json: &str,
@@ -200,6 +217,7 @@ impl ArrivalEpisode {
         actuation_profile: Option<&str>,
         witness_recipe_json: Option<&str>,
         timing_selection: Option<&str>,
+        measure_timing: bool,
     ) -> PyResult<Self> {
         let scenario: ScenarioSpec = decode(scenario_json)?;
         let program: ArrivalLandingProgram = decode(program_json)?;
@@ -207,13 +225,17 @@ impl ArrivalEpisode {
             .map(|s| decode(&format!("\"{s}\"")))
             .transpose()?;
         let recipe: Option<WitnessRecipe> = witness_recipe_json.map(decode).transpose()?;
-        let minimum_fuel_timing = match timing_selection {
-            None | Some("first_feasible_v1") => false,
-            Some("minimum_fuel_grid_v1") => true,
+        let (minimum_fuel_timing, extended_timing_bank) = match timing_selection {
+            None | Some("first_feasible_v1") => (false, false),
+            Some("minimum_fuel_grid_v1") => (true, false),
+            Some("minimum_fuel_extended_grid_v1") => (true, true),
             Some(_) => return Err(error("unknown timing selection profile")),
         };
         if minimum_fuel_timing && recipe.is_some() {
             return Err(error("fuel-ranked timing requires the guidance executor"));
+        }
+        if measure_timing && recipe.is_some() {
+            return Err(error("timing measurement requires the guidance executor"));
         }
         if profile.is_some() && recipe.is_some() {
             return Err(error(
@@ -264,7 +286,14 @@ impl ArrivalEpisode {
             ))
         };
         if minimum_fuel_timing && let Executor::Guidance(c) = &mut controller {
-            c.use_minimum_fuel_timing().map_err(error)?;
+            if extended_timing_bank {
+                c.use_extended_minimum_fuel_timing().map_err(error)?;
+            } else {
+                c.use_minimum_fuel_timing().map_err(error)?;
+            }
+        }
+        if measure_timing && let Executor::Guidance(c) = &mut controller {
+            c.enable_timing_measurement().map_err(error)?;
         }
         let mut descriptor =
             descriptor_json
@@ -281,7 +310,15 @@ impl ArrivalEpisode {
                 .configuration
                 .as_object_mut()
                 .ok_or_else(|| error("timing descriptor configuration must be an object"))?
-                .insert("timing_selection".into(), "minimum_fuel_grid_v1".into());
+                .insert(
+                    "timing_selection".into(),
+                    if extended_timing_bank {
+                        "minimum_fuel_extended_grid_v1"
+                    } else {
+                        "minimum_fuel_grid_v1"
+                    }
+                    .into(),
+                );
         }
         descriptor.validate().map_err(error)?;
         let end = (scenario.sim.max_time_s * 120.0).floor() as u64;
@@ -315,6 +352,8 @@ impl ArrivalEpisode {
             before,
             native_success: false,
             minimum_fuel_timing,
+            extended_timing_bank,
+            measurements: measure_timing.then(ExecutionMeasurements::default),
             profile,
             witness_recipe: recipe,
             plant: profile.map(|_| PlantAllocation::default()),
@@ -331,10 +370,21 @@ impl ArrivalEpisode {
             if work_limit.saturating_sub(used) < 2_000_002 {
                 return Err(error("insufficient per-update work reservation"));
             }
-            let frame = self
-                .controller
-                .frame(&o, work_limit - used - 2)
-                .map_err(error)?;
+            let frame_started = self.measurements.as_ref().map(|_| Instant::now());
+            let selection_before = self.controller.selection_wall_ns();
+            let frame_result = self.controller.frame(&o, work_limit - used - 2);
+            if let Some(measurements) = &mut self.measurements {
+                let frame_ns = frame_started.unwrap().elapsed().as_nanos() as u64;
+                if selection_before.is_none()
+                    && let Some(selection_ns) = self.controller.selection_wall_ns()
+                {
+                    measurements.selection_wall_ns.push(selection_ns);
+                    measurements.planning_frame_wall_ns.push(frame_ns);
+                } else {
+                    measurements.ordinary_frame_wall_ns.push(frame_ns);
+                }
+            }
+            let frame = frame_result.map_err(error)?;
             let allocation = if frame.phase.as_deref() == Some("airborne_arrival") {
                 self.controller.allocation()
             } else {
@@ -371,6 +421,9 @@ impl ArrivalEpisode {
     }
     fn status_json(&self) -> PyResult<String> {
         json(&self.info()?)
+    }
+    fn measurements_json(&self) -> PyResult<String> {
+        json(&self.measurements)
     }
     fn finish_json(&mut self) -> PyResult<String> {
         let (r, info) = self.finish()?;
@@ -429,7 +482,12 @@ impl ArrivalEpisode {
         let o = e.observation();
         let mut value = serde_json::json!({"physics_steps":o.physics_step,"stop":e.stop(),"fingerprint":format!("{:x}",self.fingerprint.clone().finalize()),"native_success":self.native_success,"observation":o,"feedback":self.controller.feedback(),"arrival":self.controller.arrival(),"landing_search":self.controller.landing_search(),"model_steps":self.controller.model_steps(),"forecast_steps":self.controller.forecast_steps()});
         if self.minimum_fuel_timing {
-            value["timing_selection"] = "minimum_fuel_grid_v1".into();
+            value["timing_selection"] = if self.extended_timing_bank {
+                "minimum_fuel_extended_grid_v1"
+            } else {
+                "minimum_fuel_grid_v1"
+            }
+            .into();
         }
         if let Some(profile) = self.profile {
             value["actuation_profile"] = serde_json::to_value(profile).map_err(error)?;
