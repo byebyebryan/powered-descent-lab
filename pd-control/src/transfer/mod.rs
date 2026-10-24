@@ -109,6 +109,7 @@ pub struct TransferPdgController {
     waypoint_continuation_snapshot: Option<(u32, WaypointContinuationPrediction)>,
     waypoint_joint_snapshot: Option<(u32, WaypointJointSearchPrediction)>,
     arrival_model_steps: std::sync::atomic::AtomicU64,
+    arrival_actuation_profile: crate::arrival_actuation::ArrivalActuationProfile,
 }
 
 impl Default for TransferPdgController {
@@ -118,6 +119,32 @@ impl Default for TransferPdgController {
 }
 
 impl TransferPdgController {
+    fn waypoint_command(
+        &self,
+        ctx: &RunContext,
+        o: &Observation,
+        requested: Vec2,
+        max_tilt: f64,
+    ) -> Command {
+        use crate::arrival_actuation::{ArrivalActuationProfile, allocate_arrival_acceleration};
+        if self.arrival_actuation_profile == ArrivalActuationProfile::LegacyV1 {
+            allocate_accel_command(
+                requested,
+                ctx.vehicle.max_thrust_n / o.mass_kg.max(1.0),
+                max_tilt,
+            )
+        } else {
+            allocate_arrival_acceleration(
+                ctx,
+                o,
+                requested,
+                max_tilt,
+                self.arrival_actuation_profile,
+            )
+            .expect("waypoint allocation requires a finite validated physical state")
+            .command
+        }
+    }
     pub fn new(config: TransferPdgControllerConfig) -> Self {
         Self::try_new(config)
             .expect("TransferPdgController::new cannot use retired boost scoring flags")
@@ -161,6 +188,7 @@ impl TransferPdgController {
             waypoint_continuation_snapshot: None,
             waypoint_joint_snapshot: None,
             arrival_model_steps: std::sync::atomic::AtomicU64::new(0),
+            arrival_actuation_profile: crate::arrival_actuation::ArrivalActuationProfile::LegacyV1,
         })
     }
 
@@ -1485,8 +1513,12 @@ impl TransferPdgController {
                 tilt_saturated_time_s += step_s;
             }
 
-            let command =
-                allocate_accel_command(required_accel_mps2, max_thrust_accel_mps2, max_tilt_rad);
+            let command = self.waypoint_command(
+                ctx,
+                &simulated_observation,
+                required_accel_mps2,
+                max_tilt_rad,
+            );
             let max_delta = ctx.vehicle.max_rotation_rate_radps.max(0.0) * step_s;
             let delta = shortest_angle_delta(state.attitude_rad, command.target_attitude_rad);
             state.attitude_rad += delta.clamp(-max_delta, max_delta);
@@ -2152,11 +2184,8 @@ impl TransferPdgController {
             reachable_prediction,
         );
         WaypointGuidanceCommandState {
-            command: allocate_accel_command(
-                required_accel_mps2,
-                max_thrust_accel_mps2,
-                max_tilt_rad,
-            ),
+            command: self.waypoint_command(ctx, observation, required_accel_mps2, max_tilt_rad),
+            requested_accel_mps2: required_accel_mps2,
             target_velocity_mps: candidate.target_velocity_mps,
             time_to_go_s: candidate.time_to_go_s,
             required_accel_ratio,

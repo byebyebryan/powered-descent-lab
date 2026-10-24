@@ -1,5 +1,6 @@
 use pd_core::{Observation, RunContext, SimulationError};
 
+pub mod arrival_actuation;
 mod controllers;
 mod guidance;
 pub mod kit;
@@ -19,6 +20,7 @@ pub use terminal::{
 };
 pub use transfer::{
     AirborneArrivalController, ArrivalFeedback, ArrivalFrame, ArrivalRequest, ArrivalStatus,
+    assess_arrival_handoff,
 };
 
 pub trait Controller {

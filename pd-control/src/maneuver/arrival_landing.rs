@@ -125,6 +125,20 @@ impl ArrivalLandingController {
         })
     }
 
+    pub fn with_actuation_profile(
+        scenario: &ScenarioSpec,
+        program: ArrivalLandingProgram,
+        profile: crate::arrival_actuation::ArrivalActuationProfile,
+    ) -> Result<Self, String> {
+        let mut c = Self::new(scenario, program)?;
+        if c.arrival.is_some() {
+            c.arrival = Some(AirborneArrivalController::with_actuation_profile(
+                scenario, 0, profile,
+            )?);
+        }
+        Ok(c)
+    }
+
     fn state_at(&self, o: &Observation) -> Result<SimulationState, String> {
         let mut s = SimulationState::new(&self.ctx).map_err(|e| e.to_string())?;
         s.physics_step = o.physics_step;

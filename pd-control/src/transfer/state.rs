@@ -484,6 +484,7 @@ pub(super) struct WaypointJointSearchPrediction {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct WaypointGuidanceCommandState {
     pub(super) command: Command,
+    pub(super) requested_accel_mps2: Vec2,
     pub(super) target_velocity_mps: Vec2,
     pub(super) time_to_go_s: f64,
     pub(super) required_accel_ratio: f64,

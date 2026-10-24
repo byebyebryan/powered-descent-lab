@@ -9,6 +9,25 @@ pub struct ArrivalRequest {
     pub deadline_physics_step: u64,
 }
 
+/// Read-only contract assessment for independent native witness tapes.
+pub fn assess_arrival_handoff(
+    request: &ArrivalRequest,
+    anchor: Vec2,
+    o: &Observation,
+) -> pd_core::WaypointHandoffAssessment {
+    let delta = request.waypoint.position_m - anchor;
+    let stats = waypoint_leg_stats_from_axes(
+        o.position_m,
+        o.velocity_mps,
+        request.waypoint.position_m,
+        delta * (1.0 / delta.length()),
+        request.waypoint.handoff_tangent_unit.unwrap(),
+    );
+    request
+        .waypoint
+        .assess_handoff(waypoint_handoff_kinematics(stats))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,6 +189,23 @@ pub struct ArrivalFeedback {
     pub thrust_saturated_updates: u64,
     pub deadline_remaining_s: Option<f64>,
     pub violations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actuation: Option<ArrivalActuationFeedback>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ArrivalActuationFeedback {
+    pub profile: crate::arrival_actuation::ArrivalActuationProfile,
+    pub last: Option<crate::arrival_actuation::ArrivalAllocation>,
+    pub regime_updates: std::collections::BTreeMap<String, u64>,
+    pub engine_switches: u64,
+    pub previous_engine_on: Option<bool>,
+    pub maximum_tracking_scalar_error_mps2: f64,
+    pub ideal_contract_pass: bool,
+    pub actuator_forecast_contract_pass: bool,
+    pub ideal_pass_ever: bool,
+    pub forecast_time_s: f64,
+    pub operation_remaining_s: f64,
 }
 
 pub enum ArrivalFrame {
@@ -218,8 +254,37 @@ impl AirborneArrivalController {
                 thrust_saturated_updates: 0,
                 deadline_remaining_s: None,
                 violations: vec![],
+                actuation: None,
             },
         })
+    }
+
+    /// Explicit experiment profile; the ordinary constructor remains legacy.
+    pub fn with_actuation_profile(
+        scenario: &pd_core::ScenarioSpec,
+        first_tick: u64,
+        profile: crate::arrival_actuation::ArrivalActuationProfile,
+    ) -> Result<Self, String> {
+        let mut controller = Self::new(scenario, first_tick)?;
+        controller.kernel.arrival_actuation_profile = profile;
+        if profile == crate::arrival_actuation::ArrivalActuationProfile::NativePairV2 {
+            controller.feedback.backend =
+                "waypoint_live_arrival_v2_native_pair_no_terminal_advice".into();
+        }
+        controller.feedback.actuation = Some(ArrivalActuationFeedback {
+            profile,
+            last: None,
+            regime_updates: Default::default(),
+            engine_switches: 0,
+            previous_engine_on: None,
+            maximum_tracking_scalar_error_mps2: 0.0,
+            ideal_contract_pass: false,
+            actuator_forecast_contract_pass: false,
+            ideal_pass_ever: false,
+            forecast_time_s: 0.0,
+            operation_remaining_s: 0.0,
+        });
+        Ok(controller)
     }
 
     fn check(&self, o: &Observation) -> Result<(), String> {
@@ -359,6 +424,45 @@ impl AirborneArrivalController {
         let state = self
             .kernel
             .waypoint_guidance_command_state(&self.ctx, o, guidance);
+        if let Some(a) = &mut self.feedback.actuation {
+            let allocated = crate::arrival_actuation::allocate_arrival_acceleration(
+                &self.ctx,
+                o,
+                state.requested_accel_mps2,
+                tilt,
+                a.profile,
+            )?;
+            if allocated.command != state.command {
+                return Err("live/forecast allocation profile mismatch".into());
+            }
+            let key = serde_json::to_value(allocated.regime)
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_owned();
+            *a.regime_updates.entry(key).or_default() += 1;
+            let on = allocated.command.throttle_frac > 0.0;
+            if a.previous_engine_on.is_some_and(|previous| previous != on) {
+                a.engine_switches += 1;
+            }
+            a.previous_engine_on = Some(on);
+            if allocated.regime == crate::arrival_actuation::AllocationRegime::Tracking {
+                a.maximum_tracking_scalar_error_mps2 = a
+                    .maximum_tracking_scalar_error_mps2
+                    .max(allocated.aligned_error_mps2.abs());
+            }
+            a.last = Some(allocated);
+            a.ideal_contract_pass = state.prediction.assessment.contract_pass();
+            a.actuator_forecast_contract_pass = state
+                .reachable_prediction
+                .prediction
+                .assessment
+                .contract_pass();
+            a.forecast_time_s = state.reachable_prediction.prediction.time_to_event_s;
+            a.ideal_pass_ever = self.kernel.waypoint_reference_contract_pass_ever;
+            a.operation_remaining_s =
+                (request.deadline_physics_step - o.physics_step) as f64 / 120.0;
+        }
         self.feedback.replans = self.kernel.waypoint_guidance_replan_count;
         self.feedback.model_steps = self
             .kernel
@@ -381,6 +485,33 @@ impl AirborneArrivalController {
             frame
                 .metrics
                 .insert(key.into(), TelemetryValue::Float(value));
+        }
+        if let Some(a) = &self.feedback.actuation
+            && a.profile == crate::arrival_actuation::ArrivalActuationProfile::NativePairV2
+        {
+            let allocation = a.last.unwrap();
+            for (key, value) in [
+                (
+                    "arrival_projected_ax_mps2",
+                    allocation.projected_accel_mps2.x,
+                ),
+                (
+                    "arrival_projected_ay_mps2",
+                    allocation.projected_accel_mps2.y,
+                ),
+                (
+                    "arrival_aligned_mean_accel_mps2",
+                    allocation.aligned_mean_accel_mps2,
+                ),
+                (
+                    "arrival_allocation_error_mps2",
+                    allocation.aligned_error_mps2,
+                ),
+            ] {
+                frame
+                    .metrics
+                    .insert(key.into(), TelemetryValue::Float(value));
+            }
         }
         self.next_tick += 2;
         Ok(ArrivalFrame::Command(frame))
