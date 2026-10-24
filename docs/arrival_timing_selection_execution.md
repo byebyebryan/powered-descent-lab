@@ -112,6 +112,10 @@ goal-menu opportunity. Further timing-search optimization/amortization or a new
 capability envelope needs its own hypothesis and fresh evaluation. The current
 pass does not authorize a different learning task after its release gate failed.
 
+The subsequent [timing-reference qualification](timing_reference_plan.md)
+owns its independent input populations, one bounded timing-bank comparison and
+separate measurement/qualification gates. It does not reopen goal-menu training.
+
 ## Validation and HTML delivery
 
 The [complete HTML mission tree](http://starship:8000/arrival-timing-selection-report-20261024T171406Z/report.html)
