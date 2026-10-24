@@ -1,12 +1,156 @@
 //! Full native episodes for the opt-in arrival/composition characterization.
+use super::calibration::{WitnessMonitor, WitnessRecipe, witness_command};
 use super::*;
+use pd_control::arrival_actuation::{AllocationRegime, ArrivalActuationProfile, ArrivalAllocation};
 use pd_control::maneuver::{ArrivalLandingController, ArrivalLandingProgram};
+
+enum Executor {
+    Guidance(Box<ArrivalLandingController>),
+    Witness {
+        ctx: Box<pd_core::RunContext>,
+        recipe: WitnessRecipe,
+        monitor: Box<WitnessMonitor>,
+    },
+}
+impl Executor {
+    fn frame(
+        &mut self,
+        o: &Observation,
+        remaining: u64,
+    ) -> Result<pd_control::ControllerFrame, String> {
+        match self {
+            Self::Guidance(c) => c.frame(o, remaining),
+            Self::Witness {
+                ctx,
+                recipe,
+                monitor,
+            } => {
+                monitor.inspect(o);
+                let mut f =
+                    pd_control::ControllerFrame::command_only(witness_command(ctx, o, recipe)?);
+                f.phase = Some(
+                    if o.physics_step < recipe.physics_ticks {
+                        "independent_witness_prefix"
+                    } else {
+                        "witness_observation_tail"
+                    }
+                    .into(),
+                );
+                Ok(f)
+            }
+        }
+    }
+    fn feedback(&self) -> Option<ManeuverFeedbackV2> {
+        match self {
+            Self::Guidance(c) => c.feedback(),
+            _ => None,
+        }
+    }
+    fn arrival(&self) -> serde_json::Value {
+        match self {
+            Self::Guidance(c) => serde_json::to_value(c.arrival_feedback()).unwrap(),
+            Self::Witness { monitor, .. } => monitor.json(),
+        }
+    }
+    fn model_steps(&self) -> u64 {
+        match self {
+            Self::Guidance(c) => c.arrival_feedback().map_or(0, |a| a.model_steps),
+            _ => 0,
+        }
+    }
+    fn forecast_steps(&self) -> u64 {
+        match self {
+            Self::Guidance(c) => c.landing_search().forecast_steps,
+            _ => 0,
+        }
+    }
+    fn work_steps(&self) -> u64 {
+        self.model_steps() + self.forecast_steps()
+    }
+    fn landing_search(&self) -> serde_json::Value {
+        match self {
+            Self::Guidance(c) => serde_json::to_value(c.landing_search()).unwrap(),
+            _ => serde_json::to_value(LandingSearchFeedback::default()).unwrap(),
+        }
+    }
+    fn allocation(&self) -> Option<ArrivalAllocation> {
+        match self {
+            Self::Guidance(c) => c.arrival_feedback()?.actuation.as_ref()?.last,
+            _ => None,
+        }
+    }
+    fn native_end(&mut self, o: &Observation, end: NativeEndV1) -> Result<(), String> {
+        match self {
+            Self::Guidance(c) => c.native_end(o, end),
+            Self::Witness { monitor, .. } => {
+                monitor.inspect(o);
+                if monitor.status == pd_control::ArrivalStatus::Active {
+                    monitor.status = pd_control::ArrivalStatus::NativeEnd;
+                    monitor.resolution = Some(o.clone());
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Default, Serialize)]
+struct PlantAllocation {
+    updates: u64,
+    aligned_updates: u64,
+    aligned_tracking_updates: u64,
+    maximum_aligned_forward_error_mps2: f64,
+    maximum_aligned_requested_error_mps2: f64,
+    maximum_aligned_tracking_error_mps2: f64,
+    maximum_vector_projection_error_mps2: f64,
+}
+impl PlantAllocation {
+    fn observe(
+        &mut self,
+        before: &Observation,
+        after: &Observation,
+        steps: u64,
+        a: ArrivalAllocation,
+    ) {
+        if steps != 2 {
+            return;
+        }
+        self.updates += 1;
+        let actual = pd_core::Vec2::new(
+            (after.velocity_mps.x - before.velocity_mps.x) * 60.0,
+            (after.velocity_mps.y - before.velocity_mps.y) * 60.0 + before.gravity_mps2,
+        );
+        self.maximum_vector_projection_error_mps2 = self
+            .maximum_vector_projection_error_mps2
+            .max((actual - a.projected_accel_mps2).length());
+        if (before.attitude_rad - a.command.target_attitude_rad).abs() < 1e-9
+            && (after.attitude_rad - a.command.target_attitude_rad).abs() < 1e-9
+        {
+            self.aligned_updates += 1;
+            self.maximum_aligned_forward_error_mps2 = self
+                .maximum_aligned_forward_error_mps2
+                .max((actual.length() - a.aligned_mean_accel_mps2).abs());
+            self.maximum_aligned_requested_error_mps2 = self
+                .maximum_aligned_requested_error_mps2
+                .max((actual.length() - a.projected_magnitude_mps2).abs());
+            if a.regime == AllocationRegime::Tracking {
+                self.aligned_tracking_updates += 1;
+                self.maximum_aligned_tracking_error_mps2 = self
+                    .maximum_aligned_tracking_error_mps2
+                    .max((actual.length() - a.projected_magnitude_mps2).abs());
+            }
+        }
+    }
+}
 
 #[pyclass]
 pub struct ArrivalEpisode {
     scenario: ScenarioSpec,
     episode: Option<Episode>,
-    controller: ArrivalLandingController,
+    controller: Executor,
+    profile: Option<ArrivalActuationProfile>,
+    witness_recipe: Option<WitnessRecipe>,
+    plant: Option<PlantAllocation>,
     descriptor: AgentDescriptorV1,
     fingerprint: Sha256,
     started: Instant,
@@ -18,18 +162,69 @@ pub struct ArrivalEpisode {
 #[pymethods]
 impl ArrivalEpisode {
     #[new]
-    #[pyo3(signature=(scenario_json, program_json, captured=false, descriptor_json=None, input_files=None))]
+    #[pyo3(signature=(scenario_json, program_json, captured=false, descriptor_json=None, input_files=None, actuation_profile=None, witness_recipe_json=None))]
     fn new(
         scenario_json: &str,
         program_json: &str,
         captured: bool,
         descriptor_json: Option<&str>,
         input_files: Option<Vec<String>>,
+        actuation_profile: Option<&str>,
+        witness_recipe_json: Option<&str>,
     ) -> PyResult<Self> {
         let scenario: ScenarioSpec = decode(scenario_json)?;
         let program: ArrivalLandingProgram = decode(program_json)?;
-        let controller =
-            ArrivalLandingController::new(&scenario, program.clone()).map_err(error)?;
+        let profile: Option<ArrivalActuationProfile> = actuation_profile
+            .map(|s| decode(&format!("\"{s}\"")))
+            .transpose()?;
+        let recipe: Option<WitnessRecipe> = witness_recipe_json.map(decode).transpose()?;
+        if profile.is_some() && recipe.is_some() {
+            return Err(error(
+                "witness and guidance profiles are mutually exclusive",
+            ));
+        }
+        let controller = if let Some(recipe) = &recipe {
+            if program.land
+                || recipe.physics_ticks == 0
+                || recipe.physics_ticks > 2400
+                || !recipe.physics_ticks.is_multiple_of(2)
+                || !recipe.prepare_ticks.is_multiple_of(2)
+                || recipe.prepare_ticks >= recipe.physics_ticks
+            {
+                return Err(error("invalid witness-only program"));
+            }
+            let ctx = pd_core::RunContext::from_scenario(&scenario).map_err(error)?;
+            let o = pd_core::SimulationState::new(&ctx)
+                .map_err(error)?
+                .build_observation(&ctx);
+            let request = program
+                .arrival
+                .clone()
+                .ok_or_else(|| error("witness requires a bound arrival request"))?;
+            let mut admission =
+                pd_control::AirborneArrivalController::new(&scenario, 0).map_err(error)?;
+            if admission.submit(&request, &o).map_err(error)? != AdmissionV2::Accepted {
+                return Err(error("witness request admission failed"));
+            }
+            Executor::Witness {
+                ctx: Box::new(ctx),
+                recipe: recipe.clone(),
+                monitor: Box::new(WitnessMonitor::new(request, o)),
+            }
+        } else if let Some(profile) = profile {
+            Executor::Guidance(Box::new(
+                ArrivalLandingController::with_actuation_profile(
+                    &scenario,
+                    program.clone(),
+                    profile,
+                )
+                .map_err(error)?,
+            ))
+        } else {
+            Executor::Guidance(Box::new(
+                ArrivalLandingController::new(&scenario, program.clone()).map_err(error)?,
+            ))
+        };
         let descriptor = descriptor_json
             .map(decode)
             .transpose()?
@@ -70,6 +265,9 @@ impl ArrivalEpisode {
             scope,
             before,
             native_success: false,
+            profile,
+            witness_recipe: recipe,
+            plant: profile.map(|_| PlantAllocation::default()),
         })
     }
 
@@ -87,6 +285,11 @@ impl ArrivalEpisode {
                 .controller
                 .frame(&o, work_limit - used - 2)
                 .map_err(error)?;
+            let allocation = if frame.phase.as_deref() == Some("airborne_arrival") {
+                self.controller.allocation()
+            } else {
+                None
+            };
             self.fingerprint
                 .update(serde_json::to_vec(&frame).map_err(error)?);
             let result = self
@@ -95,6 +298,14 @@ impl ArrivalEpisode {
                 .unwrap()
                 .step_frame(frame, None)
                 .map_err(error)?;
+            if let (Some(plant), Some(allocation)) = (&mut self.plant, allocation) {
+                plant.observe(
+                    &o,
+                    &result.observation,
+                    result.physics_steps_advanced,
+                    allocation,
+                );
+            }
             self.fingerprint
                 .update(serde_json::to_vec(&result).map_err(error)?);
             self.native_success = result.physical_outcome == PhysicalOutcome::LandedOnTarget
@@ -166,9 +377,15 @@ impl ArrivalEpisode {
     fn info(&self) -> PyResult<serde_json::Value> {
         let e = self.live()?;
         let o = e.observation();
-        Ok(
-            serde_json::json!({"physics_steps":o.physics_step,"stop":e.stop(),"fingerprint":format!("{:x}",self.fingerprint.clone().finalize()),"native_success":self.native_success,"observation":o,"feedback":self.controller.feedback(),"arrival":self.controller.arrival_feedback(),"landing_search":self.controller.landing_search(),"model_steps":self.controller.arrival_feedback().map_or(0,|a|a.model_steps),"forecast_steps":self.controller.landing_search().forecast_steps}),
-        )
+        let mut value = serde_json::json!({"physics_steps":o.physics_step,"stop":e.stop(),"fingerprint":format!("{:x}",self.fingerprint.clone().finalize()),"native_success":self.native_success,"observation":o,"feedback":self.controller.feedback(),"arrival":self.controller.arrival(),"landing_search":self.controller.landing_search(),"model_steps":self.controller.model_steps(),"forecast_steps":self.controller.forecast_steps()});
+        if let Some(profile) = self.profile {
+            value["actuation_profile"] = serde_json::to_value(profile).map_err(error)?;
+            value["plant_allocation"] = serde_json::to_value(&self.plant).map_err(error)?;
+        }
+        if let Some(recipe) = &self.witness_recipe {
+            value["witness_recipe"] = serde_json::to_value(recipe).map_err(error)?;
+        }
+        Ok(value)
     }
     fn finish(&mut self) -> PyResult<(pd_run::EpisodeResultV1, serde_json::Value)> {
         if self.live()?.stop().is_none() {
@@ -184,8 +401,7 @@ impl ArrivalEpisode {
             .native_end(&observation, (&result.summary).into())
             .map_err(error)?;
         info["feedback"] = serde_json::to_value(self.controller.feedback()).map_err(error)?;
-        info["arrival"] =
-            serde_json::to_value(self.controller.arrival_feedback()).map_err(error)?;
+        info["arrival"] = self.controller.arrival();
         Ok((result, info))
     }
 }

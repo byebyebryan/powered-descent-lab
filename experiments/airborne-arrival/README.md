@@ -21,3 +21,11 @@ are accounted separately; algebraic actuation scans are exposed in feedback.
 `render_arrival.py OUTPUT RESULT.json [...]` projects sealed captures through
 the maintained rich tree/detail templates and adds choice comparisons. The
 output is new; existing reports and server lifecycle are not modified.
+
+The [actuation calibration pass](../../docs/arrival_actuation_plan.md) adds an
+explicit `native_pair_v2` profile and independent native witness recipes.
+`run_actuation.py ALLOCATION.json` compares those profiles on frozen inputs;
+`render_actuation.py OUTPUT RESULT.json [...]` uses the same maintained rich
+tree. `test_actuation_study.py` checks native calibration and complete witness/
+controller proof. The ordinary constructor and original study scripts retain
+the legacy allocation and wire format.

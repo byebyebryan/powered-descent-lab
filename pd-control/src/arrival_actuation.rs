@@ -51,7 +51,8 @@ pub fn allocate_arrival_acceleration(
             .iter()
             .any(|v| !v.is_finite())
         || o.fuel_kg < 0.0
-        || o.mass_kg != ctx.vehicle.dry_mass_kg + o.fuel_kg
+        || (o.mass_kg - (ctx.vehicle.dry_mass_kg + o.fuel_kg)).abs()
+            > 16.0 * f64::EPSILON * o.mass_kg.max(1.0)
         || !(0.0..std::f64::consts::FRAC_PI_2).contains(&max_tilt)
     {
         return Err("invalid arrival allocation state, cadence or projection".into());

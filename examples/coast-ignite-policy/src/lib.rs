@@ -1,5 +1,6 @@
 //! Approach-specific Python binding; the neutral physical bridge stays independent.
 mod arrival;
+mod calibration;
 mod diagnostics;
 mod generator;
 mod report;
@@ -376,6 +377,8 @@ fn generate_proposal(anchor_json: &str, seed: u64, cohort: &str, index: u64) -> 
 fn pd_coast_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CoastEpisode>()?;
     m.add_class::<arrival::ArrivalEpisode>()?;
+    m.add_function(wrap_pyfunction!(calibration::actuation_bench, m)?)?;
+    m.add_function(wrap_pyfunction!(calibration::generate_witness, m)?)?;
     m.add_function(wrap_pyfunction!(source_identity_json, m)?)?;
     m.add_function(wrap_pyfunction!(generate_proposal, m)?)?;
     m.add_function(wrap_pyfunction!(report::render_report, m)?)?;
