@@ -45,9 +45,11 @@ expand the reference-selection or qualification denominator.
 
 The 90-million development phase stopped at 88,044,297 charged steps because the
 next first frame requires a two-million-step reservation. It retained 407 complete
-Summary rows and 58 captures with 116 reconstructions. The failed attempt was
-original 058's 63-pair Summary, before any native/model/forecast transition.
-No selected flight failed. The pilot contained direct inputs and underestimated
+Summary rows and 58 captures with 116 reconstructions. The aborted attempt was
+original 058's 63-pair Summary: its selection spent 90,894 forecast steps and
+its first command advanced two native ticks before the next frame's reservation
+failed. These partial costs remain in the fault receipt; this attempt makes no
+landing claim. The pilot contained direct inputs and underestimated
 the cost of reproducing the 120 old arrival programs twice.
 
 `development/fault.json` remains unchanged. A separate create-only completion
@@ -55,3 +57,11 @@ phase reserves 20 million of the unused outer reserve for the exact 13 remaining
 Summary slots and two expanded captures. Total reserved work becomes 905 million,
 still within one billion. No completed slot is rerun, no input or selector is
 changed, and no qualification inputs are opened before reference freeze.
+
+The exact remaining schedule completed in its separate root. Both old selectors
+reproduce all 180 retained programs exactly (360 complete executions).
+All 60 expanded development captures verify target landing. Mean direct fuel
+falls from 589.9276 to 570.1138 kg, a 3.3587% saving; the predeclared 1% rule
+therefore selects the 132-pair reference. `reference-freeze.json` binds this
+decision, source/library hashes and the input generator before any qualification
+inputs are generated. The legacy default remains unchanged.
