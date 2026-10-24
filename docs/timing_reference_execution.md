@@ -132,3 +132,33 @@ reliability for each family or endpoint, arbitrary approach shaping, repeated
 instructions, uncertain dynamics or other vehicles. Full search costs remain
 planning work; an online planner would need an explicit scheduling or amortization
 contract before reusing it frequently.
+
+## Delivery and closure
+
+The [complete established mission tree](http://starship:8000/timing-reference-report-20261024T185303Z/report.html)
+contains 1,285 rich occurrences: 1,165 new captures plus 120 retained direct
+controls completing the exposed three-profile comparison. Four pilot repeats
+are labelled separately. The report keeps native contact/source links, rich
+plots, focused equal-metre previews and the maintained bounded tree browser.
+
+An immutable [findings snapshot](http://starship:8787/reports/4a36215061f1dda50bd47e71aeaa0193602971a2798e330521b64721a55dd4cc/)
+links the complete tree and provides the same checked analysis, figure and
+360-original comparison picker. Both canonical tree and published snapshot pass
+desktop 1440×1000 and mobile 390×844 browser checks. All 1,285 occurrences are
+browsed at each size; nine representative rich details per viewport exercise
+plot modes and next/back navigation. Visible lazy previews are decoded and
+painted before screenshots, and the published tree link reaches the full report.
+
+Hostname HTTP checks verify 6,437 files/URLs (8,089,690,180 bytes): all 5,147
+canonical report files, all 1,285 linked raw native captures and all five
+publication files match local SHA-256 and size. The existing report service is
+reused at PID 37689; the static server remains PID 37637. No server lifecycle
+change is performed. The source epoch, independent proof/presentation sources,
+input/reference freezes, allocations, budget fault, audits, raw timings,
+screenshots and delivery receipts remain under the create-only root.
+
+Validation includes all 19 maintained developer checks, nine native Python
+tests, five targeted Rust composition tests, 13 relevant docs/gate Node tests,
+statistical boundary/failed-pair checks and whitespace/docs-link checks. The
+final closure receipt binds local commits, source evidence, total artifacts
+and preservation of every unrelated baseline file and Git status entry.
