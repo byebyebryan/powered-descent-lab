@@ -111,3 +111,35 @@ The useful result is improved timing selection, with a much smaller residual
 goal-menu opportunity. Further timing-search optimization/amortization or a new
 capability envelope needs its own hypothesis and fresh evaluation. The current
 pass does not authorize a different learning task after its release gate failed.
+
+## Validation and HTML delivery
+
+The [complete HTML mission tree](http://starship:8000/arrival-timing-selection-report-20261024T171406Z/report.html)
+contains all six strategy/timing executions for every original, plus the six
+separate pilot captures: 366 rich views, 60 comparison states and 366 focused
+previews. The [published findings](http://starship:8787/reports/9dacc45f867ad355453e68ba15cd014c4c75ee4665ee56be6463f578f150a6eb/)
+provide the crossed table and standalone figure, linking the complete tree.
+The rich edition is 926,447,433 bytes, above the shared publisher's bundle limit;
+its canonical raw-capture links stay on the existing project report service.
+
+The final maintained gate passes all 19 checks. Browser acceptance at 1440×1000
+and 390×844 browses every occurrence, exercises the 60-state/six-choice picker,
+seven rich details per viewport, plot modes and next/back navigation. There are
+no final application errors or page overflow. The published figure and complete
+report link pass at both sizes. The connected Browser skill uses task-owned
+tabs; those tabs are closed, viewport overrides reset and user tabs preserved.
+
+Visual review caught a checker paint race: a loaded SVG could precede its visible
+paint. The checker now requires the actual flight SVG URL, successful decode and
+two animation frames. A separate desktop/phone preview pass verifies and visually
+inspects all six visible pilot images after painting. Earlier checker artifacts
+are retained; report bytes and shared templates were not changed for this fix.
+
+All 1,469 rich report files, 366 complete native capture URLs and four publication
+assets pass visible-hostname HTTP byte verification: 2,732,951,045 bytes in total.
+Publication reuses the existing shared report server. Earlier report/capture
+paths, selectors and both report-service lifecycles remain preserved.
+
+The final closure receipt binds resource limits, heads, audit/analysis/delivery
+hashes, exact foreign-file preservation and local commits. No default promotion,
+push or new learning campaign is performed.

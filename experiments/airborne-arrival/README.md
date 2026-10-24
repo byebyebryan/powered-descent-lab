@@ -95,3 +95,8 @@ and the maintained native renderer. Put its output directly below `outputs/`
 when both old and new capture roots need relative raw-evidence links; the
 renderer requires captures beneath the output's parent. No shared template or
 historical capture needs modification.
+
+`check-timing-report.mjs` exports acceptance against a caller-owned browser
+client, covering both viewports, every rich occurrence, choice comparisons,
+actual lazy SVG loading/painting, plot controls and detail/tree navigation. It
+does not discover a browser, change a server or execute a flight.
