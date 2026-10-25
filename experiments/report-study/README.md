@@ -75,3 +75,24 @@ unchanged. Publishing this new UI is a separate explicit operation.
 check every original capture and source declaration too. `check-refinement.mjs`
 extends the original browser check with comparison, target, payload-clock,
 responsive-history and tail-anchored-vector acceptance on desktop and mobile.
+
+## Inline tree editions
+
+The [inline mission plan](../../docs/report_inline_mission_comparison_plan.md)
+and [execution](../../docs/report_inline_mission_comparison_execution.md) bring
+selected run previews and typed run rows into the common mission tree. A single
+report declares no comparison; a missing declared side remains unavailable.
+
+`prepare_inline_tree.py PREVIOUS_DELIVERY NEW_EXPORT PATCH_SPEC` preflights all
+saved rich templates and creates a new small UI over the previous data aliases.
+The spec binds a committed source head and exact old/new module sources for
+each page kind. Version-2 transport patches retain the version-1 inspection
+compatibility path and exclude the scientific rich payload. Publishing the new
+dedicated `ui/` directory remains a separate operation through the shared
+publisher; no data bundle is republished.
+
+`audit_inline_delivery.py EXPORT PUBLICATION_RECEIPT NEW_RECEIPT` verifies every
+new UI asset and referenced existing data asset. `close_inline_tree.py ROOT
+NEW_RECEIPT` checks the final acceptance/gate receipts, source freeze, original
+workspace/report/capture hashes, service identities and allocation limits after
+owned changes are committed. Neither tool starts a service or executes a flight.

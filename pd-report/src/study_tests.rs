@@ -27,9 +27,11 @@ fn fixture() -> (StudyV1, PairedReviewV1) {
                     href: None,
                     preview: None,
                     caption: String::new(),
+                    display_values: vec![],
                 })
                 .collect(),
         }],
+        presentation: None,
     };
     let study:StudyV1=serde_json::from_value(json!({"schema_version":1,"id":"example","question":"Does <B> improve?","motivation":"A bounded comparison","changed":["timing"],"fixed":["plant"],"variants":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"contrasts":[{"id":"ab","label":"A to B","baseline":"a","candidate":"b"}],"cohorts":[{"id":"primary","label":"Primary","role":"independent","originals":1}],"metrics":[{"id":"fuel","label":"Fuel","unit":"kg","lower_is_better":true,"successful_pairs_only":true,"measurement":"Initial minus final fuel"}],"claims":[{"label":"Fixed","status":"passed","detail":"Original frozen result"}],"effects":[{"cohort":"primary","contrast":"ab","metric":"fuel","pairs":1,"estimate":-1.,"low":-2.,"high":0.,"method":"Retained source method"}],"performance":[],"links":[{"label":"Evidence","href":"proof.json"}],"default_cohort":"primary","default_contrast":"ab","default_metric":"fuel","condition_axes":[],"timing_explanation":false,"observations":[{"mission":"m","cohort":"primary","variant":"a","physical_sha256":"a".repeat(64),"occurrence":0,"outcome":"landed","verified_landing":true,"values":{"fuel":10.},"attributes":{},"capture_sha256":"b".repeat(64),"descriptor_sha256":"c".repeat(64),"evidence_href":"flight-0-evidence.json"},{"mission":"m","cohort":"primary","variant":"b","physical_sha256":"a".repeat(64),"occurrence":0,"outcome":"landed","verified_landing":true,"values":{"fuel":9.},"attributes":{},"capture_sha256":"d".repeat(64),"descriptor_sha256":"c".repeat(64),"evidence_href":"flight-1-evidence.json"}]})).unwrap();
     (study, review)

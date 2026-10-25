@@ -5,9 +5,22 @@ use serde::Serialize;
 
 use crate::{
     campaign::{escape, family_label, mission_path, row_coverage_label},
-    campaign_view,
+    campaign_view::{self, MissionDisplayValueV1},
     comparison::ComparisonPageV1,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MissionReviewModeV1 {
+    Single,
+    Comparison,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MissionReviewPresentationV1 {
+    pub schema_version: u32,
+    pub mode: MissionReviewModeV1,
+}
 
 #[derive(Serialize)]
 pub struct PairedAttemptV1 {
@@ -18,6 +31,8 @@ pub struct PairedAttemptV1 {
     pub href: Option<String>,
     pub preview: Option<String>,
     pub caption: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub display_values: Vec<MissionDisplayValueV1>,
 }
 
 #[derive(Serialize)]
@@ -65,6 +80,8 @@ pub struct PairedReviewV1 {
     pub groups: Vec<PairedGroupV1>,
     pub branches: Vec<MissionBranchV1>,
     pub missions: Vec<PairedMissionV1>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation: Option<MissionReviewPresentationV1>,
 }
 
 pub fn coverage_label(family: &str, direction: i32, stratum: u32) -> String {
@@ -120,7 +137,8 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
                     outcome:campaign_view::outcome(attempt,*integrity).key().into(),
                     cells: format!("<td>{}</td><td>{}<span class=\"row-note\">Fuel remaining {}</span>{endpoint}</td><td>{}</td>",campaign_view::render_outcome_cell(attempt,*integrity),metric(attempt.sim_time_s,"s"),metric(attempt.fuel_kg,"kg"),escape(campaign_view::proof_label(attempt,*integrity))),
                     href:attempt.report_href.clone(), preview:attempt.presentation.as_ref().map(|v|v.preview_href.clone()),
-                    caption:attempt.presentation.as_ref().map_or_else(||"No preview in this saved projection".into(),|v|v.caption.clone()) });
+                    caption:attempt.presentation.as_ref().map_or_else(||"No preview in this saved projection".into(),|v|v.caption.clone()),
+                    display_values:campaign_view::display_values(attempt,*integrity) });
             }
             missions.push(PairedMissionV1 {
                 id: String::new(),
@@ -213,6 +231,10 @@ pub fn build(page: &ComparisonPageV1) -> Result<PairedReviewV1, String> {
         groups,
         branches,
         missions,
+        presentation: Some(MissionReviewPresentationV1 {
+            schema_version: 1,
+            mode: MissionReviewModeV1::Comparison,
+        }),
     })
 }
 
@@ -225,8 +247,12 @@ pub fn data_script(review: &PairedReviewV1) -> Result<String, String> {
     Ok(format!(
         "<script type=\"application/json\" id=\"paired-review-data\">{json}</script><script>{}</script>",
         format_args!(
-            "{}{}",
+            "{}{}{}{}{}{}",
             include_str!("paired_model.js"),
+            include_str!("mission_presentation.js"),
+            include_str!("flight_model.js"),
+            include_str!("flight_inspection.js"),
+            include_str!("mission_inspection.js"),
             include_str!("paired_review.js")
         )
     ))
@@ -240,8 +266,28 @@ pub fn controls(review: &PairedReviewV1) -> String {
         .map(|(i, label)| format!("<option value=\"{i}\">{}</option>", escape(label)))
         .collect::<String>();
     let direction_filter = campaign_view::render_direction_filter("review-direction");
+    let view_label = if review
+        .presentation
+        .as_ref()
+        .is_some_and(|p| p.mode == MissionReviewModeV1::Comparison)
+    {
+        "Landing summary for"
+    } else {
+        "Show single run for"
+    };
+    let compare_controls = if review
+        .presentation
+        .as_ref()
+        .is_some_and(|p| p.mode == MissionReviewModeV1::Comparison)
+    {
+        format!(
+            "<details class=\"comparison-options\"><summary>Choose comparison runs</summary><div class=\"paired-controls\"><label>Compare A<select id=\"review-a\">{options}</select></label><label>Compare B<select id=\"review-b\">{options}</select></label></div><p class=\"section-note\">Each visible mission shows both declared runs. Expand it for other attempts, source evidence and on-demand time inspection.</p></details>"
+        )
+    } else {
+        String::new()
+    };
     let html = format!(
-        "<p class=\"section-note\">Complete procedural transfers → terrain family → terrain stratum → mission. Controller results sit inside each mission.</p><div class=\"paired-controls\"><label>Show results for<select id=\"review-view\">{options}</select></label><label>Find mission<input id=\"review-search\" type=\"search\" placeholder=\"Number, terrain or physical identity\"></label><label>Match outcome<select id=\"review-outcome\"><option value=\"all\">All outcomes</option><option value=\"misses\">No verified landing</option>{}</select></label><label>Match approach<select id=\"review-approach\"><option value=\"all\">Any approach</option>{options}</select></label></div>{direction_filter}<div class=\"paired-controls hierarchy-controls\"><button type=\"button\" data-paired-depth=\"1\">Expand families</button><button type=\"button\" data-paired-depth=\"3\">Start browsing</button><button type=\"button\" data-paired-action=\"collapse\">Collapse</button><button type=\"button\" data-paired-action=\"reset\">Reset filters</button></div><p class=\"section-note\">Start browsing opens one stratum. Group controls switch terrain groups; page controls stay within the current group. Browse 12 missions per page; summary counts cover every match.</p><p id=\"review-count\" aria-live=\"polite\"></p><details class=\"comparison-options\"><summary>Preview comparison options</summary><div class=\"paired-controls\"><label>Compare A<select id=\"review-a\">{options}</select></label><label>Compare B<select id=\"review-b\">{options}</select></label></div><p class=\"section-note\">Expand a mission to inspect all saved controller attempts and compare two previews with shared axes. Filters retain every scheduled occurrence.</p></details>",
+        "<p class=\"section-note\">Complete procedural transfers → terrain family → terrain stratum → mission. Saved runs remain inside each mission.</p><div class=\"paired-controls\"><label>{view_label}<select id=\"review-view\">{options}</select></label><label>Find mission<input id=\"review-search\" type=\"search\" placeholder=\"Number, terrain or physical identity\"></label><label>Match outcome<select id=\"review-outcome\"><option value=\"all\">All outcomes</option><option value=\"misses\">No verified landing</option>{}</select></label><label>Match approach<select id=\"review-approach\"><option value=\"all\">Any approach</option>{options}</select></label></div>{direction_filter}<div class=\"paired-controls hierarchy-controls\"><button type=\"button\" data-paired-depth=\"1\">Expand families</button><button type=\"button\" data-paired-depth=\"3\">Start browsing</button><button type=\"button\" data-paired-action=\"collapse\">Collapse</button><button type=\"button\" data-paired-action=\"reset\">Reset filters</button></div><p class=\"section-note\">Start browsing opens one stratum. Group controls switch terrain groups; page controls stay within the current group. Browse 12 missions per page; summary counts cover every match.</p><p id=\"review-count\" aria-live=\"polite\"></p>{compare_controls}",
         campaign_view::DisplayOutcome::ALL
             .into_iter()
             .map(|o| format!("<option value=\"{}\">{}</option>", o.key(), o.label()))

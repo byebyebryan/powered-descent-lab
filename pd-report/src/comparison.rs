@@ -345,7 +345,7 @@ pub fn render_comparison_page(page: &ComparisonPageV1) -> Result<String, String>
         &batch::render_table(
             "scenario-table paired-table",
             "data-tree-table=\"paired-missions\"",
-            "<th>Mission / saved flight</th><th>Outcome / stop</th><th>Flight / endpoint</th><th>Evidence</th>",
+            "<th>Mission / occurrence</th><th>Declared run(s)</th>",
             "",
         ),
     );
@@ -508,6 +508,77 @@ mod tests {
         assert!(html.contains("<td>first</td><td>1</td><td>1</td><td>1/1</td>"));
         assert!(html.contains("<td>second</td><td>1</td><td>1</td><td>0/1</td>"));
         assert!(html.contains("href=\"second/report.html\""));
+    }
+
+    #[test]
+    fn inline_fixture_exports_use_the_real_campaign_and_comparison_renderers_when_requested() {
+        let Ok(root) = std::env::var("PD_INLINE_FIXTURE_OUTPUT") else {
+            return;
+        };
+        use std::fs::{self, OpenOptions};
+        use std::io::Write;
+
+        fn create(root: &std::path::Path, path: &str, content: &[u8]) {
+            let path = root.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .unwrap();
+            file.write_all(content).unwrap();
+        }
+
+        let root = std::path::Path::new(&root);
+        assert!(
+            root.is_absolute(),
+            "PD_INLINE_FIXTURE_OUTPUT must be an absolute path"
+        );
+        fs::create_dir_all(root).unwrap();
+        let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="156" height="92" viewBox="0 0 156 92"><path d="M8 84 76 49 148 8" fill="none" stroke="#356a96" stroke-width="2"/><path d="M120 84h30" stroke="#2f9e44" stroke-width="4"/></svg>"##;
+
+        let mut source = comparison();
+        let mut single = source.approaches.remove(0).campaigns.remove(0).page;
+        single.title = "Software rendered single campaign fixture".into();
+        single.integrity_passed = true;
+        single.attempts[0].presentation = Some(crate::campaign_view::CampaignPresentationV1 {
+            schema_version: 1,
+            preview_href: "previews/single.svg".into(),
+            caption: "Software rendering fixture · one saved run".into(),
+            target_horizontal_offset_m: Some(12.5),
+            height_above_upright_touchdown_m: Some(4.0),
+            endpoint_speed_mps: Some(0.8),
+        });
+        create(
+            root,
+            "single-campaign.html",
+            crate::campaign::render_campaign_page(&single)
+                .unwrap()
+                .as_bytes(),
+        );
+        create(root, "previews/single.svg", svg);
+
+        let mut paired = comparison();
+        paired.title = "Software rendered non-study comparison fixture".into();
+        for (index, approach) in paired.approaches.iter_mut().enumerate() {
+            approach.campaigns[0].page.integrity_passed = true;
+            approach.campaigns[0].page.attempts[0].presentation =
+                Some(crate::campaign_view::CampaignPresentationV1 {
+                    schema_version: 1,
+                    preview_href: format!("previews/approach-{index}.svg"),
+                    caption: format!("Software rendering fixture · approach {index}"),
+                    target_horizontal_offset_m: Some(12.5 + index as f64),
+                    height_above_upright_touchdown_m: Some(4.0),
+                    endpoint_speed_mps: Some(0.8 + index as f64),
+                });
+        }
+        create(
+            root,
+            "non-study-comparison.html",
+            render_comparison_page(&paired).unwrap().as_bytes(),
+        );
+        create(root, "previews/approach-0.svg", svg);
+        create(root, "previews/approach-1.svg", svg);
     }
 
     fn population(family: &str, identity: &str, repeats: usize) -> ComparisonPageV1 {

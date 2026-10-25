@@ -11,6 +11,12 @@ The proposed [comparison and flight inspection refinement](report_comparison_ref
 adds pinned run/strategy comparisons, sourced target status, paired time inspection
 and portable UI delivery while retaining mission-first navigation.
 
+The [inline mission comparison pass](report_inline_mission_comparison_plan.md)
+brings the selected previews and aligned run values directly into each tree
+entry while supporting single-run reports. Its
+[execution record](report_inline_mission_comparison_execution.md) owns the source,
+compatibility and delivery checks.
+
 [Report workflow](reports.md) · [Development](development.md) ·
 [Refinement results](report_presentation_refinement_results.md) ·
 [Bounded browsing results](report_bounded_browsing_results.md) ·

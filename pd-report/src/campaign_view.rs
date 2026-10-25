@@ -4,6 +4,78 @@ use serde::{Deserialize, Serialize};
 
 use crate::campaign::{CampaignRowV1, escape, verified};
 
+/// Renderer-only value row derived from saved campaign or study records.
+/// This stays outside the native campaign/evaluation contracts.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct MissionDisplayValueV1 {
+    pub key: String,
+    pub label: String,
+    pub value: Option<f64>,
+    pub unit: String,
+    pub text: Option<String>,
+}
+
+pub fn display_value(
+    key: &str,
+    label: &str,
+    value: Option<f64>,
+    unit: &str,
+) -> MissionDisplayValueV1 {
+    MissionDisplayValueV1 {
+        key: key.into(),
+        label: label.into(),
+        value,
+        unit: unit.into(),
+        text: None,
+    }
+}
+
+pub fn display_text(key: &str, label: &str, text: impl Into<String>) -> MissionDisplayValueV1 {
+    MissionDisplayValueV1 {
+        key: key.into(),
+        label: label.into(),
+        value: None,
+        unit: String::new(),
+        text: Some(text.into()),
+    }
+}
+
+pub fn display_values(row: &CampaignRowV1, integrity: bool) -> Vec<MissionDisplayValueV1> {
+    let mut values = vec![
+        display_value("flight_time", "Flight time", row.sim_time_s, "s"),
+        display_value("fuel_remaining", "Fuel remaining", row.fuel_kg, "kg"),
+    ];
+    if let Some(presentation) = &row.presentation {
+        values.extend([
+            display_value(
+                "target_horizontal_offset",
+                "Target horizontal offset",
+                presentation.target_horizontal_offset_m,
+                "m",
+            ),
+            display_value(
+                "height_above_touchdown",
+                "Height above upright touchdown",
+                presentation.height_above_upright_touchdown_m,
+                "m",
+            ),
+            display_value(
+                "endpoint_speed",
+                "Endpoint speed",
+                presentation.endpoint_speed_mps,
+                "m/s",
+            ),
+        ]);
+    }
+    values.push(display_text(
+        "proof",
+        "Integrity and replay",
+        proof_label(row, integrity),
+    ));
+    values.push(display_text("stop", "Stop", stop_label(row)));
+    values
+}
+
 /// Measured V2 input metadata. Labels and bands organize browsing only.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -221,13 +293,6 @@ pub fn render_mission_cell(row: &CampaignRowV1) -> String {
             )
         },
     );
-    let preview = row.presentation.as_ref().map_or_else(|| {
-        "<span class=\"row-note muted\">Preview unavailable in this saved projection</span>".into()
-    }, |view| {
-        let image = format!("<img data-preview-src=\"{}\" width=\"156\" height=\"92\" alt=\"{}\" decoding=\"async\">", escape(&view.preview_href), escape(&view.caption));
-        let plot = row.report_href.as_ref().map_or_else(|| format!("<span class=\"run-preview\">{image}</span>"), |href| format!("<a class=\"run-preview\" href=\"{}\" aria-label=\"Open flight for {}\">{image}</a>", escape(href), escape(&label)));
-        format!("{plot}<span class=\"row-note muted preview-caption\">{}</span>", escape(&view.caption))
-    });
     let direction = if row.input_metadata_unavailable.is_some() {
         "Direction unavailable"
     } else if row.direction < 0 {
@@ -238,7 +303,84 @@ pub fn render_mission_cell(row: &CampaignRowV1) -> String {
         "Vertical"
     };
     format!(
-        "<div class=\"preview-cell\">{link}<span class=\"row-note mission-direction\">{direction}</span>{preview}</div>"
+        "<div class=\"preview-cell\">{link}<span class=\"row-note mission-direction\">{direction}</span></div>"
+    )
+}
+
+fn display_value_cell(value: &MissionDisplayValueV1) -> String {
+    let rendered = if let Some(text) = &value.text {
+        escape(text)
+    } else if let Some(number) = value.value {
+        if number.is_finite() {
+            format!("{number:.6} {}", escape(&value.unit))
+        } else {
+            "Unavailable".into()
+        }
+    } else {
+        "Unavailable".into()
+    };
+    format!(
+        "<td data-label=\"{}\" data-value-key=\"{}\">{rendered}</td>",
+        escape(&value.label),
+        escape(&value.key)
+    )
+}
+
+/// A one-run leaf rendered with the same card and value-table vocabulary as a
+/// selected side of the interactive mission comparison.
+pub fn render_single_run(row: &CampaignRowV1, integrity: bool) -> String {
+    let status = outcome(row, integrity);
+    let preview = row.presentation.as_ref().map_or_else(
+        || if status == DisplayOutcome::Unsupported {
+            "<span class=\"mission-preview mission-preview-unavailable\">No flight recorded for unsupported input.</span>".into()
+        } else {
+            "<span class=\"mission-preview mission-preview-unavailable\">Preview unavailable in this saved projection.</span>".into()
+        },
+        |view| {
+            let image = format!(
+                "<img class=\"mission-preview-image\" data-preview-src=\"{}\" width=\"156\" height=\"92\" alt=\"{}\" decoding=\"async\">",
+                escape(&view.preview_href),
+                escape(&view.caption)
+            );
+            row.report_href.as_ref().map_or_else(
+                || format!("<span class=\"run-preview mission-preview\">{image}</span>"),
+                |href| format!("<a class=\"run-preview mission-preview\" href=\"{}\" aria-label=\"Open saved run\">{image}</a>", escape(href)),
+            )
+        },
+    );
+    let values = display_values(row, integrity);
+    let headings = values
+        .iter()
+        .map(|value| {
+            format!(
+                "<th scope=\"col\">{}{}{}</th>",
+                escape(&value.label),
+                if value.unit.is_empty() { "" } else { " · " },
+                escape(&value.unit)
+            )
+        })
+        .collect::<String>();
+    let cells = values.iter().map(display_value_cell).collect::<String>();
+    let caption = row.presentation.as_ref().map_or_else(String::new, |view| {
+        format!(
+            "<p class=\"preview-caption muted\">{}</p>",
+            escape(&view.caption)
+        )
+    });
+    let href = row.report_href.as_deref().map_or_else(String::new, escape);
+    format!(
+        "<article class=\"mission-run-card mission-run-single\"><div class=\"mission-run-heading\"><strong>Saved run · attempt {}</strong><span class=\"outcome-badge outcome-{}\">{}</span></div><div class=\"mission-run-preview\">{preview}{caption}</div><div class=\"mission-run-values-wrap\"><table class=\"mission-run-values\"><thead><tr><th scope=\"col\">Run</th><th scope=\"col\">Outcome</th>{headings}</tr></thead><tbody><tr><th scope=\"row\" data-label=\"Run\">Saved run · attempt {}</th><td data-label=\"Outcome\"><span class=\"outcome-badge outcome-{}\">{}</span></td>{cells}</tr></tbody></table></div><div class=\"mission-run-evidence\">{}</div><details class=\"mission-time-inspection\" data-campaign-inspection data-attempt-index=\"{}\" data-attempt-href=\"{}\" data-label=\"Saved run · attempt {}\" data-outcome=\"{}\"><summary>Inspect recorded time</summary><div class=\"mission-inspection-host\" data-inspection-host></div></details></article>",
+        row.attempt_index,
+        status.key(),
+        status.label(),
+        row.attempt_index,
+        status.key(),
+        status.label(),
+        render_evidence_cell(row, integrity),
+        row.attempt_index,
+        href,
+        row.attempt_index,
+        status.key()
     )
 }
 
@@ -414,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn old_projections_keep_their_encoding_and_new_previews_are_escaped_and_deferred() {
+    fn old_projections_keep_their_encoding_and_single_run_leaf_is_typed_and_deferred() {
         let mut value = row();
         let encoded = serde_json::to_value(&value).unwrap();
         assert!(encoded.get("presentation").is_none());
@@ -429,10 +571,17 @@ mod tests {
             height_above_upright_touchdown_m: None,
             endpoint_speed_mps: None,
         });
-        let html = render_mission_cell(&value);
-        assert!(html.contains("class=\"run-preview\""));
+        let html = render_single_run(&value, true);
+        assert!(html.contains("class=\"run-preview mission-preview\""));
         assert!(html.contains("data-preview-src=\"previews/test.svg\""));
         assert!(!html.contains("<img src="));
         assert!(html.contains("Recorded &lt;flight&gt;"));
+        assert!(html.contains("<th scope=\"col\">Run</th><th scope=\"col\">Outcome</th>"));
+        assert!(html.contains("data-value-key=\"flight_time\""));
+        assert!(html.contains("data-value-key=\"fuel_remaining\""));
+        assert_eq!(html.matches("<tbody><tr>").count(), 1);
+        assert!(!html.contains("Compare A"));
+        assert!(html.contains("Physical input"));
+        assert!(html.contains("summary>Inspect recorded time</summary>"));
     }
 }

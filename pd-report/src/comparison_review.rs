@@ -138,11 +138,12 @@ impl ComparisonReviewV1 {
     }
     pub fn pair_page(&self) -> Result<String> {
         let body = format!(
-            "<div id=\"pair-status\" aria-live=\"polite\">Loading the selected saved pair…</div><div id=\"pair-summary\"></div><div id=\"pair-inspection\"></div><script>{}\n{}\n{}\n{}\n{}</script>",
+            "<div id=\"pair-status\" aria-live=\"polite\">Loading the selected saved pair…</div><div id=\"pair-summary\"></div><div id=\"pair-inspection\"></div><script>{}\n{}\n{}\n{}\n{}\n{}</script>",
             include_str!("study_model.js"),
             include_str!("paired_model.js"),
             include_str!("flight_model.js"),
             include_str!("flight_inspection.js"),
+            include_str!("mission_inspection.js"),
             include_str!("pair_review.js")
         );
         self.decorate(&crate::batch::render_status_page(

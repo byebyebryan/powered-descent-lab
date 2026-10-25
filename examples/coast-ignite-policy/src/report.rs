@@ -146,6 +146,14 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         groups: vec![],
         branches: vec![],
         missions: vec![],
+        presentation: Some(MissionReviewPresentationV1 {
+            schema_version: 1,
+            mode: if spec.study.is_some() {
+                MissionReviewModeV1::Comparison
+            } else {
+                MissionReviewModeV1::Single
+            },
+        }),
     };
     let mut groups: BTreeMap<String, String> = BTreeMap::new();
     let mut mission_ids: BTreeMap<(String, String, usize), usize> = BTreeMap::new();
@@ -462,6 +470,25 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
             href: Some(format!("{name}.html")),
             preview: Some(format!("{name}.svg")),
             caption: row.label.clone(),
+            display_values: vec![
+                campaign_view::display_value(
+                    "flight_time",
+                    "Flight time",
+                    Some(e.execution.episode.final_state.sim_time_s),
+                    "s",
+                ),
+                campaign_view::display_value(
+                    "fuel_remaining",
+                    "Fuel remaining",
+                    Some(e.execution.episode.final_state.fuel_kg),
+                    "kg",
+                ),
+                campaign_view::display_text(
+                    "proof",
+                    "Integrity and replay",
+                    "Physical, mission, capture and native replay verified",
+                ),
+            ],
         };
         if let Some(study) = &mut spec.study {
             let cohort = row
@@ -552,7 +579,7 @@ pub fn render_report(spec_json: &str, output: &str) -> PyResult<()> {
         &batch::render_table(
             "scenario-table paired-table",
             "data-tree-table=\"paired-missions\"",
-            "<th>Mission / policy</th><th>Outcome</th><th>Endpoint</th><th>Evidence</th>",
+            "<th>Mission / occurrence</th><th>Declared run(s)</th>",
             "",
         ),
     );

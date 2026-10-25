@@ -2,9 +2,10 @@
 (() => {
   const ns='http://www.w3.org/2000/svg',node=(tag,attrs={})=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,v);return n;};
   const text=(parent,x,y,value)=>{const n=node('text',{x,y});n.textContent=value;parent.append(n);return n;};
-  const style=()=>{if(document.getElementById('flight-inspection-style'))return;const s=document.createElement('style');s.id='flight-inspection-style';s.textContent='.flight-inspection{padding:16px;border:1px solid #d4d9ce;border-radius:12px;background:#fffdf8;margin-top:16px;min-width:0}.flight-inspection svg{display:block;width:100%;height:auto;touch-action:pan-y}.flight-inspection svg text{font:12px system-ui;fill:#51483d}.flight-inspection h3{margin:4px 0 12px}.flight-inspection input{width:100%;margin:12px 0}.flight-inspection output{display:block;font:13px/1.6 system-ui;overflow-wrap:anywhere}.flight-inspection .history-legend{font:12px/1.5 system-ui;color:#51483d}.flight-pair-panes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.flight-pair-panes>section{min-width:0}.flight-pair-panes h3{font-size:17px}@media(max-width:760px){.flight-pair-panes{grid-template-columns:1fr}}';document.head.append(s);};
+  const style=()=>{if(document.getElementById('flight-inspection-style'))return;const s=document.createElement('style');s.id='flight-inspection-style';s.textContent='.flight-inspection{padding:16px;border:1px solid #d4d9ce;border-radius:12px;background:#fffdf8;margin-top:16px;min-width:0}.flight-inspection svg{display:block;width:100%;height:auto;touch-action:pan-y}.flight-inspection svg text{font:12px system-ui;fill:#51483d}.flight-inspection h3{margin:4px 0 12px}.flight-inspection input{width:100%;margin:12px 0}.flight-inspection output{display:block;font:13px/1.6 system-ui;overflow-wrap:anywhere}.flight-inspection .history-legend{font:12px/1.5 system-ui;color:#51483d}.flight-pair-panes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.flight-pair-panes.single{grid-template-columns:minmax(0,1fr);max-width:620px}.flight-pair-panes>section{min-width:0}.flight-pair-panes h3{font-size:17px}@media(max-width:760px){.flight-pair-panes{grid-template-columns:1fr}}';document.head.append(s);};
   function mountHistory(host,records,{onTime=()=>{},slider=true}={}){
     style();host.classList.add('flight-inspection','flight-histories');host.style.maxWidth='1000px';host.style.marginInline='auto';
+    const observers=[];
     const samples=records.flatMap(r=>r.data.samples),start=Math.min(...records.map(r=>r.data.samples[0]?.simTimeS??0)),end=Math.max(start+1e-6,...records.map(r=>r.data.samples.at(-1)?.simTimeS??0));
     const prepared=records.map((r,i)=>({...r,color:r.color||['#356a96','#087f73'][i%2],angles:PdFlightModel.angles(r.data.samples)}));
     const heading=document.createElement('h3');heading.textContent='Direction and command through time';host.append(heading);
@@ -22,7 +23,7 @@
       }}
       for(const r of prepared){const marks=r.data.samples.filter((s,i)=>i&&s.phase!==r.data.samples[i-1].phase).map(s=>({time:s.simTimeS,label:'Phase '+s.phase}));for(const event of r.data.events||[])marks.push({time:event.simTimeS,label:event.label});for(const mark of marks){const line=node('line',{x1:px(mark.time),x2:px(mark.time),y1:28,y2:130,stroke:r.color,'stroke-dasharray':'2 4',opacity:.25});const title=node('title');title.textContent=r.label+' · '+mark.label+' at '+mark.time+' s';line.append(title);svg.append(line);}}
       const line=node('line',{x1:px(current),x2:px(current),y1:28,y2:130,stroke:'#b45309','stroke-width':1.5});svg.append(line);cursor.line=line;};draw();
-      if(globalThis.ResizeObserver)new ResizeObserver(draw).observe(svg);
+      if(globalThis.ResizeObserver){const observer=new ResizeObserver(draw);observer.observe(svg);observers.push(observer);}
       svg.addEventListener('pointermove',e=>{const rect=svg.getBoundingClientRect(),x=(e.clientX-rect.left)/rect.width*cursor.width;seek(start+Math.max(0,Math.min(1,(x-48)/(cursor.width-60)))*(end-start));});
     }
     const control=document.createElement('input');control.type='range';control.min=start;control.max=end;control.step='any';control.setAttribute('aria-label','Inspect elapsed mission time');if(slider)host.append(control);
@@ -32,11 +33,12 @@
       output.textContent=`Cursor ${current.toFixed(3)} s · `+snapshots.map(r=>{const s=r.sample;if(!s)return r.label+': no recorded samples';return `${r.label}: ${r.ended?'ended at '+s.simTimeS.toFixed(3)+' s':r.before?'not started':'sample '+s.simTimeS.toFixed(3)+' s'}; position (${s.xM.toFixed(2)}, ${s.yM.toFixed(2)}) m; attitude ${(s.attitudeRad*180/Math.PI).toFixed(2)}°; command ${(s.throttleFrac*100).toFixed(2)}%`;}).join(' | ');
       output.dataset.snapshots=JSON.stringify(snapshots.map(r=>({label:r.label,index:r.index,ended:r.ended,before:r.before,time:r.sample?.simTimeS,command:r.ended||r.before?null:r.sample?.throttleFrac})));return snapshots;};
     const seek=time=>{const result=setTime(time);onTime(current,result);};control.addEventListener('input',()=>seek(Number(control.value)));setTime(start);
-    return {setTime,seek,control,output};
+    return {setTime,seek,control,output,destroy(){for(const observer of observers)observer.disconnect();}};
   }
   function mountPair(host,records){
+    if(!records.length)return null;
     style();const b=PdFlightModel.bounds(records),scale=Math.min(510/(b.xmax-b.xmin),300/(b.ymax-b.ymin)),px=x=>300+(x-(b.xmin+b.xmax)/2)*scale,py=y=>185-(y-(b.ymin+b.ymax)/2)*scale;
-    const panes=document.createElement('div');panes.className='flight-pair-panes';host.append(panes);const cursors=[];
+    const panes=document.createElement('div');panes.className='flight-pair-panes'+(records.length===1?' single':'');host.append(panes);const cursors=[];
     for(const [i,r] of records.entries()){
       const pane=document.createElement('section');pane.className='flight-inspection';const title=document.createElement('h3');title.textContent=r.label;title.style.color=r.color||['#356a96','#087f73'][i];pane.append(title);const svg=node('svg',{viewBox:'0 0 600 370',role:'img','aria-label':r.label+' recorded trajectory, shared metre scale'});
       const pad=r.data.missionDetails.targetPad;if(pad){svg.append(node('line',{x1:25,x2:575,y1:py(pad.surfaceYM),y2:py(pad.surfaceYM),stroke:'#8a7963'}));svg.append(node('line',{x1:px(pad.centerXM-pad.widthM/2),x2:px(pad.centerXM+pad.widthM/2),y1:py(pad.surfaceYM),y2:py(pad.surfaceYM),stroke:'#2f9e44','stroke-width':4}));}
@@ -50,7 +52,7 @@
       const pixel=600/(c.svg.getBoundingClientRect().width||600),x=px(s.xM),y=py(s.yM),u=r.ended||r.before?0:s.throttleFrac,dx=Math.sin(s.attitudeRad)*24*pixel*u,dy=-Math.cos(s.attitudeRad)*24*pixel*u,len=Math.hypot(dx,dy),nx=len?dx/len:0,ny=len?dy/len:0;
       c.origin.setAttribute('r',4*pixel);c.origin.setAttribute('cx',x);c.origin.setAttribute('cy',y);for(const [k,v] of Object.entries({x1:x,y1:y,x2:x+dx,y2:y+dy}))c.shaft.setAttribute(k,v);
       c.tip.setAttribute('d',len?`M${x+dx},${y+dy}L${x+dx-pixel*(5*nx+3*ny)},${y+dy-pixel*(5*ny-3*nx)}L${x+dx-pixel*(5*nx-3*ny)},${y+dy-pixel*(5*ny+3*nx)}Z`:'');
-    })});inspector.seek(records[0]?.data.samples[0]?.simTimeS||0);if(globalThis.ResizeObserver){const resize=new ResizeObserver(()=>inspector.seek(Number(inspector.control.value)));for(const c of cursors)resize.observe(c.svg);}return inspector;
+    })});inspector.seek(records[0]?.data.samples[0]?.simTimeS||0);let resize=null;if(globalThis.ResizeObserver){resize=new ResizeObserver(()=>inspector.seek(Number(inspector.control.value)));for(const c of cursors)resize.observe(c.svg);}return {...inspector,destroy(){inspector.destroy();resize?.disconnect();}};
   }
   globalThis.PdFlightInspection={mountHistory,mountPair};
 })();

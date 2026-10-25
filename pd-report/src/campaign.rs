@@ -135,10 +135,6 @@ pub(crate) fn verified(row: &CampaignRowV1) -> bool {
         && row.mission_outcome == Some(MissionOutcome::Success)
 }
 
-fn number(value: Option<f64>) -> String {
-    value.map_or_else(|| "—".into(), |n| format!("{n:.2}"))
-}
-
 pub(crate) fn family_label(version: &str) -> &str {
     match version {
         "pd-missions/value-noise-rest-v1" => "Value noise",
@@ -297,7 +293,7 @@ fn render_campaign_with_links(
     for row in &page.attempts {
         groups.entry(mission_path(row)).or_default().push(row);
     }
-    let headers = "<th>Mission / saved flight</th><th>Outcome / stop</th><th>Flight time</th><th>Fuel remaining</th><th>Evidence</th>";
+    let headers = "<th>Mission / occurrence</th><th>Saved run</th>";
     let mut coverage_rows = String::new();
     let mut tree_rows = String::new();
     let mut branches = BTreeMap::new();
@@ -319,7 +315,7 @@ fn render_campaign_with_links(
                 let parent_attr = parent.as_ref().map_or_else(String::new, |id| format!(" data-parent=\"{id}\""));
                 tree_rows.push_str(&batch::render_row(Some("summary-row"),
                     &format!("data-group=\"{id}\"{parent_attr} data-kind=\"{kind}\" data-depth=\"{depth}\" aria-expanded=\"false\" tabindex=\"0\""),
-                    &format!("<td><span class=\"expander\">+</span> {}</td><td colspan=\"4\">{landed}/{} verified target landings</td>", escape(branch_label), branch_rows.len())));
+                    &format!("<td><span class=\"expander\">+</span> {}</td><td>{landed}/{} verified target landings</td>", escape(branch_label), branch_rows.len())));
                 branches.insert(branch_key, id.clone());
                 id
             });
@@ -347,8 +343,8 @@ fn render_campaign_with_links(
             };
             tree_rows.push_str(&batch::render_row(Some("campaign-row"),
                 &format!("data-parent=\"{parent}\" data-depth=\"{}\" data-direction=\"{}\" data-outcome=\"{}\" data-search=\"{}\"",path.len(),direction_key,campaign_view::outcome(row,page.integrity_passed).key(),escape(&format!("{} {} {}",row.mission_index,row.physical_sha256,format_args!("{label} {}",if row.input_metadata_unavailable.is_some() {"direction unavailable"} else if row.direction < 0 {"left"} else if row.direction > 0 {"right"} else {"vertical"})))),
-                &format!("<td class=\"tree-label\">{}</td><td>{}</td><td>{} s</td><td>{} kg</td><td>{}</td>",
-                    campaign_view::render_mission_cell(row),campaign_view::render_outcome_cell(row,page.integrity_passed),number(row.sim_time_s),number(row.fuel_kg),campaign_view::render_evidence_cell(row,page.integrity_passed))));
+                &format!("<td class=\"tree-label\">{}</td><td class=\"mission-run-cell\">{}</td>",
+                    campaign_view::render_mission_cell(row),campaign_view::render_single_run(row,page.integrity_passed))));
         }
     }
     let coverage = batch::render_coverage_section(
@@ -400,7 +396,13 @@ fn render_campaign_with_links(
         diagnostics_html: "",
         review_tree_html: &tree,
         comparison_html: "",
-        appendix_html: &format!("<script>{}</script>", campaign_view::SCRIPT),
+        appendix_html: &format!(
+            "<script>{}</script><script>{}</script><script>{}</script><script>{}</script>",
+            campaign_view::SCRIPT,
+            include_str!("flight_model.js"),
+            include_str!("flight_inspection.js"),
+            include_str!("mission_inspection.js")
+        ),
         body_class: "procedural-campaign campaign-view",
         tree: batch::BatchTreeOptions {
             max_depth: if page.attempts.iter().any(|r| r.geometry.is_some()) { 3 } else { 2 },

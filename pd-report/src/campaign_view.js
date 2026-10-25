@@ -18,6 +18,9 @@
   }, {rootMargin: '200px 0px'});
   const update = () => {
     scheduled = false;
+    root.querySelectorAll('[data-campaign-inspection][open]').forEach(details => {
+      if (!details.isConnected || !details.closest('tr')?.getClientRects().length) details.open=false;
+    });
     watched.forEach(image => {
       if (!image.isConnected || !image.dataset.previewSrc) {observer?.unobserve(image);watched.delete(image);}
     });
@@ -54,6 +57,17 @@
       if(direction.value!=='all')direction.closest('details').open=true;
       schedule();
     };
+    root.querySelectorAll('[data-campaign-inspection]').forEach(details=>details.addEventListener('toggle',()=>{
+      const host=details.querySelector('[data-inspection-host]');
+      if(details.open){
+        root.querySelectorAll('[data-campaign-inspection][open]').forEach(other=>{if(other!==details)other.open=false;});
+        PdMissionInspection.mountInline(host,[{key:'single',label:details.dataset.label,color:'#356a96',attempt:{
+          attempt_index:details.dataset.attemptIndex,
+          href:details.dataset.attemptHref,
+          outcome:details.dataset.outcome
+        }}]);
+      }else PdMissionInspection.clear(host);
+    }));
     direction.addEventListener('change',()=>{const url=new URL(location.href);if(direction.value==='all')url.searchParams.delete('direction');else url.searchParams.set('direction',direction.value);history.replaceState(null,'',url.pathname+url.search+url.hash);updateFilter();});
     updateFilter();
     document.querySelectorAll('[data-review-outcome]').forEach(button => button.addEventListener('click', () => {
