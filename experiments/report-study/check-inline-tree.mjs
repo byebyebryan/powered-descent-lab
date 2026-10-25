@@ -51,6 +51,7 @@ export async function checkInlineTree(client,{url,kind,width,output,name}) {
     await client.evaluate('PdStudyReview.apply({cohort:"primary",lo:"",hi:"",basis:"strategy"},true,"mission-11")');
   }
   await wait(client,'Boolean(document.querySelector(".mission-time-inspection"))');
+  assert(await client.evaluate(`(()=>{const heading=document.querySelector('.mission-run-heading'),r=heading.getBoundingClientRect();return Boolean(document.elementFromPoint(r.x+Math.min(30,r.width/2),r.y+5)?.closest('.mission-run-heading'))})()`),'Sticky navigation covers the first visible run heading');
   assert(await client.evaluate('!document.querySelector(".mission-time-inspection").open&&document.querySelectorAll(".mission-inspection-host svg").length===0'));
   await client.evaluate('document.querySelector(".mission-time-inspection > summary").click()');
   await wait(client,'document.querySelectorAll(".mission-inspection-host .flight-histories svg").length===2');

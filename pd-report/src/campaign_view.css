@@ -107,7 +107,7 @@
 .mission-browser:not(.mission-browser-footer) { position: sticky; top: 8px; z-index: 5; box-shadow: 0 3px 12px #30251a12; }
 .mission-browser-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: .85rem; }
 .mission-group-scope { margin: 0 0 8px; font-size: .8rem; color: var(--muted); }
-.paired-mission-row, .paired-group-row { scroll-margin-top: var(--review-navigation-height,20px); }
+.review-tree-root, .paired-mission-row, .paired-group-row { scroll-margin-top: var(--review-navigation-height,20px); }
 .stratum-controls, .mission-page-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .stratum-controls { display: grid; grid-template-columns: auto minmax(0,1fr) auto; margin-bottom: 10px; }
 .stratum-controls label { flex: 1 1 220px; min-width: 0; font-size: .75rem; }
