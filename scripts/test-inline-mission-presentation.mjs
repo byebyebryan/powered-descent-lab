@@ -36,7 +36,9 @@ test('ambiguous legacy labels and multiple attempts remain a single selected run
   assert.equal((result.html.match(/class="mission-run-card/g)||[]).length,1);
   assert.equal((result.html.match(/data-run-role=/g)||[]).length,1);
   assert.doesNotMatch(result.html,/Compare A|Compare B|Δ \(B−A\)/);
-  assert.match(result.html,/data-mission-run="m"/);
+  assert.match(result.detailsHtml,/data-mission-run="m"/);
+  assert.match(result.html,/class="mission-results"/);
+  assert.match(result.html,/class="mission-run-grid single"/);
 });
 
 test('explicit non-study comparison pins A and B and keeps a declared missing side visible',()=>{
@@ -57,6 +59,7 @@ test('explicit non-study comparison pins A and B and keeps a declared missing si
   assert.equal(result.model.fields[0].values[0].value,25);
   assert.equal(result.model.fields[0].values[1],null);
   assert.doesNotMatch(result.html,/class="mission-delta/);
+  assert.match(result.detailsHtml,/Full recorded values and context/);
 });
 
 test('paired typed values stay in run rows and legacy HTML remains a separate disclosure',()=>{
@@ -71,10 +74,43 @@ test('paired typed values stay in run rows and legacy HTML remains a separate di
   assert.match(result.html,/Run B/);
   const legacy=mission([attempt(0,1,{display:false,cells:'<td>Old saved value</td>'})]);
   const old=render(legacy,{schema_version:1,labels:['One']},{view:'0'});
-  assert.match(old.html,/Legacy saved run summary/);
-  assert.match(old.html,/<td>Old saved value<\/td>/);
+  assert.match(old.detailsHtml,/Legacy saved run summary/);
+  assert.match(old.detailsHtml,/<td>Old saved value<\/td>/);
   assert.equal(old.model.fields.length,0);
   assert.match(old.html,/Structured measurements are unavailable/);
+});
+
+test('overview keeps at most three short fields while expansion retains all source values and captions',()=>{
+  const fullData=[
+    value('flight_time','Flight time',12.345678,'s'),
+    value('fuel_remaining','Fuel remaining',45.67891,'kg'),
+    value('target_horizontal_offset','Target horizontal offset',2.5,'m'),
+    value('endpoint_speed','Endpoint speed',0.75,'m/s'),
+    {key:'proof',label:'Integrity and replay',value:null,unit:'',text:'Replay verified'}
+  ];
+  const fullAttempt=attempt(0,1,{preview:'same-frame.svg',display:false});
+  fullAttempt.display_values=fullData;
+  fullAttempt.caption='Full source caption';
+  const other=attempt(1,2,{preview:'same-frame.svg',display:false});
+  other.display_values=fullData.map(entry=>({...entry,value:typeof entry.value==='number'?entry.value+1:entry.value}));
+  other.caption='Other full source caption';
+  const result=render(mission([fullAttempt,other]),{
+    schema_version:1,labels:['Long baseline controller label','Long candidate controller label'],
+    presentation:{schema_version:1,mode:'comparison'}
+  },{a:'0',b:'1'});
+  const overview=result.html.split('mission-run-values-overview')[1].split('</table>')[0];
+  assert.equal((overview.match(/data-value-key=/g)||[]).length,6);
+  assert.match(result.html,/Fuel left/);
+  assert.match(result.html,/End speed/);
+  assert.match(result.html,/aria-label="A · Long baseline controller label"/);
+  assert.match(result.html,/aria-label="B · Long candidate controller label"/);
+  assert.doesNotMatch(result.html,/class="mission-full-caption"/);
+  assert.match(result.detailsHtml,/data-value-key="target_horizontal_offset"/);
+  assert.match(result.detailsHtml,/data-value-key="proof"/);
+  assert.match(result.detailsHtml,/Full source caption/);
+  assert.match(result.detailsHtml,/Other full source caption/);
+  assert.match(result.detailsHtml,/Long baseline controller label/);
+  assert.doesNotMatch(result.detailsHtml,/data-run-role=/);
 });
 
 const studyFixture=(observations)=>({
@@ -85,18 +121,19 @@ const studyFixture=(observations)=>({
   metrics:[
     {id:'fuel_used_kg',label:'Fuel used',unit:'kg',lower_is_better:true,successful_pairs_only:true},
     {id:'coast_s',label:'Coast / preparation',unit:'s',lower_is_better:null,successful_pairs_only:false},
-    {id:'duration_s',label:'Burn duration',unit:'s',lower_is_better:null,successful_pairs_only:false}
+    {id:'duration_s',label:'Burn duration',unit:'s',lower_is_better:null,successful_pairs_only:false},
+    {id:'contact_speed_mps',label:'Contact speed at contact',unit:'m/s',lower_is_better:null,successful_pairs_only:false}
   ],observations
 });
-const observation=(variant,{outcome='landed',verified_landing=true,fuel=10,coast=3,duration=16}={})=>({
-  mission:'m',cohort:'primary',variant,physical_sha256:'a'.repeat(64),occurrence:0,outcome,verified_landing,
-  values:{fuel_used_kg:fuel,coast_s:coast,duration_s:duration},attributes:{}
+const observation=(variant,{mission:missionId='m',outcome='landed',verified_landing=true,fuel=10,coast=3,duration=16,contactSpeed=0.5}={})=>({
+  mission:missionId,cohort:'primary',variant,physical_sha256:'a'.repeat(64),occurrence:0,outcome,verified_landing,
+  values:{fuel_used_kg:fuel,coast_s:coast,duration_s:duration,contact_speed_mps:contactSpeed},attributes:{}
 });
 const pairedMission=()=>mission([attempt(0,1,{fuel:100}),attempt(1,2,{fuel:90})]);
 const studyState=(extra={})=>({cohort:'primary',contrast:'base-candidate',metric:'fuel_used_kg',basis:'strategy',view:'0',a:'0',b:'1',...extra});
 
 test('study comparison shows the selected metric and declared timing fields on aligned run rows',()=>{
-  const study=studyFixture([observation('base',{fuel:120,coast:3,duration:16}),observation('candidate',{fuel:100,coast:5,duration:12})]);
+  const study=studyFixture([observation('base',{fuel:120,coast:3,duration:16,contactSpeed:0.5}),observation('candidate',{fuel:100,coast:5,duration:12,contactSpeed:0.9})]);
   const result=render(pairedMission(),{schema_version:1,labels:['Baseline','Candidate']},studyState(),study);
   const keys=Array.from(result.model.fields,f=>f.key);
   assert(keys.includes('study:fuel_used_kg'));
@@ -104,9 +141,17 @@ test('study comparison shows the selected metric and declared timing fields on a
   assert(keys.includes('study:duration_s'));
   assert.equal(result.model.studyPair.eligible,true);
   assert.equal(result.model.studyPair.delta,-20);
-  assert.match(result.html,/Δ \(B−A\) · Fuel used: -20\.0000 kg/);
-  assert.match(result.html,/Coast \/ preparation/);
-  assert.match(result.html,/Burn duration/);
+  assert.match(result.html,/Δ Fuel used \(B−A\) -20 kg/);
+  assert.match(result.html,/Coast/);
+  assert.match(result.html,/Burn/);
+  assert.match(result.detailsHtml,/Coast \/ preparation/);
+  assert.match(result.detailsHtml,/Burn duration/);
+  assert.match(result.detailsHtml,/data-value-key="study:contact_speed_mps"/);
+  assert.match(result.detailsHtml,/Contact speed at contact/);
+  assert.match(result.detailsHtml,/0\.5 m\/s/);
+  assert.match(result.detailsHtml,/0\.9 m\/s/);
+  assert.doesNotMatch(result.html,/study:contact_speed_mps/);
+  assert.doesNotMatch(result.model.fields.map(field=>field.key).join(','),/study:contact_speed_mps/);
   assert.equal((result.html.match(/data-run-role=/g)||[]).length,2);
 });
 
@@ -118,7 +163,7 @@ test('failed zero-fuel use is ineligible and cannot be presented as an efficienc
   const result=render(pairedMission(),{schema_version:1,labels:['Baseline','Candidate']},studyState(),study);
   assert.equal(result.model.studyPair.eligible,false);
   assert.equal(result.model.studyPair.delta,null);
-  assert.match(result.html,/Δ \(B−A\) · Fuel used: Unavailable for this pair/);
+  assert.match(result.html,/Δ Fuel used \(B−A\) unavailable/);
   assert.match(result.html,/Crashed/);
   assert.match(result.html,/0 kg/);
 });
@@ -148,7 +193,39 @@ test('same-capture earlier edition keeps two labelled slots even when both use o
   assert.equal((result.html.match(/class="mission-run-card/g)||[]).length,2);
   assert.equal((result.html.match(/class="mission-preview-image"/g)||[]).length,2);
   assert.equal((result.html.match(/data-run-role=/g)||[]).length,2);
+  assert.match(result.html,/Δ Fuel used \(B−A\) 0 kg/);
   assert.equal(result.model.studyPair.delta,0);
+});
+
+test('group metric summary uses only matched eligible pairs, includes ties, and reports unavailable at zero n',()=>{
+  const study=studyFixture([
+    observation('base',{mission:'matched-a',fuel:10}),
+    observation('candidate',{mission:'matched-a',fuel:8}),
+    observation('base',{mission:'matched-b',fuel:5}),
+    observation('candidate',{mission:'matched-b',fuel:5}),
+    observation('base',{mission:'failed-zero',outcome:'crashed',verified_landing:false,fuel:0}),
+    observation('candidate',{mission:'failed-zero',fuel:9}),
+    observation('candidate',{mission:'missing-side',fuel:7})
+  ]);
+  const missions=['matched-a','matched-b','failed-zero','missing-side']
+    .map(id=>({...mission([attempt(0,1),attempt(1,2)]),id}));
+  const summary=context.PdStudyReviewModel.summary(missions,studyState(),study);
+  const stats=context.PdMissionPresentation.summarizeGroup(summary,study.metrics[0]);
+  assert.deepEqual(Array.from(summary.pairs,p=>p.delta),[-2,0]);
+  assert.deepEqual({eligible:stats.eligible,mean:stats.mean,min:stats.min,max:stats.max},
+    {eligible:2,mean:-1,min:-2,max:0});
+  assert.equal(summary.counts.unpaired,1);
+  const empty=context.PdMissionPresentation.summarizeGroup({pairs:[]},study.metrics[0]);
+  assert.equal(empty.eligible,0);
+  assert.equal(empty.mean,null);
+  assert.equal(context.PdMissionPresentation.formatValue({value:-0,unit:'kg'}),'0 kg');
+  const sparse=Array.from({length:21},(_,index)=>({...mission([]),id:`sparse-${index}`}));
+  const sparseStudy=studyFixture(sparse.map(item=>observation('candidate',{mission:item.id,fuel:10+item.mission_index})));
+  const sparseSummary=context.PdStudyReviewModel.summary(sparse,studyState(),sparseStudy);
+  const outcomes=context.PdMissionPresentation.summarizeGroupOutcomes(sparse,studyState(),sparseStudy);
+  assert.equal(sparseSummary.total,21);
+  assert.equal(sparseSummary.counts.unpaired,21);
+  assert.deepEqual({...outcomes},{total:21,aAvailable:0,bAvailable:21,aLandings:0,bLandings:21});
 });
 
 test('optional evidence loads exact samples and replaced disclosures dispose or discard stale work',async()=>{

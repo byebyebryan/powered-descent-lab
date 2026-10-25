@@ -307,22 +307,103 @@ pub fn render_mission_cell(row: &CampaignRowV1) -> String {
     )
 }
 
-fn display_value_cell(value: &MissionDisplayValueV1) -> String {
+fn display_value_label(value: &MissionDisplayValueV1, compact: bool) -> &str {
+    if !compact {
+        return &value.label;
+    }
+    match value.key.as_str() {
+        "flight_time" => "Time",
+        "fuel_remaining" => "Fuel left",
+        "contact_speed" | "contact_speed_mps" => "Contact speed",
+        "endpoint_speed" => "End speed",
+        _ => &value.label,
+    }
+}
+
+fn display_value_cell(value: &MissionDisplayValueV1, compact: bool) -> String {
     let rendered = if let Some(text) = &value.text {
         escape(text)
     } else if let Some(number) = value.value {
         if number.is_finite() {
-            format!("{number:.6} {}", escape(&value.unit))
+            let fixed = format!("{number:.6}");
+            let concise = fixed.trim_end_matches('0').trim_end_matches('.');
+            format!(
+                "{} {}",
+                if number == 0.0 { "0" } else { concise },
+                escape(&value.unit)
+            )
         } else {
             "Unavailable".into()
         }
     } else {
         "Unavailable".into()
     };
+    let label = display_value_label(value, compact);
+    let full_label = format!(
+        "{}{}",
+        value.label,
+        if value.unit.is_empty() {
+            String::new()
+        } else {
+            format!(" · {}", value.unit)
+        }
+    );
     format!(
-        "<td data-label=\"{}\" data-value-key=\"{}\">{rendered}</td>",
-        escape(&value.label),
+        "<td data-label=\"{}\" title=\"{}\" data-value-key=\"{}\">{rendered}</td>",
+        escape(label),
+        escape(&full_label),
         escape(&value.key)
+    )
+}
+
+fn display_value_heading(value: &MissionDisplayValueV1, compact: bool) -> String {
+    let label = display_value_label(value, compact);
+    let full_label = format!(
+        "{}{}",
+        value.label,
+        if value.unit.is_empty() {
+            String::new()
+        } else {
+            format!(" · {}", value.unit)
+        }
+    );
+    format!(
+        "<th scope=\"col\" title=\"{}\" aria-label=\"{}\">{}{}</th>",
+        escape(&full_label),
+        escape(&full_label),
+        escape(label),
+        if value.unit.is_empty() {
+            String::new()
+        } else {
+            format!(" · {}", escape(&value.unit))
+        }
+    )
+}
+
+fn display_values_table(
+    values: &[MissionDisplayValueV1],
+    status: DisplayOutcome,
+    attempt_index: u64,
+    compact: bool,
+) -> String {
+    let headings = values
+        .iter()
+        .map(|value| display_value_heading(value, compact))
+        .collect::<String>();
+    let cells = values
+        .iter()
+        .map(|value| display_value_cell(value, compact))
+        .collect::<String>();
+    format!(
+        "<div class=\"mission-run-values-wrap\"><table class=\"mission-run-values mission-run-values-{}\"><thead><tr><th scope=\"col\">Run</th><th scope=\"col\">Outcome</th>{headings}</tr></thead><tbody><tr{}><th scope=\"row\" data-label=\"Run\" title=\"Saved run · attempt {attempt_index}\" aria-label=\"Saved run · attempt {attempt_index}\">Saved run</th><td data-label=\"Outcome\"><span class=\"outcome-badge outcome-{}\">{}</span></td>{cells}</tr></tbody></table></div>",
+        if compact { "overview" } else { "full" },
+        if compact {
+            " data-run-role=\"single\""
+        } else {
+            ""
+        },
+        status.key(),
+        status.label()
     )
 }
 
@@ -349,33 +430,31 @@ pub fn render_single_run(row: &CampaignRowV1, integrity: bool) -> String {
         },
     );
     let values = display_values(row, integrity);
-    let headings = values
+    let overview = values
         .iter()
-        .map(|value| {
-            format!(
-                "<th scope=\"col\">{}{}{}</th>",
-                escape(&value.label),
-                if value.unit.is_empty() { "" } else { " · " },
-                escape(&value.unit)
+        .filter(|value| {
+            matches!(
+                value.key.as_str(),
+                "flight_time" | "fuel_remaining" | "endpoint_speed"
             )
         })
-        .collect::<String>();
-    let cells = values.iter().map(display_value_cell).collect::<String>();
+        .take(3)
+        .cloned()
+        .collect::<Vec<_>>();
+    let overview_table = display_values_table(&overview, status, row.attempt_index, true);
+    let full_table = display_values_table(&values, status, row.attempt_index, false);
     let caption = row.presentation.as_ref().map_or_else(String::new, |view| {
         format!(
-            "<p class=\"preview-caption muted\">{}</p>",
+            "<p class=\"preview-caption muted\" title=\"{}\">{}</p>",
+            escape(&view.caption),
             escape(&view.caption)
         )
     });
     let href = row.report_href.as_deref().map_or_else(String::new, escape);
     format!(
-        "<article class=\"mission-run-card mission-run-single\"><div class=\"mission-run-heading\"><strong>Saved run · attempt {}</strong><span class=\"outcome-badge outcome-{}\">{}</span></div><div class=\"mission-run-preview\">{preview}{caption}</div><div class=\"mission-run-values-wrap\"><table class=\"mission-run-values\"><thead><tr><th scope=\"col\">Run</th><th scope=\"col\">Outcome</th>{headings}</tr></thead><tbody><tr><th scope=\"row\" data-label=\"Run\">Saved run · attempt {}</th><td data-label=\"Outcome\"><span class=\"outcome-badge outcome-{}\">{}</span></td>{cells}</tr></tbody></table></div><div class=\"mission-run-evidence\">{}</div><details class=\"mission-time-inspection\" data-campaign-inspection data-attempt-index=\"{}\" data-attempt-href=\"{}\" data-label=\"Saved run · attempt {}\" data-outcome=\"{}\"><summary>Inspect recorded time</summary><div class=\"mission-inspection-host\" data-inspection-host></div></details></article>",
+        "<section class=\"mission-presentation mission-presentation-single\" data-presentation-mode=\"single\"><div class=\"mission-run-grid single\"><article class=\"mission-run-card mission-run-single series-single\"><div class=\"mission-run-heading\"><strong title=\"Saved run · attempt {}\" aria-label=\"Saved run · attempt {}\">Saved run</strong></div><div class=\"mission-run-preview\">{preview}</div></article></div><div class=\"mission-results\">{overview_table}<details class=\"mission-run-details\"><summary>Details and recorded time</summary><div class=\"mission-run-detail-body\">{caption}{full_table}<div class=\"mission-run-evidence\">{}</div><details class=\"mission-time-inspection\" data-campaign-inspection data-attempt-index=\"{}\" data-attempt-href=\"{}\" data-label=\"Saved run · attempt {}\" data-outcome=\"{}\"><summary>Inspect recorded time</summary><div class=\"mission-inspection-host\" data-inspection-host></div></details></div></details></div></section>",
         row.attempt_index,
-        status.key(),
-        status.label(),
         row.attempt_index,
-        status.key(),
-        status.label(),
         render_evidence_cell(row, integrity),
         row.attempt_index,
         href,
@@ -572,6 +651,9 @@ mod tests {
             endpoint_speed_mps: None,
         });
         let html = render_single_run(&value, true);
+        assert!(html.contains("class=\"mission-presentation mission-presentation-single\""));
+        assert!(html.contains("class=\"mission-run-grid single\""));
+        assert!(html.contains("class=\"mission-results\""));
         assert!(html.contains("class=\"run-preview mission-preview\""));
         assert!(html.contains("data-preview-src=\"previews/test.svg\""));
         assert!(!html.contains("<img src="));
@@ -579,7 +661,29 @@ mod tests {
         assert!(html.contains("<th scope=\"col\">Run</th><th scope=\"col\">Outcome</th>"));
         assert!(html.contains("data-value-key=\"flight_time\""));
         assert!(html.contains("data-value-key=\"fuel_remaining\""));
-        assert_eq!(html.matches("<tbody><tr>").count(), 1);
+        assert!(html.contains("<summary>Details and recorded time</summary>"));
+        assert!(!html.contains("<details class=\"mission-run-details\" open"));
+        assert!(html.contains("data-value-key=\"target_horizontal_offset\""));
+        assert!(html.contains("data-value-key=\"height_above_touchdown\""));
+        assert!(html.contains("data-value-key=\"endpoint_speed\""));
+        assert_eq!(html.matches("<tbody><tr").count(), 2);
+        let overview = html
+            .split("mission-run-values-overview")
+            .nth(1)
+            .unwrap()
+            .split("</table>")
+            .next()
+            .unwrap();
+        assert_eq!(overview.matches("data-value-key=").count(), 3);
+        let preview = html
+            .split("<article class=\"mission-run-card")
+            .nth(1)
+            .unwrap()
+            .split("</article>")
+            .next()
+            .unwrap();
+        assert!(!preview.contains("outcome-badge"));
+        assert_eq!(html.matches("data-run-role=\"single\"").count(), 1);
         assert!(!html.contains("Compare A"));
         assert!(html.contains("Physical input"));
         assert!(html.contains("summary>Inspect recorded time</summary>"));

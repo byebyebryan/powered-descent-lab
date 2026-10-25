@@ -11,7 +11,8 @@
     if (!entry) return 'Unavailable';
     if (entry.text !== null && entry.text !== undefined) return escape(entry.text);
     if (!Number.isFinite(entry.value)) return 'Unavailable';
-    const number = Number(entry.value).toPrecision(6).replace(/(?:\.0+|(?:(\.\d*?)0+))(?=e|$)/, '$1');
+    const raw=Number(entry.value);
+    const number = raw===0?'0':raw.toPrecision(6).replace(/(?:\.0+|(?:(\.\d*?)0+))(?=e|$)/, '$1');
     return `${escape(number)}${entry.unit ? ` ${escape(entry.unit)}` : ''}`;
   };
   const mode = (data, study) => study ? 'comparison'
@@ -85,45 +86,141 @@
       observation:null,outcome:selected?.outcome||'not-scheduled',color:'#356a96'};
     return {mode:viewMode,sides:[side],fields:mergeFields([side],null,state,null),studyPair:null,metric:null,transition:null,runCandidates:candidates};
   };
+  const compactLabels={
+    'study:fuel_used_kg':'Fuel used','study:coast_s':'Coast','study:duration_s':'Burn',
+    'study:contact_speed':'Contact speed','study:contact_speed_mps':'Contact speed',
+    'study:flight_time':'Time','study:fuel_remaining':'Fuel left','study:endpoint_speed':'End speed',
+    fuel_used_kg:'Fuel used',coast_s:'Coast',duration_s:'Burn',
+    flight_time:'Time',fuel_remaining:'Fuel left',contact_speed:'Contact speed',
+    contact_speed_mps:'Contact speed',endpoint_speed:'End speed'
+  };
+  const sourceLabel=field=>`${field.label}${field.unit?` · ${field.unit}`:''}`;
+  const overviewFields=model=>{
+    const keys=model.metric
+      ? [`study:${model.metric.id}`,'study:coast_s','study:duration_s']
+      : ['flight_time','fuel_remaining','endpoint_speed'];
+    return keys.map(key=>model.fields.find(field=>field.key===key)).filter(Boolean).slice(0,3);
+  };
+  const summarizeGroup=(summary,metric)=>{
+    const deltas=(summary?.pairs||[]).map(pair=>pair.delta).filter(Number.isFinite);
+    if(!metric||!deltas.length)return {metricId:metric?.id||'',unit:metric?.unit||'',eligible:0,mean:null,min:null,max:null};
+    return {
+      metricId:metric.id,unit:metric.unit,eligible:deltas.length,
+      mean:deltas.reduce((total,value)=>total+value,0)/deltas.length,
+      min:Math.min(...deltas),max:Math.max(...deltas)
+    };
+  };
+  const summarizeGroupOutcomes=(missions,state,study)=>{
+    const result={total:0,aAvailable:0,bAvailable:0,aLandings:0,bLandings:0};
+    if(!globalThis.PdStudyReviewModel?.pair)return result;
+    const isLanding=record=>globalThis.PdComparisonReviewModel?.target
+      ? globalThis.PdComparisonReviewModel.target(record)==='met'
+      : Boolean(record?.verified_landing);
+    for(const mission of missions){
+      const pair=globalThis.PdStudyReviewModel.pair(mission,state,study);
+      if(!pair.inCohort)continue;
+      result.total++;
+      if(pair.a){result.aAvailable++;if(isLanding(pair.a))result.aLandings++;}
+      if(pair.b){result.bAvailable++;if(isLanding(pair.b))result.bLandings++;}
+    }
+    return result;
+  };
+  const fieldHeading=(field,compact)=>{
+    const full=sourceLabel(field),label=compact?(compactLabels[field.key]||field.label):field.label;
+    return `<th scope="col" title="${escape(full)}" aria-label="${escape(full)}">${escape(label)}${field.unit?` · ${escape(field.unit)}`:''}</th>`;
+  };
   const previewHtml=(side,viewMode,data,detailHref)=>{
     if (!side.attempt?.preview) return `<span class="mission-preview mission-preview-unavailable">${side.outcome==='unsupported'?'No flight recorded for unsupported input.':'Preview unavailable in this saved projection.'}</span>`;
     let path=side.attempt.preview;
     if(viewMode==='single'&&globalThis.PdComparisonReviewData?.single_preview_suffix)path=path.replace(/\.svg$/,PdComparisonReviewData.single_preview_suffix);
     const image=`<img class="mission-preview-image" data-preview-src="${escape(path)}" width="156" height="92" alt="${escape(side.attempt.caption||side.label)}" decoding="async">`;
     const href=detailHref?.(side.attempt);
-    return href?`<a class="run-preview mission-preview" href="${href}">${image}</a>`:`<span class="run-preview mission-preview">${image}</span>`;
+    return href?`<a class="run-preview mission-preview" href="${href}" aria-label="Open saved run · ${escape(side.label)}">${image}</a>`:`<span class="run-preview mission-preview">${image}</span>`;
   };
   const sideCard=(side,viewMode,data,detailHref)=>{
-    const missing=!side.attempt;
-    const outcome=outcomeLabels[side.outcome]||side.outcome||'Unavailable';
-    const title=viewMode==='comparison'?`${side.key.toUpperCase()} · ${side.label}`:side.label;
+    const tag=viewMode==='comparison'?side.key.toUpperCase():'Saved run';
+    const accessibleLabel=viewMode==='comparison'?`${tag} · ${side.label}`:`Saved run · ${side.label}`;
     const preview=previewHtml(side,viewMode,data,detailHref);
-    const caption=side.attempt?.caption?`<p class="preview-caption muted">${escape(side.attempt.caption)}${viewMode==='comparison'?' · shared case frame':''}</p>`:'';
-    return `<article class="mission-run-card ${viewMode==='comparison'?'series-'+side.key:'series-single'}" data-run-approach="${side.approach}" data-run-outcome="${escape(side.outcome)}"><div class="mission-run-heading"><strong>${escape(title)}</strong><span class="outcome-badge outcome-${escape(side.outcome)}">${escape(outcome)}</span></div><div class="mission-run-preview">${preview}${caption}</div>${missing&&side.observation?`<p class="mission-run-note">${escape(outcome)}; no saved trajectory is available.</p>`:''}</article>`;
+    return `<article class="mission-run-card ${viewMode==='comparison'?'series-'+side.key:'series-single'}" data-run-approach="${side.approach}" data-run-outcome="${escape(side.outcome)}"><div class="mission-run-heading"><strong title="${escape(side.label)}" aria-label="${escape(accessibleLabel)}">${tag}</strong></div><div class="mission-run-preview">${preview}</div></article>`;
   };
-  const renderRows=(model)=>{
-    const emptyNote=!model.fields.length?'<p class="mission-run-note">Structured measurements are unavailable in this saved projection.</p>':'';
+  const renderRows=(model,fields,{compact=false,overview=false}={})=>{
+    const emptyNote=!fields.length?'<p class="mission-run-note">Structured measurements are unavailable in this saved projection.</p>':'';
     const comparison=model.mode==='comparison';
-    const headings=`<th scope="col">Run</th><th scope="col">Outcome</th>${model.fields.map(field=>`<th scope="col">${escape(field.label)}${field.unit?` · ${escape(field.unit)}`:''}</th>`).join('')}`;
+    const headings=`<th scope="col">Run</th><th scope="col">Outcome</th>${fields.map(field=>fieldHeading(field,compact)).join('')}`;
     const rows=model.sides.map((side,index)=>{
-      const identity=comparison?`${side.key.toUpperCase()} · ${side.label}`:side.label;
-      const values=model.fields.map(field=>`<td data-label="${escape(field.label)}">${formatValue(field.values[index])}</td>`).join('');
-      return `<tr data-run-role="${side.key}" data-run-approach="${side.approach}"><th scope="row" data-label="Run">${escape(identity)}</th><td data-label="Outcome"><span class="outcome-badge outcome-${escape(side.outcome)}">${escape(outcomeLabels[side.outcome]||side.outcome||'Unavailable')}</span></td>${values}</tr>`;
+      const identity=comparison?side.key.toUpperCase():'Saved run';
+      const accessible=comparison?`${side.key.toUpperCase()} · ${side.label}`:`Saved run · ${side.label}`;
+      const values=fields.map(field=>`<td data-label="${escape(compact?(compactLabels[field.key]||field.label):field.label)}" title="${escape(sourceLabel(field))}" data-value-key="${escape(field.key)}">${formatValue(field.values[index])}</td>`).join('');
+      return `<tr${overview?` data-run-role="${side.key}"`:''} data-run-approach="${side.approach}"><th scope="row" data-label="Run" title="${escape(side.label)}" aria-label="${escape(accessible)}">${identity}</th><td data-label="Outcome"><span class="outcome-badge outcome-${escape(side.outcome)}">${escape(outcomeLabels[side.outcome]||side.outcome||'Unavailable')}</span></td>${values}</tr>`;
     }).join('');
-    return `${emptyNote}<div class="mission-run-values-wrap"><table class="mission-run-values"><thead><tr>${headings}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    const tableClass=overview?'mission-run-values mission-run-values-overview':'mission-run-values mission-run-values-full';
+    return `${emptyNote}<div class="mission-run-values-wrap"><table class="${tableClass}"><thead><tr>${headings}</tr></thead><tbody>${rows}</tbody></table></div>`;
+  };
+  const transitionLabels={preserved:'Preserved',gained:'Gained',lost:'Lost',missed:'Neither landed',unpaired:'Unavailable comparison'};
+  const resultLine=(model)=>{
+    if(model.mode!=='comparison')return '';
+    if(!model.metric&&!model.transition)return '';
+    const transition=model.transition
+      ? transitionLabels[model.transition]||model.transition
+      : `${outcomeLabels[model.sides[0].outcome]||model.sides[0].outcome} → ${outcomeLabels[model.sides[1].outcome]||model.sides[1].outcome}`;
+    const delta=model.metric
+      ? model.studyPair?.eligible
+        ? ` · Δ ${compactLabels[`study:${model.metric.id}`]||model.metric.label} (B−A) ${formatValue({value:model.studyPair.delta,unit:model.metric.unit})}`
+        : ` · Δ ${compactLabels[`study:${model.metric.id}`]||model.metric.label} (B−A) unavailable`
+      : '';
+    return `<p class="mission-result-line">${escape(transition)}${delta}</p>`;
+  };
+  const targetLabel=(side,observation,comparisonReview)=>{
+    if(!comparisonReview||!globalThis.PdComparisonReviewModel)return '';
+    const result=globalThis.PdComparisonReviewModel.target(observation||{
+      outcome:side.outcome,verified_landing:side.outcome==='landed'
+    });
+    return ` · native landing target ${escape(result)}`;
+  };
+  const detailFields=(model,study)=>{
+    const fields=new Map(model.fields.map(field=>[field.key,field]));
+    if(!study||!model.studyPair)return [...fields.values()];
+    for(const metric of study.metrics||[]){
+      const key=`study:${metric.id}`;
+      if(fields.has(key))continue;
+      const a=metricEntry(model.studyPair.a,metric),b=metricEntry(model.studyPair.b,metric);
+      if(metric.id!==model.metric?.id&&!a&&!b)continue;
+      fields.set(key,{
+        key,label:metric.label,unit:metric.unit,study:true,metric,
+        values:model.sides.map((_,index)=>metricEntry(model.studyPair[index===0?'a':'b'],metric))
+      });
+    }
+    return [...fields.values()];
+  };
+  const renderDetails=(model,{runPicker='',pairHref='',comparisonReview=null,study=null}={})=>{
+    const comparison=model.mode==='comparison';
+    const context=model.sides.map((side,index)=>{
+      const identity=comparison?side.key.toUpperCase():'Saved run';
+      const label=comparison?`${identity} · ${side.label}`:`Saved run · ${side.label}`;
+      const observation=model.studyPair?.[index===0?'a':'b'];
+      return `<p class="mission-full-outcome"><strong title="${escape(side.label)}">${escape(label)}</strong> · ${escape(outcomeLabels[side.outcome]||side.outcome||'Unavailable')}${targetLabel(side,observation,comparisonReview)}</p>`;
+    }).join('');
+    const captions=model.sides.map(side=>side.attempt?.caption
+      ? `<p class="mission-full-caption"><strong>${comparison?side.key.toUpperCase():'Saved run'}</strong> · ${escape(side.attempt.caption)}</p>`
+      : '').join('');
+    const legacy=model.sides.map(side=>side.attempt?.cells
+      ? `<details class="legacy-run-summary"><summary>${comparison?side.key.toUpperCase()+' · ':''}Legacy saved run summary</summary><table class="legacy-run-cells"><tbody><tr>${side.attempt.cells}</tr></tbody></table></details>`
+      : '').join('');
+    const pairLink=comparison&&pairHref?`<a class="compare-pair" href="${pairHref}">Open paired inspection page</a>`:'';
+    return `<section class="mission-full-details"><h3>Full recorded values and context</h3>${context}${renderRows(model,detailFields(model,study))}${captions}${legacy}${runPicker}${pairLink}</section>`;
   };
   const render=(mission,state,data,study,{detailHref=()=>'',pairHref='',comparisonReview=globalThis.PdComparisonReviewData}={})=>{
-    const model=build(mission,state,data,study),comparison=model.mode==='comparison';
+    const model=build(mission,state,data,study);
     const cards=model.sides.map(side=>sideCard(side,model.mode,data,detailHref)).join('');
-    const outcomeSummary=comparison
-      ? `<p class="mission-comparison-summary">${model.transition?`Outcome transition: ${escape(model.transition)} · `:''}${escape(model.sides[0].label)} ${escape(outcomeLabels[model.sides[0].outcome]||model.sides[0].outcome)} → ${escape(model.sides[1].label)} ${escape(outcomeLabels[model.sides[1].outcome]||model.sides[1].outcome)}${comparisonReview?` · native landing target A ${escape(PdComparisonReviewModel.target(model.studyPair?.a||{outcome:model.sides[0].outcome,verified_landing:model.sides[0].outcome==='landed'}))}, B ${escape(PdComparisonReviewModel.target(model.studyPair?.b||{outcome:model.sides[1].outcome,verified_landing:model.sides[1].outcome==='landed'}))}`:''}</p>`
-      : '';
-    const delta=model.metric?`<p class="mission-selected-delta">Δ (B−A) · ${escape(model.metric.label)}: ${model.studyPair?.eligible?`${Number(model.studyPair.delta).toPrecision(6)} ${escape(model.metric.unit)}`:'Unavailable for this pair'}</p>`:'';
-    const noOp=model.earlierNoOp?'<p class="mission-run-note">Pinned earlier edition: same captures and zero scientific changes; no behavioral improvement is claimed.</p>':'';
+    const compact=overviewFields(model);
+    const summary=resultLine(model);
+    const noOp=model.earlierNoOp?'<p class="mission-earlier-note">Pinned earlier edition: same captures and zero scientific changes; no behavioral improvement is claimed.</p>':'';
     const runPicker=model.mode==='single'&&model.runCandidates.length>1?`<label class="mission-run-picker">Run within this occurrence<select data-mission-run="${escape(mission.id)}">${model.runCandidates.map(a=>`<option value="${a.attempt_index}"${String(a.attempt_index)===String(state.run)&&state.mission===mission.id?' selected':''}>Attempt ${a.attempt_index}</option>`).join('')}</select></label>`:'';
-    const legacy=model.sides.map(side=>side.attempt?.display_values?.length?'' : side.attempt?.cells?`<details class="legacy-run-summary"><summary>Legacy saved run summary</summary><table class="legacy-run-cells"><tbody><tr>${side.attempt.cells}</tr></tbody></table></details>`:'').join('');
-    const pairLink= comparison&&pairHref?`<a class="compare-pair" href="${pairHref}">Open paired inspection page</a>`:'';
-    return {model,html:`<section class="mission-presentation mission-presentation-${model.mode}" data-presentation-mode="${model.mode}"><div class="mission-run-grid ${model.mode==='single'?'single':''}">${cards}</div>${outcomeSummary}${renderRows(model)}${delta}${runPicker}${legacy}${noOp}${pairLink}</section>`};
+    return {
+      model,
+      html:`<section class="mission-presentation mission-presentation-${model.mode}" data-presentation-mode="${model.mode}"><div class="mission-run-grid ${model.mode==='single'?'single':''}">${cards}</div><div class="mission-results">${renderRows(model,compact,{compact:true,overview:true})}${summary}${noOp}</div></section>`,
+      detailsHtml:renderDetails(model,{runPicker,pairHref,comparisonReview,study})
+    };
   };
-  globalThis.PdMissionPresentation={mode,build,render,formatValue};
+  globalThis.PdMissionPresentation={mode,build,render,formatValue,summarizeGroup,summarizeGroupOutcomes};
 })();

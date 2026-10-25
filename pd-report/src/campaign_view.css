@@ -163,11 +163,15 @@
 .campaign-view .mission-run-values-wrap { min-width: 0; width: 100%; margin: 0; }
 .campaign-view .mission-run-values { width: 100%; min-width: 0; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
 .campaign-view .mission-run-values th,
-.campaign-view .mission-run-values td { padding: 3px 5px; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.4; }
+.campaign-view .mission-run-values td { padding: 3px 5px; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; min-width: 0; overflow-wrap: anywhere; white-space: normal; font-size: 12px; line-height: 1.4; }
+.campaign-view .mission-run-values th { letter-spacing: normal; text-transform: none; }
 .campaign-view .mission-run-values th:first-child { width: 30px; min-width: 0; }
 .campaign-view .mission-run-values th:nth-child(2) { width: 132px; min-width: 0; }
+.campaign-view .mission-presentation-single .mission-run-values th:first-child { width: 76px; }
 .campaign-view .mission-run-values .outcome-badge { padding: 1px 4px; font-size: 12px; line-height: 1.4; }
 .campaign-view .mission-selected-delta,
+.campaign-view .mission-result-line,
+.campaign-view .mission-earlier-note,
 .campaign-view .mission-comparison-summary,
 .campaign-view .mission-run-note { margin: 5px 0 0; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .campaign-view .mission-comparison-legend { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 12px; line-height: 1.5; margin-top: 5px; }
@@ -176,14 +180,24 @@
 .campaign-view .mission-run-picker { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; margin-top: 4px; }
 .campaign-view .mission-run-picker select { max-width: 100%; }
 .campaign-view .mission-full-results { min-width: 0; font-size: .82rem; }
+.campaign-view .mission-full-details { min-width: 0; font-size: .82rem; }
+.campaign-view .mission-full-details h3 { margin: 8px 0; font-size: .9rem; }
+.campaign-view .mission-full-outcome,
+.campaign-view .mission-full-caption { margin: 5px 0; font-size: .82rem; }
+.campaign-view .mission-run-values-wrap { max-width: 100%; overflow-x: auto; }
+.campaign-view .mission-run-values-full { min-width: 720px; table-layout: auto; }
+.campaign-view .mission-run-values-full th,
+.campaign-view .mission-run-values-full td { width: auto; font-size: .82rem; white-space: normal; }
 .campaign-view .mission-full-values-wrap { max-width: 100%; overflow-x: auto; }
 .campaign-view .mission-full-values { width: 100%; border-collapse: collapse; font-size: .82rem; }
 .campaign-view .mission-full-values th,
 .campaign-view .mission-full-values td { padding: 6px; border-top: 1px solid var(--line); text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .campaign-view .mission-run-more,
+.campaign-view .mission-run-details,
 .campaign-view .legacy-run-summary,
 .campaign-view .mission-time-inspection { margin-top: 5px; }
 .campaign-view .mission-run-more > summary,
+.campaign-view .mission-run-details > summary,
 .campaign-view .legacy-run-summary > summary,
 .campaign-view .mission-time-inspection > summary { cursor: pointer; font-size: .8rem; }
 .campaign-view .mission-run-evidence { margin-top: 8px; }
@@ -194,7 +208,7 @@
 .campaign-view .mission-attempt-summary .legacy-run-summary { grid-column: 1 / -1; }
 .campaign-view .mission-inspection-host { min-width: 0; }
 .campaign-view .mission-inspection-status { padding: 8px; color: var(--muted); }
-@media(max-width:1100px) {
+@media(max-width:1000px) {
   .campaign-view .mission-presentation,
   .campaign-view .mission-presentation-single { grid-template-columns: minmax(0,1fr); }
 }
@@ -202,7 +216,10 @@
   .campaign-view .mission-run-grid { margin-inline: auto; }
   .campaign-view .mission-run-values th,
   .campaign-view .mission-run-values td { padding: 3px; font-size: 12px; }
-  .campaign-view .mission-run-values th:first-child { width: 20px; }
-  .campaign-view .mission-run-values th:nth-child(2) { width: 102px; }
+  .campaign-view .mission-run-values th:first-child { width: 34px; }
+  .campaign-view .mission-run-values th:nth-child(2) { width: 116px; }
+  .campaign-view .mission-presentation-single .mission-run-values th:first-child { width: 60px; }
+  .campaign-view .paired-mission-row > .mission-identity { padding-block: 4px; }
+  .campaign-view .paired-mission-row .mission-direction { display: inline; margin: 0 0 0 8px; }
   .campaign-view .mission-attempt-summary { grid-template-columns: minmax(0,1fr); }
 }
