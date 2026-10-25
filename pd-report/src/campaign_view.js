@@ -19,7 +19,8 @@
   const update = () => {
     scheduled = false;
     root.querySelectorAll('[data-campaign-inspection][open]').forEach(details => {
-      if (!details.isConnected || !details.getClientRects().length) details.open=false;
+      // Closed disclosures can retain layout rectangles in the browser.
+      if (!details.isConnected || details.parentElement?.closest('details:not([open])') || !details.getClientRects().length) details.open=false;
     });
     watched.forEach(image => {
       if (!image.isConnected || !image.dataset.previewSrc) {observer?.unobserve(image);watched.delete(image);}
