@@ -91,6 +91,17 @@ compatibility path and exclude the scientific rich payload. Publishing the new
 dedicated `ui/` directory remains a separate operation through the shared
 publisher; no data bundle is republished.
 
+The [compact tree pass](../../docs/report_compact_tree_plan.md) and
+[execution](../../docs/report_compact_tree_execution.md) retain the same scientific
+data and rich inspection while shortening overview rows. `prepare_compact_preview.py`
+creates native layout previews over saved evidence; `check-compact-tree.mjs`
+checks geometry, complete group statistics, selectors and lazy inspection.
+`prepare_seeded_review.py` verifies maintained scalar/selector semantics and
+packages retained seeded overview SVGs, marking missing archived detail links.
+`audit_inline_delivery.py --page-url URL` can check a nested entrypoint within
+one published bundle; `close_inline_tree.py --kind compact` closes its preservation
+ledger. These tools do not run flights, replays, training or service lifecycle.
+
 `audit_inline_delivery.py EXPORT PUBLICATION_RECEIPT NEW_RECEIPT` verifies every
 new UI asset and referenced existing data asset. `close_inline_tree.py ROOT
 NEW_RECEIPT` checks the final acceptance/gate receipts, source freeze, original

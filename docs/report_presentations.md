@@ -17,6 +17,11 @@ entry while supporting single-run reports. Its
 [execution record](report_inline_mission_comparison_execution.md) owns the source,
 compatibility and delivery checks.
 
+The [compact tree refinement](report_compact_tree_plan.md) keeps neighbouring
+cases visible with short horizontal rows, full values on expansion and preserved
+seeded scenario summaries. Its [execution record](report_compact_tree_execution.md)
+links accepted editions, measured density and archive limitations.
+
 [Report workflow](reports.md) · [Development](development.md) ·
 [Refinement results](report_presentation_refinement_results.md) ·
 [Bounded browsing results](report_bounded_browsing_results.md) ·
