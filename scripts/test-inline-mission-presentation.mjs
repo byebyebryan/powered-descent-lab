@@ -155,6 +155,17 @@ test('study comparison shows the selected metric and declared timing fields on a
   assert.equal((result.html.match(/data-run-role=/g)||[]).length,2);
 });
 
+test('selecting a timing metric keeps each overview column once and retains the other timing field',()=>{
+  const study=studyFixture([observation('base'),observation('candidate',{coast:5,duration:12})]);
+  for(const metric of ['coast_s','duration_s']){
+    const result=render(pairedMission(),{schema_version:1,labels:['Baseline','Candidate']},studyState({metric}),study);
+    const overview=result.html.split('mission-run-values-overview')[1].split('</table>')[0];
+    assert.equal((overview.match(/data-value-key="study:coast_s"/g)||[]).length,2);
+    assert.equal((overview.match(/data-value-key="study:duration_s"/g)||[]).length,2);
+    assert.equal((overview.match(/data-value-key=/g)||[]).length,4);
+  }
+});
+
 test('failed zero-fuel use is ineligible and cannot be presented as an efficiency win',()=>{
   const study=studyFixture([
     observation('base',{outcome:'crashed',verified_landing:false,fuel:0}),

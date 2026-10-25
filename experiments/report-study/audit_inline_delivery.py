@@ -21,9 +21,15 @@ def read(path):return json.loads(path.read_text())
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('export',type=Path);parser.add_argument('publication',type=Path);parser.add_argument('receipt',type=Path)
+    parser.add_argument('--page-url',help='An entrypoint within the same published bundle')
     a=parser.parse_args();export=read(a.export/'export-receipt.json');publication=read(a.publication);ui=Path(export['ui']);manifest=read(ui/'asset-manifest.json')
     assert publication['delivery']['state']=='verified' and publication['server']['reused'] and publication['server']['pid']==37689
-    base=urljoin(publication['url'],'./');origin=urlparse(base);checks={}
+    page_url=a.page_url or publication['url']
+    if a.page_url:
+        original=urlparse(publication['url']);selected=urlparse(page_url)
+        assert selected.scheme==original.scheme and selected.netloc==original.netloc
+        assert selected.path.startswith('/reports/'+publication['report_id']+'/')
+    base=urljoin(page_url,'./');origin=urlparse(base);checks={}
     for name,identity in export['assets'].items():
         path=ui/name;assert sha(path)==identity['sha256'] and path.stat().st_size==identity['bytes'];checks[urljoin(base,quote(name,safe='/'))]=path
     ui_count=len(checks);previous=Path(export['previous']);old_export=read(previous/'export-receipt.json');data={}
@@ -43,7 +49,7 @@ def main():
         assert size==path.stat().st_size and h.hexdigest()==expected,url
         return {'url':url,'path':str(path),'sha256':expected,'bytes':size}
     with ThreadPoolExecutor(max_workers=6) as pool:verified=list(pool.map(verify,sorted(checks.items())))
-    result={'passed':True,'url':publication['url'],'source_head':export['source_head'],'published_ui_files':ui_count,'reused_data_files':len(data),'new_data_publications':0,'verified_bytes':sum(v['bytes'] for v in verified),'checks':verified}
+    result={'passed':True,'url':page_url,'publication_url':publication['url'],'source_head':export['source_head'],'published_ui_files':ui_count,'reused_data_files':len(data),'new_data_publications':0,'verified_bytes':sum(v['bytes'] for v in verified),'checks':verified}
     with a.receipt.open('x') as stream:json.dump(result,stream,indent=2);stream.write('\n')
     print(json.dumps({k:v for k,v in result.items() if k!='checks'}),flush=True)
 

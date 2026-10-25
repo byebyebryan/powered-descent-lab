@@ -99,7 +99,7 @@
     const keys=model.metric
       ? [`study:${model.metric.id}`,'study:coast_s','study:duration_s']
       : ['flight_time','fuel_remaining','endpoint_speed'];
-    return keys.map(key=>model.fields.find(field=>field.key===key)).filter(Boolean).slice(0,3);
+    return [...new Set(keys)].map(key=>model.fields.find(field=>field.key===key)).filter(Boolean).slice(0,3);
   };
   const summarizeGroup=(summary,metric)=>{
     const deltas=(summary?.pairs||[]).map(pair=>pair.delta).filter(Number.isFinite);
