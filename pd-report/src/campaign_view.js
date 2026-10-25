@@ -19,7 +19,7 @@
   const update = () => {
     scheduled = false;
     root.querySelectorAll('[data-campaign-inspection][open]').forEach(details => {
-      if (!details.isConnected || !details.closest('tr')?.getClientRects().length) details.open=false;
+      if (!details.isConnected || !details.getClientRects().length) details.open=false;
     });
     watched.forEach(image => {
       if (!image.isConnected || !image.dataset.previewSrc) {observer?.unobserve(image);watched.delete(image);}
