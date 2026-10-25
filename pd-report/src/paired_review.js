@@ -22,6 +22,9 @@
     const state = {q:params.get('q') || '',outcome:params.get('outcome') || 'all',approach:params.get('approach') || 'all',direction:params.get('direction') || 'all',group:params.get('group') || '',mission:params.get('mission') || location.hash.slice(1),stratum:params.get('stratum') || '',page:params.get('page') || 1,view:params.get('view') || '0',a:params.get('a') || '0',b:params.get('b') || String(data.labels.length-1),run:params.get('run')||''};
     const study=globalThis.PdStudyProjection;
     const reviewMode=PdMissionPresentation.mode(data,study);
+    // Legacy projections may still carry the old four-column scaffold.
+    // The active renderer owns its two-column leaf vocabulary in either mode.
+    root.querySelector('thead').innerHTML=`<tr><th>Mission / occurrence</th><th>${reviewMode==='comparison'?'Declared runs':'Saved run'}</th></tr>`;
     if(study){
       for(const key of PdStudyReviewModel.fields)state[key]=params.get(key)||'';
       Object.assign(state,PdStudyReviewModel.normalize(state,study));
