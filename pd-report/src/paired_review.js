@@ -25,6 +25,7 @@
     // Legacy projections may still carry the old four-column scaffold.
     // The active renderer owns its two-column leaf vocabulary in either mode.
     root.querySelector('thead').innerHTML=`<tr><th>Mission / occurrence</th><th>${reviewMode==='comparison'?'Declared runs':'Saved run'}</th></tr>`;
+    if(reviewMode==='single')for(const input of [controls.a,controls.b])input?.closest('.comparison-options')?.remove();
     if(study){
       for(const key of PdStudyReviewModel.fields)state[key]=params.get(key)||'';
       Object.assign(state,PdStudyReviewModel.normalize(state,study));
