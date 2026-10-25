@@ -65,7 +65,7 @@ def main():
     assert len(receipts)==len({r['report_id'] for r in receipts})<=baseline['max_publications']
     published_bytes=sum(r['byte_count'] for r in receipts);assert published_bytes<=baseline['max_publication_bytes']
     servers={port:Path(f'/proc/{pid}/cmdline').read_bytes().replace(b'\0',b' ').decode().strip() for port,pid in baseline['server_pids'].items()}
-    assert 'http.server' in servers['8000'] and 'codex' in servers['8787']
+    assert 'scripts/report_server.py --port 8000' in servers['8000'] and 'scripts/codex-report-server' in servers['8787']
     stamp='20261024T224911Z';artifacts=[root]+sorted((repo/'outputs').glob('*'+stamp+'*'))
     artifact_bytes=sum(tree_bytes(p) for p in artifacts);snapshot_bytes=sum(tree_bytes(Path(r['snapshot_path'])) for r in receipts)
     free=shutil.disk_usage(repo).free;assert artifact_bytes+snapshot_bytes<=baseline['max_new_bytes'] and free>=baseline['minimum_free_bytes']

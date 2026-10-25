@@ -152,3 +152,34 @@ the resumed-evaluation integration test. Its source scope includes `pd-report`
 and rejects source drift. An isolated retry after freezing production source
 passes. The failed log remains retained; the final unchanged-source full gate
 and preservation receipt close the loop.
+
+## Final acceptance
+
+The unchanged-production-source repeat passes all 19 maintained developer
+checks. The resumed-evaluation integration test also passes within that full
+run. Display epoch B is frozen at `6678084`; subsequent changes are closure
+documentation and the read-only preservation checker. The first failed gate
+is retained as evidence rather than overwritten.
+
+The final cold-cache-policy tree loads take 151.0 ms / 331,408 transferred bytes
+for timing and 151.9 ms / 479,896 bytes for RL; neither fetches a flight pack.
+Representative case-0 rich loads take 483.0 ms / 8,092,268 bytes and 403.4 ms /
+6,051,517 bytes respectively with the owned tab cache bypassed. After enabling
+and priming its cache, fresh navigations take 367.3 and 316.4 ms with zero HTTP
+transfer bytes. These include native rich plotting and two painted frames.
+They are individual host/browser observations, not population latency estimates
+or an operating-system cache purge.
+
+A final read-only source audit rechecks 7,370 evaluation/decision files and all
+3,685 native proof/seal pairs. Proof fields equal the source records; projected
+JSON formatting can differ. The complete canonical HTML, numeric literal and
+published-byte equality claims remain those of the independent packing and
+delivery audits. No qualification claims or comparison membership changed.
+
+The final preservation receipt is
+`outputs/report-comparison/loop-20261024T224911Z/release/closure.json`.
+It binds the completed gate, source and delivery receipts, unchanged prior
+report files and foreign workspace, final commits, original service PIDs, disk
+allowance and publication limits. Campaign executions, source replays and
+training remain zero; ordinary developer tests retain their software-only scope.
+No push or service lifecycle/configuration change was made.
