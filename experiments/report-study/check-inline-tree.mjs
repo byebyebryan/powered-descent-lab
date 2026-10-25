@@ -23,12 +23,14 @@ export async function checkInlineTree(client,{url,kind,width,output,name}) {
   })()`);
   assert.equal(lazy.rows,12); assert.equal(lazy.cards,24); assert.equal(lazy.runRows,24);
   assert.equal(lazy.flightPacks,0);
+  assert.equal(await client.evaluate('document.querySelector(".paired-table").tHead.rows[0].cells.length'),2);
   const layout=await client.evaluate(`(()=>{
     const boxes=s=>[...document.querySelectorAll(s)].map(e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width}});
     return {client:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth,
       tables:boxes('.paired-table'),cards:boxes('.mission-run-card')};
   })()`);
   assert(layout.scroll<=width+2);
+  if(width>=1400) assert(layout.cards.every(box=>box.width>=300));
   if(width<700) for(const box of [...layout.tables,...layout.cards]) {
     assert(box.left>=-1&&box.right<=layout.client+2,JSON.stringify(box));
   }

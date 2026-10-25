@@ -248,6 +248,27 @@ impl Builder<'_> {
             .map_or(0.0, |p| {
                 p.center_x_m - item.scenario.initial_state.position_m.x
             });
+        let mut display_values = Vec::new();
+        if let Some(evaluation) = &item.evaluation {
+            let final_state = &evaluation.execution.episode.final_state;
+            display_values.push(campaign_view::display_value(
+                "flight_time",
+                "Flight time",
+                Some(final_state.sim_time_s),
+                "s",
+            ));
+            display_values.push(campaign_view::display_value(
+                "fuel_remaining",
+                "Fuel remaining",
+                Some(final_state.fuel_kg),
+                "kg",
+            ));
+        }
+        display_values.push(campaign_view::display_text(
+            "proof",
+            "Saved proof",
+            item.proof.clone(),
+        ));
         self.review.missions.push(PairedMissionV1 {
             id: mission_id,
             group,
@@ -266,6 +287,7 @@ impl Builder<'_> {
                 href,
                 preview,
                 caption: item.note,
+                display_values,
             }],
         });
         Ok(())
@@ -298,6 +320,10 @@ pub fn render_timed_evaluation_report(spec_path: &Path, output: &Path) -> Result
             groups: vec![],
             branches: vec![],
             missions: vec![],
+            presentation: Some(MissionReviewPresentationV1 {
+                schema_version: 1,
+                mode: MissionReviewModeV1::Single,
+            }),
         },
         branch_ids: BTreeMap::new(),
         group_ids: BTreeMap::new(),

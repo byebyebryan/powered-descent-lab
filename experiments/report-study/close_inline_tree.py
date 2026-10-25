@@ -31,7 +31,8 @@ def main():
     assert git('status','--porcelain')==baseline['foreign_status'],'Foreign workspace state changed or owned changes are not committed'
     owned=set(git('diff','--name-only',baseline['head'],'HEAD').splitlines())
     doc_paths={'docs/report_inline_mission_comparison_plan.md','docs/report_inline_mission_comparison_execution.md','docs/report_presentations.md'}
-    assert all(p in doc_paths or p=='examples/coast-ignite-policy/src/report.rs' or p.startswith(('pd-report/','experiments/report-study/','scripts/test-report-','scripts/test-inline-mission-')) for p in owned),owned
+    example_paths={'examples/coast-ignite-policy/src/report.rs','examples/maneuver-policy/src/evaluation/timed/report.rs'}
+    assert all(p in doc_paths or p in example_paths or p.startswith(('pd-report/','experiments/report-study/','scripts/test-report-','scripts/test-inline-mission-')) for p in owned),owned
     checks=[(repo/f['path'],f['sha256']) for f in baseline['files'] if f['path'] not in owned]
     workspace_count=len(checks);retained_count=0
     for edition in baseline['retained']:

@@ -25,11 +25,17 @@ def main():
     old_ui=previous/'ui-final';manifest=read(old_ui/'asset-manifest.json')
     patches=[];sources={}
     for item in spec['patches']:
-        before_path=Path(item['before_path']).resolve();before=before_path.read_text()
-        paths=[repo/name for name in item['after_paths']]
-        after='\n'.join(path.read_text() for path in paths)
+        if 'before_text' in item:
+            assert 'before_path' not in item and 'after_paths' not in item
+            before=item['before_text'];after=item['after_text'];paths=[]
+            assert isinstance(before,str) and isinstance(after,str)
+        else:
+            before_path=Path(item['before_path']).resolve();before=before_path.read_text()
+            paths=[repo/name for name in item['after_paths']]
+            after='\n'.join(path.read_text() for path in paths)
+            paths=[before_path,*paths]
         assert before and after and before!=after and item['views']
-        for path in [before_path,*paths]:sources[str(path)]={'sha256':digest(path.read_bytes()),'bytes':path.stat().st_size}
+        for path in paths:sources[str(path)]={'sha256':digest(path.read_bytes()),'bytes':path.stat().st_size}
         patches.append({'id':item['id'],'views':item['views'],'before':before,'after':after,'before_sha256':digest(before.encode()),'after_sha256':digest(after.encode())})
     assert len({p['id'] for p in patches})==len(patches)
 
