@@ -26,11 +26,12 @@ def bytes_under(path):return sum(p.stat().st_size for p in path.rglob('*') if p.
 
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('root',type=Path);parser.add_argument('receipt',type=Path);a=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('root',type=Path);parser.add_argument('receipt',type=Path);parser.add_argument('--kind',choices=['inline','compact'],default='inline');a=parser.parse_args()
     root=a.root.resolve();repo=Path(__file__).resolve().parents[2];baseline=read(root/'workspace-baseline.json')
     assert git('status','--porcelain')==baseline['foreign_status'],'Foreign workspace state changed or owned changes are not committed'
     owned=set(git('diff','--name-only',baseline['head'],'HEAD').splitlines())
     doc_paths={'docs/report_inline_mission_comparison_plan.md','docs/report_inline_mission_comparison_execution.md','docs/report_presentations.md'}
+    if a.kind=='compact':doc_paths={'docs/report_compact_tree_plan.md','docs/report_compact_tree_execution.md','docs/report_presentations.md'}
     example_paths={'examples/coast-ignite-policy/src/report.rs','examples/maneuver-policy/src/evaluation/timed/report.rs'}
     assert all(p in doc_paths or p in example_paths or p.startswith(('pd-report/','experiments/report-study/','scripts/test-report-','scripts/test-inline-mission-')) for p in owned),owned
     checks=[(repo/f['path'],f['sha256']) for f in baseline['files'] if f['path'] not in owned]
@@ -64,8 +65,9 @@ def main():
     result={'passed':True,'head':git('rev-parse','HEAD').strip(),'checked_at_unix':now,'elapsed_seconds':now-baseline['start_unix'],'source_head':source['head'],'foreign_status_unchanged':True,'unchanged_workspace_files':workspace_count,'unchanged_prior_report_files':retained_count,'unchanged_capture_and_decision_files':len(read(source_receipt)['files']),'campaign_flights':0,'source_replays':0,'training_updates':0,'publications':len(publications),'published_bytes':published_bytes,'artifact_bytes':artifact_bytes,'snapshot_bytes':snapshot_bytes,'free_bytes':free,'server_pids':baseline['server_pids'],'server_commands':servers,'owned_committed_files':sorted(owned),'release_sha256':receipts}
     # Preserve the original wall-window result separately from functional and
     # byte-preservation acceptance; never erase or silently extend its baseline.
-    result['original_wall_window_met']=now<baseline['deadline']
-    result['original_deadline_unix']=baseline['deadline']
+    if 'deadline' in baseline:
+        result['original_wall_window_met']=now<baseline['deadline']
+        result['original_deadline_unix']=baseline['deadline']
     with a.receipt.open('x') as stream:json.dump(result,stream,indent=2);stream.write('\n')
     print(json.dumps({k:v for k,v in result.items() if k not in ['owned_committed_files','release_sha256','server_commands']}),flush=True)
 
