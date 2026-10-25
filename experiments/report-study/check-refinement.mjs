@@ -52,15 +52,20 @@ export async function checkRefinement(client,{url,kind,output,name,width}){
   const pair=await client.evaluate('document.querySelector(".compare-pair").href');await navigate(pair,'pair');
   assert.equal(await client.evaluate('document.body.dataset.pairReady'),'true');
   assert.equal(await client.evaluate('document.querySelectorAll("#pair-inspection svg").length'),4);
+  await paint(client);
+  const historyPixels=await client.evaluate('[...document.querySelectorAll(".flight-histories svg")].map(s=>({width:s.getBoundingClientRect().width,viewbox:s.viewBox.baseVal.width,label_px:12*s.getBoundingClientRect().width/s.viewBox.baseVal.width,height:s.getBoundingClientRect().height}))');
+  assert(historyPixels.every(h=>h.label_px>=11.9&&Math.abs(h.height-170)<1),JSON.stringify(historyPixels));
   assert(await client.evaluate(`document.documentElement.scrollWidth<=${width+2}`));
   let ended=null;
   if(kind==='timing'){
     await client.evaluate('PdPairInspector.seek(18)');ended=await client.evaluate('JSON.parse(PdPairInspector.output.dataset.snapshots)');assert(!ended[0].ended&&ended[1].ended&&ended[1].command===null);
     assert(await client.evaluate('document.querySelector("#pair-summary table").textContent.includes("-1.500")'));
   }else assert(await client.evaluate('document.getElementById("pair-summary").textContent.includes("A met, B unmet")'));
+  const pairVectors=await client.evaluate('[...document.querySelectorAll(".flight-pair-panes svg")].map(s=>{const p=s.getBoundingClientRect().width/s.viewBox.baseVal.width,line=s.querySelector("line[vector-effect]"),origin=s.querySelector("circle");return {length:Math.hypot(line.x2.baseVal.value-line.x1.baseVal.value,line.y2.baseVal.value-line.y1.baseVal.value)*p,radius:origin.r.baseVal.value*p}})');assert(pairVectors.every(v=>v.length<=24.001&&Math.abs(v.radius-4)<.001),JSON.stringify(pairVectors));
   await screenshot(client,join(output,kind+'-'+name+'-paired.png'));
   const rich=await client.evaluate('[...document.querySelectorAll("#pair-summary a")].filter(a=>a.textContent.startsWith("Full rich")).at(-1).href');await navigate(rich,'rich');
   assert.equal(await client.evaluate('document.querySelectorAll("#direction-history svg").length'),2);
+  await paint(client);assert(await client.evaluate('[...document.querySelectorAll("#direction-history svg")].every(s=>12*s.getBoundingClientRect().width/s.viewBox.baseVal.width>=11.9)'));
   const expectedClock=await client.evaluate('(()=>{const t=Math.min(8,reportData.samples.at(-1).simTimeS*.6),input=document.querySelector("#direction-history input");input.value=t;input.dispatchEvent(new Event("input"));return PdFlightModel.at(reportData.samples,t).sample.simTimeS.toFixed(2)})()');await paint(client);
   assert(await client.evaluate(`document.getElementById("inspect-caption").textContent.includes(${JSON.stringify(expectedClock)})`));
   await client.evaluate('document.querySelector("[data-mode=vectors]").click()');await paint(client);
@@ -71,5 +76,5 @@ export async function checkRefinement(client,{url,kind,output,name,width}){
   const back=await client.evaluate('document.querySelector("[data-back-review]").href');await navigate(back);
   if(kind==='rl')assert(await client.evaluate('PdPairedReview.state.change==="lost"&&PdStudyReview.selected().length===3'));
   assert.equal(await client.evaluate('document.getElementById("study-fixed-claims").textContent'),frozen);
-  return {passed:true,kind,viewport:name,common,earlier_no_op:true,invalid_reference_disclosed:true,target_filters:true,pair_context:true,ended,vector_geometry:geometry,warm_filter_ms:trials,median_filter_ms:median};
+  return {passed:true,kind,viewport:name,common,earlier_no_op:true,invalid_reference_disclosed:true,target_filters:true,pair_context:true,ended,history_pixels:historyPixels,paired_vectors:pairVectors,vector_geometry:geometry,warm_filter_ms:trials,median_filter_ms:median};
 }

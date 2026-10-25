@@ -102,3 +102,53 @@ cursor check uses a native interior time rather than assuming eight seconds.
 These checker corrections do not change production code or source results.
 
 Publication and published desktop/mobile checks remain the final delivery gate.
+
+## Published comparison and inspection editions
+
+The complete maintained views are now available from the shared publisher:
+
+- [Landing timing: mission comparisons and inspection](http://starship:8787/reports/3152765a1925d6323d567a0841b49c51a5bf4161e5a6ce8c4eaf4f93b636c4bc/report.html).
+- [RL coast/ignite: mission comparisons and inspection](http://starship:8787/reports/b7091f33f62655bb4001bafafaa250e3f0e5a4dc6625cfc145506ed3dda588db/report.html).
+
+Both contain the complete tree, comparison selectors, paired inspection, full
+rich detail, source-bound target status and proof/evidence navigation. All four
+published desktop/mobile checks pass with the legacy 8000 origin blocked.
+Explicit archived raw-capture links remain on their declared 8000 endpoint;
+they are optional provenance, separately checked over HTTP.
+
+The tree retains all 445 timing occurrences and 600 RL originals. Timing's
+primary cohort has 300 matched pairs, including 72 exact fuel ties and no fuel
+regressions. RL's native target filters identify 589 met and 11 unmet candidate
+targets; the source transition matrix remains 443 preserved, 146 gained, three
+lost and eight missed. Metric improvement and meeting the native landing target
+remain separate, and no fuel/cost threshold is invented. The earlier-edition
+selector is a checked same-capture scientific no-op. A different historical
+behavioral checkpoint has not been qualified for these two editions.
+
+The final visual pass found small mobile history labels. Display epoch B makes
+the plots follow their actual container width, retaining 12 px labels and 170 px
+height on both viewports, while cursor arrows retain a 24 px maximum length.
+Full-page JPEGs confirm the paired and individual mobile layouts. Plotly arrow
+tail geometry also passes real zoom and resize checks; arrows span the powered
+interval rather than clustering at its start.
+
+Epoch A's canonical native HTML, every numeric payload and the nine data bundles
+remain unchanged. The new immutable UI selects a source-bound inspection module
+patch outside the scientific payload; all 3,685 rich templates and both pair
+templates have the exact expected source binding. Regression tests include a
+matching display-source string inside scientific metadata, which must remain
+literal and untouched. Two successive small UI corrections are retained alongside
+the initial publication. Fifteen snapshots total 796,777,399 bytes, below the
+16-snapshot/1-GiB allowance. The publisher reused PID 37689 throughout.
+
+The final byte audit verifies 136 timing and 227 RL published UI/data assets.
+The preceding archive audit additionally checks all 1,288 timing and 2,401 RL raw
+capture/declaration links. Foreground warm filter medians on the final editions
+are 19.6/19.8 ms for timing desktop/mobile and 23.0/23.3 ms for RL. Measurements
+include two painted animation frames; they describe this browser and host.
+
+The first repeat of the full developer gate overlapped source edits and failed
+the resumed-evaluation integration test. Its source scope includes `pd-report`
+and rejects source drift. An isolated retry after freezing production source
+passes. The failed log remains retained; the final unchanged-source full gate
+and preservation receipt close the loop.

@@ -45,3 +45,33 @@ edition file and its linked source captures/declarations. It uses the establishe
 receipts and exported shared-view SVGs; publication remains an explicit separate
 CLI operation. Complete multi-gigabyte study editions stay on the established
 report endpoint, linked from the published entry page.
+
+## Complete portable comparisons
+
+The [comparison refinement plan](../../docs/report_comparison_refinement_plan.md)
+and [execution record](../../docs/report_comparison_refinement_execution.md)
+describe the complete editions now delivered on the shared 8787 publisher.
+The original mission tree remains the entry view. Pinned strategy references,
+sourced target status, paired trajectories and linked native-time histories are
+optional additions; earlier-edition reuse requires an explicit checked join.
+
+`pack_edition.py SOURCE NEW_PACKED` and `audit_packing.py` preserve exact HTML,
+numeric literals, proofs and previews. `prepare_portable.py PACKED NEW_EXPORT
+VENDOR` separates the small UI from bounded immutable data bundles and vendors
+the HTTP-compatible decoder and Plotly. `publish_portable.py EXPORT --title
+TITLE` publishes those bundles sequentially through the existing shared service.
+It does not manage server lifecycle. Routine tree, paired and rich inspection
+uses 8787; explicit raw-capture archives retain their declared source endpoint.
+
+`refine_portable_ui.py EXPORT PREVIOUS_INSPECTION_MODULE [--name NAME]` creates a
+new display-only UI directory, reusing already-published data aliases. It binds
+the exact old/new inspection source and checks all rich templates. The loader
+applies the selected patch only outside the native sample payload. An absent or
+ambiguous template binding fails visibly. Previous exports and snapshots remain
+unchanged. Publishing this new UI is a separate explicit operation.
+
+`audit_publication.py EXPORT NEW_RECEIPT [--archives] [--ui DIRECTORY]
+[--publication RECEIPT]` verifies all served UI/data bytes; optional archives
+check every original capture and source declaration too. `check-refinement.mjs`
+extends the original browser check with comparison, target, payload-clock,
+responsive-history and tail-anchored-vector acceptance on desktop and mobile.

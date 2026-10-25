@@ -15,8 +15,10 @@
   const payload=async key=>{const r=await record(key);return JSON.parse(unpack(r.record.payload,r.data.vectors));};
   const preview=async path=>{const match=/flight-(\d+)(-single)?\.svg$/.exec(path);if(!match)throw Error('Unknown preview path');const idx=await index(),item=idx.cases[match[1]];if(!item)throw Error('Unknown preview case');const data=await cache(previewCache,item.previews,()=>packed(item.previews),3);return data[match[1]+(match[2]||'')];};
   const html=async key=>{const r=await record(key);return r.record.before.map(i=>r.data.lines[i]).join('')+unpack(r.record.payload,r.data.vectors)+r.record.after.map(i=>r.data.lines[i]).join('');};
+  const presentationPatch=()=>cache(metadata,'presentation-patch',async()=>{const m=await manifest;if(!m.presentation_patch)return null;const url=new URL(m.presentation_patch,root);if(url.origin!==root.origin)throw Error('Presentation patch origin differs');const response=await originalFetch(url,{redirect:'error'});if(!response.ok)throw Error('Presentation patch unavailable');const p=await response.json();if(p.version!==1||!p.before||!p.after||p.before===p.after)throw Error('Invalid presentation patch');return p;},12);
   const transport=async (text,rich=false)=>{
     const m=await manifest;
+    const patch=await presentationPatch(),patchParts=(parts,required)=>{if(!patch)return parts;const count=parts.reduce((n,s)=>n+s.split(patch.before).length-1,0);if(count>1||required&&count!==1||!required&&count!==0)throw Error('Presentation source binding differs');return parts.map(s=>s.replace(patch.before,()=>patch.after));};
     const rewrite=s=>s.replaceAll('https://cdn.plot.ly/plotly-basic-2.35.2.min.js','assets/plotly-basic-2.35.2.min.js').replace(/href="([^"]+)"/g,(all,path)=>{
       if(path.includes('${'))return all;
       const detail=/^flight-(\d+)\.html$/.exec(path),evidence=/^flight-(\d+)-(evidence|proof)\.json$/.exec(path);
@@ -24,8 +26,8 @@
       if(['report-input.json','study.json','source-bindings.json','source-declarations.json','comparison-review.json','navigation.json'].includes(path))return 'href="evidence.html?file='+path+'"';
       if(path.startsWith('../'))return 'href="'+new URL(path,m.source_base).href+'"';return all;
     });
-    if(rich){const marker='const reportData'+' = ',match=new RegExp('(?:^|\\n)[ \\t]*'+marker).exec(text);if(!match)throw Error('Payload declaration missing');const start=match.index+match[0].length;let i=start,depth=0,quoted=false,escaped=false;for(;i<text.length;i++){const c=text[i];if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;continue;}if(c==='"')quoted=true;else if(c==='{'||c==='[')depth++;else if(c==='}'||c===']'){if(--depth===0){i++;break;}}}return rewrite(text.slice(0,start))+text.slice(start,i)+rewrite(text.slice(i));}
-    text=rewrite(text);return text.replace(/(<script type="application\/json" id="paired-review-data">)([\s\S]*?)(<\/script>)/,(all,a,value,b)=>a+JSON.stringify(rewriteProjection(JSON.parse(value))).replaceAll('<','\\u003c')+b);
+    if(rich){const marker='const reportData'+' = ',match=new RegExp('(?:^|\\n)[ \\t]*'+marker).exec(text);if(!match)throw Error('Payload declaration missing');const start=match.index+match[0].length;let i=start,depth=0,quoted=false,escaped=false;for(;i<text.length;i++){const c=text[i];if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;continue;}if(c==='"')quoted=true;else if(c==='{'||c==='[')depth++;else if(c==='}'||c===']'){if(--depth===0){i++;break;}}}const [before,after]=patchParts([text.slice(0,start),text.slice(i)],true);return rewrite(before)+text.slice(start,i)+rewrite(after);}
+    text=rewrite(patchParts([text],text.includes('id="pair-inspection"'))[0]);return text.replace(/(<script type="application\/json" id="paired-review-data">)([\s\S]*?)(<\/script>)/,(all,a,value,b)=>a+JSON.stringify(rewriteProjection(JSON.parse(value))).replaceAll('<','\\u003c')+b);
   };
   const page=async name=>{const text=fflate.strFromU8(fflate.gunzipSync(await binary('data/'+name+'.gz'))),value=await transport(text);document.open();document.write(value);document.close();};
   const showDetail=async key=>{const value=await transport(await html(key),true);document.open();document.write(value);document.close();};
